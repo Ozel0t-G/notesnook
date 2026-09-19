@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { ToolProps } from "../types.js";
 import { ToolButton } from "../components/tool-button.js";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ResponsivePresenter } from "../../components/responsive/index.js";
 import { MoreTools } from "../components/more-tools.js";
 import { useToolbarLocation } from "../stores/toolbar-store.js";
@@ -32,15 +32,41 @@ import { ImageAttributes } from "../../extensions/image/index.js";
 const HANDWRITING_PNG =
   /^handwriting-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/i;
 
+/**
+ * Whether the selected image is a handwriting whose editable source exists.
+ * Resolved asynchronously by the host app; hidden until it answers "yes".
+ */
+function useCanEditHandwriting(editor: ToolProps["editor"]) {
+  const attrs = findSelectedNode(editor, "image")?.attrs as
+    | ImageAttributes
+    | undefined;
+  const eligible =
+    !!editor.storage.handwritingEnabled &&
+    HANDWRITING_PNG.test(attrs?.filename || "");
+  const [available, setAvailable] = useState(false);
+
+  useEffect(() => {
+    setAvailable(false);
+    if (!eligible || !attrs) return;
+    let cancelled = false;
+    Promise.resolve(editor.storage.hasHandwritingSource?.(attrs))
+      .then((result) => !cancelled && setAvailable(!!result))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eligible, attrs?.hash, attrs?.filename]);
+
+  return available;
+}
+
 export function ImageSettings(props: ToolProps) {
   const { editor } = props;
   const isBottom = useToolbarLocation() === "bottom";
+  const canEditHandwriting = useCanEditHandwriting(editor);
 
   if (!editor.isActive("image") || !isBottom) return null;
-  const filename = (findSelectedNode(editor, "image")?.attrs as ImageAttributes)
-    ?.filename;
-  const canEditHandwriting =
-    !!editor.storage.handwritingEnabled && HANDWRITING_PNG.test(filename || "");
 
   return (
     <MoreTools

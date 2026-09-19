@@ -157,6 +157,12 @@ const Tiptap = ({
       editHandwriting: (image) => {
         globalThis.editorControllers[tab.id]?.editHandwriting(image);
       },
+      hasHandwritingSource: (image) => {
+        return postAsyncWithTimeout<boolean>(
+          EditorEvents.hasHandwritingSource,
+          { hash: image.hash, filename: image.filename }
+        );
+      },
       downloadAttachment: (attachment) => {
         globalThis.editorControllers[tab.id]?.downloadAttachment(attachment);
         return true;

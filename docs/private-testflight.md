@@ -41,14 +41,17 @@ export PENCIL_ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 `xcodebuild` then creates/refreshes distribution certificates and profiles through the API instead of the Xcode login.
 
-## Export compliance (needs the account holder)
+## Export compliance (decision of the account holder)
 
-`ITSAppUsesNonExemptEncryption` is `true` on this branch, so App Store Connect asks the export-compliance questions. Not answered by tooling. Technical facts and recommendation:
+Decision (2026-09-19, account holder): **`ITSAppUsesNonExemptEncryption = false`**, i.e. the app is declared exempt, as the official Notesnook app does. This is the account holder's own legal declaration; it was not made by tooling.
+
+Background that was presented before the decision:
 
 - Transport: HTTPS/TLS via the OS networking stack → exempt on its own.
-- Data: notes and attachments are encrypted end-to-end with libsodium (XChaCha20-Poly1305, Argon2, X25519) implemented in the app, i.e. encryption beyond what the OS provides and used for protecting user data, not only for authentication/DRM. That is *not* covered by Apple's "exempt" options.
-- Recommended answers: uses encryption → **Yes**; algorithms other than / in addition to those in Apple's OS → **Yes**; qualifies for exemption → **No**; standard (non-proprietary) algorithms → **Yes** (mass-market self-classification, ECCN 5D992.c). Consequence: an annual self-classification report to BIS/NSA is the account holder's duty; France may require a declaration for distribution there (not relevant for internal testers).
-- This is a legal statement; the account holder must confirm it.
+- Data: notes and attachments are encrypted end-to-end with libsodium (XChaCha20-Poly1305, Argon2, X25519) inside the app, i.e. encryption beyond the OS. The alternative was `true` with export-compliance documentation (mass-market self-classification, ECCN 5D992.c, annual BIS report) and an `ITSEncryptionExportComplianceCode`.
+- With `true` and no code, App Store Connect rejected the upload for this account ("Invalid Export Compliance Code").
+
+If the declaration should ever change, edit `ITSAppUsesNonExemptEncryption` in `ios/Notesnook/Info.plist` (and add `ITSEncryptionExportComplianceCode` when documentation exists).
 
 ## Internal TestFlight
 

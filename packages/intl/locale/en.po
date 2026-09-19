@@ -2611,6 +2611,10 @@ msgstr "Edit"
 msgid "Edit creation date"
 msgstr "Edit creation date"
 
+#: src/strings.ts:2815
+msgid "Edit handwriting"
+msgstr "Edit handwriting"
+
 #: src/strings.ts:527
 msgid "Edit internal link"
 msgstr "Edit internal link"
@@ -3445,6 +3449,10 @@ msgstr "Group added successfully"
 #: src/strings.ts:537
 msgid "Group by"
 msgstr "Group by"
+
+#: src/strings.ts:2814
+msgid "Handwriting"
+msgstr "Handwriting"
 
 #: src/strings.ts:752
 msgid "Hash copied"

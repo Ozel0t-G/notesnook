@@ -28,7 +28,7 @@ import { AudioNode } from "../audio/audio.js";
 import { ImageNode } from "../image/image.js";
 import { WebClipNode } from "../web-clip/web-clip.js";
 
-export type AttachmentType = "image" | "file" | "camera";
+export type AttachmentType = "image" | "file" | "camera" | "handwriting";
 export interface AttachmentOptions {
   types: string[];
   HTMLAttributes: Record<string, unknown>;

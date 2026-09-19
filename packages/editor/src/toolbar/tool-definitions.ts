@@ -271,6 +271,11 @@ const tools = (): Record<ToolId, ToolDefinition> => ({
     title: strings.alignRight(),
     conditional: true
   },
+  editHandwriting: {
+    icon: "handwriting",
+    title: strings.editHandwriting(),
+    conditional: true
+  },
   imageProperties: {
     icon: "more",
     title: strings.imageProperties(),

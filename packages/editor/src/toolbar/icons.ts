@@ -182,6 +182,7 @@ export const Icons = {
   more: mdiDotsVertical,
   upload: mdiUploadOutline,
   camera: mdiCameraOutline,
+  handwriting: mdiPencil,
   attachment: mdiAttachment,
   table: mdiTable,
   rowProperties: mdiTableRowHeight,

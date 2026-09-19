@@ -148,6 +148,22 @@ globalThis.commands = {
     }
   },
 
+  /**
+   * Swaps the attributes of the image node identified by `oldHash` (used
+   * when a handwriting is edited). The node keeps its position and alignment.
+   */
+  replaceImage: (
+    oldHash: string,
+    image: Partial<ImageAttributes>,
+    tabId: number
+  ) => {
+    const editor = editors[tabId];
+    if (!editor) return;
+    editor.commands.updateAttachment({ ...image, src: undefined } as any, {
+      query: (attachment) => attachment.hash === oldHash
+    });
+  },
+
   insertImage: (
     image: Omit<ImageAttributes, "bloburl"> & { dataurl: string },
     tabId: number

@@ -2600,6 +2600,10 @@ msgstr ""
 msgid "Edit creation date"
 msgstr ""
 
+#: src/strings.ts:2815
+msgid "Edit handwriting"
+msgstr ""
+
 #: src/strings.ts:527
 msgid "Edit internal link"
 msgstr ""
@@ -3426,6 +3430,10 @@ msgstr ""
 
 #: src/strings.ts:537
 msgid "Group by"
+msgstr ""
+
+#: src/strings.ts:2814
+msgid "Handwriting"
 msgstr ""
 
 #: src/strings.ts:752

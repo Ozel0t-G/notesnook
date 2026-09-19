@@ -27,11 +27,20 @@ import { ImageProperties as ImagePropertiesPopup } from "../popups/image-propert
 import { findSelectedNode } from "../../utils/prosemirror.js";
 import { ImageAttributes } from "../../extensions/image/index.js";
 
+// Mirrors the filename convention used by the mobile app for Apple Pencil
+// handwriting (handwriting-<UUID>.png).
+const HANDWRITING_PNG =
+  /^handwriting-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.png$/i;
+
 export function ImageSettings(props: ToolProps) {
   const { editor } = props;
   const isBottom = useToolbarLocation() === "bottom";
 
   if (!editor.isActive("image") || !isBottom) return null;
+  const filename = (findSelectedNode(editor, "image")?.attrs as ImageAttributes)
+    ?.filename;
+  const canEditHandwriting =
+    !!editor.storage.handwritingEnabled && HANDWRITING_PNG.test(filename || "");
 
   return (
     <MoreTools
@@ -42,12 +51,30 @@ export function ImageSettings(props: ToolProps) {
         editor.isEditable
           ? [
               "downloadAttachment",
+              ...(canEditHandwriting ? (["editHandwriting"] as const) : []),
               "imageAlignLeft",
               "imageAlignCenter",
               "imageAlignRight",
               "imageProperties"
             ]
           : ["downloadAttachment"]
+      }
+    />
+  );
+}
+
+export function EditHandwriting(props: ToolProps) {
+  const { editor } = props;
+  const image = findSelectedNode(editor, "image");
+  if (!image) return null;
+
+  return (
+    <ToolButton
+      icon={props.icon}
+      title={props.title}
+      toggled={false}
+      onClick={() =>
+        editor.storage.editHandwriting?.(image.attrs as ImageAttributes)
       }
     />
   );

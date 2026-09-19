@@ -99,6 +99,9 @@ interface TiptapStorage {
   getLinkData?: (url: string) => Promise<LinkData | undefined>;
   downloadAttachment?: (attachment: Attachment) => void;
   openAttachmentPicker?: (type: AttachmentType) => void;
+  /** Enables the Apple Pencil handwriting actions (iPad only). */
+  handwritingEnabled?: boolean;
+  editHandwriting?: (image: Attachment) => void;
   previewAttachment?: (attachment: Attachment) => void;
   copyToClipboard?: (text: string, html?: string) => void;
   downloadCsvTable?: (csv: string) => void;
@@ -149,6 +152,8 @@ const useTiptap = (
     getAttachmentData,
     downloadAttachment,
     openAttachmentPicker,
+    handwritingEnabled,
+    editHandwriting,
     previewAttachment,
     openLink,
     getLinkData,
@@ -401,6 +406,8 @@ const useTiptap = (
         editor.storage.openLink = openLink;
         editor.storage.downloadAttachment = downloadAttachment;
         editor.storage.openAttachmentPicker = openAttachmentPicker;
+        editor.storage.handwritingEnabled = !!handwritingEnabled;
+        editor.storage.editHandwriting = editHandwriting;
         editor.storage.previewAttachment = previewAttachment;
         editor.storage.copyToClipboard = copyToClipboard;
         editor.storage.createInternalLink = createInternalLink;
@@ -418,6 +425,8 @@ const useTiptap = (
       previewAttachment,
       downloadAttachment,
       openAttachmentPicker,
+      handwritingEnabled,
+      editHandwriting,
       getAttachmentData,
       onBeforeCreate,
       openLink,

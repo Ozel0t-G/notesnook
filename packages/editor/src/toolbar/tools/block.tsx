@@ -193,6 +193,14 @@ const image = (editor: Editor, isMobile: boolean): MenuItem => ({
         isHidden: !isMobile,
         onClick: () => editor.storage.openAttachmentPicker?.("camera")
       },
+      {
+        key: "handwriting",
+        type: "button",
+        title: strings.handwriting(),
+        icon: Icons.handwriting,
+        isHidden: !editor.storage.handwritingEnabled,
+        onClick: () => editor.storage.openAttachmentPicker?.("handwriting")
+      },
       isMobile ? uploadImageFromURLMobile(editor) : uploadImageFromURL(editor)
     ]
   }

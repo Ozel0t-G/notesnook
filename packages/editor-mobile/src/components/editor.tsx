@@ -153,6 +153,10 @@ const Tiptap = ({
         globalThis.editorControllers[tab.id]?.openFilePicker(type);
         return true;
       },
+      handwritingEnabled: !!globalThis.handwriting,
+      editHandwriting: (image) => {
+        globalThis.editorControllers[tab.id]?.editHandwriting(image);
+      },
       downloadAttachment: (attachment) => {
         globalThis.editorControllers[tab.id]?.downloadAttachment(attachment);
         return true;

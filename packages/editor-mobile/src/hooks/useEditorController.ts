@@ -82,7 +82,8 @@ export type EditorController = {
   scroll: (event: React.UIEvent<HTMLDivElement, UIEvent>) => void;
   title: string;
   setTitle: React.Dispatch<React.SetStateAction<string>>;
-  openFilePicker: (type: "image" | "file" | "camera") => void;
+  openFilePicker: (type: "image" | "file" | "camera" | "handwriting") => void;
+  editHandwriting: (image: Attachment) => void;
   downloadAttachment: (attachment: Attachment) => void;
   previewAttachment: (attachment: Attachment) => void;
   content: MutableRefObject<string | null>;
@@ -429,10 +430,22 @@ export function useEditorController({
     };
   }, [onMessage]);
 
-  const openFilePicker = useCallback((type: "image" | "file" | "camera") => {
+  const openFilePicker = useCallback(
+    (type: "image" | "file" | "camera" | "handwriting") => {
+      post(
+        EditorEvents.filepicker,
+        type,
+        tabRef.current.id,
+        tabRef.current.session?.noteId
+      );
+    },
+    []
+  );
+
+  const editHandwriting = useCallback((image: Attachment) => {
     post(
-      EditorEvents.filepicker,
-      type,
+      EditorEvents.editHandwriting,
+      image,
       tabRef.current.id,
       tabRef.current.session?.noteId
     );
@@ -502,6 +515,7 @@ export function useEditorController({
     titlePlaceholder,
     setTitlePlaceholder,
     openFilePicker,
+    editHandwriting,
     downloadAttachment,
     previewAttachment,
     content: htmlContentRef,

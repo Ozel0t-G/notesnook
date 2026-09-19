@@ -84,6 +84,7 @@ declare global {
   var __PLATFORM__: "ios" | "android";
   var readonly: boolean;
   var noToolbar: boolean;
+  var handwriting: boolean;
   var noHeader: boolean;
   function toBlobURL(dataurl: string, id?: string): string | undefined;
   var pendingResolvers: { [name: string]: (value: any) => void };

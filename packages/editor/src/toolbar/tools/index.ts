@@ -73,7 +73,8 @@ import {
   ImageAlignCenter,
   ImageAlignLeft,
   ImageAlignRight,
-  ImageProperties
+  ImageProperties,
+  EditHandwriting
 } from "./image.js";
 import {
   AttachmentSettings,
@@ -140,6 +141,7 @@ const tools = {
   imageAlignLeft: ImageAlignLeft,
   imageAlignRight: ImageAlignRight,
   imageProperties: ImageProperties,
+  editHandwriting: EditHandwriting,
 
   embedAlignCenter: EmbedAlignCenter,
   embedAlignLeft: EmbedAlignLeft,

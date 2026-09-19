@@ -3,6 +3,12 @@
 # personal/testflight only. No secrets: signing uses Xcode's automatic signing
 # with the account that is signed in to Xcode.
 #
+# Optional headless auth (recommended; keeps credentials outside the repo):
+#   export PENCIL_ASC_KEY_PATH=~/.appstoreconnect/private_keys/AuthKey_XXXX.p8
+#   export PENCIL_ASC_KEY_ID=XXXX
+#   export PENCIL_ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+# Without them xcodebuild uses the account signed in to Xcode.
+#
 # Usage: scripts/build-pencil-testflight.sh [--bump] [--upload]
 #   --bump    increment IOS_CURRENT_PROJECT_VERSION (build number) first
 #   --upload  upload the exported build to App Store Connect (destination=upload)
@@ -36,6 +42,13 @@ ARCHIVE="$OUT/NotesnookPencil-$VERSION-$BUILD.xcarchive"
 EXPORT="$OUT/export-$VERSION-$BUILD"
 mkdir -p "$OUT"
 
+AUTH=()
+if [[ -n "${PENCIL_ASC_KEY_PATH:-}" ]]; then
+  AUTH=(-authenticationKeyPath "$PENCIL_ASC_KEY_PATH" \
+        -authenticationKeyID "${PENCIL_ASC_KEY_ID:?}" \
+        -authenticationKeyIssuerID "${PENCIL_ASC_ISSUER_ID:?}")
+fi
+
 # Editor bundle (embedded in the app)
 ( cd "$ROOT" && npm run tx editor-mobile:build )
 
@@ -43,7 +56,7 @@ mkdir -p "$OUT"
 
 ( cd "$IOS" && xcodebuild -workspace Notesnook.xcworkspace -scheme Notesnook \
     -configuration Release -destination 'generic/platform=iOS' \
-    -archivePath "$ARCHIVE" -allowProvisioningUpdates archive )
+    -archivePath "$ARCHIVE" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} archive )
 
 OPTIONS="$IOS/ExportOptionsPencil.plist"
 if [[ $UPLOAD -eq 1 ]]; then
@@ -52,7 +65,7 @@ if [[ $UPLOAD -eq 1 ]]; then
   /usr/libexec/PlistBuddy -c "Set :destination upload" "$OPTIONS"
 fi
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
-  -exportOptionsPlist "$OPTIONS" -allowProvisioningUpdates
+  -exportOptionsPlist "$OPTIONS" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"}
 
 echo "Archive: $ARCHIVE"
 echo "Export:  $EXPORT"

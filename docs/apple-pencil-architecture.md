@@ -114,3 +114,42 @@ handwriting-<UUID>.pkdrawing  application/octet-stream   hidden attachment, boun
 - Prove Option R with core tests and real-client tests (section 4, "Risks of R"); fall back to Option A only if it fails.
 - Confirm the exact edit-affordance placement in the mobile image tool/menu (still to inspect: `packages/editor/src/toolbar/tools/image.tsx`, `editor-mobile` image actions).
 - Toolchain is Xcode 27 beta; verify the untouched RN build works before any feature code (Gate A).
+
+## 9. Edit lifecycle, cleanup and attachment manager
+
+### Edit (replace) order
+
+```
+PNG v1 → PKDrawing v1              (in the note, relation v1)
+   │ edit
+   ▼
+1. read the PKDrawing via the PNG relation (fallback: handwriting-<UUID>.pkdrawing filename)
+2. download + decrypt to a temp file (existing attachment layer), open in PencilKit
+3. save → new PNG v2 + PKDrawing v2 (same UUID, new hashes)
+4. store both through the normal E2EE attachment pipeline
+5. add relation PNG v2 → PKDrawing v2
+6. only then swap the image node (hash v1 → v2) in the open note
+7. delete temp plaintext files
+```
+
+Nothing of v1 is deleted or unlinked by this workflow. If any step before 6 fails, v1 (PNG, PKDrawing, relation, note) is untouched and attachments created by the failed run are removed again (`store.ts`, covered by unit tests).
+
+### Why v1 is not deleted explicitly
+
+- Removing the PNG from the note content only removes the *note → PNG* relation (`processLinkedAttachments`). Notesnook never deletes attachments automatically; unreferenced attachments become "orphaned" and are removed by explicit user action in the attachments manager (`removeOrphaned()` has no automatic caller).
+- PNG v1 can still be referenced by other places (version history of the note, copies of the note). Deleting it eagerly could break those. Notesnook itself does the same for any replaced/removed image, so v1 follows the normal lifecycle.
+- The PKDrawing v1 is kept **bound to PNG v1**: it lives exactly as long as that PNG. Restoring an old note version therefore keeps the old handwriting editable.
+
+### Why cleanup takes two passes (analysed)
+
+`Attachments.removeOrphaned()` computes the orphan list once, then deletes it. At that moment PNG v1 is orphaned (no note relation) but PKDrawing v1 is *not* (it is still the target of the PNG v1 → PKDrawing v1 relation). Deleting PNG v1 (`bulkRemove → relations.unlinkOfType`) removes that relation, so PKDrawing v1 becomes orphaned only afterwards and is collected by the next pass. This is expected behaviour of the existing single-pass design, not a leak: the PKDrawing is collected as soon as the user cleans orphans a second time (or deletes it in the manager). Verified by `packages/core/__tests__/handwriting-relation.test.ts`. No core change was made for this.
+
+### Attachment manager (known limitation of the first beta)
+
+- `handwriting-<UUID>.pkdrawing` shows up as a regular file in the global attachments list of every client (Settings → Attachments / attachments dialog). It is **not** shown in the note (no attachment node), and on other clients the note only contains the PNG.
+- It is linked (non-orphaned) through the attachment → attachment relation, so it is not offered for "delete orphaned" while its PNG exists.
+- The relation and both attachments sync as normal encrypted items (E2EE unchanged). Deleting the `.pkdrawing` manually only disables editing; the PNG and the note stay intact.
+
+### Missing source
+
+`Edit handwriting` is only shown when the paired PKDrawing attachment record is known on the device (relation first, filename fallback). If it is missing (not synced yet, deleted) the PNG stays visible and the action is hidden. An error toast remains only as fallback for races (record exists but the file cannot be downloaded, e.g. offline and not cached).

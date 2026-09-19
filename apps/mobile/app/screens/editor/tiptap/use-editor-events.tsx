@@ -523,6 +523,20 @@ export const useEditorEvents = (
             editorState().isAwaitingResult = false;
           }, 1000);
           break;
+        case EditorEvents.hasHandwritingSource: {
+          const image = editorMessage.value as Attachment;
+          const available = await require("../../../services/handwriting")
+            .default.hasHandwritingSource({
+              hash: image?.hash,
+              filename: image?.filename
+            })
+            .catch(() => false);
+          editor.postMessage(NativeEvents.resolve, {
+            resolverId: editorMessage.resolverId,
+            data: available
+          });
+          break;
+        }
         case EditorEvents.editHandwriting: {
           const image = editorMessage.value as Attachment;
           require("../../../services/handwriting").default.editHandwriting(

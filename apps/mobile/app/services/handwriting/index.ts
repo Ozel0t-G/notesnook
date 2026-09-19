@@ -39,6 +39,7 @@ import {
   findDrawingSource,
   getHandwritingFilename,
   HANDWRITING_PNG_MIME,
+  isHandwritingImage,
   isHandwritingSupported,
   parseHandwritingFilename
 } from "./utils";
@@ -147,6 +148,12 @@ export async function editHandwriting(target: Target, image: EditableImage) {
   }
 }
 
+/** True when the paired PKDrawing attachment record is known on this device. */
+export async function hasHandwritingSource(image: EditableImage) {
+  if (!isSupported() || !isHandwritingImage(image.filename)) return false;
+  return !!(await findSource(image));
+}
+
 async function findSource(image: EditableImage) {
   const png = await db.attachments.attachment(image.hash);
   const related = png
@@ -245,4 +252,9 @@ function createDeps(
   };
 }
 
-export default { createHandwriting, editHandwriting, isSupported };
+export default {
+  createHandwriting,
+  editHandwriting,
+  hasHandwritingSource,
+  isSupported
+};

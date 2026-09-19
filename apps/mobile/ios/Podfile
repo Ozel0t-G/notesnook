@@ -76,6 +76,10 @@ post_install do |installer|
   target.build_configurations.each do |config|
       config.build_settings['APPLICATION_EXTENSION_API_ONLY'] = 'NO'
       config.build_settings["EXCLUDED_ARCHS[sdk=iphonesimulator*]"] = "arm64"
+      # LOCAL TOOLCHAIN WORKAROUND (Xcode 27 beta): SDK rejects deployment targets < 15.0
+      if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
     end
   end
   installer.pods_project.targets.each do |target|

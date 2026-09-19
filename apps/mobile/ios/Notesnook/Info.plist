@@ -22,7 +22,7 @@
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>org.streetwriters.notesnook.nnbackup</string>
+				<string>com.ozel0t.note.notesnookpencil.nnbackup</string>
 			</array>
 		</dict>
 	</array>
@@ -90,7 +90,7 @@
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>ReactNativeQuickSQLite_AppGroup</key>
-	<string>group.org.streetwriters.notesnook</string>
+	<string>group.com.ozel0t.note.notesnookpencil</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter-Italic.ttf</string>
@@ -143,7 +143,7 @@
 			<key>UTTypeIconFiles</key>
 			<array/>
 			<key>UTTypeIdentifier</key>
-			<string>org.streetwriters.notesnook.nnbackup</string>
+			<string>com.ozel0t.note.notesnookpencil.nnbackup</string>
 			<key>UTTypeTagSpecification</key>
 			<dict>
 				<key>public.filename-extension</key>
@@ -158,7 +158,7 @@
 		</dict>
 	</array>
 	<key>appGroupId</key>
-	<string>group.org.streetwriters.notesnook</string>
+	<string>group.com.ozel0t.note.notesnookpencil</string>
 	<key>disableMMKVBackup</key>
 	<true/>
 </dict>

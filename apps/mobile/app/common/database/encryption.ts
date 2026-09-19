@@ -40,8 +40,8 @@ export const CipherStorage = new MMKVLoader()
   .disableIndexing()
   .initialize();
 
-const IOS_KEYCHAIN_ACCESS_GROUP = "group.org.streetwriters.notesnook";
-const IOS_KEYCHAIN_SERVICE_NAME = "org.streetwriters.notesnook";
+const IOS_KEYCHAIN_ACCESS_GROUP = "group.com.ozel0t.note.notesnookpencil";
+const IOS_KEYCHAIN_SERVICE_NAME = "com.ozel0t.note.notesnookpencil";
 const KEYCHAIN_SERVER_DBKEY = "notesnook:db";
 
 const NOTESNOOK_APPLOCK_KEY_SALT = "kBwr1Kre86ebOZ8ThLu2OA";

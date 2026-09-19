@@ -57,7 +57,7 @@
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>ReactNativeQuickSQLite_AppGroup</key>
-	<string>group.org.streetwriters.notesnook</string>
+	<string>group.com.ozel0t.note.notesnookpencil</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter-Bold.ttf</string>
@@ -74,6 +74,6 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>appGroupId</key>
-	<string>group.org.streetwriters.notesnook</string>
+	<string>group.com.ozel0t.note.notesnookpencil</string>
 </dict>
 </plist>

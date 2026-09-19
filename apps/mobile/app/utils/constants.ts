@@ -22,7 +22,7 @@ import { strings } from "@notesnook/intl";
 import { Platform } from "react-native";
 import { getVersion } from "react-native-device-info";
 
-export const IOS_APPGROUPID = "group.org.streetwriters.notesnook";
+export const IOS_APPGROUPID = "group.com.ozel0t.note.notesnookpencil";
 export const FILE_SIZE_LIMIT = 500 * 1024 * 1024;
 export const IMAGE_SIZE_LIMIT = 50 * 1024 * 1024;
 

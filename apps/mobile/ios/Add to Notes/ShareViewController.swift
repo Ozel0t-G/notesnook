@@ -5,7 +5,7 @@ import Photos
 
 class ShareViewController: SLComposeServiceViewController {
   // TODO: IMPORTANT: This should be your host app bundle identifier
-  let hostAppBundleIdentifier = "org.streetwriters.notesnook"
+  let hostAppBundleIdentifier = "com.ozel0t.note.notesnookpencil"
   let sharedKey = "ShareKey"
   var sharedMedia: [SharedMediaFile] = []
   var sharedText: [String] = []

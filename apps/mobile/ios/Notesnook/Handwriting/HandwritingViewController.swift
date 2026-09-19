@@ -99,9 +99,13 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
 
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
-    // Give the canvas room to draw below the initial content.
-    let minHeight = max(canvasView.bounds.height, canvasView.drawing.bounds.maxY + 600)
-    if canvasView.contentSize.height < minHeight {
+    // Give the canvas room to draw below the initial content. An empty PKDrawing
+    // reports `CGRect.null` as its bounds (maxY == +inf), which must never reach
+    // `contentSize`; it would make the canvas unusable.
+    let drawingBounds = canvasView.drawing.bounds
+    let contentBottom = drawingBounds.isNull || drawingBounds.isInfinite ? 0 : drawingBounds.maxY
+    let minHeight = max(canvasView.bounds.height, contentBottom + 600)
+    if minHeight.isFinite, canvasView.contentSize.height < minHeight {
       canvasView.contentSize = CGSize(width: canvasView.bounds.width, height: minHeight)
     }
   }

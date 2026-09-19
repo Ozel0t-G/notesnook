@@ -20,6 +20,7 @@
 		2DCD954D1E0B4F2C00145EB5 /* NotesnookTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* NotesnookTests.m */; };
 		2E4BF736C2EB268ED3FD9C29 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B5216B66C0B4A91C0A69128B /* PrivacyInfo.xcprivacy */; };
 		567646CA0ED8A6E64B204FD0 /* HandwritingExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FDB47901983098E34AC2A4D /* HandwritingExporter.swift */; };
+		64F1C8C66C1A56ADE2A0CAA5 /* SceneDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 8630765778FA70C8BA4CA7AD /* SceneDelegate.m */; };
 		6510E6D72877215700DACAA9 /* build.bundle in Resources */ = {isa = PBXBuildFile; fileRef = 6510E6D62877215700DACAA9 /* build.bundle */; };
 		6515C42F2580AA3000E83E39 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6515C42E2580AA2F00E83E39 /* StoreKit.framework */; };
 		6529A13E279BC4C70048D4A8 /* BootSplash.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 6529A13D279BC4C70048D4A8 /* BootSplash.storyboard */; };
@@ -162,6 +163,9 @@
 		849377998732E0BB9CF032F0 /* HandwritingMetadata.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingMetadata.swift; sourceTree = "<group>"; };
 		88211800FA8BF60638327ADE /* Pods-Make Note.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Make Note.debug.xcconfig"; path = "Target Support Files/Pods-Make Note/Pods-Make Note.debug.xcconfig"; sourceTree = "<group>"; };
 		9FDB47901983098E34AC2A4D /* HandwritingExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingExporter.swift; sourceTree = "<group>"; };
+		8630765778FA70C8BA4CA7AD /* SceneDelegate.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Notesnook/SceneDelegate.m; sourceTree = "<group>"; };
+		88211800FA8BF60638327ADE /* Pods-Make Note.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Make Note.debug.xcconfig"; path = "Target Support Files/Pods-Make Note/Pods-Make Note.debug.xcconfig"; sourceTree = "<group>"; };
+		A482053C4A6E06443DC525BD /* SceneDelegate.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = Notesnook/SceneDelegate.h; sourceTree = "<group>"; };
 		A84F3F0D50641D1CD4569B0E /* Pods-Make Note.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Make Note.release.xcconfig"; path = "Target Support Files/Pods-Make Note/Pods-Make Note.release.xcconfig"; sourceTree = "<group>"; };
 		B1C2824E09020408C06D888A /* HandwritingModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = HandwritingModule.m; sourceTree = "<group>"; };
 		B259038A5D1207C9F28314CD /* HandwritingViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingViewController.swift; sourceTree = "<group>"; };
@@ -266,6 +270,8 @@
 				4B679E87FDFB1312CAD6CF45 /* PrivacyInfo.xcprivacy */,
 				5D6DE3F654DAAB9170CC0B2C /* Handwriting */,
 				D30000000000000000000001 /* ReminderWidget */,
+				A482053C4A6E06443DC525BD /* SceneDelegate.h */,
+				8630765778FA70C8BA4CA7AD /* SceneDelegate.m */,
 			);
 			name = Notesnook;
 			sourceTree = "<group>";
@@ -963,6 +969,7 @@
 				567646CA0ED8A6E64B204FD0 /* HandwritingExporter.swift in Sources */,
 				D10000000000000000000001 /* ReminderWidgetModule.swift in Sources */,
 				D10000000000000000000002 /* ReminderWidgetModule.m in Sources */,
+				64F1C8C66C1A56ADE2A0CAA5 /* SceneDelegate.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1799,7 +1806,10 @@
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
-				OTHER_LDFLAGS = "$(inherited)  ";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					" ",
+				);
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
@@ -1865,7 +1875,10 @@
 				ONLY_ACTIVE_ARCH = NO;
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
-				OTHER_LDFLAGS = "$(inherited)  ";
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					" ",
+				);
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
 				USE_HERMES = true;

@@ -42,13 +42,19 @@
   self.reactNativeDelegate = delegate;
   
   self.reactNativeFactory = factory;
-  self.window = [[UIWindow alloc] initWithFrame:[UIScreen mainScreen].bounds];
-  [factory startReactNativeWithModuleName: @"Notesnook"
-                                      inWindow:self.window
-                           launchOptions:launchOptions];
-
-  [self.window makeKeyAndVisible];
+  // The window is created and React Native is started by SceneDelegate
+  // (UIScene lifecycle is mandatory with the iOS 27 SDK).
   return YES;
+}
+
+- (UISceneConfiguration *)application:(UIApplication *)application
+    configurationForConnectingSceneSession:(UISceneSession *)connectingSceneSession
+                                   options:(UISceneConnectionOptions *)options
+{
+  UISceneConfiguration *configuration = [[UISceneConfiguration alloc] initWithName:@"Default Configuration"
+                                                                        sessionRole:connectingSceneSession.role];
+  configuration.delegateClass = NSClassFromString(@"SceneDelegate");
+  return configuration;
 }
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge

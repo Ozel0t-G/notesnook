@@ -9,7 +9,8 @@
 #   export PENCIL_ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 # Without them xcodebuild uses the account signed in to Xcode.
 #
-# Usage: scripts/build-pencil-testflight.sh [--bump] [--upload]
+# Usage: scripts/build-pencil-testflight.sh [--bump] [--archive-only] [--upload]
+#   --archive-only  stop after the archive (upload it from Xcode's Organizer)
 #   --bump    increment IOS_CURRENT_PROJECT_VERSION (build number) first
 #   --upload  upload the exported build to App Store Connect (destination=upload)
 set -euo pipefail
@@ -19,11 +20,12 @@ IOS="$ROOT/apps/mobile/ios"
 CFG="$IOS/build-configs/ios-build.pencil.xcconfig"
 ACTIVE="$IOS/build-configs/ios-build.active.xcconfig"
 OUT="${PENCIL_BUILD_DIR:-$HOME/Notesnook/archives}"
-BUMP=0; UPLOAD=0
+BUMP=0; UPLOAD=0; ARCHIVE_ONLY=0
 for a in "$@"; do
   case "$a" in
     --bump) BUMP=1 ;;
     --upload) UPLOAD=1 ;;
+    --archive-only) ARCHIVE_ONLY=1 ;;
     *) echo "unknown option: $a" >&2; exit 1 ;;
   esac
 done
@@ -57,6 +59,8 @@ fi
 ( cd "$IOS" && xcodebuild -workspace Notesnook.xcworkspace -scheme Notesnook \
     -configuration Release -destination 'generic/platform=iOS' \
     -archivePath "$ARCHIVE" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} archive )
+
+if [[ $ARCHIVE_ONLY -eq 1 ]]; then echo "Archive: $ARCHIVE"; exit 0; fi
 
 OPTIONS="$IOS/ExportOptionsPencil.plist"
 if [[ $UPLOAD -eq 1 ]]; then

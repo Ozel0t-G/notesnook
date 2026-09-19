@@ -1,5 +1,5 @@
 // PRIVATE "Notesnook Pencil Beta" TestFlight identity. Lives on personal/testflight only.
-IOS_CURRENT_PROJECT_VERSION = 1
+IOS_CURRENT_PROJECT_VERSION = 2
 IOS_MARKETING_VERSION = 3.4.13
 IOS_MAIN_BUNDLE_ID = com.ozel0t.note.notesnookpencil
 IOS_WIDGET_BUNDLE_ID = com.ozel0t.note.notesnookpencil.widget

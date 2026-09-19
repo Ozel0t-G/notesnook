@@ -45,7 +45,7 @@ import { editorController, editorState } from "./utils";
 type PickerOptions = {
   noteId?: string;
   tabId?: string;
-  type: "image" | "camera" | "file";
+  type: "image" | "camera" | "file" | "handwriting";
   reupload: boolean;
   hash?: string;
   context?: string;
@@ -131,10 +131,7 @@ const file = async (fileOptions: PickerOptions) => {
 
     const isSameNote = currentFileNoteId === fileOptions.noteId;
 
-    if (
-      fileOptions.tabId !== undefined &&
-      (isSameNote || isNewNote)
-    ) {
+    if (fileOptions.tabId !== undefined && (isSameNote || isNewNote)) {
       editorController.current?.commands.insertAttachment(
         {
           hash: hash,
@@ -247,6 +244,15 @@ const pick = async (options: PickerOptions) => {
     return;
   }
 
+  if (options?.type === "handwriting") {
+    // in-app PencilKit modal (iPad only), no external picker involved
+    require("../../../services/handwriting").default.createHandwriting({
+      noteId: options.noteId,
+      tabId: options.tabId
+    });
+    return;
+  }
+
   useUserStore.getState().setDisableAppLockRequests(true);
   if (options?.type.startsWith("image") || options?.type === "camera") {
     if (options.type.startsWith("image")) {
@@ -321,10 +327,7 @@ const handleImageResponse = async (
 
     const isSameNote = currentNoteId === options.noteId;
 
-    if (
-      options.tabId !== undefined &&
-      (isSameNote || isNewNote)
-    ) {
+    if (options.tabId !== undefined && (isSameNote || isNewNote)) {
       editorController.current?.commands.insertImage(
         {
           hash: hash,

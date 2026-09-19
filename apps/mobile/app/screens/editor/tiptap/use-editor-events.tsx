@@ -467,8 +467,9 @@ export const useEditorEvents = (
             relationType: "from",
             title: strings.dataTypesPluralCamelCase.reminder(),
             onAdd: async () => {
-              const reminderFeature =
-                await isFeatureAvailable("activeReminders");
+              const reminderFeature = await isFeatureAvailable(
+                "activeReminders"
+              );
               if (!reminderFeature.isAllowed) {
                 ToastManager.show({
                   type: "info",
@@ -522,6 +523,14 @@ export const useEditorEvents = (
             editorState().isAwaitingResult = false;
           }, 1000);
           break;
+        case EditorEvents.editHandwriting: {
+          const image = editorMessage.value as Attachment;
+          require("../../../services/handwriting").default.editHandwriting(
+            { noteId: noteId, tabId: editorMessage.tabId },
+            { hash: image?.hash, filename: image?.filename }
+          );
+          break;
+        }
         case EditorEvents.download: {
           const downloadAttachment =
             require("../../../common/filesystem/download-attachment").default;
@@ -546,8 +555,8 @@ export const useEditorEvents = (
                 link.type === "note"
                   ? "notes"
                   : link.type === "notebook"
-                    ? "notebooks"
-                    : "tags";
+                  ? "notebooks"
+                  : "tags";
               const item = await db
                 .sql()
                 .selectFrom(table)

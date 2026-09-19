@@ -190,6 +190,14 @@ class Commands {
     await this.sendCommand("setAttachmentProgress", attachmentProgress, tabId);
   };
 
+  replaceImage = async (
+    oldHash: string,
+    image: Partial<ImageAttributes>,
+    tabId: string
+  ) => {
+    await this.sendCommand("replaceImage", oldHash, image, tabId);
+  };
+
   insertImage = async (
     image: Omit<ImageAttributes, "bloburl"> & {
       dataurl: string;

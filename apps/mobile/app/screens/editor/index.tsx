@@ -65,6 +65,7 @@ import { i18n } from "@lingui/core";
 import { useVaultStatus } from "../../hooks/use-vault-status";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { NativeEvents } from "@notesnook/editor-mobile/src/utils/native-events";
+import { isHandwritingSupported } from "../../services/handwriting/utils";
 
 const style: ViewStyle = {
   height: "100%",
@@ -158,6 +159,7 @@ const Editor = React.memo(
               globalThis.readonly=${readonly};
               globalThis.noToolbar=${noToolbar};
               globalThis.noHeader=${noHeader};
+              globalThis.handwriting=${isHandwritingSupported(Platform as any)};
               globalThis.LINGUI_LOCALE = "${i18n.locale}";
               globalThis.LINGUI_LOCALE_DATA = ${JSON.stringify({
                 [i18n.locale]: i18n.messages

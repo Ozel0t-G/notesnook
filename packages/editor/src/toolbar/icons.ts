@@ -118,6 +118,7 @@ import {
   mdiWeb,
   mdiPencilOff,
   mdiPencil,
+  mdiDraw,
   mdiCheckboxMultipleBlankOutline,
   mdiCheckboxMultipleMarked,
   mdiMessageOutline,
@@ -182,7 +183,9 @@ export const Icons = {
   more: mdiDotsVertical,
   upload: mdiUploadOutline,
   camera: mdiCameraOutline,
-  handwriting: mdiPencil,
+  // scribble icon for the insert action, pencil for editing an existing one
+  handwriting: mdiDraw,
+  editHandwriting: mdiPencil,
   attachment: mdiAttachment,
   table: mdiTable,
   rowProperties: mdiTableRowHeight,

@@ -272,7 +272,7 @@ const tools = (): Record<ToolId, ToolDefinition> => ({
     conditional: true
   },
   editHandwriting: {
-    icon: "handwriting",
+    icon: "editHandwriting",
     title: strings.editHandwriting(),
     conditional: true
   },

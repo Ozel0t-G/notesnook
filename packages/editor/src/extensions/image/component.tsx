@@ -38,6 +38,8 @@ import {
 import { useObserver } from "../../hooks/use-observer.js";
 import { Attachment, ImageAlignmentOptions } from "../attachment/index.js";
 import { DataURL } from "@notesnook/common";
+import { strings } from "@notesnook/intl";
+import { useCanEditHandwriting } from "./handwriting.js";
 
 export function ImageComponent(
   props: ReactNodeViewProps<Partial<ImageAttributes>>
@@ -71,6 +73,8 @@ export function ImageComponent(
 
   const downloadOptions = useToolbarStore((store) => store.downloadOptions);
   const isReadonly = !editor.isEditable;
+  // Apple Pencil handwriting (iPad only): shows an edit button on the image.
+  const canEditHandwriting = useCanEditHandwriting(editor, node.attrs);
   const isSVG = !!mime && mime.includes("/svg");
 
   useEffect(() => {
@@ -204,6 +208,39 @@ export function ImageComponent(
               <Text variant="body">{progress}%</Text>
             </Flex>
           ) : null}
+          {canEditHandwriting && (
+            <Flex
+              className="edit-handwriting"
+              role="button"
+              aria-label={strings.editHandwriting()}
+              title={strings.editHandwriting()}
+              contentEditable={false}
+              sx={{
+                position: "absolute",
+                top: 2,
+                right: 2,
+                width: 36,
+                height: 36,
+                alignItems: "center",
+                justifyContent: "center",
+                bg: "background",
+                borderRadius: 100,
+                border: "1px solid var(--border)",
+                boxShadow: "0 1px 4px rgba(0, 0, 0, 0.25)",
+                cursor: "pointer",
+                zIndex: 999
+              }}
+              // keep the editor selection/keyboard as they are
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                editor.storage.editHandwriting?.(node.attrs as ImageAttributes);
+              }}
+            >
+              <Icon path={Icons.editHandwriting} size={20} color="accent" />
+            </Flex>
+          )}
           {!isReadonly && selected && (
             <Icon
               className="drag-handle"

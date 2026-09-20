@@ -40,21 +40,10 @@ export function InsertBlock(props: ToolProps) {
   const toolbarLocation = useToolbarLocation();
   const isMobile = useIsMobile();
 
-  const menuItems = useMemo(() => {
-    return [
-      tasklist(editor),
-      outlinelist(editor),
-      horizontalRule(editor),
-      codeblock(editor),
-      mathblock(editor),
-      callout(editor),
-      blockquote(editor),
-      image(editor, isMobile),
-      attachment(editor),
-      isMobile ? embedMobile(editor) : embedDesktop(editor),
-      table(editor)
-    ];
-  }, [editor, isMobile]);
+  const menuItems = useMemo(
+    () => getInsertMenuItems(editor, isMobile),
+    [editor, isMobile]
+  );
 
   return (
     <>
@@ -98,6 +87,26 @@ export function InsertBlock(props: ToolProps) {
       />
     </>
   );
+}
+
+export function getInsertMenuItems(
+  editor: Editor,
+  isMobile: boolean
+): MenuItem[] {
+  return [
+    tasklist(editor),
+    outlinelist(editor),
+    horizontalRule(editor),
+    codeblock(editor),
+    mathblock(editor),
+    callout(editor),
+    blockquote(editor),
+    image(editor, isMobile),
+    handwriting(editor),
+    attachment(editor),
+    isMobile ? embedMobile(editor) : embedDesktop(editor),
+    table(editor)
+  ];
 }
 
 const horizontalRule = (editor: Editor): MenuItem => ({
@@ -193,17 +202,22 @@ const image = (editor: Editor, isMobile: boolean): MenuItem => ({
         isHidden: !isMobile,
         onClick: () => editor.storage.openAttachmentPicker?.("camera")
       },
-      {
-        key: "handwriting",
-        type: "button",
-        title: strings.handwriting(),
-        icon: Icons.handwriting,
-        isHidden: !editor.storage.handwritingEnabled,
-        onClick: () => editor.storage.openAttachmentPicker?.("handwriting")
-      },
       isMobile ? uploadImageFromURLMobile(editor) : uploadImageFromURL(editor)
     ]
   }
+});
+
+/**
+ * First-level shortcut (Apple Pencil on iPad): one tap from the insert menu,
+ * instead of Image -> Handwriting. Hidden unless the host app enables it.
+ */
+const handwriting = (editor: Editor): MenuItem => ({
+  key: "handwriting",
+  type: "button",
+  title: strings.handwriting(),
+  icon: Icons.handwriting,
+  isHidden: !editor.storage.handwritingEnabled,
+  onClick: () => editor.storage.openAttachmentPicker?.("handwriting")
 });
 
 const table = (editor: Editor): MenuItem => ({

@@ -24,6 +24,7 @@ const result: HandwritingResult = {
   id: ID,
   pngPath: "/tmp/a/handwriting.png",
   drawingPath: "/tmp/a/handwriting.pkdrawing",
+  metadataPath: "/tmp/a/handwriting.json",
   width: 100,
   height: 50
 };
@@ -66,17 +67,27 @@ describe("storeHandwriting", () => {
 
     expect(stored.pngHash).toBe(`hash:${result.pngPath}`);
     expect(stored.drawingHash).toBe(`hash:${result.drawingPath}`);
+    expect(stored.metadataHash).toBe(`hash:${result.metadataPath}`);
     expect(calls.filter((c) => c.startsWith("attach:"))).toEqual([
       `attach:handwriting-${ID}.png:image/png`,
-      `attach:handwriting-${ID}.pkdrawing:application/octet-stream`
+      `attach:handwriting-${ID}.pkdrawing:application/octet-stream`,
+      `attach:handwriting-${ID}.json:application/json`
     ]);
     const order = calls.map((c) => c.split(":")[0]);
     expect(order.indexOf("link")).toBeGreaterThan(order.lastIndexOf("attach"));
     expect(order.indexOf("applyToEditor")).toBeGreaterThan(
       order.indexOf("link")
     );
-    expect(calls).toContain(
-      `link:id:hash:${result.pngPath}->id:hash:${result.drawingPath}`
+    // PNG -> PKDrawing and PNG -> metadata, both before the editor is touched
+    expect(calls.filter((c) => c.startsWith("link:"))).toEqual([
+      `link:id:hash:${result.pngPath}->id:hash:${result.drawingPath}`,
+      `link:id:hash:${result.pngPath}->id:hash:${result.metadataPath}`
+    ]);
+    expect(
+      calls.lastIndexOf(calls.find((c) => c.startsWith("link:"))!)
+    ).toBeLessThan(calls.indexOf("applyToEditor"));
+    expect(order.lastIndexOf("link")).toBeLessThan(
+      order.indexOf("applyToEditor")
     );
   });
 
@@ -85,6 +96,7 @@ describe("storeHandwriting", () => {
     await storeHandwriting(deps, result);
     expect(calls).toContain(`delete:${result.pngPath}`);
     expect(calls).toContain(`delete:${result.drawingPath}`);
+    expect(calls).toContain(`delete:${result.metadataPath}`);
   });
 
   test("failure while storing: editor untouched, new attachments removed, temp files deleted", async () => {
@@ -118,6 +130,45 @@ describe("storeHandwriting", () => {
     // newly created attachments are removed; nothing else was mutated
     expect(calls).toContain(`remove:hash:${result.pngPath}`);
     expect(calls).toContain(`remove:hash:${result.drawingPath}`);
+    expect(calls).toContain(`remove:hash:${result.metadataPath}`);
+  });
+
+  test("metadata fails to store: no relation, no editor change, PNG + PKDrawing rolled back", async () => {
+    let n = 0;
+    const { deps, calls } = fakeDeps({
+      attach: async (path, hash, mime, filename) => {
+        if (++n === 3) return false; // metadata upload fails
+        calls.push(`attach:${filename}`);
+        return true;
+      }
+    });
+    await expect(storeHandwriting(deps, result)).rejects.toThrow(/\.json/);
+    expect(calls.some((c) => c.startsWith("link:"))).toBe(false);
+    expect(calls).not.toContain("applyToEditor");
+    expect(calls).toContain(`remove:hash:${result.pngPath}`);
+    expect(calls).toContain(`remove:hash:${result.drawingPath}`);
+  });
+
+  test("relation fails: editor is never switched to the new PNG", async () => {
+    const { deps, calls } = fakeDeps({
+      link: async (a, b) => {
+        if (b.includes("json")) throw new Error("relation failed");
+      }
+    });
+    await expect(storeHandwriting(deps, result)).rejects.toThrow(
+      "relation failed"
+    );
+    expect(calls).not.toContain("applyToEditor");
+    expect(calls).toContain(`remove:hash:${result.metadataPath}`);
+  });
+
+  test("an attachment that cannot be found afterwards aborts before linking", async () => {
+    const { deps, calls } = fakeDeps({
+      getAttachmentId: async (h) => (h.includes("json") ? undefined : `id:${h}`)
+    });
+    await expect(storeHandwriting(deps, result)).rejects.toThrow(/not found/);
+    expect(calls.some((c) => c.startsWith("link:"))).toBe(false);
+    expect(calls).not.toContain("applyToEditor");
   });
 
   test("rollback never removes attachments that already existed", async () => {
@@ -134,6 +185,20 @@ describe("storeHandwriting", () => {
     await expect(storeHandwriting(deps, result)).rejects.toThrow();
     expect(calls).not.toContain(`remove:hash:${result.pngPath}`);
     expect(calls).toContain(`remove:hash:${result.drawingPath}`);
+  });
+
+  test("unchanged metadata is reused (de-duplicated), not removed on failure", async () => {
+    const { deps, calls, attachments } = fakeDeps({
+      applyToEditor: async () => {
+        throw new Error("fail");
+      }
+    });
+    attachments.set(`hash:${result.metadataPath}`, {
+      id: "old-meta",
+      filename: `handwriting-${ID}.json`
+    });
+    await expect(storeHandwriting(deps, result)).rejects.toThrow();
+    expect(calls).not.toContain(`remove:hash:${result.metadataPath}`);
   });
 
   test("rejects a malformed id from the native side", async () => {

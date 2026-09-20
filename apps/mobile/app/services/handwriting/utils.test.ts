@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import {
   findDrawingSource,
+  findMetadataSource,
   getHandwritingFilename,
   isHandwritingImage,
   isHandwritingSupported,
@@ -121,5 +122,58 @@ describe("findDrawingSource", () => {
     expect(
       findDrawingSource("photo.png", [drawing("a", "h")], [drawing("a", "h")])
     ).toBeUndefined();
+  });
+});
+
+describe("handwriting metadata files", () => {
+  const png = `handwriting-${ID}.png`;
+  const att = (filename: string, id: string, dateCreated?: number) => ({
+    id,
+    hash: `h-${id}`,
+    filename,
+    dateCreated
+  });
+
+  test("filename pairing includes the .json file", () => {
+    expect(getHandwritingFilename(ID, "metadata")).toBe(
+      `handwriting-${ID}.json`
+    );
+    expect(parseHandwritingFilename(`handwriting-${ID}.json`)).toEqual({
+      id: ID,
+      kind: "metadata"
+    });
+    expect(isHandwritingImage(`handwriting-${ID}.json`)).toBe(false);
+  });
+
+  test("metadata is found through the relation first", () => {
+    const meta = att(`handwriting-${ID}.json`, "m1");
+    const drawing = att(`handwriting-${ID}.pkdrawing`, "d1");
+    expect(findMetadataSource(png, [drawing, meta], [])).toBe(meta);
+    // the drawing lookup is unaffected by the additional relation
+    expect(findDrawingSource(png, [drawing, meta], [])).toBe(drawing);
+  });
+
+  test("falls back to the newest same-name file when the relation is missing", () => {
+    const old = att(`handwriting-${ID}.json`, "m1", 100);
+    const fresh = att(`handwriting-${ID}.json`, "m2", 200);
+    expect(findMetadataSource(png, [], [old, fresh])).toBe(fresh);
+    expect(findMetadataSource(png, [], [fresh, old])).toBe(fresh);
+  });
+
+  test("no metadata (Build 1 drawing) -> undefined", () => {
+    const drawing = att(`handwriting-${ID}.pkdrawing`, "d1");
+    expect(findMetadataSource(png, [drawing], [drawing])).toBeUndefined();
+  });
+
+  test("never returns another drawing's metadata or a non-PNG lookup", () => {
+    const other = att(
+      "handwriting-11111111-2222-3333-4444-555555555555.json",
+      "x"
+    );
+    expect(findMetadataSource(png, [other], [other])).toBeUndefined();
+    expect(
+      findMetadataSource(`handwriting-${ID}.json`, [other], [other])
+    ).toBeUndefined();
+    expect(findMetadataSource("photo.png", [other], [other])).toBeUndefined();
   });
 });

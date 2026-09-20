@@ -143,3 +143,130 @@ test("attachment->attachment relation keeps a hidden PKDrawing linked", () =>
     expect(await db.attachments.exists(pkdHash)).toBe(false);
     expect(await db.attachments.exists(pkd2)).toBe(true);
   }));
+
+test("PNG + PKDrawing + metadata: two hidden relations, cleanup and replacement", () =>
+  databaseTest().then(async (db) => {
+    await loginFakeUser(db);
+    const uuid = "22222222-3333-4444-5555-666666666666";
+    const png = (name: string) => `handwriting-${uuid}.${name}`;
+    const META_1 = JSON.stringify({
+      version: 1,
+      background: { type: "color", color: "#000000" },
+      paper: { type: "grid", spacing: "medium" }
+    });
+    const META_2 = JSON.stringify({
+      version: 1,
+      background: { type: "color", color: "#000000" },
+      paper: { type: "lined", spacing: "small" }
+    });
+    const b64 = (text: string) => Buffer.from(text).toString("base64");
+    const save = async (data: string, mime: string, name: string) => {
+      const hash = await db.attachments.save(data, mime, name);
+      if (!hash) throw new Error(`save failed: ${name}`);
+      return { hash, id: await idOf(db, hash) };
+    };
+    const link = (from: { id: string }, to: { id: string }) =>
+      db.relations.add(
+        { id: from.id, type: "attachment" },
+        { id: to.id, type: "attachment" }
+      );
+    const image = (hash: string) =>
+      `<img data-hash="${hash}" data-filename="${png(
+        "png"
+      )}" data-mime="image/png"/>`;
+
+    // v1
+    const png1 = await save(PNG_1, "image/png", png("png"));
+    const pkd1 = await save(PKD, "application/octet-stream", png("pkdrawing"));
+    const meta1 = await save(b64(META_1), "application/json", png("json"));
+    await link(png1, pkd1);
+    await link(png1, meta1);
+    const noteId = await db.notes.add({
+      title: "hw",
+      content: { type: "tiptap", data: `<p>a</p>${image(png1.hash)}` }
+    });
+
+    // both hidden files are reachable from the PNG, and only the PNG is in the note
+    const related = await db.relations
+      .from({ id: png1.id, type: "attachment" }, "attachment")
+      .resolve();
+    expect(related.map((a: any) => a.filename).sort()).toEqual(
+      [png("json"), png("pkdrawing")].sort()
+    );
+    const noteHashes = (await db.attachments.ofNote(noteId, "all").items()).map(
+      (a: any) => a.hash
+    );
+    expect(noteHashes).toEqual([png1.hash]);
+
+    // a note save and orphan cleanup keep all three
+    await db.notes.add({
+      id: noteId,
+      content: { type: "tiptap", data: `<p>edited</p>${image(png1.hash)}` }
+    });
+    await db.attachments.removeOrphaned();
+    for (const a of [png1, pkd1, meta1])
+      expect(await db.attachments.exists(a.hash)).toBe(true);
+
+    // edit that only changes the strokes: metadata bytes are unchanged, so the
+    // same (de-duplicated) metadata attachment is linked from the new PNG too
+    const png2 = await save(PNG_2, "image/png", png("png"));
+    const pkd2 = await save(
+      b64("pkd-v2"),
+      "application/octet-stream",
+      png("pkdrawing")
+    );
+    const meta1Again = await save(b64(META_1), "application/json", png("json"));
+    expect(meta1Again.id).toBe(meta1.id);
+    await link(png2, pkd2);
+    await link(png2, meta1Again);
+    await db.notes.add({
+      id: noteId,
+      content: { type: "tiptap", data: `<p>edited</p>${image(png2.hash)}` }
+    });
+
+    await db.attachments.removeOrphaned(); // pass 1: old PNG
+    expect(await db.attachments.exists(png1.hash)).toBe(false);
+    await db.attachments.removeOrphaned(); // pass 2: old PKDrawing
+    expect(await db.attachments.exists(pkd1.hash)).toBe(false);
+    // the shared metadata is still linked to the new PNG and survives
+    expect(await db.attachments.exists(meta1.hash)).toBe(true);
+    expect(await db.attachments.exists(pkd2.hash)).toBe(true);
+    expect(
+      (
+        await db.relations
+          .from({ id: png2.id, type: "attachment" }, "attachment")
+          .resolve()
+      )
+        .map((a: any) => a.filename)
+        .sort()
+    ).toEqual([png("json"), png("pkdrawing")].sort());
+
+    // edit that changes the page settings: a new metadata revision replaces it
+    const png3 = await save(
+      Buffer.from("png-3").toString("base64"),
+      "image/png",
+      png("png")
+    );
+    const meta2 = await save(b64(META_2), "application/json", png("json"));
+    await link(png3, pkd2);
+    await link(png3, meta2);
+    await db.notes.add({
+      id: noteId,
+      content: { type: "tiptap", data: `<p>edited</p>${image(png3.hash)}` }
+    });
+    await db.attachments.removeOrphaned();
+    await db.attachments.removeOrphaned();
+    expect(await db.attachments.exists(png2.hash)).toBe(false);
+    // META_1 is no longer referenced by any PNG -> collected
+    expect(await db.attachments.exists(meta1.hash)).toBe(false);
+    // the current set is complete
+    for (const a of [png3, pkd2, meta2])
+      expect(await db.attachments.exists(a.hash)).toBe(true);
+    expect(
+      (
+        await db.relations
+          .from({ id: png3.id, type: "attachment" }, "attachment")
+          .resolve()
+      ).length
+    ).toBe(2);
+  }));

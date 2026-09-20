@@ -23,6 +23,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *   handwriting-<UUID>.png        image/png                (inline image)
  *   handwriting-<UUID>.pkdrawing  application/octet-stream (hidden source)
+ *   handwriting-<UUID>.json       application/json         (hidden metadata)
+ *
+ * Both hidden files are bound to the PNG by relations (see metadata.ts).
  *
  * Do not import React Native here so this stays unit-testable.
  */
@@ -32,12 +35,20 @@ export const HANDWRITING_PNG_EXT = "png";
 export const HANDWRITING_DRAWING_EXT = "pkdrawing";
 export const HANDWRITING_PNG_MIME = "image/png";
 export const HANDWRITING_DRAWING_MIME = "application/octet-stream";
+export const HANDWRITING_METADATA_EXT = "json";
+export const HANDWRITING_METADATA_MIME = "application/json";
 
-export type HandwritingKind = "png" | "drawing";
+export type HandwritingKind = "png" | "drawing" | "metadata";
+
+const EXTENSIONS: Record<HandwritingKind, string> = {
+  png: HANDWRITING_PNG_EXT,
+  drawing: HANDWRITING_DRAWING_EXT,
+  metadata: HANDWRITING_METADATA_EXT
+};
 
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const FILENAME_REGEX = new RegExp(
-  `^${HANDWRITING_PREFIX}(${UUID})\\.(${HANDWRITING_PNG_EXT}|${HANDWRITING_DRAWING_EXT})$`,
+  `^${HANDWRITING_PREFIX}(${UUID})\\.(${HANDWRITING_PNG_EXT}|${HANDWRITING_DRAWING_EXT}|${HANDWRITING_METADATA_EXT})$`,
   "i"
 );
 
@@ -48,9 +59,7 @@ export function isValidHandwritingId(id: unknown): id is string {
 export function getHandwritingFilename(id: string, kind: HandwritingKind) {
   if (!isValidHandwritingId(id))
     throw new Error(`Invalid handwriting id: ${id}`);
-  return `${HANDWRITING_PREFIX}${id.toLowerCase()}.${
-    kind === "png" ? HANDWRITING_PNG_EXT : HANDWRITING_DRAWING_EXT
-  }`;
+  return `${HANDWRITING_PREFIX}${id.toLowerCase()}.${EXTENSIONS[kind]}`;
 }
 
 export function parseHandwritingFilename(
@@ -59,10 +68,11 @@ export function parseHandwritingFilename(
   if (!filename) return;
   const match = FILENAME_REGEX.exec(filename);
   if (!match) return;
-  return {
-    id: match[1].toLowerCase(),
-    kind: match[2].toLowerCase() === HANDWRITING_PNG_EXT ? "png" : "drawing"
-  };
+  const ext = match[2].toLowerCase();
+  const kind = (Object.keys(EXTENSIONS) as HandwritingKind[]).find(
+    (k) => EXTENSIONS[k] === ext
+  ) as HandwritingKind;
+  return { id: match[1].toLowerCase(), kind };
 }
 
 /** True if an image node's filename identifies a handwriting PNG. */
@@ -80,7 +90,30 @@ export function isHandwritingSupported(platform: {
   return platform.OS === "ios" && platform.isPad === true;
 }
 
-export type AttachmentLike = { id: string; hash: string; filename: string };
+export type AttachmentLike = {
+  id: string;
+  hash: string;
+  filename: string;
+  dateCreated?: number;
+};
+
+const newestFirst = <T extends AttachmentLike>(a: T, b: T) =>
+  (b.dateCreated || 0) - (a.dateCreated || 0);
+
+function findSibling<T extends AttachmentLike>(
+  pngFilename: string,
+  kind: "drawing" | "metadata",
+  related: T[],
+  sameFilename: T[]
+): T | undefined {
+  const parsed = parseHandwritingFilename(pngFilename);
+  if (!parsed || parsed.kind !== "png") return;
+  const expected = getHandwritingFilename(parsed.id, kind);
+  const matches = (list: T[]) =>
+    list.filter((a) => a.filename.toLowerCase() === expected).sort(newestFirst);
+
+  return matches(related)[0] || matches(sameFilename)[0];
+}
 
 /**
  * Picks the PKDrawing that belongs to a handwriting PNG.
@@ -88,7 +121,8 @@ export type AttachmentLike = { id: string; hash: string; filename: string };
  * 1. `related`: attachments reached through the hidden PNG -> PKDrawing
  *    relation. Preferred, because it is bound to exactly this PNG revision.
  * 2. `sameFilename`: attachments found by the `handwriting-<UUID>.pkdrawing`
- *    filename. Fallback when the relation is missing (e.g. not synced yet).
+ *    filename (newest first). Fallback when the relation is missing (e.g. not
+ *    synced yet).
  *
  * Returns undefined when there is no source; callers must then keep showing
  * the PNG and disable editing instead of failing.
@@ -98,10 +132,17 @@ export function findDrawingSource<T extends AttachmentLike>(
   related: T[],
   sameFilename: T[]
 ): T | undefined {
-  const parsed = parseHandwritingFilename(pngFilename);
-  if (!parsed || parsed.kind !== "png") return;
-  const expected = getHandwritingFilename(parsed.id, "drawing");
-  const isDrawing = (a: T) => a.filename.toLowerCase() === expected;
+  return findSibling(pngFilename, "drawing", related, sameFilename);
+}
 
-  return related.find(isDrawing) || sameFilename.find(isDrawing);
+/**
+ * Same as `findDrawingSource` for `handwriting-<UUID>.json`. Drawings from
+ * before metadata existed have none; callers then use the legacy defaults.
+ */
+export function findMetadataSource<T extends AttachmentLike>(
+  pngFilename: string,
+  related: T[],
+  sameFilename: T[]
+): T | undefined {
+  return findSibling(pngFilename, "metadata", related, sameFilename);
 }

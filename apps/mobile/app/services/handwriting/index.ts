@@ -28,6 +28,7 @@ import { cacheDir } from "../../common/filesystem/utils";
 import { attachFile } from "../../screens/editor/tiptap/picker";
 import { useTabStore } from "../../screens/editor/tiptap/use-tab-store";
 import { editorController } from "../../screens/editor/tiptap/utils";
+import { useThemeStore } from "../../stores/use-theme-store";
 import { ToastManager } from "../event-manager";
 import {
   HandwritingResult,
@@ -35,8 +36,10 @@ import {
   StoredHandwriting,
   storeHandwriting
 } from "./store";
+import { defaultMetadata, parseMetadata, serializeMetadata } from "./metadata";
 import {
   findDrawingSource,
+  findMetadataSource,
   getHandwritingFilename,
   HANDWRITING_PNG_MIME,
   isHandwritingImage,
@@ -45,8 +48,13 @@ import {
 } from "./utils";
 
 type NativeHandwriting = {
-  create(): Promise<HandwritingResult>;
-  edit(sourcePath: string, drawingId: string): Promise<HandwritingResult>;
+  /** `metadata`: JSON of the page settings (background, paper, page width). */
+  create(metadata: string): Promise<HandwritingResult>;
+  edit(
+    sourcePath: string,
+    drawingId: string,
+    metadata: string
+  ): Promise<HandwritingResult>;
 };
 
 const Native: NativeHandwriting | undefined = NativeModules.HandwritingModule;
@@ -81,7 +89,11 @@ export async function createHandwriting(target: Target) {
     await db.attachments.generateKey();
     let result: HandwritingResult;
     try {
-      result = await Native!.create();
+      // new drawings start with a background that matches the app theme
+      const theme = useThemeStore.getState().colorScheme;
+      result = await Native!.create(
+        serializeMetadata(defaultMetadata(theme === "dark" ? "dark" : "light"))
+      );
     } catch (e) {
       if (!isCancelled(e)) {
         DatabaseLogger.error(e as Error, "Failed to open handwriting editor");
@@ -95,31 +107,31 @@ export async function createHandwriting(target: Target) {
   }
 }
 
-/** Reopens the stored PKDrawing of a handwriting image and replaces the image. */
+/**
+ * Reopens the stored PKDrawing (and its page settings) of a handwriting image
+ * and replaces the image.
+ */
 export async function editHandwriting(target: Target, image: EditableImage) {
   if (!isSupported() || busy) return;
   const parsed = parseHandwritingFilename(image.filename);
   if (!parsed || parsed.kind !== "png") return;
 
   busy = true;
-  let sourcePath: string | undefined;
+  const temporary: string[] = [];
   try {
     await db.attachments.generateKey();
-    const source = await findSource(image);
-    if (!source) {
+    const { drawing, metadata } = await findSources(image);
+    if (!drawing) {
       // PNG stays visible, the note is not affected.
       showError("The editable handwriting source is not available.");
       return;
     }
 
+    let sourcePath: string;
+    let settings: string;
     try {
-      const uri = await downloadAttachment(source.hash, false, {
-        silent: true,
-        cache: true,
-        throwError: true
-      });
-      if (!uri) throw new Error("Could not download the handwriting source.");
-      sourcePath = `${cacheDir}/${uri}`;
+      sourcePath = await downloadToCache(drawing.hash, temporary);
+      settings = await readMetadata(metadata?.hash, temporary);
     } catch (e) {
       DatabaseLogger.error(e as Error, "Failed to download handwriting source");
       showError((e as Error).message);
@@ -128,7 +140,7 @@ export async function editHandwriting(target: Target, image: EditableImage) {
 
     let result: HandwritingResult;
     try {
-      result = await Native!.edit(sourcePath, parsed.id);
+      result = await Native!.edit(sourcePath, parsed.id, settings);
     } catch (e) {
       if (!isCancelled(e)) {
         DatabaseLogger.error(e as Error, "Failed to edit handwriting");
@@ -136,25 +148,60 @@ export async function editHandwriting(target: Target, image: EditableImage) {
       }
       return;
     } finally {
-      // decrypted copy of the old source must not stay in the cache
-      RNFetchBlob.fs.unlink(sourcePath).catch(() => {});
-      sourcePath = undefined;
+      // decrypted copies of the old source must not stay in the cache
+      await removeFiles(temporary);
     }
 
     await save(result, target, image.hash);
   } finally {
-    if (sourcePath) RNFetchBlob.fs.unlink(sourcePath).catch(() => {});
+    await removeFiles(temporary);
     busy = false;
   }
+}
+
+async function downloadToCache(hash: string, temporary: string[]) {
+  const uri = await downloadAttachment(hash, false, {
+    silent: true,
+    cache: true,
+    throwError: true
+  });
+  if (!uri) throw new Error("Could not download the handwriting source.");
+  const path = `${cacheDir}/${uri}`;
+  temporary.push(path);
+  return path;
+}
+
+/**
+ * Page settings of an existing drawing as JSON for the native editor.
+ *
+ * - no metadata attachment (drawing from Build 1/2): white, blank paper
+ * - metadata that cannot be read or is invalid: same defaults; the next save
+ *   writes a clean file. The PKDrawing is never touched by this.
+ * - metadata that exists but cannot be downloaded: throws. Editing with
+ *   defaults would silently replace the page settings on save.
+ */
+async function readMetadata(hash: string | undefined, temporary: string[]) {
+  if (!hash) return serializeMetadata(parseMetadata(undefined).metadata);
+  const path = await downloadToCache(hash, temporary);
+  const text = await RNFetchBlob.fs.readFile(path, "utf8").catch(() => "");
+  return serializeMetadata(parseMetadata(text).metadata);
+}
+
+function removeFiles(paths: string[]) {
+  const files = paths.splice(0);
+  return Promise.all(
+    files.map((path) => RNFetchBlob.fs.unlink(path).catch(() => {}))
+  );
 }
 
 /** True when the paired PKDrawing attachment record is known on this device. */
 export async function hasHandwritingSource(image: EditableImage) {
   if (!isSupported() || !isHandwritingImage(image.filename)) return false;
-  return !!(await findSource(image));
+  return !!(await findSources(image)).drawing;
 }
 
-async function findSource(image: EditableImage) {
+/** The hidden PKDrawing and metadata attachments of a handwriting PNG. */
+async function findSources(image: EditableImage) {
   const png = await db.attachments.attachment(image.hash);
   const related = png
     ? await db.relations
@@ -165,11 +212,17 @@ async function findSource(image: EditableImage) {
   const sameFilename = parsed
     ? await db.attachments.all
         .where((eb) =>
-          eb("filename", "==", getHandwritingFilename(parsed.id, "drawing"))
+          eb("filename", "in", [
+            getHandwritingFilename(parsed.id, "drawing"),
+            getHandwritingFilename(parsed.id, "metadata")
+          ])
         )
         .items()
     : [];
-  return findDrawingSource(image.filename, related, sameFilename);
+  return {
+    drawing: findDrawingSource(image.filename, related, sameFilename),
+    metadata: findMetadataSource(image.filename, related, sameFilename)
+  };
 }
 
 async function save(

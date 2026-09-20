@@ -153,3 +153,51 @@ Nothing of v1 is deleted or unlinked by this workflow. If any step before 6 fail
 ### Missing source
 
 `Edit handwriting` is only shown when the paired PKDrawing attachment record is known on the device (relation first, filename fallback). If it is missing (not synced yet, deleted) the PNG stays visible and the action is hidden. An error toast remains only as fallback for races (record exists but the file cannot be downloaded, e.g. offline and not cached).
+
+## 10. Page metadata, background and paper (UX iteration)
+
+```
+handwriting-<UUID>.png        image/png                  visible, inline image (all clients)
+    ├── relation → handwriting-<UUID>.pkdrawing  application/octet-stream  PKDrawing.dataRepresentation()
+    └── relation → handwriting-<UUID>.json       application/json          page metadata (new)
+```
+
+Same mechanism as the PKDrawing (§4, Option R): a hidden attachment bound by an attachment → attachment relation, E2EE through the normal attachment pipeline, nothing new in the note, no sync/crypto/editor-schema change.
+
+### Metadata schema (version 1)
+
+```json
+{
+  "version": 1,
+  "background": { "type": "color", "color": "#2C2C2E" },
+  "paper": { "type": "lined", "spacing": "medium", "spacingPt": 32 },
+  "canvas": { "width": 1194 }
+}
+```
+
+- `paper.type`: `blank | lined | grid | dotted`; `paper.spacing`: `small | medium | large`.
+- `spacingPt` is the exact distance in points and wins over the preset, so a page never changes its look if the preset table is ever tuned. Presets (points): lined 24/32/44, grid 16/24/36, dotted 16/24/36.
+- Optional `paper.color` / `paper.opacity` override the template colour (not exposed in the UI; derived from the background otherwise).
+- `canvas.width` is the page width in points (PNG = 2x). The page is at least as wide as the screen it is opened on; a stored wider page scrolls sideways.
+- Reading is lenient: missing/empty/invalid file → white blank paper; invalid single fields → their defaults; newer `version` → known fields read best-effort. Writing is deterministic (same settings → same bytes → same attachment hash, so unchanged metadata is de-duplicated).
+- Schema + presets exist twice and must stay in sync: `apps/mobile/app/services/handwriting/metadata.ts` (JS, tested with jest) and `ios/Notesnook/Handwriting/HandwritingMetadata.swift` (native, tested by `scripts/handwriting-native-tests.sh`).
+
+### Rendering
+
+Order everywhere: background colour → paper template → PKDrawing strokes. Background and template are drawn by one renderer (`PaperRenderer`) into a view *under* the transparent `PKCanvasView` (editor) and into the PNG (export), so they are never part of the PKDrawing and cannot be erased.
+
+- Template anchored at the page origin; lines/grid/dots start one spacing away from the top-left edge.
+- PNG extent: blank paper is cropped to strokes + padding (unchanged from Build 1–4). Lined/grid/dotted export the full page width from the top of the page to the last stroke, rounded up to a whole cell, so the PNG lines up with the editor.
+- Ink colours: PencilKit adapts ink to the interface style (default black ink turns white in dark mode). The editor and the export therefore use the interface style derived from the **background luminance**, never from the system appearance; a black-ink drawing on a dark page looks the same in the editor and in the PNG (verified by the native tests).
+- PNG is opaque and does not depend on the theme of the viewing client.
+- Very long pages are rendered in tiles (GPU texture limit 8192 px) and the export scale is reduced to keep the PNG below ~24 MP.
+- New drawings start with the app theme (light → white, dark → dark gray `#2C2C2E`). Drawings from before metadata existed always open as white blank paper (never theme-dependent).
+
+### Save (all-or-nothing)
+
+`storeHandwriting` (`store.ts`): store PNG, PKDrawing and metadata attachments → link PNG→PKDrawing and PNG→metadata → **only then** swap/insert the image node. Any failure before the swap leaves the note, the old attachments and the old relations untouched and removes what the failed run created. The note can therefore never show a new PNG with an old PKDrawing or missing metadata. Old revisions follow the normal orphan lifecycle (§9); the metadata of an old PNG is collected in the same second pass as its PKDrawing, and metadata shared by two revisions (identical bytes) stays while any PNG still links it.
+
+### Editor UX
+
+- Insert (+) menu: `Handwriting` is a first-level item (right after Image) when the host enables handwriting (iPad build). It is no longer nested in Image.
+- Handwriting PNGs (`handwriting-<UUID>.png`) show a pencil button at the top right of the image (`packages/editor/src/extensions/image/component.tsx`). It is a DOM overlay: it is never part of the PNG. It is shown only if the host enabled handwriting, the editor is editable, the filename matches and the PKDrawing source is known; normal images never get it. One tap opens PencilKit on the stored drawing and its page settings.

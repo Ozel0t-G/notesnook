@@ -25,17 +25,32 @@ struct HandwritingResult {
   let pngData: Data
   let width: Int
   let height: Int
+  /// Metadata to store next to the drawing (background, paper, page width).
+  let metadata: HandwritingMetadata
 }
 
 /// Full-screen PencilKit canvas. Calls `onFinish` exactly once with either a
 /// result (Save) or nil (Cancel).
-final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
+///
+/// Layers, bottom to top: background colour + paper template
+/// (`PaperBackgroundView`), then the transparent `PKCanvasView` with the
+/// strokes. Only the strokes are part of the PKDrawing.
+final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
+  UIColorPickerViewControllerDelegate
+{
+  private let paperView = PaperBackgroundView()
   private let canvasView = PKCanvasView()
   private let toolPicker = PKToolPicker()
   private let initialDrawing: PKDrawing
-  private var hasChanges = false
+  private let initialMetadata: HandwritingMetadata
+  private var metadata: HandwritingMetadata
+  private var drawingChanged = false
   private var finished = false
+  /// Page width in points, fixed at the first layout (see `updateContentSize`).
+  private var pageWidth: CGFloat?
   private let onFinish: (HandwritingResult?) -> Void
+
+  private var hasChanges: Bool { drawingChanged || metadata != initialMetadata }
 
   private lazy var saveItem = UIBarButtonItem(
     title: "Save", style: .done, target: self, action: #selector(saveTapped))
@@ -49,9 +64,19 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
     action: #selector(redoTapped))
   private lazy var clearItem = UIBarButtonItem(
     title: "Clear", style: .plain, target: self, action: #selector(clearTapped))
+  private lazy var backgroundItem = UIBarButtonItem(
+    image: UIImage(systemName: "paintpalette") ?? UIImage(systemName: "circle.lefthalf.filled"),
+    menu: nil)
+  private lazy var paperItem = UIBarButtonItem(
+    image: UIImage(systemName: "square.grid.2x2"), menu: nil)
 
-  init(drawing: PKDrawing, onFinish: @escaping (HandwritingResult?) -> Void) {
+  init(
+    drawing: PKDrawing, metadata: HandwritingMetadata,
+    onFinish: @escaping (HandwritingResult?) -> Void
+  ) {
     self.initialDrawing = drawing
+    self.initialMetadata = metadata
+    self.metadata = metadata
     self.onFinish = onFinish
     super.init(nibName: nil, bundle: nil)
     modalPresentationStyle = .fullScreen
@@ -62,17 +87,28 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
 
   override func viewDidLoad() {
     super.viewDidLoad()
-    // The exported PNG is rendered on white for every client, so edit on white
-    // regardless of the system appearance (WYSIWYG, also in Dark Mode).
-    overrideUserInterfaceStyle = .light
-    view.backgroundColor = .white
 
+    backgroundItem.accessibilityLabel = "Background"
+    paperItem.accessibilityLabel = "Paper"
+    undoItem.accessibilityLabel = "Undo"
+    redoItem.accessibilityLabel = "Redo"
+    // Compact bar: [Cancel] [Clear] ........ [Background] [Paper] [Undo] [Redo] [Save]
     navigationItem.leftBarButtonItems = [cancelItem, clearItem]
-    navigationItem.rightBarButtonItems = [saveItem, redoItem, undoItem]
+    navigationItem.rightBarButtonItems = [saveItem, redoItem, undoItem, paperItem, backgroundItem]
 
-    canvasView.translatesAutoresizingMaskIntoConstraints = false
-    canvasView.backgroundColor = .white
-    canvasView.isOpaque = true
+    for subview in [paperView, canvasView] {
+      subview.translatesAutoresizingMaskIntoConstraints = false
+      view.addSubview(subview)
+      NSLayoutConstraint.activate([
+        subview.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+        subview.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        subview.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+        subview.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+      ])
+    }
+    // The canvas is transparent: the paper view underneath provides the page.
+    canvasView.backgroundColor = .clear
+    canvasView.isOpaque = false
     // `.default` respects the user's "Only Draw with Apple Pencil" setting.
     canvasView.drawingPolicy = .default
     canvasView.drawing = initialDrawing
@@ -80,13 +116,9 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
     canvasView.minimumZoomScale = 1
     canvasView.maximumZoomScale = 4
     canvasView.alwaysBounceVertical = true
-    view.addSubview(canvasView)
-    NSLayoutConstraint.activate([
-      canvasView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-      canvasView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-      canvasView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-      canvasView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-    ])
+    canvasView.contentInsetAdjustmentBehavior = .never
+
+    applyMetadata()
     updateButtons()
   }
 
@@ -99,29 +131,154 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
 
   override func viewDidLayoutSubviews() {
     super.viewDidLayoutSubviews()
-    // Give the canvas room to draw below the initial content. An empty PKDrawing
-    // reports `CGRect.null` as its bounds (maxY == +inf), which must never reach
-    // `contentSize`; it would make the canvas unusable.
+    if pageWidth == nil, canvasView.bounds.width > 0 {
+      // A page is at least as wide as the screen it was opened on. A stored
+      // wider page (created in landscape, edited in portrait) scrolls sideways.
+      pageWidth = max(CGFloat(metadata.canvasWidth ?? 0), canvasView.bounds.width.rounded(.down))
+    }
+    updateContentSize()
+    syncPaper()
+  }
+
+  /// Gives the canvas room to draw below the current content and never shrinks.
+  /// An empty PKDrawing reports `CGRect.null` as its bounds (maxY == +inf),
+  /// which must never reach `contentSize`; it would make the canvas unusable.
+  private func updateContentSize() {
     let drawingBounds = canvasView.drawing.bounds
     let contentBottom = drawingBounds.isNull || drawingBounds.isInfinite ? 0 : drawingBounds.maxY
-    let minHeight = max(canvasView.bounds.height, contentBottom + 600)
-    if minHeight.isFinite, canvasView.contentSize.height < minHeight {
-      canvasView.contentSize = CGSize(width: canvasView.bounds.width, height: minHeight)
-    }
+    let height = max(canvasView.bounds.height, contentBottom + 600)
+    let width = max(pageWidth ?? 0, canvasView.bounds.width)
+    guard height.isFinite, width.isFinite else { return }
+    let target = CGSize(width: width, height: max(canvasView.contentSize.height, height))
+    if target != canvasView.contentSize { canvasView.contentSize = target }
+  }
+
+  private func syncPaper() {
+    paperView.contentOffset = canvasView.contentOffset
+    paperView.zoomScale = canvasView.zoomScale
   }
 
   // MARK: - PKCanvasViewDelegate
 
   func canvasViewDrawingDidChange(_ canvasView: PKCanvasView) {
-    hasChanges = true
+    drawingChanged = true
+    updateContentSize()
     updateButtons()
   }
+
+  func scrollViewDidScroll(_ scrollView: UIScrollView) { syncPaper() }
+
+  func scrollViewDidZoom(_ scrollView: UIScrollView) { syncPaper() }
 
   private func updateButtons() {
     saveItem.isEnabled = !canvasView.drawing.strokes.isEmpty
     clearItem.isEnabled = !canvasView.drawing.strokes.isEmpty
     undoItem.isEnabled = canvasView.undoManager?.canUndo ?? false
     redoItem.isEnabled = canvasView.undoManager?.canRedo ?? false
+  }
+
+  // MARK: - Background and paper
+
+  /// Applies `metadata` to the page and the chrome. The interface style follows
+  /// the background so PencilKit shows the ink exactly as the PNG will contain it.
+  private func applyMetadata() {
+    let style = metadata.inkStyle
+    overrideUserInterfaceStyle = style
+    navigationController?.overrideUserInterfaceStyle = style
+    view.backgroundColor = metadata.backgroundColor
+    paperView.metadata = metadata
+    backgroundItem.menu = makeBackgroundMenu()
+    paperItem.menu = makePaperMenu()
+  }
+
+  private func setBackground(_ hex: String) {
+    guard hex != metadata.backgroundHex else { return }
+    metadata.backgroundHex = hex
+    applyMetadata()
+  }
+
+  private func makeBackgroundMenu() -> UIMenu {
+    let current = metadata.backgroundHex
+    let presets = HandwritingMetadata.presetBackgrounds
+    let colors = presets.map { preset in
+      UIAction(
+        title: preset.name, image: HandwritingViewController.swatch(preset.hex),
+        state: preset.hex == current ? .on : .off
+      ) { [weak self] _ in self?.setBackground(preset.hex) }
+    }
+    let isCustom = !presets.contains { $0.hex == current }
+    let custom = UIAction(
+      title: "Custom Color…", image: HandwritingViewController.swatch(current, custom: true),
+      state: isCustom ? .on : .off
+    ) { [weak self] _ in
+      // let the menu finish dismissing before presenting the picker
+      DispatchQueue.main.async { self?.presentColorPicker() }
+    }
+    return UIMenu(
+      title: "Background",
+      children: [
+        UIMenu(title: "", options: .displayInline, children: colors),
+        UIMenu(title: "", options: .displayInline, children: [custom]),
+      ])
+  }
+
+  private func makePaperMenu() -> UIMenu {
+    let types = PaperType.allCases.map { type in
+      UIAction(title: type.rawValue.capitalized, state: type == metadata.paperType ? .on : .off) {
+        [weak self] _ in
+        guard let self = self, self.metadata.paperType != type else { return }
+        self.metadata.setPaper(type)
+        self.applyMetadata()
+      }
+    }
+    let spacings = PaperSpacing.allCases.map { spacing in
+      UIAction(
+        title: spacing.rawValue.capitalized,
+        attributes: metadata.paperType == .blank ? .disabled : [],
+        state: spacing == metadata.spacing ? .on : .off
+      ) { [weak self] _ in
+        guard let self = self else { return }
+        self.metadata.setSpacing(spacing)
+        self.applyMetadata()
+      }
+    }
+    return UIMenu(
+      title: "Paper",
+      children: [
+        UIMenu(title: "", options: .displayInline, children: types),
+        UIMenu(title: "Spacing", options: .displayInline, children: spacings),
+      ])
+  }
+
+  private static func swatch(_ hex: String, custom: Bool = false) -> UIImage? {
+    let size = CGSize(width: 22, height: 22)
+    let image = UIGraphicsImageRenderer(size: size).image { _ in
+      let rect = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
+      (UIColor(hex: hex) ?? .white).setFill()
+      UIBezierPath(ovalIn: rect).fill()
+      UIColor.systemGray.setStroke()
+      let outline = UIBezierPath(ovalIn: rect)
+      outline.lineWidth = 1
+      outline.stroke()
+    }
+    return image.withRenderingMode(.alwaysOriginal)
+  }
+
+  private func presentColorPicker() {
+    guard presentedViewController == nil else { return }
+    let picker = UIColorPickerViewController()
+    picker.selectedColor = metadata.backgroundColor
+    picker.supportsAlpha = false
+    picker.delegate = self
+    picker.modalPresentationStyle = .popover
+    picker.popoverPresentationController?.barButtonItem = backgroundItem
+    present(picker, animated: true)
+  }
+
+  func colorPickerViewController(
+    _ viewController: UIColorPickerViewController, didSelect color: UIColor, continuous: Bool
+  ) {
+    setBackground(HandwritingMetadata.hex(from: color))
   }
 
   // MARK: - Actions
@@ -153,10 +310,14 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
 
   @objc private func saveTapped() {
     let drawing = canvasView.drawing
-    guard !drawing.strokes.isEmpty, let result = HandwritingViewController.render(drawing) else {
-      return
-    }
-    finish(result)
+    guard !drawing.strokes.isEmpty,
+      let output = HandwritingExporter.render(
+        drawing, metadata: metadata, pageWidth: pageWidth ?? canvasView.bounds.width)
+    else { return }
+    finish(
+      HandwritingResult(
+        drawing: drawing, pngData: output.pngData, width: output.width, height: output.height,
+        metadata: output.metadata))
   }
 
   private func finish(_ result: HandwritingResult?) {
@@ -164,32 +325,5 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
     finished = true
     toolPicker.setVisible(false, forFirstResponder: canvasView)
     dismiss(animated: true) { [onFinish] in onFinish(result) }
-  }
-
-  // MARK: - Rendering
-
-  /// Renders the strokes on an opaque white background, cropped to the drawing
-  /// bounds plus padding, so the PNG looks identical in every Notesnook client.
-  static func render(_ drawing: PKDrawing, scale: CGFloat = 2) -> HandwritingResult? {
-    let padding: CGFloat = 24
-    let rect = drawing.bounds.insetBy(dx: -padding, dy: -padding).integral
-    guard rect.width > 0, rect.height > 0 else { return nil }
-
-    var image: UIImage?
-    UITraitCollection(userInterfaceStyle: .light).performAsCurrent {
-      let strokes = drawing.image(from: rect, scale: scale)
-      let format = UIGraphicsImageRendererFormat()
-      format.scale = scale
-      format.opaque = true
-      image = UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
-        UIColor.white.setFill()
-        context.fill(CGRect(origin: .zero, size: rect.size))
-        strokes.draw(in: CGRect(origin: .zero, size: rect.size))
-      }
-    }
-    guard let png = image?.pngData() else { return nil }
-    return HandwritingResult(
-      drawing: drawing, pngData: png,
-      width: Int(rect.width * scale), height: Int(rect.height * scale))
   }
 }

@@ -26,12 +26,14 @@ RCT_EXTERN_METHOD(isAvailable
                   : (RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(create
+                  : (NSString *)metadata resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(edit
                   : (NSString *)sourcePath drawingId
-                  : (NSString *)drawingId resolver
+                  : (NSString *)drawingId metadata
+                  : (NSString *)metadata resolver
                   : (RCTPromiseResolveBlock)resolve rejecter
                   : (RCTPromiseRejectBlock)reject)
 

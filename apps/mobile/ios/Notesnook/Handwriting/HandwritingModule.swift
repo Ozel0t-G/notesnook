@@ -24,9 +24,12 @@ import UIKit
 /// React Native bridge for PencilKit handwriting. Only exchanges file paths
 /// (never base64) with JS. Drawing contents are never logged.
 ///
-///   create()                      -> { id, pngPath, drawingPath, width, height }
-///   edit(sourcePath, drawingId)   -> same shape, keeps `drawingId`
+///   create(metadata)                     -> { id, pngPath, drawingPath, metadataPath, width, height }
+///   edit(sourcePath, drawingId, metadata) -> same shape, keeps `drawingId`
 ///
+/// `metadata` is the JSON of the page settings (background, paper, page width)
+/// as sanitised by JS. Invalid or empty JSON falls back to white blank paper.
+
 /// Cancelling rejects with code `E_CANCELLED`.
 @objc(HandwritingModule)
 final class HandwritingModule: NSObject {
@@ -42,16 +45,20 @@ final class HandwritingModule: NSObject {
     resolve(UIDevice.current.userInterfaceIdiom == .pad)
   }
 
-  @objc(create:rejecter:)
+  @objc(create:resolver:rejecter:)
   func create(
-    _ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock
+    _ metadata: String?, resolver resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    present(drawing: PKDrawing(), id: UUID().uuidString.lowercased(), resolve, reject)
+    present(
+      drawing: PKDrawing(), metadata: HandwritingMetadata.parse(json: metadata),
+      id: UUID().uuidString.lowercased(), resolve, reject)
   }
 
-  @objc(edit:drawingId:resolver:rejecter:)
+  @objc(edit:drawingId:metadata:resolver:rejecter:)
   func edit(
-    _ sourcePath: String, drawingId: String, resolver resolve: @escaping RCTPromiseResolveBlock,
+    _ sourcePath: String, drawingId: String, metadata: String?,
+    resolver resolve: @escaping RCTPromiseResolveBlock,
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     guard UUID(uuidString: drawingId) != nil else {
@@ -64,13 +71,15 @@ final class HandwritingModule: NSObject {
     else {
       return reject("E_INVALID_DRAWING", "Could not read the drawing source file", nil)
     }
-    present(drawing: drawing, id: drawingId.lowercased(), resolve, reject)
+    present(
+      drawing: drawing, metadata: HandwritingMetadata.parse(json: metadata),
+      id: drawingId.lowercased(), resolve, reject)
   }
 
   // MARK: - Private
 
   private func present(
-    drawing: PKDrawing, id: String, _ resolve: @escaping RCTPromiseResolveBlock,
+    drawing: PKDrawing, metadata: HandwritingMetadata, id: String, _ resolve: @escaping RCTPromiseResolveBlock,
     _ reject: @escaping RCTPromiseRejectBlock
   ) {
     DispatchQueue.main.async { [weak self] in
@@ -84,7 +93,7 @@ final class HandwritingModule: NSObject {
       self.isPresenting = true
       Self.removeStaleTempFiles()
 
-      let controller = HandwritingViewController(drawing: drawing) { [weak self] result in
+      let controller = HandwritingViewController(drawing: drawing, metadata: metadata) { [weak self] result in
         self?.isPresenting = false
         guard let result = result else {
           return reject("E_CANCELLED", "Handwriting cancelled", nil)
@@ -107,12 +116,15 @@ final class HandwritingModule: NSObject {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     let png = directory.appendingPathComponent("handwriting-\(id).png")
     let source = directory.appendingPathComponent("handwriting-\(id).pkdrawing")
+    let metadata = directory.appendingPathComponent("handwriting-\(id).json")
     try result.pngData.write(to: png, options: .atomic)
     try result.drawing.dataRepresentation().write(to: source, options: .atomic)
+    try result.metadata.serialized().write(to: metadata, options: .atomic)
     return [
       "id": id,
       "pngPath": png.path,
       "drawingPath": source.path,
+      "metadataPath": metadata.path,
       "width": result.width,
       "height": result.height,
     ]

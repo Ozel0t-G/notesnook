@@ -275,10 +275,21 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
     present(picker, animated: true)
   }
 
+  // The system picker reports selections through one of these two delegate
+  // methods depending on the OS; both apply the colour (setBackground is idempotent).
   func colorPickerViewController(
     _ viewController: UIColorPickerViewController, didSelect color: UIColor, continuous: Bool
   ) {
     setBackground(HandwritingMetadata.hex(from: color))
+  }
+
+  func colorPickerViewControllerDidSelectColor(_ viewController: UIColorPickerViewController) {
+    setBackground(HandwritingMetadata.hex(from: viewController.selectedColor))
+  }
+
+  func colorPickerViewControllerDidFinish(_ viewController: UIColorPickerViewController) {
+    // refresh the "custom" check mark of the menu
+    applyMetadata()
   }
 
   // MARK: - Actions

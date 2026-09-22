@@ -20,7 +20,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { getUpcomingReminderTime, Reminder } from "@notesnook/core";
 
 const MAX_SNAPSHOT_REMINDERS = 10;
-const RECENTLY_PASSED_WINDOW = 3 * 60 * 60 * 1000;
 
 export type ReminderWidgetItem = {
   id: string;
@@ -66,25 +65,15 @@ export function buildReminderWidgetSnapshot(
   }
 ): ReminderWidgetSnapshot {
   const now = options.now ?? Date.now();
-  const active = reminders
+  const visibleReminders = reminders
     .map((reminder) => ({
       reminder,
       timestamp: getReminderWidgetTimestamp(reminder, now)
     }))
-    .filter(({ reminder, timestamp }) => {
-      const recentlyPassed =
-        reminder.mode === "once" &&
-        !reminder.disabled &&
-        typeof timestamp === "number" &&
-        timestamp <= now &&
-        timestamp > now - RECENTLY_PASSED_WINDOW;
-      const active =
-        !reminder.disabled &&
-        (reminder.mode !== "once" ||
-          reminder.date > now ||
-          (!!reminder.snoozeUntil && reminder.snoozeUntil > now));
-      return active || recentlyPassed;
-    })
+    // A one-time reminder remains in the widget after its due time so it can
+    // be surfaced as overdue. Recurring reminders use the core's next-trigger
+    // calculation above, rather than deriving a separate recurrence rule here.
+    .filter(({ reminder }) => !reminder.disabled)
     .sort((a, b) => {
       if (a.timestamp === undefined) return 1;
       if (b.timestamp === undefined) return -1;
@@ -97,11 +86,11 @@ export function buildReminderWidgetSnapshot(
   return {
     schemaVersion: 1,
     updatedAt: now,
-    count: active.length,
+    count: visibleReminders.length,
     appearance: options.appearance,
     accentLight: normalizeHexColor(options.accentLight),
     accentDark: normalizeHexColor(options.accentDark),
-    reminders: active.slice(0, MAX_SNAPSHOT_REMINDERS).map(
+    reminders: visibleReminders.slice(0, MAX_SNAPSHOT_REMINDERS).map(
       ({ reminder, timestamp }): ReminderWidgetItem => ({
         id: reminder.id,
         title: reminder.title.trim(),

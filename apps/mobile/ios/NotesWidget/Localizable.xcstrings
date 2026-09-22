@@ -8,6 +8,7 @@
     "No active reminders" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine aktiven Erinnerungen" } } } },
     "No data" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine Daten" } } } },
     "Ongoing" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Laufend" } } } },
+    "Overdue reminder" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Überfällige Erinnerung" } } } },
     "Quick Note" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Schnelle Notiz" } } } },
     "Reminders" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Erinnerungen" } } } },
     "See upcoming reminders and create a new reminder." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Zeigt anstehende Erinnerungen und erstellt neue." } } } },

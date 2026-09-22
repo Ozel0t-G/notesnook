@@ -49,7 +49,7 @@ function reminder(
 }
 
 describe("reminder widget snapshot", () => {
-  test("sorts recent overdue reminders first and keeps the total count", () => {
+  test("sorts overdue reminders first and keeps the total count", () => {
     const reminders = [
       ...Array.from({ length: 11 }, (_, index) =>
         reminder(`${index}`, NOW + (index + 1) * 60_000)
@@ -70,7 +70,7 @@ describe("reminder widget snapshot", () => {
     expect(snapshot.accentDark).toBe("#456DEF");
   });
 
-  test("excludes disabled and stale one-time reminders", () => {
+  test("keeps stale one-time reminders for overdue presentation, but excludes disabled reminders", () => {
     const snapshot = buildReminderWidgetSnapshot(
       [
         reminder("disabled", NOW + 1000, { disabled: true }),
@@ -84,8 +84,11 @@ describe("reminder widget snapshot", () => {
         accentDark: "also-invalid"
       }
     );
-    expect(snapshot.count).toBe(1);
-    expect(snapshot.reminders[0].id).toBe("active");
+    expect(snapshot.count).toBe(2);
+    expect(snapshot.reminders.map((item) => item.id)).toEqual([
+      "old",
+      "active"
+    ]);
     expect(snapshot.accentLight).toBe("#008837");
     expect(snapshot.accentDark).toBe("#008837");
   });
@@ -103,6 +106,25 @@ describe("reminder widget snapshot", () => {
         NOW
       )
     ).toBeUndefined();
+  });
+
+  test("uses the next core-calculated trigger for recurring reminders", () => {
+    const snapshot = buildReminderWidgetSnapshot(
+      [
+        reminder("recurring", NOW - 60 * 60 * 1000, {
+          mode: "repeat",
+          recurringMode: "day"
+        })
+      ],
+      {
+        now: NOW,
+        appearance: "system",
+        accentLight: "#008837",
+        accentDark: "#20A65A"
+      }
+    );
+
+    expect(snapshot.reminders[0].timestamp).toBeGreaterThan(Date.now());
   });
 
   test("serializes only the privacy-minimal widget fields", () => {

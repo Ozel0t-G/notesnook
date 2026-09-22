@@ -403,15 +403,27 @@ private struct ReminderRow: View {
   var body: some View {
     Link(destination: WidgetURLs.reminder(id: reminder.id)) {
       VStack(alignment: .leading, spacing: compact ? 1 : 2) {
-        Text(reminder.title)
-          .font(.system(size: compact ? 12 : 14, weight: .medium))
-          .foregroundStyle(.primary)
-          .lineLimit(1)
-          .truncationMode(.tail)
-          .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: compact ? 3 : 4) {
+          if isOverdue {
+            Image(systemName: "bell.fill")
+              .font(.system(size: compact ? 10 : 12, weight: .semibold))
+              .foregroundStyle(Color(UIColor.systemRed))
+              .frame(width: compact ? 11 : 13)
+              .accessibilityHidden(true)
+          }
+
+          Text(reminder.title)
+            .font(.system(size: compact ? 12 : 14, weight: .medium))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         Text(secondaryText)
           .font(.system(size: compact ? 9.5 : 11))
-          .foregroundStyle(.secondary)
+          .foregroundStyle(
+            isOverdue ? Color(UIColor.systemRed) : Color.secondary
+          )
           .lineLimit(1)
       }
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -426,6 +438,19 @@ private struct ReminderRow: View {
       }
     }
     .buttonStyle(.plain)
+    .accessibilityLabel(accessibilityLabel)
+  }
+
+  private var isOverdue: Bool {
+    guard let milliseconds = reminder.timestamp else { return false }
+    return Date(timeIntervalSince1970: milliseconds / 1000) < Date()
+  }
+
+  private var accessibilityLabel: String {
+    if isOverdue {
+      return "\(String(localized: "Overdue reminder")), \(reminder.title), \(secondaryText)"
+    }
+    return "\(reminder.title), \(secondaryText)"
   }
 
   private var secondaryText: String {

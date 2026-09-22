@@ -37,7 +37,6 @@ import { useUserStore } from "../../stores/use-user-store";
 import { sleep } from "../../utils/time";
 import { isFeatureAvailable } from "@notesnook/common";
 import { strings } from "@notesnook/intl";
-import { buildUploadDiagnostics } from "./upload-diagnostics";
 
 // Upload constants
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -227,7 +226,7 @@ export async function uploadFile(
     let attachmentInfo = await db.attachments.attachment(filename);
 
     DatabaseLogger.info(
-      `Starting upload of ${filename} at path: ${fileInfo.path} ${fileInfo.size}, remote size: ${remoteFileSize}, attachment: ${attachmentInfo?.filename} (${attachmentInfo?.mimeType}, ${attachmentInfo?.size} bytes, chunk ${attachmentInfo?.chunkSize})`
+      `Starting upload of ${filename} at path: ${fileInfo.path} ${fileInfo.size}`
     );
 
     if (Platform.OS === "android") {
@@ -332,29 +331,11 @@ export async function uploadFile(
       uploaded = status >= 200 && status < 300;
 
       if (!uploaded) {
-        // TEMPORARY diagnostics: on HTTP errors the library reports the server's
-        // answer in responseBody, `error` is only set for transport failures.
         const fileInfo = await RNFetchBlob.fs.stat(filePath);
-        const diagnostics = buildUploadDiagnostics({
-          filename,
-          url,
-          headerNames: Object.keys(headers),
-          responseCode: result.responseCode,
-          responseBody: result.responseBody,
-          error: result.error,
-          localSize: Number(fileInfo.size),
-          remoteSize: remoteFileSize,
-          attachment: attachmentInfo
-        });
-        DatabaseLogger.error(
-          new Error(`Single-part upload rejected: ${status}`),
-          "Single-part upload failed",
-          diagnostics
-        );
         throw new Error(
           `${status}, name: ${fileInfo.filename}, length: ${
             fileInfo.size
-          }, info: ${JSON.stringify(diagnostics)}`
+          }, info: ${JSON.stringify(result.error)}`
         );
       }
     }

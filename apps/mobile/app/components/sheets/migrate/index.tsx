@@ -30,6 +30,7 @@ import {
   presentSheet
 } from "../../../services/event-manager";
 import SettingsService from "../../../services/settings";
+import { ReminderWidget } from "../../../services/reminder-widget";
 import { useUserStore } from "../../../stores/use-user-store";
 import { eCloseSheet } from "../../../utils/events";
 import { sleep } from "../../../utils/time";
@@ -206,6 +207,7 @@ export default function Migrate() {
               type="error"
               width={250}
               onPress={async () => {
+                await ReminderWidget.clear();
                 MMKV.clearStore();
                 await db.reset();
                 setReset(true);

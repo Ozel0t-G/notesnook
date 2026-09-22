@@ -84,6 +84,8 @@ import Navigation from "../services/navigation";
 import { NotePreviewWidget } from "../services/note-preview-widget";
 import Notifications from "../services/notifications";
 import PremiumService from "../services/premium";
+import { ReminderWidget } from "../services/reminder-widget";
+import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import SettingsService from "../services/settings";
 import Sync from "../services/sync";
 import { clearAllStores, initAfterSync } from "../stores";
@@ -169,6 +171,7 @@ const onAppOpenedFromURL = async (event: {
   const url = event.url;
 
   const parsedLink = isInternalLink(url) ? parseInternalLink(url) : undefined;
+  const reminderWidgetLink = parseReminderWidgetLink(url);
 
   try {
     if (url.startsWith("https://app.notesnook.com/account/verified")) {
@@ -177,6 +180,35 @@ const onAppOpenedFromURL = async (event: {
       editorState().movedAway = false;
       eSendEvent(eOnLoadNote, { newNote: true });
       fluidTabsRef.current?.goToPage("editor", false);
+      return;
+    } else if (reminderWidgetLink) {
+      fluidTabsRef.current?.goToPage("home");
+      Navigation.navigate("Reminders");
+
+      if (reminderWidgetLink.action === "reminder") {
+        const reminder = await db.reminders.reminder(reminderWidgetLink.id);
+        if (reminder) {
+          setTimeout(() => {
+            Navigation.push("AddReminder", { reminder });
+          }, 0);
+        }
+      } else if (reminderWidgetLink.action === "create") {
+        const reminderFeature = await isFeatureAvailable("activeReminders");
+        if (!reminderFeature.isAllowed) {
+          ToastManager.show({
+            type: "info",
+            message: reminderFeature.error,
+            actionText: strings.upgrade(),
+            func: () => {
+              PaywallSheet.present(reminderFeature);
+            }
+          });
+          return;
+        }
+        setTimeout(() => {
+          Navigation.push("AddReminder", {});
+        }, 0);
+      }
       return;
     } else if (
       parsedLink?.type === "note" ||
@@ -580,6 +612,7 @@ export const useAppEvents = () => {
     // (most obviously after the user clears app data). Nothing can run at that moment, so the
     // first launch afterwards is the earliest chance to put them right.
     NotePreviewWidget.updateNotes();
+    const stopReminderWidget = ReminderWidget.start();
 
     let subscriptions: EventManagerSubscription[] = [];
     const eventManager = db.eventManager;
@@ -592,6 +625,7 @@ export const useAppEvents = () => {
     ];
 
     return () => {
+      stopReminderWidget();
       subscriptions.forEach((sub) => sub?.unsubscribe?.());
     };
   }, [isAppLoading, onSyncComplete]);

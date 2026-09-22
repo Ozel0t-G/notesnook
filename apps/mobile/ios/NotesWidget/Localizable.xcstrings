@@ -1,0 +1,18 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%lld active reminders" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "%lld aktive Erinnerungen" } } } },
+    "A widget to add notes quickly." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Ein Widget zum schnellen Erstellen von Notizen." } } } },
+    "Add a quick note" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Schnelle Notiz erstellen" } } } },
+    "New reminder" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Neue Erinnerung" } } } },
+    "No active reminders" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine aktiven Erinnerungen" } } } },
+    "No data" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine Daten" } } } },
+    "Ongoing" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Laufend" } } } },
+    "Quick Note" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Schnelle Notiz" } } } },
+    "Reminders" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Erinnerungen" } } } },
+    "See upcoming reminders and create a new reminder." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Zeigt anstehende Erinnerungen und erstellt neue." } } } },
+    "Today" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Heute" } } } },
+    "Tomorrow" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Morgen" } } } }
+  },
+  "version" : "1.0"
+}

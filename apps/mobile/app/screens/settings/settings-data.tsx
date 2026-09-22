@@ -62,6 +62,7 @@ import {
 import Navigation from "../../services/navigation";
 import Notifications from "../../services/notifications";
 import PremiumService from "../../services/premium";
+import { ReminderWidget } from "../../services/reminder-widget";
 import SettingsService from "../../services/settings";
 import Sync from "../../services/sync";
 import { clearAllStores } from "../../stores";
@@ -103,6 +104,7 @@ export const settingsGroups: SettingSection[] = [
             positiveType: "errorShade",
             positiveText: "Delete data",
             positivePress: async () => {
+              await ReminderWidget.clear();
               await PremiumService.setPremiumStatus();
               await BiometricService.resetCredentials();
               MMKV.clearStore();
@@ -208,15 +210,15 @@ export const settingsGroups: SettingSection[] = [
             return status === SubscriptionStatus.TRIAL
               ? strings.trialOnGoing(trialEndDate)
               : status === SubscriptionStatus.ACTIVE
-              ? strings.subRenewOn(expiryDate)
-              : status === SubscriptionStatus.CANCELED ||
-                status === SubscriptionStatus.PAUSED
-              ? strings.subEndsOn(expiryDate)
-              : status === SubscriptionStatus.EXPIRED
-              ? subscriptionDaysLeft.time < -3
-                ? strings.subEnded()
-                : strings.accountDowngradedIn(3)
-              : strings.neverHesitate();
+                ? strings.subRenewOn(expiryDate)
+                : status === SubscriptionStatus.CANCELED ||
+                    status === SubscriptionStatus.PAUSED
+                  ? strings.subEndsOn(expiryDate)
+                  : status === SubscriptionStatus.EXPIRED
+                    ? subscriptionDaysLeft.time < -3
+                      ? strings.subEnded()
+                      : strings.accountDowngradedIn(3)
+                    : strings.neverHesitate();
           }
 
           return strings.neverHesitate();

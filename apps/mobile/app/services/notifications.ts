@@ -57,6 +57,7 @@ import { sleep } from "../utils/time";
 import { DDS } from "./device-detection";
 import { eSendEvent } from "./event-manager";
 import Navigation from "./navigation";
+import { ReminderWidget } from "./reminder-widget";
 import SettingsService from "./settings";
 
 let pinned: DisplayedNotification[] = [];
@@ -274,7 +275,10 @@ type ReminderWithFormattedTime = Reminder & {
 const RECENTLY_PASSED_WINDOW = 3 * 60 * 60 * 1000;
 
 async function updateRemindersForWidget() {
-  if (Platform.OS === "ios") return;
+  if (Platform.OS === "ios") {
+    ReminderWidget.update();
+    return;
+  }
   const reminders: ReminderWithFormattedTime[] = await db.reminders?.all.items(
     undefined,
     {

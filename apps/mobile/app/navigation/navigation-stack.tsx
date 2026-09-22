@@ -38,6 +38,7 @@ import { strings } from "@notesnook/intl";
 import PaywallSheet from "../components/sheets/paywall";
 import { presentDialog } from "../components/dialog/functions";
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
+import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
@@ -72,6 +73,10 @@ const AppNavigation = React.memo(
       if (!home) {
         const url = useSettingStore.getState().initialUrl;
         if (url) {
+          if (parseReminderWidgetLink(url)) {
+            setHome({ name: "Reminders", params: undefined });
+            return;
+          }
           const parsedLink = isInternalLink(url)
             ? parseInternalLink(url)
             : undefined;

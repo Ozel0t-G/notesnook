@@ -1,5 +1,23 @@
 # Apple-like visual refresh: Notes pilot audit
 
+## Major iPhone and iPad pass on `test`
+
+The 23 September mockup is the visual reference. The iPhone treatment now
+separates the large page title from the rounded search field, places note rows
+on a contrasting grouped background, and gives title, preview and date a clear
+reading order. iPad keeps the existing three functional panes while the sidebar,
+content list and editor shell receive separate surfaces and quiet boundaries.
+Notebook, reminder, search, settings, selection and common sheets use the same
+expanded semantic tokens in `apple-visual-tokens.ts`. The iOS styles are gated
+from Android in shared components.
+
+The reference image includes home tabs, notebook shortcuts and an editor toolbar
+layout that do not exist in the current navigation. They were not introduced:
+the route order, actions, editor WebView and PencilKit remain unchanged. This
+pass changes presentation only and intentionally does not include a TestFlight
+upload. Device screenshots and interaction checks remain pending after the
+owner's request to omit tests for this iteration.
+
 This pass is presentation-only. Routes, actions, menu ordering, editor
 lifecycle, data models, sync, and PencilKit integration are out of scope.
 

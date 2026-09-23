@@ -33,6 +33,7 @@ import { DDS } from "../../services/device-detection";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { editorRef } from "../../utils/global-refs";
 import { editorController, textInput } from "./tiptap/utils";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 
 export type PaneWidths = {
   mobile: {
@@ -53,7 +54,8 @@ export type PaneWidths = {
 };
 
 export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const { colors: toolBarColors } = useThemeColors("editorToolbar");
   const deviceMode = useSettingStore((state) => state.deviceMode);
   const loading = false;
@@ -101,7 +103,9 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
               ]?.editor,
           height: "100%",
           minHeight: "100%",
-          backgroundColor: toolBarColors.primary.background,
+          backgroundColor: visual.ios
+            ? visual.editorSurround
+            : toolBarColors.primary.background,
           paddingLeft: isFullscreen
             ? deviceMode === "smallTablet"
               ? 0
@@ -112,10 +116,8 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
               ? 0
               : dimensions.width * 0.15
             : insets.right,
-          borderLeftWidth: DDS.isTab ? 1 : 0,
-          borderLeftColor: DDS.isTab
-            ? colors.secondary.background
-            : "transparent",
+          borderLeftWidth: DDS.isTab ? (visual.ios ? 0.5 : 1) : 0,
+          borderLeftColor: DDS.isTab ? visual.separator : "transparent",
           paddingBottom: insets.bottom
         }
       ]}
@@ -124,7 +126,7 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
         <KeyboardAvoidingView
           behavior="padding"
           style={{
-            backgroundColor: colors.primary.background,
+            backgroundColor: visual.contentSurface,
             flex: 1
           }}
           enabled={!floating}

@@ -29,6 +29,8 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { components } from "./components";
 import { SectionItem } from "./section-item";
 import { RouteParams, SettingSection } from "./types";
+import { useThemeColors } from "@notesnook/theme";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 
 const keyExtractor = (item: SettingSection) => item.id;
 const AnimatedKeyboardAvoidingFlatList = Animated.createAnimatedComponent(
@@ -39,6 +41,8 @@ const Group = ({
   navigation,
   route
 }: NativeStackScreenProps<RouteParams, "SettingsGroup">) => {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   useNavigationFocus(navigation, {
     onFocus: () => {
       useNavigationStore.getState().setFocusedRouteId("Settings");
@@ -46,7 +50,20 @@ const Group = ({
     }
   });
   const renderItem = ({ item }: { item: SettingSection; index: number }) => (
-    <SectionItem item={item} />
+    <View
+      style={
+        visual.ios
+          ? {
+              backgroundColor: visual.contentSurface,
+              borderRadius: visual.controlRadius,
+              marginBottom: 2,
+              overflow: "hidden"
+            }
+          : undefined
+      }
+    >
+      <SectionItem item={item} />
+    </View>
   );
 
   return (
@@ -71,6 +88,9 @@ const Group = ({
               data={route.params.sections}
               keyExtractor={keyExtractor}
               renderItem={renderItem}
+              contentContainerStyle={{
+                padding: visual.ios ? visual.pagePadding : 0
+              }}
               enableOnAndroid
               enableAutomaticScroll
             />

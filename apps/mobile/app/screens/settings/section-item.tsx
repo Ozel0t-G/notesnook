@@ -41,11 +41,13 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { SettingStore, useSettingStore } from "../../stores/use-setting-store";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { components } from "./components";
 import { RouteParams, SettingSection } from "./types";
 
 const _SectionItem = ({ item }: { item: SettingSection }) => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const isFeatureAvailable = item.featureId
     ? // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -144,10 +146,10 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
       style={{
         width: "100%",
         alignItems: "center",
-        padding: DefaultAppStyles.GAP,
+        padding: visual.ios ? visual.rowPadding : DefaultAppStyles.GAP,
         flexDirection: "row",
         justifyContent: "space-between",
-        paddingVertical: DefaultAppStyles.GAP,
+        paddingVertical: visual.ios ? 14 : DefaultAppStyles.GAP,
         borderRadius: 0,
         overflow: "hidden",
         ...styles

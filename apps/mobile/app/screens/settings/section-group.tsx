@@ -25,31 +25,48 @@ import { AppFontSize } from "../../utils/size";
 import { SectionItem } from "./section-item";
 import { SettingSection } from "./types";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 export const SectionGroup = ({ item }: { item: SettingSection }) => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const current = item.useHook && item.useHook();
   const isHidden = item.hidden && item.hidden(current);
   return isHidden ? null : (
     <View
       style={{
-        marginVertical: item.sections ? 10 : 0
+        marginVertical: item.sections ? visual.sectionSpacing / 2 : 0
       }}
     >
       {item.name && item.sections ? (
         <Heading
           style={{
-            paddingHorizontal: DefaultAppStyles.GAP
+            paddingHorizontal: visual.ios
+              ? visual.rowPadding
+              : DefaultAppStyles.GAP,
+            marginBottom: visual.ios ? 8 : 0
           }}
-          color={colors.primary.accent}
+          color={visual.ios ? visual.secondaryText : colors.primary.accent}
           size={AppFontSize.xs}
         >
           {(item.name as string).toUpperCase()}
         </Heading>
       ) : null}
 
-      {item.sections?.map((item) => (
-        <SectionItem key={item.name as string} item={item} />
-      ))}
+      <View
+        style={
+          visual.ios
+            ? {
+                backgroundColor: visual.contentSurface,
+                borderRadius: visual.sectionRadius,
+                overflow: "hidden"
+              }
+            : undefined
+        }
+      >
+        {item.sections?.map((item) => (
+          <SectionItem key={item.name as string} item={item} />
+        ))}
+      </View>
     </View>
   );
 };

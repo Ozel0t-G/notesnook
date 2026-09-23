@@ -21,6 +21,7 @@ import { ScopedThemeProvider, useThemeColors } from "@notesnook/theme";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 import { View } from "react-native";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import useNavigationStore from "../../stores/use-navigation-store";
 import Group from "./group";
@@ -29,13 +30,14 @@ import { RouteParams } from "./types";
 const SettingsStack = createNativeStackNavigator<RouteParams>();
 
 export const Settings = () => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const insets = useSafeAreaInsets();
   return (
     <View
       style={{
         flex: 1,
-        backgroundColor: colors.primary.background,
+        backgroundColor: visual.screenBackground,
         paddingTop: insets.top,
         paddingBottom: insets.bottom,
         paddingLeft: insets.left,
@@ -56,7 +58,7 @@ export const Settings = () => {
             animation: "none",
             headerShown: false,
             contentStyle: {
-              backgroundColor: colors.primary.background
+              backgroundColor: visual.screenBackground
             }
           }}
         >

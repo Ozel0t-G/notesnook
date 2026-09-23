@@ -29,12 +29,16 @@ import { settingsGroups } from "./settings-data";
 import { RouteParams, SettingSection } from "./types";
 import SettingsUserSection from "./user-section";
 import { LegendList } from "@legendapp/list";
+import { useThemeColors } from "@notesnook/theme";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 
 const keyExtractor = (item: SettingSection) => item.id;
 
 const Home = ({
   navigation
 }: NativeStackScreenProps<RouteParams, "SettingsHome">) => {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   useNavigationFocus(navigation, {
     onFocus: () => {
       useNavigationStore.getState().setFocusedRouteId("Settings");
@@ -65,6 +69,10 @@ const Home = ({
           data={settingsGroups}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
+          contentContainerStyle={{
+            paddingHorizontal: visual.ios ? visual.pagePadding : 0,
+            paddingBottom: visual.ios ? visual.sectionSpacing : 0
+          }}
         />
       </DelayLayout>
     </>

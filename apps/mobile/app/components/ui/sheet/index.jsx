@@ -28,6 +28,7 @@ import { getContainerBorder } from "../../../utils/colors";
 import { NotesnookModule } from "../../../utils/notesnook-module";
 import { Toast } from "../../toast";
 import { useReduceMotion } from "../../../hooks/use-reduce-motion";
+import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 /**
  *
  * @param {any} param0
@@ -48,7 +49,8 @@ const SheetWrapper = ({
   keyboardHandlerDisabled
 }) => {
   const localRef = useRef(null);
-  const { colors } = useThemeColors("sheet");
+  const { colors, isDark } = useThemeColors("sheet");
+  const visual = getAppleVisualTokens(colors, isDark);
   const deviceMode = useSettingStore((state) => state.deviceMode);
   const sheetKeyboardHandler = useSettingStore(
     (state) => state.sheetKeyboardHandler
@@ -69,14 +71,14 @@ const SheetWrapper = ({
   const style = React.useMemo(() => {
     return {
       width: largeTablet || smallTablet ? width : "100%",
-      backgroundColor: colors.primary.background,
+      backgroundColor: visual.contentSurface,
       zIndex: 10,
-      borderTopRightRadius: 15,
-      borderTopLeftRadius: 15,
+      borderTopRightRadius: visual.sheetRadius,
+      borderTopLeftRadius: visual.sheetRadius,
       alignSelf: "center",
       borderBottomRightRadius: 0,
       borderBottomLeftRadius: 0,
-      ...getContainerBorder(colors.primary.border, 0.5),
+      ...getContainerBorder(visual.separator, visual.ios ? 0 : 0.5),
       borderBottomWidth: 0,
       paddingBottom:
         Platform.OS === "android" && !bottomInsets
@@ -89,8 +91,10 @@ const SheetWrapper = ({
     largeTablet,
     smallTablet,
     width,
-    colors.primary.background,
-    colors.primary.border,
+    visual.contentSurface,
+    visual.separator,
+    visual.sheetRadius,
+    visual.ios,
     bottomInsets,
     isGestureNavigationEnabled
   ]);
@@ -133,8 +137,10 @@ const SheetWrapper = ({
           backdrop: "sheet-backdrop"
         }}
         indicatorStyle={{
-          width: 100,
-          backgroundColor: colors.secondary.background
+          width: visual.ios ? 36 : 100,
+          backgroundColor: visual.ios
+            ? visual.tertiaryText
+            : colors.secondary.background
         }}
         statusBarTranslucent
         drawUnderStatusBar={true}

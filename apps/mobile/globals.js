@@ -10,6 +10,7 @@ import { setI18nGlobal } from "@notesnook/intl";
 import { i18n } from "@lingui/core";
 import Config from "react-native-config";
 import OpenPGP from "react-native-fast-openpgp";
+import { Platform } from "react-native";
 
 OpenPGP.useJSI = false;
 
@@ -28,7 +29,7 @@ Object.defineProperty(global, "Buffer", {
   }
 });
 
-if (__DEV__ && Config.isTesting !== "true") {
+if (__DEV__ && Config.isTesting !== "true" && Platform.OS !== "ios") {
   const messages =
     require("@notesnook/intl/dist/locales/$pseudo-LOCALE.json").messages;
   i18n.load({

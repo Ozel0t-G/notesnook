@@ -24,6 +24,7 @@ import { useIsCompactModeEnabled } from "../../../hooks/use-is-compact-mode-enab
 import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
 import { useSelectionStore } from "../../../stores/use-selection-store";
 import { DefaultAppStyles } from "../../../utils/styles";
+import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { Pressable } from "../../ui/pressable";
 import { View } from "react-native";
 
@@ -64,6 +65,7 @@ const SelectionWrapper = ({
 }: SelectionWrapperProps) => {
   const itemId = useRef(item.id);
   const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const isEditingNote = useTabStore(
     (state) =>
       state.tabs.find((t) => t.id === state.currentTab)?.session?.noteId ===
@@ -89,7 +91,7 @@ const SelectionWrapper = ({
     <Pressable
       customColor={
         isEditingNote
-          ? colors.selected.background
+          ? visual.selectionBackground
           : isSheet
           ? colors.primary.hover
           : "transparent"
@@ -97,7 +99,7 @@ const SelectionWrapper = ({
       testID={testID}
       onLongPress={onLongPress}
       onPress={onPress}
-      customSelectedColor={colors.primary.hover}
+      customSelectedColor={visual.selectionBackground}
       customAlpha={!isDark ? -0.02 : 0.02}
       customOpacity={1}
       style={{
@@ -109,7 +111,7 @@ const SelectionWrapper = ({
         overflow: "hidden",
         paddingHorizontal: DefaultAppStyles.GAP,
         paddingVertical: compactMode ? 4 : DefaultAppStyles.GAP_VERTICAL,
-        borderRadius: isSheet ? 10 : 0,
+        borderRadius: isSheet ? visual.sectionRadius : 0,
         marginBottom: isSheet ? DefaultAppStyles.GAP_VERTICAL : undefined
       }}
     >

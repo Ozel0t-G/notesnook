@@ -47,6 +47,7 @@ import useIsSelected from "../../../hooks/use-selected";
 import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
 import { useSelectionStore } from "../../../stores/use-selection-store";
 import { DefaultAppStyles } from "../../../utils/styles";
+import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { Properties } from "../../properties";
 import AppIcon from "../../ui/AppIcon";
 import { IconButton } from "../../ui/icon-button";
@@ -90,7 +91,8 @@ const NoteItem = ({
       state.tabs.find((t) => t.id === state.currentTab)?.session?.noteId ===
       item.id
   );
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
   );
@@ -292,11 +294,11 @@ const NoteItem = ({
                     <View
                       key={item.id}
                       style={{
-                        borderRadius: 4,
-                        backgroundColor: colors.secondary.background,
+                        borderRadius: visual.buttonRadius,
+                        backgroundColor: visual.elevatedSurface,
                         paddingHorizontal: DefaultAppStyles.GAP_SMALL / 2,
                         borderWidth: 0.5,
-                        borderColor: primaryColors.border,
+                        borderColor: visual.separator,
                         paddingVertical: 1,
                         flexDirection: "row",
                         alignItems: "center",
@@ -323,12 +325,12 @@ const NoteItem = ({
                         <View
                           key={item.id}
                           style={{
-                            borderRadius: 4,
-                            backgroundColor: colors.secondary.background,
+                            borderRadius: visual.buttonRadius,
+                            backgroundColor: visual.elevatedSurface,
                             paddingHorizontal: DefaultAppStyles.GAP_SMALL / 2,
                             borderWidth: 0.5,
                             borderColor:
-                              color?.colorCode || primaryColors.border,
+                              color?.colorCode || visual.separator,
                             paddingVertical: 1
                           }}
                         >

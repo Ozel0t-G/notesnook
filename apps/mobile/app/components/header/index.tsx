@@ -30,6 +30,7 @@ import { useSelectionStore } from "../../stores/use-selection-store";
 import { eScrollEvent } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { IconButtonProps } from "../ui/icon-button";
 import { Pressable } from "../ui/pressable";
 import Heading from "../ui/typography/heading";
@@ -57,7 +58,8 @@ export const Header = ({
   onSearch?: () => void;
   rightButton?: IconButtonProps;
 }) => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const [borderHidden, setBorderHidden] = useState(true);
   const [selectedItemsList, selectionMode] = useSelectionStore((state) => [
     state.selectedItemsList,
@@ -97,10 +99,11 @@ export const Header = ({
         style={{
           flexDirection: "row",
           justifyContent: "space-between",
-          borderRadius: 10,
+          borderRadius: visual.buttonRadius,
           paddingVertical: 3,
           borderWidth: hasSearch ? 1 : 0,
-          borderColor: colors.primary.border,
+          borderColor: visual.separator,
+          backgroundColor: hasSearch ? visual.elevatedSurface : "transparent",
           paddingHorizontal: !hasSearch ? 0 : DefaultAppStyles.GAP_SMALL,
           alignItems: "center"
         }}

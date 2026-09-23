@@ -34,6 +34,7 @@ import SettingsService from "../../../services/settings";
 import { RouteName } from "../../../stores/use-navigation-store";
 import { AppFontSize } from "../../../utils/size";
 import { DefaultAppStyles } from "../../../utils/styles";
+import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import Sort from "../../sheets/sort";
 import { IconButton } from "../../ui/icon-button";
 import { Pressable } from "../../ui/pressable";
@@ -69,7 +70,8 @@ export const SectionHeader = React.memo<
     groupId,
     type
   }: SectionHeaderProps) {
-    const { colors } = useThemeColors();
+    const { colors, isDark } = useThemeColors();
+    const visual = getAppleVisualTokens(colors, isDark);
     const isCompactModeEnabled = useIsCompactModeEnabled(
       dataType as "note" | "notebook" | "searchResult"
     );
@@ -90,7 +92,7 @@ export const SectionHeader = React.memo<
             alignSelf: "center",
             justifyContent: "space-between",
             borderBottomWidth: 1,
-            borderColor: colors.primary.border,
+            borderColor: visual.separator,
             paddingBottom: 1,
             paddingTop:
               index === 0

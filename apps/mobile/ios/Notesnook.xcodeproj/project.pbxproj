@@ -51,13 +51,13 @@
 		65E0340B257B9FF100793428 /* File.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E0340A257B9FF100793428 /* File.swift */; };
 		7E98A197B6B9779DBA5F9010 /* HandwritingMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 849377998732E0BB9CF032F0 /* HandwritingMetadata.swift */; };
 		A79A93DC9D0CAE8703462151 /* libPods-Notesnook-NotesnookTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 068FA9BDFA207A50B0A9E597 /* libPods-Notesnook-NotesnookTests.a */; };
-		E63910B563ED7C2EC6602FA0 /* HandwritingModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C2824E09020408C06D888A /* HandwritingModule.m */; };
-		E7F9D56665C2F19F4A97BF49 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B679E87FDFB1312CAD6CF45 /* PrivacyInfo.xcprivacy */; };
 		D10000000000000000000001 /* ReminderWidgetModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* ReminderWidgetModule.swift */; };
 		D10000000000000000000002 /* ReminderWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* ReminderWidgetModule.m */; };
 		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
 		D10000000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
 		D10000000000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* PrivacyInfo.xcprivacy */; };
+		E63910B563ED7C2EC6602FA0 /* HandwritingModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C2824E09020408C06D888A /* HandwritingModule.m */; };
+		E7F9D56665C2F19F4A97BF49 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B679E87FDFB1312CAD6CF45 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -171,15 +171,15 @@
 		B5216B66C0B4A91C0A69128B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Notesnook/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B9989E5C777BB11343A62D09 /* Pods-Notesnook-NotesnookTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-NotesnookTests.debug.xcconfig"; path = "Target Support Files/Pods-Notesnook-NotesnookTests/Pods-Notesnook-NotesnookTests.debug.xcconfig"; sourceTree = "<group>"; };
 		C5367EAC4A122EA969687331 /* HandwritingModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingModule.swift; sourceTree = "<group>"; };
-		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		ED2971642150620600B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS12.0.sdk/System/Library/Frameworks/JavaScriptCore.framework; sourceTree = DEVELOPER_DIR; };
-		EF88477758968C47002AB99A /* Pods-Notesnook-Add to Notes.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-Add to Notes.debug.xcconfig"; path = "Target Support Files/Pods-Notesnook-Add to Notes/Pods-Notesnook-Add to Notes.debug.xcconfig"; sourceTree = "<group>"; };
-		F284B149424757AABC0A96C2 /* Pods-Notesnook-NotesnookTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-NotesnookTests.release.xcconfig"; path = "Target Support Files/Pods-Notesnook-NotesnookTests/Pods-Notesnook-NotesnookTests.release.xcconfig"; sourceTree = "<group>"; };
 		D20000000000000000000001 /* ReminderWidgetModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReminderWidgetModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* ReminderWidgetModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ReminderWidgetModule.m; sourceTree = "<group>"; };
 		D20000000000000000000003 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = ../../../resources/icon.png; sourceTree = SOURCE_ROOT; };
 		D20000000000000000000004 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		D20000000000000000000005 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		ED2971642150620600B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS12.0.sdk/System/Library/Frameworks/JavaScriptCore.framework; sourceTree = DEVELOPER_DIR; };
+		EF88477758968C47002AB99A /* Pods-Notesnook-Add to Notes.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-Add to Notes.debug.xcconfig"; path = "Target Support Files/Pods-Notesnook-Add to Notes/Pods-Notesnook-Add to Notes.debug.xcconfig"; sourceTree = "<group>"; };
+		F284B149424757AABC0A96C2 /* Pods-Notesnook-NotesnookTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-NotesnookTests.release.xcconfig"; path = "Target Support Files/Pods-Notesnook-NotesnookTests/Pods-Notesnook-NotesnookTests.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -305,16 +305,6 @@
 			path = Notesnook/Handwriting;
 			sourceTree = "<group>";
 		};
-		D30000000000000000000001 /* ReminderWidget */ = {
-			isa = PBXGroup;
-			children = (
-				D20000000000000000000001 /* ReminderWidgetModule.swift */,
-				D20000000000000000000002 /* ReminderWidgetModule.m */,
-			);
-			name = ReminderWidget;
-			path = Notesnook/ReminderWidget;
-			sourceTree = "<group>";
-		};
 		65AA857C25E6DDEC00772A01 /* NotesWidget */ = {
 			isa = PBXGroup;
 			children = (
@@ -387,6 +377,16 @@
 				65AA857725E6DDEC00772A01 /* NotesWidgetExtension.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000001 /* ReminderWidget */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000001 /* ReminderWidgetModule.swift */,
+				D20000000000000000000002 /* ReminderWidgetModule.m */,
+			);
+			name = ReminderWidget;
+			path = Notesnook/ReminderWidget;
 			sourceTree = "<group>";
 		};
 		DA84645424CFBF19A44D64B3 /* Pods */ = {

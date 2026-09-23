@@ -1,0 +1,13 @@
+diff --git a/node_modules/@ammarahmed/react-native-sodium/react-native-sodium.podspec b/node_modules/@ammarahmed/react-native-sodium/react-native-sodium.podspec
+index d90e429..afde1b3 100755
+--- a/node_modules/@ammarahmed/react-native-sodium/react-native-sodium.podspec
++++ b/node_modules/@ammarahmed/react-native-sodium/react-native-sodium.podspec
+@@ -15,7 +15,7 @@ Pod::Spec.new do |s|
+   s.source       = { :git => "https://github.com/lyubo/react-native-sodium.git", :tag => "v#{s.version}" }
+   s.source_files  = ["ios/**/*.{h,m}","libsodium/libsodium-ios/**/*.{h,m}"]
+ 
+-  s.vendored_libraries = 'libsodium/libsodium-ios/lib/libsodium.a'
++  s.vendored_frameworks = 'libsodium/libsodium.xcframework'
+   s.xcconfig = { 'HEADER_SEARCH_PATHS' => "${PODS_ROOT}/Headers/Public/#{s.name}/**" }
+ 
+   s.dependency 'React-Core'

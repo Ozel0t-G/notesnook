@@ -80,8 +80,8 @@ export const SectionHeader = React.memo<
       <View
         style={{
           width: "100%",
-          paddingHorizontal: DefaultAppStyles.GAP,
-          marginBottom: DefaultAppStyles.GAP_VERTICAL
+          paddingHorizontal: visual.listInset,
+          marginBottom: DefaultAppStyles.GAP_VERTICAL_SMALL
         }}
       >
         <View
@@ -91,13 +91,17 @@ export const SectionHeader = React.memo<
             width: "100%",
             alignSelf: "center",
             justifyContent: "space-between",
-            borderBottomWidth: 1,
+            borderBottomWidth: 0.5,
             borderColor: visual.separator,
-            paddingBottom: 1,
+            borderRadius: visual.sectionRadius,
+            backgroundColor: visual.elevatedSurface,
+            paddingHorizontal: visual.rowInset,
+            paddingBottom: DefaultAppStyles.GAP_VERTICAL_SMALL,
             paddingTop:
               index === 0
-                ? DefaultAppStyles.GAP_VERTICAL
-                : DefaultAppStyles.GAP_VERTICAL_SMALL
+                ? DefaultAppStyles.GAP
+                : DefaultAppStyles.GAP_VERTICAL,
+            ...visual.subtleShadow
           }}
         >
           <Pressable

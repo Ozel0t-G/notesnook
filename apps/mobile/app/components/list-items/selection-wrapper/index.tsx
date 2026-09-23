@@ -21,6 +21,7 @@ import { Item, TrashItem } from "@notesnook/core";
 import { useThemeColors } from "@notesnook/theme";
 import React, { PropsWithChildren, useRef } from "react";
 import { useIsCompactModeEnabled } from "../../../hooks/use-is-compact-mode-enabled";
+import useIsSelected from "../../../hooks/use-selected";
 import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
 import { useSelectionStore } from "../../../stores/use-selection-store";
 import { DefaultAppStyles } from "../../../utils/styles";
@@ -61,7 +62,7 @@ const SelectionWrapper = ({
   isSheet,
   children,
   color,
-  index = 0
+  index: _index = 0
 }: SelectionWrapperProps) => {
   const itemId = useRef(item.id);
   const { colors, isDark } = useThemeColors();
@@ -74,6 +75,7 @@ const SelectionWrapper = ({
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
   );
+  const [isSelected] = useIsSelected(item);
 
   if (item.id !== itemId.current) {
     itemId.current = item.id;
@@ -90,29 +92,43 @@ const SelectionWrapper = ({
   return (
     <Pressable
       customColor={
-        isEditingNote
+        isEditingNote || isSelected
           ? visual.selectionBackground
           : isSheet
           ? colors.primary.hover
-          : "transparent"
+          : visual.elevatedSurface
       }
       testID={testID}
       onLongPress={onLongPress}
       onPress={onPress}
       customSelectedColor={visual.selectionBackground}
-      customAlpha={!isDark ? -0.02 : 0.02}
+      customAlpha={!isDark ? -0.03 : 0.03}
       customOpacity={1}
+      hitSlop={
+        isSheet
+          ? undefined
+          : {
+              left: visual.listInset,
+              right: visual.listInset
+            }
+      }
       style={{
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        width: "100%",
+        width: isSheet ? "100%" : "auto",
         alignSelf: "center",
         overflow: "hidden",
-        paddingHorizontal: DefaultAppStyles.GAP,
-        paddingVertical: compactMode ? 4 : DefaultAppStyles.GAP_VERTICAL,
-        borderRadius: isSheet ? visual.sectionRadius : 0,
-        marginBottom: isSheet ? DefaultAppStyles.GAP_VERTICAL : undefined
+        paddingHorizontal: visual.rowInset,
+        paddingVertical: compactMode ? 6 : 12,
+        borderRadius: visual.cardRadius,
+        marginHorizontal: isSheet ? 0 : visual.listInset,
+        marginBottom: isSheet
+          ? DefaultAppStyles.GAP_VERTICAL
+          : visual.rowSpacing,
+        borderWidth: isSheet ? 0 : 0.5,
+        borderColor: visual.separator,
+        ...(isSheet ? {} : visual.subtleShadow)
       }}
     >
       {isEditingNote ? (

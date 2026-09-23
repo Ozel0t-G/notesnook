@@ -151,13 +151,16 @@ export default function List(props: ListProps) {
     <>
       <View
         style={{
-          flex: 1
+          flex: 1,
+          backgroundColor: colors.primary.background
         }}
       >
         <LegendList
           ref={scrollRef}
           contentContainerStyle={{
-            flexGrow: 1
+            flexGrow: 1,
+            paddingTop: 4,
+            paddingBottom: 8
           }}
           extraData={props.data}
           testID={notesnook.list.id}

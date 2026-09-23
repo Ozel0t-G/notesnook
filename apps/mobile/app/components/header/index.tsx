@@ -31,6 +31,7 @@ import { eScrollEvent } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { hexToRGBA } from "../../utils/colors";
 import { IconButtonProps } from "../ui/icon-button";
 import { Pressable } from "../ui/pressable";
 import Heading from "../ui/typography/heading";
@@ -92,7 +93,15 @@ export const Header = ({
   return (
     <View
       style={{
-        paddingHorizontal: DefaultAppStyles.GAP
+        paddingHorizontal: DefaultAppStyles.GAP,
+        paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL,
+        backgroundColor: hexToRGBA(
+          visual.elevatedSurface,
+          visual.materialOpacity
+        ),
+        borderBottomWidth: borderHidden ? 0 : 0.5,
+        borderBottomColor: visual.separator,
+        ...visual.subtleShadow
       }}
     >
       <HeaderWrapper
@@ -100,10 +109,12 @@ export const Header = ({
           flexDirection: "row",
           justifyContent: "space-between",
           borderRadius: visual.buttonRadius,
-          paddingVertical: 3,
-          borderWidth: hasSearch ? 1 : 0,
+          paddingVertical: 5,
+          borderWidth: hasSearch ? 0.5 : 0,
           borderColor: visual.separator,
-          backgroundColor: hasSearch ? visual.elevatedSurface : "transparent",
+          backgroundColor: hasSearch
+            ? hexToRGBA(visual.surface, visual.materialOpacity)
+            : "transparent",
           paddingHorizontal: !hasSearch ? 0 : DefaultAppStyles.GAP_SMALL,
           alignItems: "center"
         }}

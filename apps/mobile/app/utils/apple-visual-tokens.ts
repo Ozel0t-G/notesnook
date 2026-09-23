@@ -36,16 +36,21 @@ export const getAppleVisualTokens = (
   secondaryText: colors.secondary.paragraph,
   mutedText: colors.secondary.icon,
   selectionBackground: colors.selected.background,
-  cardRadius: 14,
-  buttonRadius: 12,
-  sectionRadius: 14,
-  materialOpacity: isDark ? 0.9 : 0.96,
-  rowInset: 16,
+  cardRadius: 18,
+  buttonRadius: 14,
+  sectionRadius: 18,
+  materialOpacity: isDark ? 0.94 : 0.98,
+  // These values are deliberately large enough to create a distinct grouped
+  // surface on a phone, while leaving the existing controls and touch targets
+  // in place.
+  listInset: 12,
+  rowInset: 18,
+  rowSpacing: 6,
   subtleShadow: {
     elevation: 1,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: isDark ? 0.18 : 0.06,
-    shadowRadius: 3
+    shadowOpacity: isDark ? 0.24 : 0.1,
+    shadowRadius: 5
   }
 });

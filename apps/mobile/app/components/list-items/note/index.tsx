@@ -151,9 +151,10 @@ const NoteItem = ({
         {item.headline && !compactMode ? (
           <Paragraph
             style={{
-              flexWrap: "wrap"
+              flexWrap: "wrap",
+              color: visual.secondaryText
             }}
-            color={primaryColors.paragraph}
+            color={visual.secondaryText}
             numberOfLines={2}
           >
             {decode(item.headline, {
@@ -297,9 +298,8 @@ const NoteItem = ({
                         borderRadius: visual.buttonRadius,
                         backgroundColor: visual.elevatedSurface,
                         paddingHorizontal: DefaultAppStyles.GAP_SMALL / 2,
-                        borderWidth: 0.5,
-                        borderColor: visual.separator,
-                        paddingVertical: 1,
+                        borderWidth: 0,
+                        paddingVertical: 3,
                         flexDirection: "row",
                         alignItems: "center",
                         gap: DefaultAppStyles.GAP_SMALL / 2
@@ -328,10 +328,8 @@ const NoteItem = ({
                             borderRadius: visual.buttonRadius,
                             backgroundColor: visual.elevatedSurface,
                             paddingHorizontal: DefaultAppStyles.GAP_SMALL / 2,
-                            borderWidth: 0.5,
-                            borderColor:
-                              color?.colorCode || visual.separator,
-                            paddingVertical: 1
+                            borderWidth: 0,
+                            paddingVertical: 3
                           }}
                         >
                           <Paragraph

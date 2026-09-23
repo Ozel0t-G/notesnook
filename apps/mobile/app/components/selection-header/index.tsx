@@ -40,6 +40,7 @@ import { updateNotebook } from "../../utils/notebooks";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { sleep } from "../../utils/time";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { presentDialog } from "../dialog/functions";
 import ExportNotesSheet from "../sheets/export-notes";
 import { IconButton } from "../ui/icon-button";
@@ -59,7 +60,8 @@ export const SelectionHeader = React.memo(
     renderedInRoute?: string;
   }) => {
     const menuRef = useRef<Menu>(null);
-    const { colors } = useThemeColors();
+    const { colors, isDark } = useThemeColors();
+    const visual = getAppleVisualTokens(colors, isDark);
     const selectionMode = useSelectionStore((state) => state.selectionMode);
     const selectedItemsList = useSelectionStore(
       (state) => state.selectedItemsList
@@ -137,7 +139,7 @@ export const SelectionHeader = React.memo(
       <View
         style={{
           width: "100%",
-          backgroundColor: colors.primary.background,
+          backgroundColor: visual.elevatedSurface,
           paddingVertical: DefaultAppStyles.GAP_VERTICAL,
           alignItems: "center",
           flexDirection: "row",
@@ -145,9 +147,10 @@ export const SelectionHeader = React.memo(
           paddingHorizontal: DefaultAppStyles.GAP,
           position: "absolute",
           bottom: 0,
-          borderTopWidth: 1,
-          borderColor: colors.primary.border,
-          justifyContent: "space-between"
+          borderTopWidth: 0.5,
+          borderColor: visual.separator,
+          justifyContent: "space-between",
+          ...visual.subtleShadow
         }}
       >
         <View

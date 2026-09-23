@@ -18,6 +18,18 @@ pass changes presentation only and intentionally does not include a TestFlight
 upload. Device screenshots and interaction checks remain pending after the
 owner's request to omit tests for this iteration.
 
+### Local visual capture limits
+
+The iPhone 18 Pro and iPad Pro 13-inch simulators launched the redesigned
+Debug build. Their local state has no authenticated Notes data: iPhone remains
+on onboarding and iPad shows an empty Notes pane with an empty editor. The
+simulators also display pseudo-localized strings, making typography comparisons
+unreliable. The available captures are stored outside the repository at
+`/Users/ozel0t/Notesnook/apple-design-iphone-signed.png` and
+`/Users/ozel0t/Notesnook/apple-design-ipad.png`. They verify launch and the
+empty-state shell, but cannot demonstrate note cards, notebook rows, Settings,
+or a before/after comparison. No account or sample production notes were made.
+
 This pass is presentation-only. Routes, actions, menu ordering, editor
 lifecycle, data models, sync, and PencilKit integration are out of scope.
 

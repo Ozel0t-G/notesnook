@@ -31,6 +31,7 @@ import { useSettingStore } from "../../stores/use-setting-store";
 import { useUserStore } from "../../stores/use-user-store";
 import { MenuItemsList } from "../../utils/menu-items";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import ReorderableList from "../list/reorderable-list";
 import { MenuItemProperties } from "../sheets/menu-item-properties";
 import { Button } from "../ui/button";
@@ -51,7 +52,8 @@ const pro = {
 };
 
 export function SideMenuHome() {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const [isAppLoading, introCompleted] = useSettingStore((state) => [
     state.isAppLoading,
     state.settings.introCompleted
@@ -70,9 +72,11 @@ export function SideMenuHome() {
       style={{
         height: "100%",
         width: "100%",
-        backgroundColor: colors.primary.background,
-        gap: DefaultAppStyles.GAP,
-        paddingTop: DefaultAppStyles.GAP_VERTICAL
+        backgroundColor: visual.sidebarBackground,
+        gap: visual.ios ? visual.sectionSpacing : DefaultAppStyles.GAP,
+        paddingTop: visual.ios
+          ? visual.pagePadding
+          : DefaultAppStyles.GAP_VERTICAL
       }}
     >
       <SideMenuHeader />

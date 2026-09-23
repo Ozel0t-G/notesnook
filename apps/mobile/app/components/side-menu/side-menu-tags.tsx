@@ -30,6 +30,7 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { useTags } from "../../stores/use-tag-store";
 import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { Properties } from "../properties";
 import AppIcon from "../ui/AppIcon";
 import { Pressable } from "../ui/pressable";
@@ -44,7 +45,8 @@ const TagItem = (props: {
   tags: VirtualizedGrouping<Tag>;
   id: number | string;
 }) => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const [item] = useDBItem(props.id, "tag", props.tags);
   const isSelected = useSideMenuTagsSelectionStore((state) =>
     item?.id ? state.selection[item.id] === "selected" : false
@@ -118,7 +120,14 @@ const TagItem = (props: {
             width: "100%",
             alignItems: "center",
             flexDirection: "row",
-            borderRadius: defaultBorderRadius,
+            borderRadius: visual.ios
+              ? visual.controlRadius
+              : defaultBorderRadius,
+            backgroundColor:
+              visual.ios && (isSelected || isFocused)
+                ? visual.selectedSurface
+                : undefined,
+            minHeight: visual.ios ? 44 : undefined,
             paddingRight: DefaultAppStyles.GAP_SMALL
           }}
         >
@@ -196,7 +205,8 @@ const TagItem = (props: {
 
 export const SideMenuTags = () => {
   const [tags, isLoading] = useTags();
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const [filteredTags, setFilteredTags] = React.useState(tags);
   const [loading, setLoading] = React.useState(true);
   const searchTimer = React.useRef<NodeJS.Timeout>(undefined);
@@ -277,7 +287,7 @@ export const SideMenuTags = () => {
             ListHeaderComponent={
               <View
                 style={{
-                  backgroundColor: colors.primary.background,
+                  backgroundColor: visual.sidebarBackground,
                   paddingTop: DefaultAppStyles.GAP_VERTICAL
                 }}
               >
@@ -290,9 +300,9 @@ export const SideMenuTags = () => {
             style={{
               width: "100%",
               paddingHorizontal: DefaultAppStyles.GAP,
-              backgroundColor: colors.primary.background,
-              borderTopColor: colors.primary.border,
-              borderTopWidth: 1,
+              backgroundColor: visual.sidebarBackground,
+              borderTopColor: visual.separator,
+              borderTopWidth: visual.ios ? 0.5 : 1,
               paddingVertical: DefaultAppStyles.GAP_VERTICAL
             }}
           >

@@ -30,6 +30,7 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { useNotebooks } from "../../stores/use-notebook-store";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { Properties } from "../properties";
 import { NotebookItem } from "./notebook-item";
 import { SideMenuHeader } from "./side-menu-header";
@@ -49,11 +50,12 @@ export const SideMenuNotebooks = () => {
   const tree = useSideMenuNotebookTreeStore((state) => state.tree);
   const [notebooks, loading] = useNotebooks();
   const [isLoading, setIsLoading] = useState(true);
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const [filteredNotebooks, setFilteredNotebooks] = React.useState(notebooks);
   const searchTimer = React.useRef<NodeJS.Timeout>(undefined);
   const lastQuery = React.useRef<string>(undefined);
-  const updater = useRelationStore(state => state.updater);
+  const updater = useRelationStore((state) => state.updater);
   const loadRootNotebooks = React.useCallback(async () => {
     if (!filteredNotebooks) return;
     const _notebooks: Notebook[] = [];
@@ -81,7 +83,7 @@ export const SideMenuNotebooks = () => {
 
   useEffect(() => {
     updateNotebooks();
-  }, [updateNotebooks,updater]);
+  }, [updateNotebooks, updater]);
 
   useEffect(() => {
     (async () => {
@@ -150,7 +152,7 @@ export const SideMenuNotebooks = () => {
             ListHeaderComponent={
               <View
                 style={{
-                  backgroundColor: colors.primary.background,
+                  backgroundColor: visual.sidebarBackground,
                   paddingTop: DefaultAppStyles.GAP_VERTICAL
                 }}
               >
@@ -163,9 +165,9 @@ export const SideMenuNotebooks = () => {
             style={{
               width: "100%",
               paddingHorizontal: DefaultAppStyles.GAP,
-              backgroundColor: colors.primary.background,
-              borderTopColor: colors.primary.border,
-              borderTopWidth: 1,
+              backgroundColor: visual.sidebarBackground,
+              borderTopColor: visual.separator,
+              borderTopWidth: visual.ios ? 0.5 : 1,
               paddingVertical: DefaultAppStyles.GAP_VERTICAL
             }}
           >

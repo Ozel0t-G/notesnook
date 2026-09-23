@@ -23,6 +23,7 @@ import { NOTESNOOK_LOGO_SVG } from "../../assets/images/assets";
 import { useUserStore } from "../../stores/use-user-store";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { UserSheet } from "../sheets/user";
 import AppIcon from "../ui/AppIcon";
 import { IconButton, IconButtonProps } from "../ui/icon-button";
@@ -72,16 +73,19 @@ const SettingsIcon = () => {
 
 export const SideMenuHeader = (props: { rightButtons?: IconButtonProps[] }) => {
   const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   return (
     <View
       style={{
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
-        borderBottomWidth: 1,
-        borderBottomColor: colors.primary.border,
-        paddingBottom: DefaultAppStyles.GAP,
-        paddingHorizontal: DefaultAppStyles.GAP
+        borderBottomWidth: visual.ios ? 0 : 1,
+        borderBottomColor: visual.separator,
+        paddingBottom: visual.ios ? 16 : DefaultAppStyles.GAP,
+        paddingHorizontal: visual.ios
+          ? visual.pagePadding
+          : DefaultAppStyles.GAP
       }}
     >
       <View

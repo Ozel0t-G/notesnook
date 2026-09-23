@@ -36,6 +36,7 @@ import { eAfterSync, eMenuItemUpdate } from "../../utils/events";
 import { SideMenuItem } from "../../utils/menu-items";
 import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { Pressable } from "../ui/pressable";
 import Paragraph from "../ui/typography/paragraph";
 import { useSideBarDraggingStore } from "./dragging-store";
@@ -53,7 +54,8 @@ export function MenuItem({
   renderIcon?: (item: SideMenuItem, size: number) => React.ReactNode;
 }) {
   const [itemCount, setItemCount] = useState(0);
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const isFocused = useNavigationStore(
     (state) => state.focusedRouteId === item.id
   );
@@ -144,12 +146,16 @@ export function MenuItem({
       style={{
         width: "100%",
         alignSelf: "center",
-        borderRadius: defaultBorderRadius,
+        borderRadius: visual.ios ? visual.controlRadius : defaultBorderRadius,
         flexDirection: "row",
-        paddingHorizontal: DefaultAppStyles.GAP_SMALL,
+        paddingHorizontal: visual.ios
+          ? visual.sidebarPadding
+          : DefaultAppStyles.GAP_SMALL,
         justifyContent: "space-between",
         alignItems: "center",
-        paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL
+        paddingVertical: visual.ios ? 11 : DefaultAppStyles.GAP_VERTICAL_SMALL,
+        backgroundColor:
+          visual.ios && isFocused ? visual.selectedSurface : undefined
       }}
     >
       <View
@@ -174,8 +180,8 @@ export function MenuItem({
               item.icon === "crown"
                 ? colors.static.yellow
                 : isFocused
-                  ? colors.selected.icon
-                  : colors.secondary.icon
+                ? colors.selected.icon
+                : colors.secondary.icon
             }
             size={AppFontSize.md}
           />

@@ -50,6 +50,7 @@ import SettingsService from "../../services/settings";
 import { isFeatureAvailable } from "@notesnook/common";
 import PaywallSheet from "../sheets/paywall";
 import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 
 /**
  * Simple Tab View Implementation for the Side bar
@@ -137,8 +138,8 @@ const SimpleTabView = ({
             {loadedKeysRef.current.has(route.key)
               ? getSceneForRoute(route)
               : navigationState.index === routeIndex
-                ? getSceneForRoute(route)
-                : null}
+              ? getSceneForRoute(route)
+              : null}
           </View>
         ))}
       </View>
@@ -157,7 +158,8 @@ const renderScene = createSceneMap({
 
 export const SideMenu = React.memo(
   function SideMenu() {
-    const { colors } = useThemeColors();
+    const { colors, isDark } = useThemeColors();
+    const visual = getAppleVisualTokens(colors, isDark);
     const insets = useGlobalSafeAreaInsets();
     const [index, setIndex] = React.useState(
       SettingsService.getProperty("defaultSidebarTab")
@@ -181,7 +183,7 @@ export const SideMenu = React.memo(
       <View
         style={{
           flex: 1,
-          backgroundColor: colors.primary.background,
+          backgroundColor: visual.sidebarBackground,
           paddingTop: insets.top,
           paddingBottom: insets.bottom,
           paddingLeft: insets.left
@@ -202,6 +204,7 @@ export const SideMenu = React.memo(
 const TabBar = (props: SimpleTabBarProps) => {
   const dragging = useSideBarDraggingStore((state) => state.dragging);
   const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const groupOptions = useGroupOptions(
     props.navigationState.index === 1 ? "notebooks" : "tags"
   );
@@ -232,11 +235,11 @@ const TabBar = (props: SimpleTabBarProps) => {
         flexDirection: "row",
         width: "100%",
         justifyContent: "space-between",
-        backgroundColor: colors.primary.background,
+        backgroundColor: visual.navigationSurface,
         paddingHorizontal: DefaultAppStyles.GAP,
-        paddingVertical: DefaultAppStyles.GAP_SMALL,
-        borderTopWidth: 1,
-        borderTopColor: colors.primary.border
+        paddingVertical: visual.ios ? 10 : DefaultAppStyles.GAP_SMALL,
+        borderTopWidth: visual.ios ? 0.5 : 1,
+        borderTopColor: visual.separator
       }}
     >
       {isSelectionEnabled ? (
@@ -401,7 +404,7 @@ const TabBar = (props: SimpleTabBarProps) => {
                         }
                       }}
                       style={{
-                        borderRadius: 10,
+                        borderRadius: visual.ios ? visual.controlRadius : 10,
                         paddingVertical: 2,
                         width: 40,
                         height: 40
@@ -437,8 +440,9 @@ const TabBar = (props: SimpleTabBarProps) => {
                       color={colors.primary.icon}
                       onPress={async () => {
                         if (props.navigationState.index === 1) {
-                          const notebooksFeature =
-                            await isFeatureAvailable("notebooks");
+                          const notebooksFeature = await isFeatureAvailable(
+                            "notebooks"
+                          );
                           if (!notebooksFeature.isAllowed) {
                             PaywallSheet.present(notebooksFeature);
                             return;

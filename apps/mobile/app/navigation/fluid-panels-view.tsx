@@ -41,7 +41,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { notesnook } from "../../e2e/test.ids";
 import { db } from "../common/database";
-import { FluidPanels, FluidTabPage } from "../components/fluid-panels";
+import { FluidPanels } from "../components/fluid-panels";
 import { useSideBarDraggingStore } from "../components/side-menu/dragging-store";
 import useGlobalSafeAreaInsets from "../hooks/use-global-safe-area-insets";
 import { hideAllTooltips } from "../hooks/use-tooltip";
@@ -65,6 +65,7 @@ import { valueLimiter } from "../utils/functions";
 import { fluidTabsRef } from "../utils/global-refs";
 import { AppNavigationStack } from "./navigation-stack";
 import type { PaneWidths } from "../screens/editor/wrapper";
+import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { NavigationProps } from "../services/navigation";
 
 const MOBILE_SIDEBAR_SIZE = 0.85;
@@ -74,7 +75,8 @@ let EditorWrapper: any = null;
 
 export const FluidPanelsView = React.memo(
   ({ route }: NavigationProps<"FluidPanelsView">) => {
-    const { colors } = useThemeColors();
+    const { colors, isDark } = useThemeColors();
+    const visual = getAppleVisualTokens(colors, isDark);
     const deviceMode = useSettingStore((state) => state.deviceMode);
     const setFullscreen = useSettingStore((state) => state.setFullscreen);
     const fullscreen = useSettingStore((state) => state.fullscreen);
@@ -210,8 +212,8 @@ export const FluidPanelsView = React.memo(
         const nextDeviceMode = DDS.isLargeTablet()
           ? "tablet"
           : DDS.isSmallTab
-            ? "smallTablet"
-            : "mobile";
+          ? "smallTablet"
+          : "mobile";
         setDeviceMode(nextDeviceMode, size);
       },
       [orientation, setDeviceMode]
@@ -332,7 +334,7 @@ export const FluidPanelsView = React.memo(
         style={{
           height: "100%",
           width: "100%",
-          backgroundColor: colors.primary.background
+          backgroundColor: visual.screenBackground
         }}
       >
         {deviceMode && PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS] ? (
@@ -358,7 +360,11 @@ export const FluidPanelsView = React.memo(
                 height: "100%",
                 width: fullscreen
                   ? 0
-                  : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.sidebar
+                  : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]
+                      ?.sidebar,
+                borderRightWidth:
+                  visual.ios && deviceMode === "tablet" ? 0.5 : 0,
+                borderRightColor: visual.separator
               }}
             >
               <ScopedThemeProvider value="navigationMenu">
@@ -372,7 +378,11 @@ export const FluidPanelsView = React.memo(
                 height: "100%",
                 width: fullscreen
                   ? 0
-                  : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list
+                  : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list,
+                backgroundColor: visual.screenBackground,
+                borderRightWidth:
+                  visual.ios && deviceMode === "tablet" ? 0.5 : 0,
+                borderRightColor: visual.separator
               }}
             >
               <ScopedThemeProvider value="list">

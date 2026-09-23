@@ -24,14 +24,14 @@ import { StoreApi, UseBoundStore } from "zustand";
 import { useTotalNotes } from "../../hooks/use-db-item";
 import {
   eSubscribeEvent,
-  eUnSubscribeEvent,
-  ToastManager
+  eUnSubscribeEvent
 } from "../../services/event-manager";
 import { TreeItem } from "../../stores/create-notebook-tree-stores";
 import { SelectionStore } from "../../stores/item-selection-store";
 import { eOnNotebookUpdated } from "../../utils/events";
 import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import AppIcon from "../ui/AppIcon";
 import { IconButton } from "../ui/icon-button";
 import { Pressable } from "../ui/pressable";
@@ -75,7 +75,8 @@ export const NotebookItem = ({
   const updater = useRelationStore((state) => state.updater);
   const getTotalNotesRef = React.useRef(getTotalNotes);
   getTotalNotesRef.current = getTotalNotes;
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
 
   useEffect(() => {
     getTotalNotesRef.current([item.notebook.id]);
@@ -101,8 +102,8 @@ export const NotebookItem = ({
           item.depth === 0
             ? undefined
             : item.depth < 6
-              ? 15 * item.depth
-              : 15 * 5,
+            ? 15 * item.depth
+            : 15 * 5,
         width: "100%",
         marginTop: 2,
         opacity: item.disabled ? 0.5 : 1
@@ -155,7 +156,12 @@ export const NotebookItem = ({
           width: "100%",
           alignItems: "center",
           flexDirection: "row",
-          borderRadius: defaultBorderRadius,
+          borderRadius: visual.ios ? visual.controlRadius : defaultBorderRadius,
+          backgroundColor:
+            visual.ios && (isFocused || selected)
+              ? visual.selectedSurface
+              : undefined,
+          minHeight: visual.ios ? 44 : undefined,
           paddingRight: DefaultAppStyles.GAP_SMALL
         }}
       >
@@ -192,8 +198,8 @@ export const NotebookItem = ({
               !item.hasChildren || disableExpand
                 ? "book-outline"
                 : expanded
-                  ? "chevron-down"
-                  : "chevron-right"
+                ? "chevron-down"
+                : "chevron-right"
             }
           />
 

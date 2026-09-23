@@ -139,18 +139,18 @@ export const SelectionHeader = React.memo(
       <View
         style={{
           width: "100%",
-          backgroundColor: visual.elevatedSurface,
-          paddingVertical: DefaultAppStyles.GAP_VERTICAL,
+          backgroundColor: visual.toolbarSurface,
+          paddingVertical: visual.ios ? 12 : DefaultAppStyles.GAP_VERTICAL,
           alignItems: "center",
           flexDirection: "row",
           zIndex: 999,
-          paddingHorizontal: DefaultAppStyles.GAP,
+          paddingHorizontal: visual.ios ? visual.pagePadding : DefaultAppStyles.GAP,
           position: "absolute",
           bottom: 0,
-          borderTopWidth: 0.5,
+          borderTopWidth: visual.ios ? 0 : 0.5,
           borderColor: visual.separator,
           justifyContent: "space-between",
-          ...visual.subtleShadow
+          ...(visual.ios ? visual.floatingShadow : visual.subtleShadow)
         }}
       >
         <View

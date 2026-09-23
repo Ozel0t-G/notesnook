@@ -25,6 +25,7 @@ import { TTip, useTip } from "../../services/tip-manager";
 import { RouteParams } from "../../stores/use-navigation-store";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { AppFontSize } from "../../utils/size";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { Tip } from "../tip";
 import { Button } from "../ui/button";
 import Seperator from "../ui/seperator";
@@ -57,7 +58,8 @@ export const Empty = React.memo(function Empty({
   dataType,
   screen
 }: EmptyListProps) {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
   );
@@ -73,9 +75,13 @@ export const Empty = React.memo(function Empty({
       style={[
         {
           flex: 1,
-          width: "80%",
+          width: visual.ios ? "90%" : "80%",
           justifyContent: "center",
-          alignSelf: "center"
+          alignSelf: "center",
+          backgroundColor: visual.ios ? visual.contentSurface : undefined,
+          borderRadius: visual.ios ? visual.sectionRadius : 0,
+          padding: visual.ios ? visual.pagePadding * 2 : 0,
+          marginVertical: visual.ios ? visual.sectionSpacing : 0
         }
       ]}
     >

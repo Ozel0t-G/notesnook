@@ -40,6 +40,7 @@ import { RouteName } from "../../stores/use-navigation-store";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { eScrollEvent } from "../../utils/events";
 import { fluidTabsRef } from "../../utils/global-refs";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { Header } from "../list-items/headers/header";
 import { Empty, PlaceholderData } from "./empty";
 import { ListItemWrapper } from "./list-item.wrapper";
@@ -68,12 +69,16 @@ const onMomentumScrollEnd = () => {
 };
 
 export default function List(props: ListProps) {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const scrollRef = useRef(null);
   const [notesListMode, notebooksListMode] = useSettingStore((state) => [
     state.settings.notesListMode,
     state.settings.notebooksListMode
   ]);
+  const isTabletPane = useSettingStore(
+    (state) => state.deviceMode === "tablet"
+  );
 
   const isCompactModeEnabled =
     (props.dataType === "note" && notesListMode === "compact") ||
@@ -152,15 +157,18 @@ export default function List(props: ListProps) {
       <View
         style={{
           flex: 1,
-          backgroundColor: colors.primary.background
+          backgroundColor:
+            visual.ios && isTabletPane
+              ? visual.contentSurface
+              : visual.screenBackground
         }}
       >
         <LegendList
           ref={scrollRef}
           contentContainerStyle={{
             flexGrow: 1,
-            paddingTop: 4,
-            paddingBottom: 8
+            paddingTop: visual.ios ? visual.sectionSpacing : 4,
+            paddingBottom: visual.ios ? visual.sectionSpacing : 8
           }}
           extraData={props.data}
           testID={notesnook.list.id}

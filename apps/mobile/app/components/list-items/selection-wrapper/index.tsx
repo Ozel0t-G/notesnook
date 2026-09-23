@@ -24,6 +24,7 @@ import { useIsCompactModeEnabled } from "../../../hooks/use-is-compact-mode-enab
 import useIsSelected from "../../../hooks/use-selected";
 import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
 import { useSelectionStore } from "../../../stores/use-selection-store";
+import { useSettingStore } from "../../../stores/use-setting-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { Pressable } from "../../ui/pressable";
@@ -76,6 +77,9 @@ const SelectionWrapper = ({
     (item as TrashItem).itemType || item.type
   );
   const [isSelected] = useIsSelected(item);
+  const isTabletPane = useSettingStore(
+    (state) => state.deviceMode === "tablet"
+  );
 
   if (item.id !== itemId.current) {
     itemId.current = item.id;
@@ -120,15 +124,25 @@ const SelectionWrapper = ({
         alignSelf: "center",
         overflow: "hidden",
         paddingHorizontal: visual.rowInset,
-        paddingVertical: compactMode ? 6 : 12,
-        borderRadius: visual.cardRadius,
+        paddingVertical: compactMode ? (visual.ios ? 8 : 6) : visual.rowPadding,
+        borderRadius:
+          visual.ios && isTabletPane && !isSheet
+            ? 0
+            : visual.ios && !isSheet
+            ? 10
+            : visual.cardRadius,
         marginHorizontal: isSheet ? 0 : visual.listInset,
         marginBottom: isSheet
           ? DefaultAppStyles.GAP_VERTICAL
+          : visual.ios
+          ? isTabletPane
+            ? 0
+            : 2
           : visual.rowSpacing,
-        borderWidth: isSheet ? 0 : 0.5,
+        borderWidth: isSheet || visual.ios ? 0 : 0.5,
+        borderBottomWidth: visual.ios && isTabletPane && !isSheet ? 0.5 : 0,
         borderColor: visual.separator,
-        ...(isSheet ? {} : visual.subtleShadow)
+        ...(isSheet || visual.ios ? {} : visual.subtleShadow)
       }}
     >
       {isEditingNote ? (

@@ -30,6 +30,7 @@ import { useSelectionStore } from "../../../stores/use-selection-store";
 import { eCloseSheet } from "../../../utils/events";
 import { AppFontSize, defaultBorderRadius } from "../../../utils/size";
 import { DefaultAppStyles } from "../../../utils/styles";
+import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { Properties } from "../../properties";
 import AppIcon from "../../ui/AppIcon";
 import { IconButton } from "../../ui/icon-button";
@@ -48,7 +49,8 @@ const ReminderItem = React.memo(
     index: number;
     isSheet: boolean;
   }) => {
-    const { colors } = useThemeColors();
+    const { colors, isDark } = useThemeColors();
+    const visual = getAppleVisualTokens(colors, isDark);
     const openReminder = () => {
       if (selectItem(item)) return;
       AddReminder.present(item, undefined);
@@ -79,8 +81,10 @@ const ReminderItem = React.memo(
 
           {item.description ? (
             <Paragraph
+              color={visual.ios ? visual.secondaryText : undefined}
               style={{
-                flexWrap: "wrap"
+                flexWrap: "wrap",
+                marginTop: visual.ios ? 4 : 0
               }}
               numberOfLines={2}
             >

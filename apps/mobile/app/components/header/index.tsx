@@ -21,6 +21,7 @@ import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React, { useCallback, useEffect, useState } from "react";
 import { View } from "react-native";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import {
   eSubscribeEvent,
   eUnSubscribeEvent
@@ -93,62 +94,116 @@ export const Header = ({
   return (
     <View
       style={{
-        paddingHorizontal: DefaultAppStyles.GAP,
-        paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL,
+        paddingHorizontal: visual.ios
+          ? visual.pagePadding
+          : DefaultAppStyles.GAP,
+        paddingVertical: visual.ios ? 12 : DefaultAppStyles.GAP_VERTICAL_SMALL,
         backgroundColor: hexToRGBA(
-          visual.elevatedSurface,
-          visual.materialOpacity
+          visual.navigationSurface,
+          visual.navigationMaterialOpacity
         ),
-        borderBottomWidth: borderHidden ? 0 : 0.5,
+        borderBottomWidth: visual.ios ? 0.5 : borderHidden ? 0 : 0.5,
         borderBottomColor: visual.separator,
-        ...visual.subtleShadow
+        ...(visual.ios ? {} : visual.subtleShadow)
       }}
     >
-      <HeaderWrapper
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          borderRadius: visual.buttonRadius,
-          paddingVertical: 5,
-          borderWidth: hasSearch ? 0.5 : 0,
-          borderColor: visual.separator,
-          backgroundColor: hasSearch
-            ? hexToRGBA(visual.surface, visual.materialOpacity)
-            : "transparent",
-          paddingHorizontal: !hasSearch ? 0 : DefaultAppStyles.GAP_SMALL,
-          alignItems: "center"
-        }}
-        testID="search-header"
-        onPress={() => {
-          onSearch?.();
-        }}
-      >
-        <LeftMenus
-          canGoBack={canGoBack}
-          onLeftButtonPress={onLeftMenuButtonPress}
-        />
-
-        {!title ? (
+      {visual.ios ? (
+        <>
           <View
             style={{
-              width: 100,
-              backgroundColor: colors.primary.hover,
-              height: 10,
-              borderRadius: 100
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              minHeight: 48
             }}
+          >
+            <LeftMenus
+              canGoBack={canGoBack}
+              onLeftButtonPress={onLeftMenuButtonPress}
+            />
+            <Heading
+              numberOfLines={1}
+              size={AppFontSize.xl}
+              style={{ flex: 1, marginHorizontal: 12 }}
+            >
+              {selectionMode ? `${selectedItemsList.length} selected` : title}
+            </Heading>
+            <RightMenus rightButton={rightButton} />
+          </View>
+          {hasSearch ? (
+            <Pressable
+              testID="search-header"
+              onPress={() => onSearch?.()}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                minHeight: 42,
+                marginTop: 10,
+                marginBottom: 4,
+                paddingHorizontal: 14,
+                gap: 8,
+                borderRadius: visual.controlRadius,
+                backgroundColor: visual.secondarySurface
+              }}
+            >
+              <Icon
+                name="magnify"
+                size={AppFontSize.md}
+                color={visual.tertiaryText}
+              />
+              <Paragraph color={visual.secondaryText}>
+                {strings.searchInRoute(title || "")}
+              </Paragraph>
+            </Pressable>
+          ) : null}
+        </>
+      ) : (
+        <HeaderWrapper
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            borderRadius: visual.buttonRadius,
+            paddingVertical: 5,
+            borderWidth: hasSearch ? 0.5 : 0,
+            borderColor: visual.separator,
+            backgroundColor: hasSearch
+              ? hexToRGBA(visual.surface, visual.materialOpacity)
+              : "transparent",
+            paddingHorizontal: !hasSearch ? 0 : DefaultAppStyles.GAP_SMALL,
+            alignItems: "center"
+          }}
+          testID="search-header"
+          onPress={() => {
+            onSearch?.();
+          }}
+        >
+          <LeftMenus
+            canGoBack={canGoBack}
+            onLeftButtonPress={onLeftMenuButtonPress}
           />
-        ) : hasSearch ? (
-          <Paragraph>
-            {selectionMode
-              ? `${selectedItemsList.length} selected`
-              : strings.searchInRoute(title)}
-          </Paragraph>
-        ) : (
-          <Heading size={AppFontSize.lg}>{title}</Heading>
-        )}
 
-        <RightMenus rightButton={rightButton} />
-      </HeaderWrapper>
+          {!title ? (
+            <View
+              style={{
+                width: 100,
+                backgroundColor: colors.primary.hover,
+                height: 10,
+                borderRadius: 100
+              }}
+            />
+          ) : hasSearch ? (
+            <Paragraph>
+              {selectionMode
+                ? `${selectedItemsList.length} selected`
+                : strings.searchInRoute(title)}
+            </Paragraph>
+          ) : (
+            <Heading size={AppFontSize.lg}>{title}</Heading>
+          )}
+
+          <RightMenus rightButton={rightButton} />
+        </HeaderWrapper>
+      )}
     </View>
   );
 };

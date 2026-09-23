@@ -28,6 +28,7 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { useSelectionStore } from "../../stores/use-selection-store";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 export const SearchBar = ({
   onChangeText,
   loading
@@ -40,7 +41,8 @@ export const SearchBar = ({
   const isFocused = useNavigationStore(
     (state) => state.focusedRouteId === "Search"
   );
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const inputRef = useRef<TextInput>(null);
   const _onChangeText = (value: string) => {
     onChangeText(value);
@@ -51,7 +53,11 @@ export const SearchBar = ({
     <View
       style={{
         width: "100%",
-        paddingHorizontal: DefaultAppStyles.GAP
+        paddingHorizontal: visual.ios
+          ? visual.pagePadding
+          : DefaultAppStyles.GAP,
+        paddingVertical: visual.ios ? 10 : 0,
+        backgroundColor: visual.ios ? visual.screenBackground : undefined
       }}
     >
       <View
@@ -59,11 +65,12 @@ export const SearchBar = ({
           flexDirection: "row",
           alignItems: "center",
           width: "100%",
-          paddingHorizontal: DefaultAppStyles.GAP_SMALL,
-          borderRadius: 10,
-          borderColor: colors.primary.border,
-          borderWidth: 1,
-          paddingVertical: 3
+          paddingHorizontal: visual.ios ? 12 : DefaultAppStyles.GAP_SMALL,
+          borderRadius: visual.ios ? visual.controlRadius : 10,
+          borderColor: visual.separator,
+          borderWidth: visual.ios ? 0 : 1,
+          backgroundColor: visual.ios ? visual.contentSurface : undefined,
+          paddingVertical: visual.ios ? 7 : 3
         }}
       >
         <IconButton

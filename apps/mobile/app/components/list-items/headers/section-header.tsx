@@ -81,7 +81,8 @@ export const SectionHeader = React.memo<
         style={{
           width: "100%",
           paddingHorizontal: visual.listInset,
-          marginBottom: DefaultAppStyles.GAP_VERTICAL_SMALL
+          marginBottom: visual.ios ? 8 : DefaultAppStyles.GAP_VERTICAL_SMALL,
+          marginTop: visual.ios && index > 0 ? visual.sectionSpacing : 0
         }}
       >
         <View
@@ -91,17 +92,19 @@ export const SectionHeader = React.memo<
             width: "100%",
             alignSelf: "center",
             justifyContent: "space-between",
-            borderBottomWidth: 0.5,
+            borderBottomWidth: visual.ios ? 0 : 0.5,
             borderColor: visual.separator,
             borderRadius: visual.sectionRadius,
-            backgroundColor: visual.elevatedSurface,
+            backgroundColor: visual.ios
+              ? visual.screenBackground
+              : visual.elevatedSurface,
             paddingHorizontal: visual.rowInset,
             paddingBottom: DefaultAppStyles.GAP_VERTICAL_SMALL,
             paddingTop:
               index === 0
                 ? DefaultAppStyles.GAP
                 : DefaultAppStyles.GAP_VERTICAL,
-            ...visual.subtleShadow
+            ...(visual.ios ? {} : visual.subtleShadow)
           }}
         >
           <Pressable
@@ -192,8 +195,8 @@ export const SectionHeader = React.memo<
                       [dataType === "notebook"
                         ? "notebooksListMode"
                         : dataType === "searchResult"
-                          ? "searchListMode"
-                          : "notesListMode"]: !isCompactModeEnabled
+                        ? "searchListMode"
+                        : "notesListMode"]: !isCompactModeEnabled
                         ? "compact"
                         : "normal"
                     });

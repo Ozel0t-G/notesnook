@@ -108,7 +108,7 @@ const NoteItem = ({
           flexShrink: 1
         }}
       >
-        {compactMode ? null : (
+        {!visual.ios && !compactMode ? (
           <Paragraph
             style={{
               fontSize: AppFontSize.xxxs,
@@ -122,8 +122,7 @@ const NoteItem = ({
                 : "time"
             )}
           </Paragraph>
-        )}
-
+        ) : null}
         {compactMode ? (
           <Paragraph
             numberOfLines={1}
@@ -152,7 +151,8 @@ const NoteItem = ({
           <Paragraph
             style={{
               flexWrap: "wrap",
-              color: visual.secondaryText
+              color: visual.secondaryText,
+              marginTop: visual.ios ? 4 : 0
             }}
             color={visual.secondaryText}
             numberOfLines={2}
@@ -162,6 +162,23 @@ const NoteItem = ({
             })}
           </Paragraph>
         ) : null}
+
+        {compactMode || !visual.ios ? null : (
+          <Paragraph
+            style={{
+              fontSize: AppFontSize.xxxs,
+              color: visual.tertiaryText,
+              marginTop: visual.ios ? 7 : 0
+            }}
+          >
+            {getFormattedDate(
+              date,
+              dayjs(date).isBefore(dayjs().subtract(1, "day").hour(23))
+                ? "date"
+                : "time"
+            )}
+          </Paragraph>
+        )}
 
         {compactMode ? null : (
           <View

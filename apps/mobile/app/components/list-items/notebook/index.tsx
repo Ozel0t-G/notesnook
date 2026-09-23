@@ -35,6 +35,7 @@ import { IconButton } from "../../ui/icon-button";
 import Heading from "../../ui/typography/heading";
 import Paragraph from "../../ui/typography/paragraph";
 import { DefaultAppStyles } from "../../../utils/styles";
+import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 
 type NotebookItemProps = {
   item: Notebook | BaseTrashItem<Notebook>;
@@ -50,7 +51,8 @@ export const NotebookItem = ({
   date,
   totalNotes
 }: NotebookItemProps) => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
   );
@@ -91,8 +93,10 @@ export const NotebookItem = ({
           <Paragraph
             size={AppFontSize.sm}
             numberOfLines={2}
+            color={visual.ios ? visual.secondaryText : undefined}
             style={{
-              flexWrap: "wrap"
+              flexWrap: "wrap",
+              marginTop: visual.ios ? 4 : 0
             }}
           >
             {item.description}

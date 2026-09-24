@@ -27,6 +27,7 @@ import { strings } from "@notesnook/intl";
 import { AppState, Platform } from "react-native";
 import { db, DatabaseLogger } from "../common/database";
 import { useSettingStore } from "../stores/use-setting-store";
+import { useUserStore } from "../stores/use-user-store";
 import {
   availableTaskNotificationSlots,
   planTaskNotifications,
@@ -38,6 +39,7 @@ import {
   requestUrgentPermission,
   urgentStatus
 } from "./task-alarms";
+import { taskAlertTitle } from "./task-alarm-plan";
 
 // Keep four slots free under iOS's 64 pending local notification limit.
 const MAX_TOTAL_PENDING = Platform.OS === "ios" ? 60 : 500;
@@ -47,6 +49,7 @@ let started = false;
 let lastPress: { id: string; at: number } | undefined;
 let stopSubscriptions: (() => void) | undefined;
 let lastTruncation = "";
+let lastAlarmDelivery: Awaited<ReturnType<typeof reconcileTaskAlarms>> | undefined;
 
 export function claimTaskNotificationPress(id: string) {
   const now = Date.now();
@@ -63,7 +66,7 @@ export async function taskNotificationPermission() {
   );
 }
 
-async function ensurePermission() {
+async function requestPermission() {
   const current = await notifee.getNotificationSettings();
   if (current.authorizationStatus === AuthorizationStatus.NOT_DETERMINED) {
     const requested = await notifee.requestPermission();
@@ -76,14 +79,21 @@ async function ensurePermission() {
 }
 
 async function reconcileNow() {
-  if (!db.isInitialized) return;
+  if (!db.isInitialized || useUserStore.getState().isLoggingOut) return;
   const now = Date.now();
   const all = await db.tasks.list();
   const existing = await notifee.getTriggerNotifications();
   const privacyHidden = Boolean(
     useSettingStore.getState().settings.appLockEnabled
   );
-  const alarms = await reconcileTaskAlarms(all, privacyHidden);
+  let alarms: Awaited<ReturnType<typeof reconcileTaskAlarms>>;
+  try {
+    alarms = await reconcileTaskAlarms(all, privacyHidden);
+  } catch (error) {
+    DatabaseLogger.error(error as Error, "Task alarms");
+    alarms = { status: "unsupported", failedTaskIds: [] };
+  }
+  lastAlarmDelivery = alarms;
   if (alarms.failedTaskIds.length)
     DatabaseLogger.warn("Urgent Task alarms could not be scheduled", {
       status: alarms.status,
@@ -110,7 +120,7 @@ async function reconcileNow() {
     now,
     availableSlots,
     privacyHidden,
-    alarms.status !== "authorized"
+    alarms.status !== "authorized" ? true : new Set(alarms.failedTaskIds)
   );
   const eligibleCount = plan.eligibleCount;
   const truncation =
@@ -126,7 +136,7 @@ async function reconcileNow() {
   lastTruncation = truncation;
   for (const id of plan.cancelIds) await notifee.cancelTriggerNotification(id);
 
-  if (!plan.schedule.length || !(await ensurePermission())) return;
+  if (!plan.schedule.length || !(await taskNotificationPermission())) return;
 
   const channelId =
     Platform.OS === "android"
@@ -145,10 +155,12 @@ async function reconcileNow() {
         title: privacyHidden
           ? strings.tasksTitle()
           : task.urgentFallback
-            ? `Urgent Task (standard alert): ${task.title}`
-            : task.title,
+          ? `${strings.tasksUrgentStandardAlert()}: ${taskAlertTitle(
+              task.title
+            )}`
+          : taskAlertTitle(task.title),
         body: task.urgentFallback
-          ? "Alarm unavailable. This is a standard notification."
+          ? strings.tasksUrgentFallbackBody()
           : undefined,
         data: {
           type: "task",
@@ -209,6 +221,21 @@ function start() {
     if (state.settings.appLockEnabled !== previous.settings.appLockEnabled)
       queueReconcile();
   });
+  const userSubscription = useUserStore.subscribe((state, previous) => {
+    if (state.user?.id === previous.user?.id) return;
+    clearTimeout(timer);
+    reconciliation = reconciliation
+      .then(async () => {
+        await cancelAllTaskTriggers();
+        await cancelAllTaskAlarms();
+      })
+      .catch((error) =>
+        DatabaseLogger.error(
+          error as Error,
+          "Cancel Task alerts after account change"
+        )
+      );
+  });
   const logoutSubscription = db.eventManager.subscribe(
     EVENTS.userLoggedOut,
     () => {
@@ -231,6 +258,7 @@ function start() {
     syncSubscription.unsubscribe();
     appStateSubscription.remove();
     settingsSubscription();
+    userSubscription();
     logoutSubscription.unsubscribe();
   };
   queueReconcile();
@@ -256,7 +284,13 @@ export const TaskNotifications = {
   stop,
   reconcile,
   permissionStatus: taskNotificationPermission,
+  requestPermission,
   notificationId: taskNotificationId,
   urgentStatus,
-  requestUrgentPermission
+  requestUrgentPermission,
+  urgentFallback: (taskId: string) =>
+    lastAlarmDelivery
+      ? lastAlarmDelivery.status !== "authorized" ||
+        lastAlarmDelivery.failedTaskIds.includes(taskId)
+      : false
 };

@@ -87,7 +87,11 @@ export function MenuItem({
               setItemCount(await db.notes.favorites.count());
               break;
             case "Reminders":
-              setItemCount(await db.reminders.all.count());
+              setItemCount(
+                (await db.reminders.all.ids()).filter(
+                  (id) => !db.tasks.isMigratedReminder(id)
+                ).length
+              );
               break;
             case "Tasks":
               setItemCount((await db.tasks.smartList("all")).length);

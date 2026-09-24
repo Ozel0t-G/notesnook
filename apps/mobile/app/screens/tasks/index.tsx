@@ -17,7 +17,14 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { EVENTS, Task, TaskList, isTaskOverdue } from "@notesnook/core";
+import {
+  EVENTS,
+  Task,
+  TaskFavorite,
+  TaskList,
+  isTaskOverdue,
+  taskReminderSchedule
+} from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
@@ -40,6 +47,13 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
 import Navigation, { NavigationProps } from "../../services/navigation";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { TaskSymbolView } from "../../components/task-symbol-view";
+import { FavoritesEditor } from "./favorites-editor";
+import {
+  ListCustomization,
+  taskListColor,
+  taskListSymbol
+} from "./list-customization";
 
 type SmartList = "today" | "scheduled" | "all" | "flagged" | "completed";
 type Selection =
@@ -67,16 +81,8 @@ function dateLabel(value: string) {
   }).format(new Date(year, month - 1, day));
 }
 
-function calendarDate(value: Date) {
-  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-}
-
 function scheduledDay(task: Task) {
-  const today = calendarDate(new Date());
-  if (task.dueDate && task.dueDate >= today) return task.dueDate;
-  return task.reminderAt
-    ? calendarDate(new Date(task.reminderAt))
-    : task.dueDate;
+  return taskReminderSchedule(task).date;
 }
 
 function priorityLabel(task: Task) {
@@ -93,15 +99,16 @@ function priorityLabel(task: Task) {
 }
 
 function taskAccessibilityLabel(task: Task) {
+  const schedule = taskReminderSchedule(task);
   return [
     task.title,
-    task.dueDate
-      ? `${strings.tasksDueDate()}: ${dateLabel(task.dueDate)}${task.dueTime ? ` ${task.dueTime}` : ""}`
+    schedule.date
+      ? `${strings.tasksReminder()}: ${dateLabel(schedule.date)}${
+          schedule.time ? ` ${schedule.time}` : ""
+        }`
       : undefined,
     isTaskOverdue(task) ? strings.tasksOverdue() : undefined,
-    task.reminderAt
-      ? `${strings.tasksReminder()}: ${new Date(task.reminderAt).toLocaleString()}`
-      : undefined,
+    task.urgent ? strings.tasksUrgent() : undefined,
     task.flagged ? strings.tasksFlagged() : undefined,
     priorityLabel(task)
   ]
@@ -123,7 +130,13 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     !!(route.params?.listId || route.params?.smartList)
   );
   const [tasks, setTasks] = React.useState<Task[]>([]);
+  const [allTasks, setAllTasks] = React.useState<Task[]>([]);
   const [lists, setLists] = React.useState<TaskList[]>([]);
+  const [favorites, setFavorites] = React.useState<TaskFavorite[]>([]);
+  const [favoritesEditorOpen, setFavoritesEditorOpen] = React.useState(false);
+  const [editingList, setEditingList] = React.useState<
+    TaskList | null | undefined
+  >();
   const [defaultListId, setDefaultListId] = React.useState<string>();
   const [counts, setCounts] = React.useState<Record<SmartList, number>>({
     today: 0,
@@ -152,19 +165,30 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     if (!db.isInitialized) return;
     const generation = ++refreshGeneration.current;
     try {
-      const [taskLists, allTasks, today, scheduled, all, flagged, completed] =
-        await Promise.all([
-          db.taskLists.list(),
-          db.tasks.list(),
-          db.tasks.smartList("today"),
-          db.tasks.smartList("scheduled"),
-          db.tasks.smartList("all"),
-          db.tasks.smartList("flagged"),
-          db.tasks.smartList("completed")
-        ]);
+      const [
+        taskLists,
+        allTasks,
+        today,
+        scheduled,
+        all,
+        flagged,
+        completed,
+        favoriteRefs
+      ] = await Promise.all([
+        db.taskLists.list(),
+        db.tasks.list(),
+        db.tasks.smartList("today"),
+        db.tasks.smartList("scheduled"),
+        db.tasks.smartList("all"),
+        db.tasks.smartList("flagged"),
+        db.tasks.smartList("completed"),
+        db.taskFavorites.list()
+      ]);
       const defaultList = await db.taskLists.default();
       if (generation !== refreshGeneration.current) return;
       setLists(taskLists);
+      setAllTasks(allTasks);
+      setFavorites(favoriteRefs);
       setDefaultListId(defaultList.id);
       setCounts({
         today: today.length,
@@ -241,22 +265,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     });
   };
 
-  const createList = () => {
-    Alert.prompt(
-      strings.tasksNewList(),
-      strings.tasksEnterListName(),
-      async (name) => {
-        if (!name?.trim()) return;
-        try {
-          const list = await db.taskLists.create(name.trim());
-          await refresh();
-          select({ kind: "list", id: list.id });
-        } catch {
-          Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
-        }
-      }
-    );
-  };
+  const createList = () => setEditingList(null);
 
   const deleteList = (list: TaskList) => {
     Alert.alert(strings.tasksDeleteList(), strings.tasksDeleteListConfirm(), [
@@ -267,6 +276,10 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         onPress: async () => {
           try {
             await db.taskLists.remove(list.id);
+            const remainingFavorites = (await db.taskFavorites.list()).filter(
+              (ref) => ref !== `list:${list.id}`
+            );
+            await db.taskFavorites.set(remainingFavorites);
             setSelection({ kind: "smart", id: "today" });
             await refresh();
           } catch {
@@ -277,23 +290,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     ]);
   };
 
-  const editList = (list: TaskList) => {
-    Alert.prompt(
-      strings.tasksEditList(),
-      strings.tasksEnterListName(),
-      async (name) => {
-        if (!name?.trim()) return;
-        try {
-          await db.taskLists.update(list.id, { name: name.trim() });
-          await refresh();
-        } catch {
-          Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
-        }
-      },
-      "plain-text",
-      list.name
-    );
-  };
+  const editList = (list: TaskList) => setEditingList(list);
 
   const listActions = (list: TaskList) => {
     Alert.alert(list.name, undefined, [
@@ -399,7 +396,9 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     return [...tasks].sort(
       (a, b) =>
         (scheduledDay(a) || "").localeCompare(scheduledDay(b) || "") ||
-        (a.dueTime || "").localeCompare(b.dueTime || "") ||
+        (taskReminderSchedule(a).time || "").localeCompare(
+          taskReminderSchedule(b).time || ""
+        ) ||
         a.createdAt - b.createdAt ||
         a.id.localeCompare(b.id)
     );
@@ -437,20 +436,77 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       </View>
       <View
         style={{
+          paddingHorizontal: 20,
+          paddingTop: 10,
+          paddingBottom: 8,
+          flexDirection: "row",
+          alignItems: "center"
+        }}
+      >
+        <Text
+          style={{
+            flex: 1,
+            color: visual.primaryText,
+            fontSize: 21,
+            fontWeight: "700"
+          }}
+        >
+          {strings.tasksFavorites()}
+        </Text>
+        <Pressable
+          onPress={() => setFavoritesEditorOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={strings.tasksEditFavorites()}
+          style={{ padding: 8 }}
+        >
+          <Text
+            style={{
+              color: colors.primary.accent,
+              fontSize: 15,
+              fontWeight: "600"
+            }}
+          >
+            {strings.edit()}
+          </Text>
+        </Pressable>
+      </View>
+      <View
+        style={{
           flexDirection: "row",
           flexWrap: "wrap",
           paddingHorizontal: 14
         }}
       >
-        {SMART_LISTS.map((item) => {
-          const active = selection.kind === "smart" && selection.id === item.id;
+        {favorites.flatMap((ref) => {
+          const smart = ref.startsWith("smart:")
+            ? SMART_LISTS.find((item) => item.id === ref.slice(6))
+            : undefined;
+          const taskList = ref.startsWith("list:")
+            ? lists.find((item) => item.id === ref.slice(5))
+            : undefined;
+          if (!smart && !taskList) return [];
+          const next: Selection = smart
+            ? { kind: "smart", id: smart.id }
+            : { kind: "list", id: taskList!.id };
+          const active =
+            selection.kind === next.kind && selection.id === next.id;
+          const label = smart ? smart.label() : taskList!.name;
+          const count = smart
+            ? counts[smart.id]
+            : allTasks.filter(
+                (task) => task.listId === taskList!.id && !task.completed
+              ).length;
           return (
             <Pressable
-              key={item.id}
-              testID={`task-smart-${item.id}`}
-              onPress={() => select({ kind: "smart", id: item.id })}
+              key={ref}
+              testID={
+                smart
+                  ? `task-smart-${smart.id}`
+                  : `task-favorite-list-${taskList!.id}`
+              }
+              onPress={() => select(next)}
               accessibilityRole="button"
-              accessibilityLabel={`${item.label()}, ${counts[item.id]}`}
+              accessibilityLabel={`${label}, ${count}`}
               style={{
                 width: "45%",
                 margin: 6,
@@ -463,7 +519,19 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                 justifyContent: "space-between"
               }}
             >
-              <Icon name={item.icon} size={23} color={colors.primary.accent} />
+              {smart ? (
+                <Icon
+                  name={smart.icon}
+                  size={23}
+                  color={colors.primary.accent}
+                />
+              ) : (
+                <TaskSymbolView
+                  name={taskListSymbol(taskList!.symbol)}
+                  color={taskListColor(taskList!.color)}
+                  size={23}
+                />
+              )}
               <View
                 style={{
                   flexDirection: "row",
@@ -478,7 +546,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                     fontWeight: "600"
                   }}
                 >
-                  {item.label()}
+                  {label}
                 </Text>
                 <Text
                   style={{
@@ -487,7 +555,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                     fontWeight: "700"
                   }}
                 >
-                  {counts[item.id]}
+                  {count}
                 </Text>
               </View>
             </Pressable>
@@ -543,10 +611,10 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                   : "transparent"
             }}
           >
-            <Icon
-              name={item.symbol || "format-list-checks"}
+            <TaskSymbolView
+              name={taskListSymbol(item.symbol)}
               size={21}
-              color={item.color || colors.primary.accent}
+              color={taskListColor(item.color)}
             />
             <Text
               numberOfLines={1}
@@ -681,7 +749,11 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                   onPress={() => toggleCompletion(item)}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: item.completed }}
-                  accessibilityLabel={`${item.completed ? strings.tasksUncomplete() : strings.tasksComplete()}: ${item.title}`}
+                  accessibilityLabel={`${
+                    item.completed
+                      ? strings.tasksUncomplete()
+                      : strings.tasksComplete()
+                  }: ${item.title}`}
                   style={{ width: 48, height: 50, justifyContent: "center" }}
                 >
                   <Icon
@@ -722,7 +794,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                       alignItems: "center"
                     }}
                   >
-                    {item.dueDate && (
+                    {taskReminderSchedule(item).date && (
                       <Text
                         style={{
                           color: isTaskOverdue(item)
@@ -734,17 +806,19 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                         {isTaskOverdue(item)
                           ? `${strings.tasksOverdue()} · `
                           : ""}
-                        {dateLabel(item.dueDate)}
-                        {item.dueTime ? ` ${item.dueTime}` : ""}
+                        {dateLabel(taskReminderSchedule(item).date!)}
+                        {taskReminderSchedule(item).time
+                          ? ` ${taskReminderSchedule(item).time}`
+                          : ""}
                       </Text>
                     )}
-                    {!item.dueDate && item.reminderAt && (
-                      <Text
-                        style={{ color: visual.secondaryText, fontSize: 12 }}
-                      >
-                        {strings.tasksReminder()} ·{" "}
-                        {new Date(item.reminderAt).toLocaleString()}
-                      </Text>
+                    {item.urgent && (
+                      <Icon
+                        name="alarm-light"
+                        size={14}
+                        color={colors.primary.accent}
+                        accessibilityLabel="Urgent"
+                      />
                     )}
                     {item.flagged && (
                       <Icon
@@ -762,6 +836,17 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                       </Text>
                     )}
                   </View>
+                  {item.urgent && !!item.recurrenceRule && !item.completed && (
+                    <Text
+                      style={{
+                        color: visual.secondaryText,
+                        fontSize: 11,
+                        marginTop: 4
+                      }}
+                    >
+                      {strings.tasksUrgentRepeatLimit()}
+                    </Text>
+                  )}
                 </Pressable>
               </View>
             </View>
@@ -856,6 +941,28 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       {(isTablet || showListOnPhone) && (
         <View style={{ flex: isTablet ? 2 : 1 }}>{list}</View>
       )}
+      <FavoritesEditor
+        visible={favoritesEditorOpen}
+        favorites={favorites}
+        lists={lists}
+        onClose={() => setFavoritesEditorOpen(false)}
+        onSave={async (items) => {
+          await db.taskFavorites.set(items);
+          await refresh();
+        }}
+      />
+      <ListCustomization
+        visible={editingList !== undefined}
+        list={editingList || undefined}
+        onClose={() => setEditingList(undefined)}
+        onSave={async (input) => {
+          const saved = editingList
+            ? await db.taskLists.update(editingList.id, input)
+            : await db.taskLists.create(input);
+          await refresh();
+          if (!editingList) select({ kind: "list", id: saved.id });
+        }}
+      />
     </SafeAreaView>
   );
 }

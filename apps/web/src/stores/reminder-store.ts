@@ -36,7 +36,12 @@ class ReminderStore extends BaseStore<ReminderStore> {
   reminders: VirtualizedGrouping<Reminder> | undefined = undefined;
 
   refresh = async (reset = true) => {
-    const reminders = db.reminders.all;
+    const reminders = db.reminders.all.clone();
+    const migrated = (await reminders.ids()).filter((id) =>
+      db.tasks.isMigratedReminder(id)
+    );
+    if (migrated.length)
+      reminders.where((eb) => eb("id", "not in", migrated));
     this.set({
       reminders: await reminders.grouped(
         db.settings.getGroupOptions("reminders")

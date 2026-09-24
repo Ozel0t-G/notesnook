@@ -4,7 +4,7 @@ import UIKit
 @objc(TaskSymbolViewManager)
 final class TaskSymbolViewManager: RCTViewManager {
   override func view() -> UIView! { TaskSymbolNativeView() }
-  @objc static func requiresMainQueueSetup() -> Bool { true }
+  @objc override class func requiresMainQueueSetup() -> Bool { true }
 }
 
 @objc(TaskSymbolNativeView)

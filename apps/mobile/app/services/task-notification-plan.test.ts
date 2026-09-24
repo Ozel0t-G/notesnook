@@ -82,4 +82,41 @@ describe("Task notification reconciliation", () => {
     expect(plan.cancelIds).toEqual(["task:private"]);
     expect(plan.schedule.map((item) => item.id)).toEqual(["private"]);
   });
+
+  test("falls back only for urgent alarms that failed to schedule", () => {
+    const plan = planTaskNotifications(
+      [
+        { ...task("urgent-failed", NOW + 1000), urgent: true },
+        { ...task("urgent-ok", NOW + 2000), urgent: true }
+      ],
+      [],
+      NOW,
+      50,
+      false,
+      new Set(["urgent-failed"])
+    );
+    expect(plan.schedule.map((item) => item.id)).toEqual(["urgent-failed"]);
+    expect(plan.schedule[0].urgentFallback).toBe(true);
+  });
+
+  test("uses a labeled standard alert for a date-only urgent record", () => {
+    const plan = planTaskNotifications(
+      [
+        {
+          ...task("date-only", NOW + 1000),
+          reminderAt: undefined,
+          reminderDate: "2026-09-24",
+          scheduleVersion: 2,
+          urgent: true
+        }
+      ],
+      [],
+      Date.parse("2026-09-23T12:00:00"),
+      50,
+      false,
+      new Set()
+    );
+    expect(plan.schedule).toHaveLength(1);
+    expect(plan.schedule[0].urgentFallback).toBe(true);
+  });
 });

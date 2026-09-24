@@ -304,6 +304,7 @@ async function updateRemindersForWidget() {
   const widgetReminders = [];
   if (!reminders) return;
   for (const reminder of reminders) {
+    if (db.tasks.isMigratedReminder(reminder.id)) continue;
     const triggerDate =
       reminder.snoozeUntil && reminder.snoozeUntil > Date.now()
         ? reminder.snoozeUntil
@@ -380,6 +381,11 @@ async function scheduleNotification(
   payload?: string
 ) {
   if (!reminder) return;
+  if (db.tasks.isMigratedReminder(reminder.id)) {
+    await clearAllPendingTriggersForId(reminder.id);
+    await remove(reminder.id);
+    return;
+  }
   if (!useSettingStore.getState().settings.reminderNotifications) return;
 
   try {
@@ -1028,6 +1034,10 @@ async function setupReminders(checkNeedsScheduling = false) {
 
   const triggers = await notifee.getTriggerNotifications();
   for (const reminder of reminders) {
+    if (db.tasks.isMigratedReminder(reminder.id)) {
+      await scheduleNotification(reminder);
+      continue;
+    }
     if (reminder.mode === "permanent") {
       await scheduleNotification(reminder);
     }

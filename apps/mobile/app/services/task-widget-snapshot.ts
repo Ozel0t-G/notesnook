@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import type { Task } from "@notesnook/core";
+import { taskReminderSchedule, type Task } from "@notesnook/core";
 
 export type TaskWidgetItem = {
   id: string;
@@ -46,7 +46,10 @@ const MAX_VISIBLE_TASKS = 10;
 
 function localDate(now: number) {
   const date = new Date(now);
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function currentTimeZone() {
@@ -69,18 +72,18 @@ export function buildTaskWidgetSnapshot(
   const now = options.now ?? Date.now();
   const today = localDate(now);
   const visible = tasks
-    .filter(
-      (task) =>
-        !task.completed &&
-        ((task.dueDate && task.dueDate <= today) ||
-          (task.reminderAt && localDate(task.reminderAt) === today))
-    )
+    .filter((task) => {
+      const date = taskReminderSchedule(task).date;
+      return !task.completed && !!date && date <= today;
+    })
     .sort((a, b) => {
-      const aDue = a.dueDate || "9999-12-31";
-      const bDue = b.dueDate || "9999-12-31";
+      const aSchedule = taskReminderSchedule(a);
+      const bSchedule = taskReminderSchedule(b);
+      const aDue = aSchedule.date || "9999-12-31";
+      const bDue = bSchedule.date || "9999-12-31";
       return (
         aDue.localeCompare(bDue) ||
-        (a.dueTime || "").localeCompare(b.dueTime || "") ||
+        (aSchedule.time || "").localeCompare(bSchedule.time || "") ||
         a.createdAt - b.createdAt ||
         a.id.localeCompare(b.id)
       );
@@ -96,14 +99,22 @@ export function buildTaskWidgetSnapshot(
     appearance: options.appearance,
     accentLight: normalizeHexColor(options.accentLight),
     accentDark: normalizeHexColor(options.accentDark),
-    tasks: visible.slice(0, MAX_VISIBLE_TASKS).map((task) => ({
-      id: task.id,
-      title: task.title.trim(),
-      dueDate: task.dueDate,
-      dueTime: task.dueTime,
-      flagged: task.flagged,
-      priority: task.priority
-    }))
+    tasks: visible.slice(0, MAX_VISIBLE_TASKS).map((task) => {
+      const schedule = taskReminderSchedule(task);
+      return {
+        id: task.id,
+        title: task.title
+          // eslint-disable-next-line no-control-regex
+          .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ")
+          .trim()
+          .slice(0, 120),
+        // v3 wire keys are retained for the existing WidgetKit decoder.
+        dueDate: schedule.date,
+        dueTime: schedule.time,
+        flagged: task.flagged,
+        priority: task.priority
+      };
+    })
   };
 }
 

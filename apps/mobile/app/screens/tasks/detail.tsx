@@ -17,7 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { Task, TaskList, TaskPriority } from "@notesnook/core";
+import {
+  Task,
+  TaskList,
+  TaskPriority,
+  taskReminderSchedule
+} from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import notifee, { AuthorizationStatus } from "@notifee/react-native";
@@ -44,6 +49,8 @@ import { db } from "../../common/database";
 import { NavigationProps } from "../../services/navigation";
 import { TaskNotifications } from "../../services/task-notifications";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { TaskSymbolView } from "../../components/task-symbol-view";
+import { taskListColor, taskListSymbol } from "./list-customization";
 
 type ScheduledTask = Task & {
   reminderDate?: string;
@@ -67,6 +74,21 @@ type RepeatMode =
   | "halfyearly"
   | "yearly"
   | "custom";
+type CustomFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+const WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] as const;
+
+function customRule(
+  frequency: CustomFrequency,
+  interval: string,
+  weekdays: string[]
+) {
+  const every = Math.max(1, Math.min(365, Number.parseInt(interval, 10) || 1));
+  return `FREQ=${frequency};INTERVAL=${every}${
+    frequency === "WEEKLY" && weekdays.length
+      ? `;BYDAY=${weekdays.join(",")}`
+      : ""
+  }`;
+}
 
 const REPEAT_RULES: Partial<Record<RepeatMode, string>> = {
   daily: "FREQ=DAILY",
@@ -113,15 +135,7 @@ function nextHour() {
 }
 
 function scheduleFromTask(task: ScheduledTask) {
-  // Old records are not rewritten by opening the editor. An explicit legacy
-  // reminder wins over its separate due date until the domain migrates it.
-  if (task.reminderDate)
-    return { date: task.reminderDate, time: task.reminderTime };
-  if (task.reminderAt) {
-    const value = new Date(task.reminderAt);
-    return { date: calendarDate(value), time: wallTime(value) };
-  }
-  return { date: task.dueDate, time: task.dueTime };
+  return taskReminderSchedule(task);
 }
 
 function repeatMode(rule?: string): RepeatMode {
@@ -154,6 +168,14 @@ export default function TaskDetail({
   const [urgent, setUrgent] = React.useState(false);
   const [urgentStatus, setUrgentStatus] = React.useState<UrgentStatus>();
   const [rule, setRule] = React.useState("");
+  const [customFrequency, setCustomFrequency] =
+    React.useState<CustomFrequency>("WEEKLY");
+  const [customInterval, setCustomInterval] = React.useState("1");
+  const [customWeekdays, setCustomWeekdays] = React.useState<string[]>([
+    "MO",
+    "WE",
+    "FR"
+  ]);
   const [priority, setPriority] = React.useState<TaskPriority>("none");
   const [flagged, setFlagged] = React.useState(false);
   const [expandedPicker, setExpandedPicker] = React.useState<"date" | "time">();
@@ -166,6 +188,7 @@ export default function TaskDetail({
   const [notFound, setNotFound] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [notificationsDenied, setNotificationsDenied] = React.useState(false);
+  const [urgentFallback, setUrgentFallback] = React.useState(false);
   const repeatRow = React.useRef<View>(null);
   const priorityRow = React.useRef<View>(null);
 
@@ -217,6 +240,20 @@ export default function TaskDetail({
           setReminderTime(schedule.time);
           setUrgent(!!scheduled.urgent);
           setRule(scheduled.recurrenceRule || "");
+          if (scheduled.recurrenceRule) {
+            const freq = /(?:^|;)FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/.exec(
+              scheduled.recurrenceRule
+            )?.[1] as CustomFrequency | undefined;
+            if (freq) setCustomFrequency(freq);
+            setCustomInterval(
+              /(?:^|;)INTERVAL=(\d+)/.exec(scheduled.recurrenceRule)?.[1] || "1"
+            );
+            setCustomWeekdays(
+              /(?:^|;)BYDAY=([A-Z,]+)/
+                .exec(scheduled.recurrenceRule)?.[1]
+                ?.split(",") || []
+            );
+          }
           setPriority(scheduled.priority);
           setFlagged(scheduled.flagged);
         } else if (taskId || legacyReminderId) {
@@ -237,6 +274,21 @@ export default function TaskDetail({
     };
   }, [taskId, legacyReminderId, route.params?.listId]);
 
+  React.useEffect(() => {
+    if (!task?.urgent) return;
+    let active = true;
+    TaskNotifications.reconcile()
+      .then(() => {
+        if (active) setUrgentFallback(TaskNotifications.urgentFallback(task.id));
+      })
+      .catch(() => {
+        if (active) setUrgentFallback(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [task?.id, task?.urgent]);
+
   const save = async () => {
     if (!title.trim() || saving || notFound) return;
     if (rule.trim() && !reminderDate) {
@@ -244,11 +296,13 @@ export default function TaskDetail({
       return;
     }
     if (urgent && !reminderTime) {
-      Alert.alert(strings.tasksTitle(), "Urgent reminders need a time.");
+      Alert.alert(strings.tasksTitle(), strings.tasksUrgentNeedsTime());
       return;
     }
     setSaving(true);
     try {
+      if (reminderDate && (!urgent || urgentStatus !== "authorized"))
+        await TaskNotifications.requestPermission().catch(() => false);
       const input = {
         title: title.trim(),
         description: description.trim() || undefined,
@@ -335,10 +389,7 @@ export default function TaskDetail({
       return;
     }
     if (!reminderTime) {
-      Alert.alert(
-        strings.tasksTitle(),
-        "Choose a reminder time before enabling Urgent."
-      );
+      Alert.alert(strings.tasksTitle(), strings.tasksUrgentChooseTime());
       return;
     }
     try {
@@ -351,14 +402,11 @@ export default function TaskDetail({
       setUrgentStatus(status);
       if (status === "authorized") setUrgent(true);
       else if (status === "unsupported")
-        Alert.alert(
-          "Urgent",
-          "Alarm reminders are unavailable on this device. Standard reminders still work."
-        );
+        Alert.alert(strings.tasksUrgent(), strings.tasksUrgentUnavailable());
       else
         Alert.alert(
-          "Urgent",
-          "Allow alarms in Settings to use Urgent reminders."
+          strings.tasksUrgent(),
+          strings.tasksUrgentPermissionDenied()
         );
     } catch {
       Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
@@ -368,13 +416,13 @@ export default function TaskDetail({
   const repeatOptions: { mode: RepeatMode; label: string }[] = [
     { mode: "never", label: strings.never() },
     { mode: "daily", label: strings.tasksDaily() },
-    { mode: "weekdays", label: "Weekdays" },
-    { mode: "weekends", label: "Weekends" },
+    { mode: "weekdays", label: strings.tasksWeekdays() },
+    { mode: "weekends", label: strings.tasksWeekends() },
     { mode: "weekly", label: strings.tasksWeekly() },
-    { mode: "biweekly", label: "Biweekly" },
+    { mode: "biweekly", label: strings.tasksBiweekly() },
     { mode: "monthly", label: strings.tasksMonthly() },
-    { mode: "quarterly", label: "Every 3 Months" },
-    { mode: "halfyearly", label: "Every 6 Months" },
+    { mode: "quarterly", label: strings.tasksEveryThreeMonths() },
+    { mode: "halfyearly", label: strings.tasksEverySixMonths() },
     { mode: "yearly", label: strings.tasksYearly() },
     { mode: "custom", label: strings.tasksCustom() }
   ];
@@ -416,7 +464,11 @@ export default function TaskDetail({
       setReminderDate(calendarDate(new Date()));
     if (next === "never") setRule("");
     else if (next === "custom")
-      setRule(mode === "custom" ? rule : "FREQ=WEEKLY;BYDAY=MO,WE,FR");
+      setRule(
+        mode === "custom"
+          ? rule
+          : customRule(customFrequency, customInterval, customWeekdays)
+      );
     else setRule(REPEAT_RULES[next] || "");
   };
 
@@ -622,6 +674,19 @@ export default function TaskDetail({
           </>
         )}
 
+        {task?.legacyReminderId && (
+          <Text
+            style={{
+              color: visual.secondaryText,
+              fontSize: 12,
+              paddingHorizontal: 12,
+              paddingTop: 10
+            }}
+          >
+            {strings.tasksLegacyMigrationNotice()}
+          </Text>
+        )}
+
         {sectionTitle(strings.tasksReminder())}
         {group(
           <>
@@ -774,7 +839,7 @@ export default function TaskDetail({
               />
               <View style={{ flex: 1, marginLeft: 14, paddingVertical: 11 }}>
                 <Text style={{ color: visual.primaryText, fontSize: 16 }}>
-                  Urgent
+                  {strings.tasksUrgent()}
                 </Text>
                 <Text
                   style={{
@@ -783,11 +848,13 @@ export default function TaskDetail({
                     marginTop: 2
                   }}
                 >
-                  {urgentStatus === "unsupported"
-                    ? "Alarms unavailable on this device"
+                  {urgentFallback
+                    ? strings.tasksUrgentFallbackBody()
+                    : urgentStatus === "unsupported"
+                    ? strings.tasksUrgentAlarmUnavailable()
                     : !reminderTime
-                    ? "Choose a time to enable an alarm"
-                    : "Alarm until explicitly stopped"}
+                    ? strings.tasksUrgentTimeRequired()
+                    : strings.tasksUrgentUntilStopped()}
                 </Text>
               </View>
               <Switch
@@ -795,12 +862,24 @@ export default function TaskDetail({
                 onValueChange={setUrgentEnabled}
                 disabled={!reminderTime || urgentStatus === "unsupported"}
                 trackColor={{ true: colors.primary.accent }}
-                accessibilityLabel="Urgent alarm"
+                accessibilityLabel={strings.tasksUrgentAlarmLabel()}
               />
             </View>
+            {urgent && !!rule && (
+              <Text
+                style={{
+                  color: visual.secondaryText,
+                  fontSize: 12,
+                  paddingHorizontal: 16,
+                  paddingBottom: 14
+                }}
+              >
+                {strings.tasksUrgentRepeatLimit()}
+              </Text>
+            )}
           </>
         )}
-        {reminderDate && notificationsDenied && !urgent && (
+        {reminderDate && notificationsDenied && (!urgent || urgentFallback) && (
           <Pressable
             onPress={() => notifee.openNotificationSettings()}
             accessibilityRole="button"
@@ -839,25 +918,146 @@ export default function TaskDetail({
             )
           )}
         </View>
-        {mode === "custom" && (
-          <TextInput
-            value={rule}
-            onChangeText={setRule}
-            autoCapitalize="characters"
-            autoCorrect={false}
-            placeholder="FREQ=WEEKLY;BYDAY=MO,WE,FR"
-            placeholderTextColor={visual.tertiaryText}
-            accessibilityLabel={strings.tasksCustom()}
-            style={{
-              color: visual.primaryText,
-              backgroundColor: visual.contentSurface,
-              borderRadius: visual.controlRadius,
-              padding: 14,
-              marginTop: 8,
-              fontSize: 15
-            }}
-          />
-        )}
+        {mode === "custom" &&
+          group(
+            <View style={{ paddingVertical: 14 }}>
+              <Text
+                style={{
+                  color: visual.primaryText,
+                  fontSize: 15,
+                  marginBottom: 10
+                }}
+              >
+                {strings.tasksRepeatEvery()}
+              </Text>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 8
+                }}
+              >
+                <TextInput
+                  value={customInterval}
+                  onChangeText={(value) => {
+                    const next = value.replace(/\D/g, "").slice(0, 3);
+                    setCustomInterval(next);
+                    setRule(customRule(customFrequency, next, customWeekdays));
+                  }}
+                  keyboardType="number-pad"
+                  accessibilityLabel={strings.tasksRepeatInterval()}
+                  style={{
+                    color: visual.primaryText,
+                    backgroundColor: visual.selectedSurface,
+                    borderRadius: 10,
+                    textAlign: "center",
+                    width: 56,
+                    minHeight: 42,
+                    fontSize: 17
+                  }}
+                />
+                {(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const).map(
+                  (freq) => (
+                    <Pressable
+                      key={freq}
+                      onPress={() => {
+                        setCustomFrequency(freq);
+                        setRule(
+                          customRule(freq, customInterval, customWeekdays)
+                        );
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{
+                        selected: customFrequency === freq
+                      }}
+                      style={{
+                        paddingHorizontal: 7,
+                        paddingVertical: 10,
+                        borderRadius: 9,
+                        backgroundColor:
+                          customFrequency === freq
+                            ? visual.selectedSurface
+                            : "transparent"
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color:
+                            customFrequency === freq
+                              ? colors.primary.accent
+                              : visual.secondaryText,
+                          fontSize: 13
+                        }}
+                      >
+                        {freq === "DAILY"
+                          ? strings.tasksDays()
+                          : freq === "WEEKLY"
+                          ? strings.tasksWeeks()
+                          : freq === "MONTHLY"
+                          ? strings.tasksMonths()
+                          : strings.tasksYears()}
+                      </Text>
+                    </Pressable>
+                  )
+                )}
+              </View>
+              {customFrequency === "WEEKLY" && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    marginTop: 16
+                  }}
+                >
+                  {WEEKDAYS.map((day) => (
+                    <Pressable
+                      key={day}
+                      onPress={() => {
+                        const next = customWeekdays.includes(day)
+                          ? customWeekdays.filter((item) => item !== day)
+                          : WEEKDAYS.filter(
+                              (item) =>
+                                item === day || customWeekdays.includes(item)
+                            );
+                        setCustomWeekdays(next);
+                        setRule(
+                          customRule(customFrequency, customInterval, next)
+                        );
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={day}
+                      accessibilityState={{
+                        selected: customWeekdays.includes(day)
+                      }}
+                      style={{
+                        width: 36,
+                        height: 36,
+                        borderRadius: 18,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: customWeekdays.includes(day)
+                          ? colors.primary.accent
+                          : visual.selectedSurface
+                      }}
+                    >
+                      <Text
+                        style={{
+                          color: customWeekdays.includes(day)
+                            ? "#FFFFFF"
+                            : visual.primaryText,
+                          fontSize: 11,
+                          fontWeight: "700"
+                        }}
+                      >
+                        {day}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
 
         {sectionTitle(strings.tasksList())}
         {group(
@@ -1008,6 +1208,11 @@ export default function TaskDetail({
                     borderBottomWidth: 0.5
                   }}
                 >
+                  <TaskSymbolView
+                    name={taskListSymbol(list.symbol)}
+                    color={taskListColor(list.color)}
+                    size={22}
+                  />
                   <Text
                     style={{ flex: 1, color: visual.primaryText, fontSize: 16 }}
                   >

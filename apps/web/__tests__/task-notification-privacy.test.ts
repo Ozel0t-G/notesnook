@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { strings } from "@notesnook/intl";
 
 const mocks = vi.hoisted(() => {
   const state = { isLocked: false, credentials: [] as { active: boolean }[] };
@@ -127,4 +128,23 @@ test("starting while already locked clears a prior desktop schedule immediately"
   await Promise.resolve();
   expect(mocks.replace).toHaveBeenCalledTimes(1);
   expect(mocks.replace.mock.calls[0][0]).toEqual([]);
+});
+
+test("labels a synced Urgent task as a standard Mac alert", async () => {
+  mocks.list.mockResolvedValueOnce([
+    {
+      id: "urgent-task",
+      title: "Call Alex",
+      urgent: true,
+      completed: false,
+      reminderAt: Date.now() + 3_600_000
+    }
+  ]);
+  const { TaskNotificationStore } = await import(
+    "../src/stores/task-notification-store"
+  );
+  await TaskNotificationStore.refresh();
+  expect(JSON.stringify(mocks.replace.mock.lastCall?.[0])).toContain(
+    `${strings.tasksUrgentStandardAlert()}: Call Alex`
+  );
 });

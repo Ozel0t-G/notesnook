@@ -41,7 +41,8 @@ function validFavorite(value: unknown): value is TaskFavorite {
   if (typeof value !== "string") return false;
   if (value.startsWith("smart:"))
     return SMART_LISTS.includes(value.slice(6) as TaskSmartList);
-  return /^list:[a-f0-9]{24}$/i.test(value);
+  // Custom Lists use ObjectIDs; the deterministic default List uses an MD5 ID.
+  return /^list:(?:[a-f0-9]{24}|[a-f0-9]{32})$/i.test(value);
 }
 
 function validFavorites(value: unknown): value is TaskFavorite[] {

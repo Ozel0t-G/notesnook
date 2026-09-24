@@ -12,6 +12,7 @@ the Free Software Foundation, either version 3 of the License, or
 import { db } from "./db";
 import {
   isTaskOverdue,
+  taskReminderSchedule,
   type Task,
   type TaskInput,
   type TaskList,
@@ -30,11 +31,15 @@ export const taskIsOverdue = isTaskOverdue;
 export function compareTasks(a: TaskRecord, b: TaskRecord): number {
   const overdue = Number(taskIsOverdue(b)) - Number(taskIsOverdue(a));
   if (overdue) return overdue;
-  const due = (a.dueDate || "9999-12-31").localeCompare(
-    b.dueDate || "9999-12-31"
+  const aSchedule = taskReminderSchedule(a);
+  const bSchedule = taskReminderSchedule(b);
+  const due = (aSchedule.date || "9999-12-31").localeCompare(
+    bSchedule.date || "9999-12-31"
   );
   if (due) return due;
-  const time = (a.dueTime || "23:59").localeCompare(b.dueTime || "23:59");
+  const time = (aSchedule.time || "23:59").localeCompare(
+    bSchedule.time || "23:59"
+  );
   if (time) return time;
   return a.createdAt - b.createdAt || a.id.localeCompare(b.id);
 }

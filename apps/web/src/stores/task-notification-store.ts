@@ -17,7 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { DatabaseUpdatedEvent, EVENTS, Task } from "@notesnook/core";
+import {
+  DatabaseUpdatedEvent,
+  EVENTS,
+  Task,
+  taskReminderTimestamp
+} from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import dayjs from "dayjs";
 import { db } from "../common/db";
@@ -52,15 +57,26 @@ function cron(timestamp: number) {
   return dayjs(timestamp).format("ss mm HH DD MM * YYYY");
 }
 
+function taskAlertTitle(task: Task) {
+  const title = task.title.slice(0, 2048);
+  return task.urgent
+    ? `${strings.tasksUrgentStandardAlert()}: ${title}`
+    : title;
+}
+
 async function notify(task: Task) {
   if (!Config.get("reminderNotifications", true)) return;
   const current = await db.tasks.get(task.id);
-  if (!current || current.completed || current.reminderAt !== task.reminderAt)
+  if (
+    !current ||
+    current.completed ||
+    taskReminderTimestamp(current) !== taskReminderTimestamp(task)
+  )
     return;
 
   if ("Notification" in window && Notification.permission === "granted") {
     const notification = new Notification(
-      taskTitlesArePrivate() ? strings.tasksTitle() : current.title,
+      taskTitlesArePrivate() ? strings.tasksTitle() : taskAlertTitle(current),
       {
         tag: `task:${task.id}`
       }
@@ -82,18 +98,20 @@ async function refreshNow() {
   await TaskScheduler.stopAllWithPrefix("task:");
   const now = Date.now();
   const tasks = (await db.tasks.list())
-    .filter((task) => !task.completed && task.reminderAt !== undefined)
+    .filter(
+      (task) => !task.completed && taskReminderTimestamp(task) !== undefined
+    )
     .sort(
       (a, b) =>
-        (a.reminderAt as number) - (b.reminderAt as number) ||
-        a.id.localeCompare(b.id)
+        (taskReminderTimestamp(a) as number) -
+          (taskReminderTimestamp(b) as number) || a.id.localeCompare(b.id)
     );
 
   if (IS_DESKTOP_APP) {
     lastDesktopSchedule = Config.get("reminderNotifications", true)
       ? tasks.map((task) => ({
           id: task.id,
-          reminderAt: task.reminderAt as number
+          reminderAt: taskReminderTimestamp(task) as number
         }))
       : [];
     await desktop?.integration.replaceTaskReminders.mutate(
@@ -104,19 +122,19 @@ async function refreshNow() {
           }))
         : tasks.map((task) => ({
             id: task.id,
-            title: task.title.slice(0, 2048),
-            reminderAt: task.reminderAt as number
+            title: taskAlertTitle(task),
+            reminderAt: taskReminderTimestamp(task) as number
           }))
     );
     return;
   }
 
   for (const task of tasks
-    .filter((task) => (task.reminderAt as number) > now)
+    .filter((task) => (taskReminderTimestamp(task) as number) > now)
     .slice(0, 500)) {
     await TaskScheduler.register(
       `task:${task.id}`,
-      cron(task.reminderAt as number),
+      cron(taskReminderTimestamp(task) as number),
       () => {
         void notify(task);
         void refresh();

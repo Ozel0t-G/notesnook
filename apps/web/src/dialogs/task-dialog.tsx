@@ -33,6 +33,7 @@ import { showToast } from "../utils/toast";
 import { logger } from "../utils/logger";
 import { strings } from "@notesnook/intl";
 import { TaskListGlyph } from "../components/task-list-appearance";
+import { taskReminderSchedule } from "@notesnook/core";
 
 type TaskDialogProps = BaseDialogProps<boolean> & {
   task?: TaskRecord;
@@ -43,11 +44,28 @@ type TaskDialogProps = BaseDialogProps<boolean> & {
 const presetRules = {
   none: "",
   daily: "FREQ=DAILY",
+  weekdays: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+  weekends: "FREQ=WEEKLY;BYDAY=SA,SU",
   weekly: "FREQ=WEEKLY",
+  biweekly: "FREQ=WEEKLY;INTERVAL=2",
   monthly: "FREQ=MONTHLY",
+  quarterly: "FREQ=MONTHLY;INTERVAL=3",
+  halfyearly: "FREQ=MONTHLY;INTERVAL=6",
   yearly: "FREQ=YEARLY"
 } as const;
 type RepeatPreset = keyof typeof presetRules | "custom";
+type CustomFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+const WEEKDAYS = ["MO", "TU", "WE", "TH", "FR", "SA", "SU"] as const;
+function buildCustomRule(
+  frequency: CustomFrequency,
+  interval: number,
+  days: string[]
+) {
+  const value = Math.max(1, Math.min(365, Math.floor(interval || 1)));
+  return `FREQ=${frequency};INTERVAL=${value}${
+    frequency === "WEEKLY" && days.length ? `;BYDAY=${days.join(",")}` : ""
+  }`;
+}
 
 function presetForRule(rule?: string): RepeatPreset {
   if (!rule) return "none";
@@ -57,25 +75,8 @@ function presetForRule(rule?: string): RepeatPreset {
 
 function scheduleForTask(task?: TaskRecord) {
   if (!task) return { date: "", time: "" };
-  const schedule = task as TaskRecord & {
-    reminderDate?: string;
-    reminderTime?: string;
-  };
-  if (schedule.reminderDate)
-    return { date: schedule.reminderDate, time: schedule.reminderTime || "" };
-  if (task.reminderAt) {
-    const value = new Date(task.reminderAt);
-    return {
-      date: `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(
-        2,
-        "0"
-      )}-${String(value.getDate()).padStart(2, "0")}`,
-      time: `${String(value.getHours()).padStart(2, "0")}:${String(
-        value.getMinutes()
-      ).padStart(2, "0")}`
-    };
-  }
-  return { date: task.dueDate || "", time: task.dueTime || "" };
+  const schedule = taskReminderSchedule(task);
+  return { date: schedule.date || "", time: schedule.time || "" };
 }
 
 const controlStyle = {
@@ -106,16 +107,36 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
     task?.priority || "none"
   );
   const [flagged, setFlagged] = useState(task?.flagged || false);
+  const [urgent, setUrgent] = useState(Boolean(task?.urgent));
   const [repeatPreset, setRepeatPreset] = useState<RepeatPreset>(
     presetForRule(task?.recurrenceRule)
   );
-  const [customRule, setCustomRule] = useState(task?.recurrenceRule || "");
+  const [customFrequency, setCustomFrequency] = useState<CustomFrequency>(
+    (/(?:^|;)FREQ=(DAILY|WEEKLY|MONTHLY|YEARLY)/.exec(
+      task?.recurrenceRule || ""
+    )?.[1] as CustomFrequency) || "WEEKLY"
+  );
+  const [customInterval, setCustomInterval] = useState(
+    Number(/(?:^|;)INTERVAL=(\d+)/.exec(task?.recurrenceRule || "")?.[1] || 1)
+  );
+  const [customDays, setCustomDays] = useState<string[]>(
+    /(?:^|;)BYDAY=([A-Z,]+)/
+      .exec(task?.recurrenceRule || "")?.[1]
+      ?.split(",") || []
+  );
+  const [customDirty, setCustomDirty] = useState(false);
   const [saving, setSaving] = useState(false);
 
   async function save() {
     if (!title.trim() || !listId || saving) return;
     const recurrenceRule =
-      repeatPreset === "custom" ? customRule.trim() : presetRules[repeatPreset];
+      repeatPreset === "custom"
+        ? !customDirty &&
+          task?.recurrenceRule &&
+          presetForRule(task.recurrenceRule) === "custom"
+          ? task.recurrenceRule
+          : buildCustomRule(customFrequency, customInterval, customDays)
+        : presetRules[repeatPreset];
     if (repeatPreset === "custom" && !recurrenceRule) {
       showToast("error", strings.tasksInvalidRecurrence());
       return;
@@ -131,9 +152,7 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
       listId,
       reminderDate: reminderDate || undefined,
       reminderTime: reminderDate && reminderTime ? reminderTime : undefined,
-      urgent:
-        (task as (TaskRecord & { urgent?: boolean }) | undefined)?.urgent ||
-        false,
+      urgent: Boolean(reminderDate && reminderTime && urgent),
       recurrenceRule: recurrenceRule || undefined,
       priority,
       flagged
@@ -224,6 +243,11 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
             style={{ ...controlStyle, resize: "vertical" }}
           />
         </TaskControl>
+        {task?.legacyReminderId && (
+          <Text variant="subBody" sx={{ color: "paragraph-muted" }}>
+            {strings.tasksLegacyMigrationNotice()}
+          </Text>
+        )}
         <TaskControl label={strings.tasksList()}>
           <Flex sx={{ alignItems: "center", gap: 2 }}>
             <TaskListGlyph
@@ -279,15 +303,14 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
             display: "flex",
             alignItems: "center",
             gap: 8,
-            opacity: 0.65
+            opacity: urgent ? 1 : 0.65
           }}
         >
           <input
             type="checkbox"
-            disabled
-            checked={Boolean(
-              (task as (TaskRecord & { urgent?: boolean }) | undefined)?.urgent
-            )}
+            disabled={!urgent}
+            checked={urgent}
+            onChange={() => setUrgent(false)}
           />
           <Text>{strings.tasksUrgent()}</Text>
         </label>
@@ -305,21 +328,76 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
           >
             <option value="none">{strings.tasksNone()}</option>
             <option value="daily">{strings.tasksDaily()}</option>
+            <option value="weekdays">{strings.tasksWeekdays()}</option>
+            <option value="weekends">{strings.tasksWeekends()}</option>
             <option value="weekly">{strings.tasksWeekly()}</option>
+            <option value="biweekly">{strings.tasksBiweekly()}</option>
             <option value="monthly">{strings.tasksMonthly()}</option>
+            <option value="quarterly">{strings.tasksEveryThreeMonths()}</option>
+            <option value="halfyearly">{strings.tasksEverySixMonths()}</option>
             <option value="yearly">{strings.tasksYearly()}</option>
             <option value="custom">{strings.tasksCustom()}</option>
           </select>
         </TaskControl>
         {repeatPreset === "custom" ? (
-          <TaskControl label="RRULE">
-            <input
-              aria-label="RRULE"
-              placeholder="FREQ=WEEKLY;BYDAY=MO,WE,FR"
-              value={customRule}
-              onChange={(event) => setCustomRule(event.target.value)}
-              style={controlStyle}
-            />
+          <TaskControl label={strings.tasksCustom()}>
+            <Flex sx={{ gap: 1, alignItems: "center", flexWrap: "wrap" }}>
+              <Text>{strings.tasksRepeatEvery()}</Text>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={customInterval}
+                aria-label={strings.tasksRepeatInterval()}
+                onChange={(event) => {
+                  setCustomDirty(true);
+                  setCustomInterval(Number(event.target.value));
+                }}
+                style={{ ...controlStyle, width: 70 }}
+              />
+              <select
+                value={customFrequency}
+                aria-label={strings.tasksRepeatFrequency()}
+                onChange={(event) => {
+                  setCustomDirty(true);
+                  setCustomFrequency(event.target.value as CustomFrequency);
+                }}
+                style={{ ...controlStyle, width: 130 }}
+              >
+                <option value="DAILY">{strings.tasksDays()}</option>
+                <option value="WEEKLY">{strings.tasksWeeks()}</option>
+                <option value="MONTHLY">{strings.tasksMonths()}</option>
+                <option value="YEARLY">{strings.tasksYears()}</option>
+              </select>
+              {customFrequency === "WEEKLY" &&
+                WEEKDAYS.map((day) => (
+                  <label
+                    key={day}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 3
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={customDays.includes(day)}
+                      onChange={() => {
+                        setCustomDirty(true);
+                        setCustomDays((current) =>
+                          current.includes(day)
+                            ? current.filter((value) => value !== day)
+                            : WEEKDAYS.filter(
+                                (value) =>
+                                  value === day || current.includes(value)
+                              )
+                        );
+                      }}
+                    />
+                    {day}
+                  </label>
+                ))}
+            </Flex>
           </TaskControl>
         ) : null}
         <TaskControl label={strings.tasksPriority()}>

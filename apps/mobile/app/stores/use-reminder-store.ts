@@ -22,8 +22,15 @@ import createDBCollectionStore from "./create-db-collection-store";
 
 const { useStore: useReminderStore, useCollection: useReminders } =
   createDBCollectionStore({
-    getCollection: () =>
-      db.reminders.all.grouped(db.settings.getGroupOptions("reminders")),
+    getCollection: async () => {
+      const reminders = db.reminders.all.clone();
+      const migrated = (await reminders.ids()).filter((id) =>
+        db.tasks.isMigratedReminder(id)
+      );
+      if (migrated.length)
+        reminders.where((eb) => eb("id", "not in", migrated));
+      return reminders.grouped(db.settings.getGroupOptions("reminders"));
+    },
     eagerlyFetchFirstBatch: true
   });
 

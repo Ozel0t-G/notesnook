@@ -20,7 +20,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { Box, Button, Flex, Text } from "@theme-ui/components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { strings } from "@notesnook/intl";
-import { DatabaseUpdatedEvent, EVENTS } from "@notesnook/core";
+import {
+  DatabaseUpdatedEvent,
+  EVENTS,
+  taskReminderSchedule
+} from "@notesnook/core";
 import { TaskFavorite } from "@notesnook/core";
 import { db } from "../common/db";
 import {
@@ -61,22 +65,15 @@ function todayKey(): string {
 
 function countForSmartList(kind: SmartTaskList, tasks: TaskRecord[]): number {
   const today = todayKey();
-  const now = Date.now();
   return tasks.filter((task) => {
     if (kind === "completed") return task.completed;
     if (task.completed) return false;
+    const schedule = taskReminderSchedule(task);
     switch (kind) {
       case "today":
-        return Boolean(
-          (task.dueDate && task.dueDate <= today) ||
-            (task.reminderAt && todayKeyForTimestamp(task.reminderAt) === today)
-        );
+        return Boolean(schedule.date && schedule.date <= today);
       case "scheduled":
-        if (task.dueDate && task.dueDate < today) return false;
-        return Boolean(
-          (task.dueDate && task.dueDate >= today) ||
-            (task.reminderAt && task.reminderAt >= now)
-        );
+        return Boolean(schedule.date && schedule.date >= today);
       case "flagged":
         return task.flagged;
       default:
@@ -85,35 +82,11 @@ function countForSmartList(kind: SmartTaskList, tasks: TaskRecord[]): number {
   }).length;
 }
 
-function todayKeyForTimestamp(timestamp: number): string {
-  const date = new Date(timestamp);
-  return [
-    date.getFullYear(),
-    String(date.getMonth() + 1).padStart(2, "0"),
-    String(date.getDate()).padStart(2, "0")
-  ].join("-");
-}
-
 function reminderLabel(task: TaskRecord): string | undefined {
-  const schedule = task as TaskRecord & {
-    reminderDate?: string;
-    reminderTime?: string;
-  };
-  const dateValue =
-    schedule.reminderDate ||
-    (task.reminderAt ? todayKeyForTimestamp(task.reminderAt) : undefined) ||
-    task.dueDate;
+  const schedule = taskReminderSchedule(task);
+  const dateValue = schedule.date;
   if (!dateValue) return undefined;
-  const timeValue =
-    schedule.reminderTime ||
-    (task.reminderAt && !schedule.reminderDate
-      ? new Intl.DateTimeFormat("en-GB", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false
-        }).format(task.reminderAt)
-      : undefined) ||
-    task.dueTime;
+  const timeValue = schedule.time;
   const [year, month, day] = dateValue.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   const formatted = new Intl.DateTimeFormat(undefined, {
@@ -132,11 +105,8 @@ function reminderLabel(task: TaskRecord): string | undefined {
 
 function scheduledGroups(tasks: TaskRecord[]) {
   const byDate = new Map<string, TaskRecord[]>();
-  const today = todayKey();
   for (const task of tasks) {
-    const date =
-      (task.dueDate && task.dueDate >= today ? task.dueDate : undefined) ||
-      (task.reminderAt ? todayKeyForTimestamp(task.reminderAt) : "");
+    const date = taskReminderSchedule(task).date;
     if (!date) continue;
     const group = byDate.get(date) || [];
     group.push(task);
@@ -164,6 +134,9 @@ export default function Tasks() {
   const [lists, setLists] = useState<TaskListRecord[]>([]);
   const [favorites, setFavorites] = useState<TaskFavorite[]>([]);
   const [editingFavorites, setEditingFavorites] = useState(false);
+  const favoritesRef = useRef<TaskFavorite[]>([]);
+  const editingFavoritesRef = useRef(false);
+  const favoriteSave = useRef(Promise.resolve());
   const [favoriteChoice, setFavoriteChoice] =
     useState<TaskFavorite>("smart:today");
   const draggedFavorite = useRef<TaskFavorite | null>(null);
@@ -199,13 +172,15 @@ export default function Tasks() {
       if (request !== refreshId.current) return;
       setTasks(allTasks);
       setLists(allLists);
-      setFavorites(
-        savedFavorites.filter(
+      if (!editingFavoritesRef.current) {
+        const resolvedFavorites = savedFavorites.filter(
           (item) =>
             !item.startsWith("list:") ||
             allLists.some((list) => list.id === item.slice(5))
-        )
-      );
+        );
+        favoritesRef.current = resolvedFavorites;
+        setFavorites(resolvedFavorites);
+      }
       setDefaultListId(defaultList.id);
       setVisibleTasks(
         selection === "completed"
@@ -387,22 +362,31 @@ export default function Tasks() {
   }
 
   async function saveFavorites(next: TaskFavorite[]) {
-    const previous = favorites;
+    const previous = favoritesRef.current;
+    favoritesRef.current = next;
     setFavorites(next);
+    const save = favoriteSave.current
+      .catch(() => undefined)
+      .then(() => taskDomain.taskFavorites.set(next));
+    favoriteSave.current = save;
     try {
-      await taskDomain.taskFavorites.set(next);
+      await save;
     } catch (cause) {
-      setFavorites(previous);
+      if (favoritesRef.current === next) {
+        favoritesRef.current = previous;
+        setFavorites(previous);
+      }
       logger.error(cause);
       showToast("error", strings.tasksCouldNotSave());
     }
   }
 
   function moveFavorite(item: TaskFavorite, offset: number) {
-    const from = favorites.indexOf(item);
+    const current = favoritesRef.current;
+    const from = current.indexOf(item);
     const to = from + offset;
-    if (from < 0 || to < 0 || to >= favorites.length) return;
-    const next = [...favorites];
+    if (from < 0 || to < 0 || to >= current.length) return;
+    const next = [...current];
     next.splice(from, 1);
     next.splice(to, 0, item);
     void saveFavorites(next);
@@ -418,6 +402,9 @@ export default function Tasks() {
     if (!confirmed) return;
     try {
       await taskDomain.taskLists.remove(list.id);
+      await saveFavorites(
+        favoritesRef.current.filter((ref) => ref !== `list:${list.id}`)
+      );
       setSelection("all");
       await refresh();
     } catch (cause) {
@@ -476,7 +463,12 @@ export default function Tasks() {
           <Text sx={{ fontWeight: "bold" }}>{strings.tasksFavorites()}</Text>
           <Button
             variant="transparent"
-            onClick={() => setEditingFavorites((value) => !value)}
+            onClick={() => {
+              editingFavoritesRef.current = !editingFavoritesRef.current;
+              setEditingFavorites(editingFavoritesRef.current);
+              if (!editingFavoritesRef.current)
+                void favoriteSave.current.then(refresh, refresh);
+            }}
             aria-label={strings.tasksEditFavorites()}
             aria-pressed={editingFavorites}
           >
@@ -597,7 +589,7 @@ export default function Tasks() {
                       )}`}
                       onClick={() =>
                         void saveFavorites(
-                          favorites.filter((value) => value !== item)
+                          favoritesRef.current.filter((value) => value !== item)
                         )
                       }
                     >
@@ -632,7 +624,7 @@ export default function Tasks() {
               variant="secondary"
               onClick={() =>
                 void saveFavorites([
-                  ...favorites,
+                  ...favoritesRef.current,
                   availableFavorites.includes(favoriteChoice)
                     ? favoriteChoice
                     : availableFavorites[0]

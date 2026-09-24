@@ -637,6 +637,11 @@ export class Tasks extends TaskRecordStore {
     return !!this.db.settings.collection.records([settingKey])[settingKey];
   }
 
+  /** Includes Task tombstones so deleting a converted Task cannot revive its source Reminder. */
+  isMigratedReminder(reminderId: string): boolean {
+    return this.recordExists(makeId(`${PREFIX}legacy:${reminderId}`));
+  }
+
   async create(input: TaskInput): Promise<Task> {
     const title = input.title.trim();
     if (!title) throw new Error("Task title is required.");
@@ -941,7 +946,7 @@ export class Tasks extends TaskRecordStore {
     }
   }
 
-  /** Runs at startup and after sync. Durable Task creation precedes disabling the source Reminder. */
+  /** Runs at startup and after sync. Older clients retain their source Reminder. */
   async migrateLegacyReminders(): Promise<void> {
     await this.maintenanceMutex.runExclusive(() =>
       this.migrateLegacyRemindersUnsafe()
@@ -1022,10 +1027,8 @@ export class Tasks extends TaskRecordStore {
           localOnly: reminder.localOnly
         });
       }
-      // Keep the original payload for a Web or fork rollback. The Task is the
-      // fork's only visible record; disabling the source avoids duplicate alerts.
-      if (!reminder.disabled)
-        await this.db.reminders.add({ id: reminder.id, disabled: true });
+      // The source stays active for clients that do not understand Tasks.
+      // Updated clients suppress it locally via isMigratedReminder().
     }
   }
 }

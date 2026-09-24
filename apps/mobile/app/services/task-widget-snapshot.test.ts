@@ -33,8 +33,12 @@ const NOW = new Date(2026, 8, 24, 12).getTime();
 
 function snapshotInTimezone(timezone: string, now: number, tasks: Task[] = []) {
   const modulePath = path.join(__dirname, "task-widget-snapshot.ts");
-  const script = `const { buildTaskWidgetSnapshot } = require(${JSON.stringify(modulePath)});
-process.stdout.write(JSON.stringify(buildTaskWidgetSnapshot(${JSON.stringify(tasks)}, {
+  const script = `const { buildTaskWidgetSnapshot } = require(${JSON.stringify(
+    modulePath
+  )});
+process.stdout.write(JSON.stringify(buildTaskWidgetSnapshot(${JSON.stringify(
+    tasks
+  )}, {
   now: ${now}, appearance: "system", accentLight: "#123ABC", accentDark: "#456DEF"
 })));`;
   return JSON.parse(
@@ -106,6 +110,52 @@ describe("task widget", () => {
     expect(snapshot.utcOffsetMinutes).toBe(-new Date(NOW).getTimezoneOffset());
     expect(snapshot.tasks[0].dueDate).toBe("2026-09-23");
     expect(snapshot.tasks[1].dueDate).toBe("2026-09-24");
+  });
+
+  test("uses the new reminder schedule instead of a retained legacy due date", () => {
+    const snapshot = buildTaskWidgetSnapshot(
+      [
+        task("scheduled-today", "2026-09-30", {
+          reminderDate: "2026-09-24",
+          reminderTime: "14:00",
+          scheduleVersion: 2
+        }),
+        task("unscheduled", "2026-09-24", {
+          reminderDate: undefined,
+          reminderTime: undefined,
+          scheduleVersion: 2
+        })
+      ],
+      {
+        now: NOW,
+        appearance: "system",
+        accentLight: "#123ABC",
+        accentDark: "#456DEF"
+      }
+    );
+    expect(snapshot.tasks.map((item) => item.id)).toEqual(["scheduled-today"]);
+    expect(snapshot.tasks[0]).toMatchObject({
+      dueDate: "2026-09-24",
+      dueTime: "14:00"
+    });
+  });
+
+  test("keeps widget titles short and on one line", () => {
+    const snapshot = buildTaskWidgetSnapshot(
+      [
+        task("title", "2026-09-24", {
+          title: `First\nSecond ${"x".repeat(180)}`
+        })
+      ],
+      {
+        now: NOW,
+        appearance: "system",
+        accentLight: "#123ABC",
+        accentDark: "#456DEF"
+      }
+    );
+    expect(snapshot.tasks[0].title).toMatch(/^First Second /);
+    expect(snapshot.tasks[0].title).toHaveLength(120);
   });
 
   test("marks the current local day across a timezone boundary", () => {

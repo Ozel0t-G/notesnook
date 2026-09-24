@@ -60,6 +60,12 @@ describe("standalone Tasks", () => {
       `list:${work.id}`,
       "smart:today"
     ]);
+    const defaultList = await db.taskLists.default();
+    await db.taskFavorites.set([`list:${defaultList.id}`, `list:${work.id}`]);
+    expect(db.taskFavorites.listSync()).toEqual([
+      `list:${defaultList.id}`,
+      `list:${work.id}`
+    ]);
     await db.taskFavorites.set([]);
     expect(db.taskFavorites.listSync()).toEqual([]);
     await expect(
@@ -592,8 +598,7 @@ describe("standalone Tasks", () => {
         title: "Legacy",
         description: "Bring the original document",
         date,
-        snoozeUntil,
-        disabled: true
+        snoozeUntil
       })
     );
   });
@@ -628,7 +633,8 @@ describe("standalone Tasks", () => {
         seriesStartTime: "09:00",
         reminderAt: new Date(`${nextDate}T09:00:00`).getTime()
       });
-      expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
+      expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
+      expect(db.tasks.isMigratedReminder(id!)).toBe(true);
       await atTime(new Date(2026, 9, 1, 12).getTime(), () =>
         db.tasks.migrateLegacyReminders()
       );
@@ -693,13 +699,13 @@ describe("standalone Tasks", () => {
     expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
   });
 
-  test("200 legacy Reminders migrate once across multiple iterator pages", async () => {
+  test("200 legacy Reminders migrate once and remain available to older clients", async () => {
     const db = await databaseTest();
     db.options.batchSize = 31;
     const date = new Date(2026, 9, 31, 18).getTime();
     for (let index = 0; index < 200; index++)
       await db.reminders.add({ title: `Reminder ${index}`, date });
-    const disable = vi.spyOn(db.reminders, "add");
+    const sourceWrites = vi.spyOn(db.reminders, "add");
     const scan = vi.spyOn(db.reminders, "all", "get");
     try {
       await db.tasks.migrateLegacyReminders();
@@ -707,19 +713,19 @@ describe("standalone Tasks", () => {
       expect(
         (await db.tasks.list()).filter((task) => task.legacyReminderId)
       ).toHaveLength(200);
-      expect(disable).toHaveBeenCalledTimes(200);
+      expect(sourceWrites).not.toHaveBeenCalled();
       expect(
-        (await db.reminders.all.items()).every((reminder) => reminder.disabled)
+        (await db.reminders.all.items()).every((reminder) => !reminder.disabled)
       ).toBe(true);
       await db.tasks.migrateLegacyReminders();
       expect(scan).toHaveBeenCalledTimes(3);
       expect(
         (await db.tasks.list()).filter((task) => task.legacyReminderId)
       ).toHaveLength(200);
-      expect(disable).toHaveBeenCalledTimes(200);
+      expect(sourceWrites).not.toHaveBeenCalled();
     } finally {
       scan.mockRestore();
-      disable.mockRestore();
+      sourceWrites.mockRestore();
     }
   });
 
@@ -911,31 +917,27 @@ describe("standalone Tasks", () => {
     }
   });
 
-  test("migration resumes after Task persistence but before disabling Reminder", async () => {
+  test("migrated Reminder remains active for older clients after Task deletion", async () => {
     const db = await databaseTest();
     const id = await db.reminders.add({
-      title: "Interrupted",
+      title: "Legacy",
       date: new Date(2026, 10, 3, 9).getTime()
     });
-    const disable = vi
-      .spyOn(db.reminders, "add")
-      .mockRejectedValueOnce(new Error("interrupted"));
-    await expect(db.tasks.migrateLegacyReminders()).rejects.toThrow(
-      "interrupted"
-    );
-    expect(
-      (await db.tasks.list()).filter((item) => item.legacyReminderId === id)
-    ).toHaveLength(1);
-    expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
-    disable.mockRestore();
     await db.tasks.migrateLegacyReminders();
-    expect(
-      (await db.tasks.list()).filter((item) => item.legacyReminderId === id)
-    ).toHaveLength(1);
-    expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
+    const [task] = (await db.tasks.list()).filter(
+      (item) => item.legacyReminderId === id
+    );
+    expect(task).toBeDefined();
+    expect(db.tasks.isMigratedReminder(id!)).toBe(true);
+    expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
+    await db.tasks.remove(task.id);
+    await db.tasks.migrateLegacyReminders();
+    expect(db.tasks.isMigratedReminder(id!)).toBe(true);
+    expect(await db.tasks.get(task.id)).toBeUndefined();
+    expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
   });
 
-  test("stale recurring Reminder migration resumes without duplicating the rolled Task", async () => {
+  test("stale recurring Reminder migration stays idempotent without modifying its source", async () => {
     const db = await databaseTest();
     const id = await db.reminders.add({
       title: "Interrupted daily",
@@ -943,18 +945,9 @@ describe("standalone Tasks", () => {
       mode: "repeat",
       recurringMode: "day"
     });
-    const disable = vi
-      .spyOn(db.reminders, "add")
-      .mockRejectedValueOnce(new Error("interrupted"));
-    try {
-      await expect(
-        atTime(new Date(2026, 8, 24, 12).getTime(), () =>
-          db.tasks.migrateLegacyReminders()
-        )
-      ).rejects.toThrow("interrupted");
-    } finally {
-      disable.mockRestore();
-    }
+    await atTime(new Date(2026, 8, 24, 12).getTime(), () =>
+      db.tasks.migrateLegacyReminders()
+    );
     const [persisted] = (await db.tasks.list()).filter(
       (task) => task.legacyReminderId === id
     );
@@ -966,7 +959,7 @@ describe("standalone Tasks", () => {
     expect(
       (await db.tasks.list()).filter((task) => task.legacyReminderId === id)
     ).toEqual([persisted]);
-    expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
+    expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
   });
 
   test("completed occurrence recovers its next Task after interrupted persistence", async () => {
@@ -1082,7 +1075,8 @@ describe("standalone Tasks", () => {
     });
     await db.tasks.migrateLegacyReminders();
     expect(await db.tasks.get(task.id)).toBeUndefined();
-    expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
+    expect(db.tasks.isMigratedReminder(id!)).toBe(true);
+    expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
   });
 
   test("malformed namespaced setting records cannot enter Task queries", async () => {

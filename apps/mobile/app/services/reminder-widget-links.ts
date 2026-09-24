@@ -43,19 +43,32 @@ export function parseReminderWidgetLink(
   const normalized = value.replace(/\/+$/, "");
   if (
     normalized.toLowerCase() === REMINDER_WIDGET_URLS.list.toLowerCase() ||
-    normalized.toLowerCase() === "sharemedia://reminderswidget"
+    normalized.toLowerCase() === "sharemedia://reminderswidget" ||
+    normalized.toLowerCase() === "veyran://tasks"
   ) {
     return { action: "list" };
   }
   if (
     normalized.toLowerCase() === REMINDER_WIDGET_URLS.create.toLowerCase() ||
-    normalized.toLowerCase() === "sharemedia://newreminderwidget"
+    normalized.toLowerCase() === "sharemedia://newreminderwidget" ||
+    normalized.toLowerCase() === "veyran://task/new"
   ) {
     return { action: "create" };
   }
 
   try {
     const url = new URL(value);
+    if (url.protocol.toLowerCase() === "veyran:") {
+      if (url.hostname.toLowerCase() !== "task" || url.search || url.hash)
+        return;
+      const parts = url.pathname.split("/").filter(Boolean);
+      if (
+        parts.length !== 1 ||
+        !/^(?:[a-f0-9]{24}|[a-f0-9]{32})$/i.test(parts[0])
+      )
+        return;
+      return { action: "task", id: parts[0] };
+    }
     if (
       url.protocol.toLowerCase() !== "sharemedia:" ||
       !["taskwidget", "completetaskwidget", "reminderwidget"].includes(

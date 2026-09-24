@@ -162,6 +162,23 @@ describe("reminder widget links", () => {
     expect(parseReminderWidgetLink(REMINDER_WIDGET_URLS.create)).toEqual({
       action: "create"
     });
+    expect(parseReminderWidgetLink("veyran://tasks")).toEqual({
+      action: "list"
+    });
+    expect(parseReminderWidgetLink("veyran://task/new")).toEqual({
+      action: "create"
+    });
+    expect(
+      parseReminderWidgetLink("veyran://task/0123456789abcdef01234567")
+    ).toEqual({ action: "task", id: "0123456789abcdef01234567" });
+    expect(
+      parseReminderWidgetLink(
+        "veyran://task/0123456789abcdef01234567/complete"
+      )
+    ).toBeUndefined();
+    expect(
+      parseReminderWidgetLink("veyran://task/0123456789abcdef01234567/evil")
+    ).toBeUndefined();
     expect(
       parseReminderWidgetLink(REMINDER_WIDGET_URLS.reminder("0123456789abcdef01234567"))
     ).toEqual({ action: "task", id: "0123456789abcdef01234567" });

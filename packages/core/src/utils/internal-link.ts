@@ -70,8 +70,9 @@ export function parseInternalLink(link: string): InternalLink | undefined {
     return;
   }
 
-  if (url.protocol !== "nn:") return;
-  const [type, id] = url.href.split("?")[0].split("/").slice(2);
+  if (url.protocol !== "nn:" && url.protocol !== "veyran:") return;
+  const type = url.hostname;
+  const id = url.pathname.split("/")[1];
   if (!type || !id || !isValidInternalType(type)) return;
 
   return {
@@ -82,11 +83,11 @@ export function parseInternalLink(link: string): InternalLink | undefined {
 }
 
 export function isInternalLink(link: string) {
-  return link ? link.startsWith("nn://") : false;
+  return link ? /^(?:nn|veyran):\/\//i.test(link) : false;
 }
 
 export function isNoteLink(link: string) {
-  return link ? link.startsWith("nn://note/") : false;
+  return link ? /^(?:nn|veyran):\/\/note\//i.test(link) : false;
 }
 
 function isValidInternalType(type: string): type is InternalLinkType {

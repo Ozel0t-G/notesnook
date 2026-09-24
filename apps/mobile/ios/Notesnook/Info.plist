@@ -17,7 +17,7 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Notesnook Backup File</string>
+			<string>VeyraN Backup File</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
@@ -53,6 +53,7 @@
 			<array>
 				<string>ShareMedia</string>
 				<string>nn</string>
+				<string>veyran</string>
 			</array>
 		</dict>
 		<dict>
@@ -82,9 +83,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Take a picture and add it to your note.</string>
 	<key>NSAlarmKitUsageDescription</key>
-	<string>Notesnook uses alarms for Tasks you mark Urgent, so they can alert you at the time you choose.</string>
+	<string>VeyraN uses alarms for Tasks you mark Urgent, so they can alert you at the time you choose.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>$(PRODUCT_NAME) requires FaceID access for App Lock</string>
+	<string>VeyraN requires Face ID access for App Lock</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Only required by library- not requested in application</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -151,7 +152,7 @@
 				<string>public.text</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Notesnook Backup File</string>
+			<string>VeyraN Backup File</string>
 			<key>UTTypeIconFiles</key>
 			<array/>
 			<key>UTTypeIdentifier</key>

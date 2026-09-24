@@ -40,6 +40,14 @@ describe("parseInternalLink", () => {
     {
       url: "nn://note/123?blockId=456",
       expected: { type: "note", id: "123", params: { blockId: "456" } }
+    },
+    {
+      url: "veyran://note/123",
+      expected: { type: "note", id: "123", params: {} }
+    },
+    {
+      url: "VEYRaN://note/123#section",
+      expected: { type: "note", id: "123", params: {} }
     }
   ];
   validInternalLinks.forEach(({ url, expected }) => {

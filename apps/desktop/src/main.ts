@@ -23,7 +23,7 @@ import { isDevelopment } from "./utils";
 import { registerProtocol, PROTOCOL_URL } from "./utils/protocol";
 import { configureAutoUpdater } from "./utils/autoupdater";
 import { getBackgroundColor, getTheme, setTheme } from "./utils/theme";
-import { setupMenu } from "./utils/menu";
+import { setupApplicationMenu, setupMenu } from "./utils/menu";
 import { WindowState } from "./utils/window-state";
 import { setupJumplist } from "./utils/jumplist";
 import { setupTray } from "./utils/tray";
@@ -63,13 +63,17 @@ const appHostnames = isDevelopment()
   : ["app.notesnook.com"];
 // Pending nn:// link to open once the window is ready (used on Windows/Linux
 // when the app is launched via the nn:// protocol for the first time).
-let pendingNNLink: string | undefined = findNNLink(process.argv);
-let pendingTaskId: string | undefined;
+let pendingNNLink: string | undefined = findInternalLink(process.argv);
+let pendingTaskPath: string | undefined = process.argv
+  .map(parseVeyraNTaskRoute)
+  .find(Boolean);
 let taskRendererReady = false;
+let taskRouteQueue = Promise.resolve();
 let creatingWindow: Promise<void> | undefined;
 
 taskReminderScheduler.setActivationHandler((id) => {
-  pendingTaskId = id;
+  if (!/^(?:[a-f0-9]{24}|[a-f0-9]{32})$/i.test(id)) return;
+  pendingTaskPath = `/tasks#/tasks/${encodeURIComponent(id)}/edit`;
   void openPendingTask();
 });
 taskReminderScheduler.setSnapshotHandler(() => {
@@ -96,18 +100,26 @@ async function openPendingTask() {
   }
 }
 
-async function routePendingTask() {
-  const taskId = pendingTaskId;
+function routePendingTask() {
+  // Serialize rapid URL/notification activations so the latest route wins.
+  taskRouteQueue = taskRouteQueue.then(
+    applyPendingTaskRoute,
+    applyPendingTaskRoute
+  );
+  return taskRouteQueue;
+}
+
+async function applyPendingTaskRoute() {
+  const destination = pendingTaskPath;
   const window = globalThis.window;
-  if (!taskId || !window || !taskRendererReady) return;
+  if (!destination || !window || !taskRendererReady) return;
   bringToFront();
-  const destination = `/tasks#/tasks/${encodeURIComponent(taskId)}/edit`;
   const script = `window.history.replaceState(null, "", ${JSON.stringify(
     destination
   )}); window.dispatchEvent(new PopStateEvent("popstate")); window.dispatchEvent(new HashChangeEvent("hashchange"));`;
   try {
     await window.webContents.executeJavaScript(script);
-    if (pendingTaskId === taskId) pendingTaskId = undefined;
+    if (pendingTaskPath === destination) pendingTaskPath = undefined;
   } catch {
     console.error("Failed to route Task notification");
   }
@@ -284,12 +296,13 @@ async function createWindow() {
 
 app.once("ready", async () => {
   console.info("App ready. Opening window.");
+  setupApplicationMenu();
 
   if (app.runningUnderARM64Translation) {
     console.log("App is running under ARM64 translation");
     dialog.showMessageBoxSync({
       message:
-        "Notesnook detected that it is running under ARM64 translation. For the best performance, please download the ARM64 build of Notesnook from our website.",
+        "VeyraN is running under ARM64 translation. Install the ARM64 build for better performance.",
       type: "warning",
       buttons: ["Okay"],
       title: "Degraded Performance Warning"
@@ -299,7 +312,10 @@ app.once("ready", async () => {
   if (config.customDns) enableCustomDns();
   else disableCustomDns();
 
-  if (!MAC_APP_STORE) app.setAsDefaultProtocolClient("nn");
+  if (!MAC_APP_STORE) {
+    app.setAsDefaultProtocolClient("nn");
+    app.setAsDefaultProtocolClient("veyran");
+  }
 
   if (!isDevelopment()) registerProtocol();
   await ensureWindow();
@@ -314,13 +330,23 @@ app.once("window-all-closed", () => {
 });
 
 app.on("second-instance", async (_ev, argv) => {
-  if (!globalThis.window) return;
-  const nnLink = findNNLink(argv);
+  const taskPath = argv.map(parseVeyraNTaskRoute).find(Boolean);
+  if (taskPath) {
+    pendingTaskPath = taskPath;
+    await openPendingTask();
+    return;
+  }
+  const nnLink = findInternalLink(argv);
   if (nnLink) {
-    bridge.onOpenLink(nnLink);
+    if (globalThis.window) bridge.onOpenLink(nnLink);
+    else {
+      pendingNNLink = nnLink;
+      await ensureWindow();
+    }
     bringToFront();
     return;
   }
+  if (!globalThis.window) await ensureWindow();
   const cliOptions = await parseArguments(argv);
   if (cliOptions.note) bridge.onCreateItem("note");
   if (cliOptions.notebook) bridge.onCreateItem("notebook");
@@ -332,7 +358,13 @@ app.on("second-instance", async (_ev, argv) => {
 // macOS opens URLs via this event. The app may or may not be fully loaded yet.
 app.on("open-url", (event, url) => {
   event.preventDefault();
-  if (!url.startsWith("nn://")) return;
+  const taskPath = parseVeyraNTaskRoute(url);
+  if (taskPath) {
+    pendingTaskPath = taskPath;
+    void openPendingTask();
+    return;
+  }
+  if (!isAcceptedInternalLink(url)) return;
   if (globalThis.window) {
     bridge.onOpenLink(url);
     bringToFront();
@@ -348,8 +380,31 @@ app.on("activate", () => {
   }
 });
 
-function findNNLink(argv: string[]): string | undefined {
-  return argv.find((arg) => arg.startsWith("nn://"));
+function isAcceptedInternalLink(url: string): boolean {
+  return /^(?:nn|veyran):\/\//i.test(url);
+}
+
+function findInternalLink(argv: string[]): string | undefined {
+  return argv.find(
+    (arg) => isAcceptedInternalLink(arg) && !parseVeyraNTaskRoute(arg)
+  );
+}
+
+function parseVeyraNTaskRoute(value: string): string | undefined {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "veyran:" || url.search || url.hash) return;
+    const host = url.hostname.toLowerCase();
+    if (host === "tasks" && (url.pathname === "" || url.pathname === "/"))
+      return "/tasks";
+    if (host !== "task") return;
+    if (url.pathname === "/new") return "/tasks#/tasks/create";
+    const id = url.pathname.slice(1);
+    if (!/^(?:[a-f0-9]{24}|[a-f0-9]{32})$/i.test(id)) return;
+    return `/tasks#/tasks/${encodeURIComponent(id)}/edit`;
+  } catch {
+    return;
+  }
 }
 
 function createURL(options: CLIOptions, path = "/") {

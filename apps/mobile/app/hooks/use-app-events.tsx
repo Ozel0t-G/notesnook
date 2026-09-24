@@ -225,7 +225,10 @@ const onAppOpenedFromURL = async (event: {
   try {
     if (url.startsWith("https://app.notesnook.com/account/verified")) {
       await onUserEmailVerified();
-    } else if (url.startsWith("ShareMedia://QuickNoteWidget")) {
+    } else if (
+      url.startsWith("ShareMedia://QuickNoteWidget") ||
+      url.toLowerCase() === "veyran://quick-add"
+    ) {
       editorState().movedAway = false;
       eSendEvent(eOnLoadNote, { newNote: true });
       fluidTabsRef.current?.goToPage("editor", false);

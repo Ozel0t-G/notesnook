@@ -148,12 +148,11 @@ function _PopupPresenter(props: PropsWithChildren<PopupPresenterProps>) {
       shouldReturnFocusAfterClose
       shouldCloseOnOverlayClick
       shouldFocusAfterRender={focusOnRender}
-      ariaHideApp={blocking}
+      ariaHideApp={Boolean(blocking)}
       preventScroll={blocking}
       onRequestClose={onClose}
       portalClassName={"popup-presenter-portal"}
       onAfterOpen={(obj) => {
-        Modal.setAppElement(container || document.body);
         if (!obj || !position) return;
         repositionPopup(position);
 

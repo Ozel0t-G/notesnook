@@ -102,7 +102,12 @@ async function launchApp(
 ) {
   const app = await electron.launch({
     executablePath,
-    args: IS_DEBUG ? [...args] : ["--hidden", ...args],
+    // Test copies have changing unsigned bundle paths. Avoid a macOS Keychain
+    // access prompt blocking the Electron main thread during isolated smokes.
+    args: [
+      ...(process.platform === "darwin" ? ["--use-mock-keychain"] : []),
+      ...(IS_DEBUG ? args : ["--hidden", ...args])
+    ],
     baseURL: "https://app.notesnook.com",
     acceptDownloads: true,
     env: {

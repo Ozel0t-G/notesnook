@@ -31,7 +31,7 @@ function GlobalMenuWrapper() {
       isOpen={isOpen}
       onClose={closeMenu}
       focusOnRender={!options.blocking}
-      blocking={options.blocking}
+      blocking={Boolean(options.blocking)}
       isMobile={isMobile}
       position={options.position || {}}
       items={items}

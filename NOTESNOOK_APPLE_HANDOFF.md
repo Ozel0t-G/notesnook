@@ -1,5 +1,13 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
+## September 24 VeyraN rebrand preparation
+
+The user selected **VeyraN** after the bare Veyra name proved occupied in the App Store and overlapped an existing note-taking app. The VeyraN public check found no exact app title in the checked storefronts, but an existing Veyran developer identity and an adjacent US scheduling-software trademark application make trademark review a real prelaunch action. See [docs/veyran-branding.md](docs/veyran-branding.md) for evidence, the branding map, icon source, deep-link aliases, frozen identifiers, App Store Connect steps, and remaining validation.
+
+This branch keeps the existing private iOS app/widget/share bundle IDs, App Group, Keychain, encrypted record identifiers, `nn://`/`ShareMedia://` aliases, and Electron app ID. The supplied Icon Composer `AppIcon.icon` is copied intact into the iOS host target as the master icon. The current display name is VeyraN; the TestFlight archive script's pencil xcconfig agrees. `veyran://` Task and note aliases are accepted while old generated widget/content links remain stable. The Electron product name is VeyraN; its old internal app name and `Notesnook` user-data directory are pinned before configuration loads to preserve the encrypted profile and keyring identity. Existing source/legal attribution is retained and [NOTICE.md](NOTICE.md) clarifies provenance.
+
+No App Store Connect record, repository remote, signing identity, or bundle identifier was changed. Do not upload a build or publish until the release validation and legal/ownership steps in the branding plan are complete. The pre-existing untracked `AGENTS.md` remains user work.
+
 Updated 2026-09-24 on branch `test`. Do not merge to `main`, push upstream, or upload to TestFlight without a later instruction. The pre-existing untracked `AGENTS.md` is user work and was not included in this implementation.
 
 ## September 24 Task/Reminder redesign

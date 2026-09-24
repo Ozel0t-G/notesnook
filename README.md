@@ -1,9 +1,14 @@
-<p align="center">
-<img style="align:center;" src="./resources/icon.png" alt="Notesnook Logo" width="100" />
-</p>
+# VeyraN
 
-<h1 align="center">Notesnook</h1>
-<h3 align="center">An end-to-end encrypted note taking alternative to Evernote.</h3>
+<p align="center"><img src="./resources/icon.png" alt="VeyraN icon" width="100" /></p>
+
+VeyraN is a private Notesnook-derived client being prepared for an Apple and desktop rebrand. The [VeyraN branding plan](docs/veyran-branding.md) records the safe changes, preserved identifiers, public-name research, and remaining release work. The original Notesnook project and Streetwriters retain their attribution under [GPL-3.0-or-later](LICENSE); see [NOTICE](NOTICE.md).
+
+## Upstream Notesnook README
+
+The following project description and links are retained as upstream documentation, not VeyraN-owned services or support channels.
+
+<h3 align="center">Notesnook: an end-to-end encrypted note taking alternative to Evernote.</h3>
 <p align="center">
 <a href="https://notesnook.com/">Website</a> | <a href="https://notesnook.com/about">About us</a> | <a href="https://notesnook.com/roadmap">Roadmap</a> | <a href="https://notesnook.com/downloads">Downloads</a> | <a href="https://twitter.com/@notesnook">Twitter</a> | <a href="https://discord.gg/5davZnhw3V">Discord</a>
 </p>

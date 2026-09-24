@@ -1,6 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
 import { databaseTest, loginFakeUser } from "./utils/index.js";
-import { isTaskOverdue, Tasks } from "../src/collections/tasks.js";
+import {
+  isTaskOverdue,
+  taskReminderSchedule,
+  taskReminderTimestamp,
+  Tasks
+} from "../src/collections/tasks.js";
 import Collector from "../src/api/sync/collector.js";
 import { Sync } from "../src/api/sync/index.js";
 
@@ -92,6 +97,133 @@ describe("standalone Tasks", () => {
     expect((await db.tasks.get(task.id))?.reminderAt).toBeUndefined();
   });
 
+  test("new reminder schedule is authoritative and date-only alerts use 09:00 local", async () => {
+    const db = await databaseTest();
+    const task = await db.tasks.create({
+      title: "Call Ada",
+      reminderDate: "2026-10-31",
+      reminderTime: "14:30"
+    });
+    expect(task).toMatchObject({
+      reminderDate: "2026-10-31",
+      reminderTime: "14:30",
+      dueDate: "2026-10-31",
+      dueTime: "14:30",
+      scheduleVersion: 2
+    });
+    expect(taskReminderTimestamp(task)).toBe(
+      new Date(2026, 9, 31, 14, 30).getTime()
+    );
+    const dateOnly = await db.tasks.update(task.id, {
+      reminderDate: "2026-11-01",
+      reminderTime: undefined
+    });
+    expect(dateOnly.dueTime).toBeUndefined();
+    expect(taskReminderTimestamp(dateOnly)).toBe(
+      new Date(2026, 10, 1, 9).getTime()
+    );
+    expect(taskReminderSchedule(dateOnly)).toEqual({
+      date: "2026-11-01",
+      time: undefined
+    });
+    const off = await db.tasks.update(task.id, {
+      reminderDate: undefined,
+      reminderTime: undefined
+    });
+    expect(taskReminderTimestamp(off)).toBeUndefined();
+    expect(off.dueDate).toBeUndefined();
+  });
+
+  test("legacy due-only rows project to a reminder without a sync rewrite", async () => {
+    const db = await databaseTest();
+    const dueOnly = await db.tasks.create({
+      title: "Date only",
+      dueDate: "2026-12-24"
+    });
+    const timed = await db.tasks.create({
+      title: "Timed",
+      dueDate: "2026-12-25",
+      dueTime: "16:00"
+    });
+    const explicitAt = new Date(2026, 11, 20, 13).getTime();
+    const both = await db.tasks.create({
+      title: "Explicit wins",
+      dueDate: "2026-12-31",
+      reminderAt: explicitAt
+    });
+    await db.tasks.reconcile();
+    await db.tasks.reconcile();
+    expect((await db.tasks.get(dueOnly.id))?.scheduleVersion).toBeUndefined();
+    expect(taskReminderSchedule((await db.tasks.get(dueOnly.id))!)).toEqual({
+      date: "2026-12-24",
+      time: undefined
+    });
+    expect((await db.tasks.get(dueOnly.id))?.reminderTime).toBeUndefined();
+    expect(taskReminderSchedule((await db.tasks.get(timed.id))!)).toEqual({
+      date: "2026-12-25",
+      time: "16:00"
+    });
+    expect(taskReminderTimestamp((await db.tasks.get(both.id))!)).toBe(
+      explicitAt
+    );
+    expect(taskReminderSchedule((await db.tasks.get(both.id))!)).toEqual({
+      date: "2026-12-20",
+      time: "13:00"
+    });
+  });
+
+  test("a legacy recurring lead survives conversion and later occurrences", async () => {
+    const db = await databaseTest();
+    const firstReminder = new Date(2026, 9, 23, 18).getTime();
+    const old = await db.tasks.create({
+      title: "Weekly report",
+      dueDate: "2026-10-30",
+      dueTime: "18:00",
+      reminderAt: firstReminder,
+      recurrenceRule: "FREQ=WEEKLY;BYDAY=FR"
+    });
+    const edited = await db.tasks.update(old.id, {
+      reminderDate: "2026-10-23",
+      reminderTime: "17:00"
+    });
+    expect(edited.dueDate).toBe("2026-10-30");
+    expect(edited.reminderLeadMinutes).toBe(7 * 24 * 60 + 60);
+    await atTime(new Date(2026, 9, 30, 19).getTime(), () =>
+      db.tasks.complete(old.id)
+    );
+    const [next] = await db.tasks.smartList("all");
+    expect(next.dueDate).toBe("2026-11-06");
+    expect(next.reminderDate).toBe("2026-10-30");
+    expect(next.reminderTime).toBe("17:00");
+  });
+
+  test("urgent requires a timed reminder and recurrence keeps delivery intent", async () => {
+    const db = await databaseTest();
+    await expect(
+      db.tasks.create({
+        title: "Morning alarm",
+        reminderDate: "2026-10-24",
+        urgent: true
+      })
+    ).rejects.toThrow("requires a reminder date and time");
+    const task = await db.tasks.create({
+      title: "Morning alarm",
+      reminderDate: "2026-10-24",
+      reminderTime: "07:00",
+      urgent: true,
+      recurrenceRule: "FREQ=DAILY"
+    });
+    await atTime(new Date(2026, 9, 24, 8).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
+    const [next] = await db.tasks.smartList("all");
+    expect(next).toMatchObject({
+      reminderDate: "2026-10-25",
+      reminderTime: "07:00",
+      urgent: true
+    });
+  });
+
   test("today retains overdue tasks and scheduled shows future tasks", async () => {
     const db = await databaseTest();
     const overdue = await db.tasks.create({
@@ -109,7 +241,7 @@ describe("standalone Tasks", () => {
     });
     const today = await db.tasks.smartList("today", new Date(2026, 8, 24));
     expect(today.map((item) => item.id)).toContain(overdue.id);
-    expect(today.map((item) => item.id)).toContain(
+    expect(today.map((item) => item.id)).not.toContain(
       overdueWithFutureReminder.id
     );
     expect(today.map((item) => item.id)).not.toContain(future.id);
@@ -117,7 +249,7 @@ describe("standalone Tasks", () => {
       await db.tasks.smartList("scheduled", new Date(2026, 8, 24))
     ).map((item) => item.id);
     expect(scheduled).toContain(future.id);
-    expect(scheduled).not.toContain(overdueWithFutureReminder.id);
+    expect(scheduled).toContain(overdueWithFutureReminder.id);
     expect(isTaskOverdue(overdue, new Date(2026, 8, 24))).toBe(true);
     expect(isTaskOverdue(future, new Date(2026, 8, 24))).toBe(false);
     const dateOnly = await db.tasks.create({

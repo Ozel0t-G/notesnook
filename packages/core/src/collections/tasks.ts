@@ -41,6 +41,13 @@ export interface Task {
   dueDate?: string;
   dueTime?: string;
   reminderAt?: number;
+  /** Authoritative local calendar schedule for redesigned Tasks. */
+  reminderDate?: string;
+  reminderTime?: string;
+  /** AlarmKit delivery intent; unsupported devices retain it without rewriting. */
+  urgent?: boolean;
+  /** Additive calendar model. Legacy records are projected on read without rewrites. */
+  scheduleVersion?: number;
   recurrenceRule?: string;
   priority: TaskPriority;
   flagged: boolean;
@@ -94,6 +101,57 @@ function calendarTime(date: Date) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(
     date.getMinutes()
   ).padStart(2, "0")}`;
+}
+
+/** Explicit legacy reminders win over legacy due dates. New calendar fields win over both. */
+export function taskReminderSchedule(
+  task: Pick<
+    Task,
+    | "reminderDate"
+    | "reminderTime"
+    | "reminderAt"
+    | "dueDate"
+    | "dueTime"
+    | "scheduleVersion"
+  >
+): { date?: string; time?: string } {
+  if (task.scheduleVersion === 2)
+    return { date: task.reminderDate, time: task.reminderTime };
+  if (task.reminderAt !== undefined) {
+    const instant = new Date(task.reminderAt);
+    return { date: calendarDate(instant), time: calendarTime(instant) };
+  }
+  return { date: task.dueDate, time: task.dueTime };
+}
+
+/** Date-only reminders notify at 09:00 in the device's current local timezone. */
+export function taskReminderTimestamp(
+  task: Partial<
+    Pick<
+      Task,
+      | "reminderDate"
+      | "reminderTime"
+      | "reminderAt"
+      | "dueDate"
+      | "dueTime"
+      | "scheduleVersion"
+    >
+  >
+): number | undefined {
+  if (task.scheduleVersion === 2 && !task.reminderDate) return;
+  if (task.reminderDate && task.scheduleVersion === 2) {
+    const [year, month, day] = task.reminderDate.split("-").map(Number);
+    const [hour, minute] = (task.reminderTime || "09:00")
+      .split(":")
+      .map(Number);
+    return new Date(year, month - 1, day, hour, minute).getTime();
+  }
+  if (task.reminderAt !== undefined) return task.reminderAt;
+  if (task.dueDate) {
+    const [year, month, day] = task.dueDate.split("-").map(Number);
+    const [hour, minute] = (task.dueTime || "09:00").split(":").map(Number);
+    return new Date(year, month - 1, day, hour, minute).getTime();
+  }
 }
 
 function isValidCalendarDate(date: string) {
@@ -341,6 +399,15 @@ function isTaskRecord(record: unknown): record is Task {
     (!task.dueTime ||
       (typeof task.dueTime === "string" && TIME.test(task.dueTime))) &&
     (task.reminderAt === undefined || Number.isFinite(task.reminderAt)) &&
+    (task.reminderDate === undefined ||
+      (typeof task.reminderDate === "string" &&
+        isValidCalendarDate(task.reminderDate))) &&
+    (task.reminderTime === undefined ||
+      (typeof task.reminderTime === "string" &&
+        TIME.test(task.reminderTime))) &&
+    (task.urgent === undefined || typeof task.urgent === "boolean") &&
+    (task.scheduleVersion === undefined ||
+      (Number.isInteger(task.scheduleVersion) && task.scheduleVersion >= 2)) &&
     (task.recurrenceRule === undefined ||
       typeof task.recurrenceRule === "string")
   );
@@ -361,11 +428,13 @@ function isListRecord(record: unknown): record is TaskList {
 }
 
 function compareTasks(a: Task, b: Task) {
-  const aDate = a.dueDate || "9999-12-31";
-  const bDate = b.dueDate || "9999-12-31";
+  const aSchedule = taskReminderSchedule(a);
+  const bSchedule = taskReminderSchedule(b);
+  const aDate = aSchedule.date || "9999-12-31";
+  const bDate = bSchedule.date || "9999-12-31";
   return (
     aDate.localeCompare(bDate) ||
-    (a.dueTime || "").localeCompare(b.dueTime || "") ||
+    (aSchedule.time || "").localeCompare(bSchedule.time || "") ||
     a.createdAt - b.createdAt ||
     a.id.localeCompare(b.id)
   );
@@ -373,12 +442,13 @@ function compareTasks(a: Task, b: Task) {
 
 /** A date-only Task becomes overdue after its calendar day ends. */
 export function isTaskOverdue(task: Task, now = new Date()): boolean {
-  if (task.completed || !task.dueDate) return false;
+  const schedule = taskReminderSchedule(task);
+  if (task.completed || !schedule.date) return false;
   const today = calendarDate(now);
-  if (task.dueDate < today) return true;
-  if (task.dueDate > today || !task.dueTime) return false;
-  const [year, month, day] = task.dueDate.split("-").map(Number);
-  const [hour, minute] = task.dueTime.split(":").map(Number);
+  if (schedule.date < today) return true;
+  if (schedule.date > today || !schedule.time) return false;
+  const [year, month, day] = schedule.date.split("-").map(Number);
+  const [hour, minute] = schedule.time.split(":").map(Number);
   return new Date(year, month - 1, day, hour, minute).getTime() < now.getTime();
 }
 
@@ -537,6 +607,26 @@ export class Tasks extends TaskRecordStore {
       throw new Error("Task list not found.");
     const now = Date.now();
     const id = input.id || getId();
+    const calendarWrite =
+      hasOwn(input, "reminderDate") || hasOwn(input, "reminderTime");
+    const reminderDate = calendarWrite ? input.reminderDate : undefined;
+    const reminderTime =
+      calendarWrite && reminderDate ? input.reminderTime : undefined;
+    const dueDate = calendarWrite
+      ? input.dueDate ?? reminderDate
+      : input.dueDate;
+    const dueTime = calendarWrite
+      ? input.dueDate !== undefined
+        ? input.dueTime
+        : reminderTime
+      : input.dueTime;
+    const reminderAt = calendarWrite
+      ? taskReminderTimestamp({
+          reminderDate,
+          reminderTime,
+          scheduleVersion: 2
+        })
+      : input.reminderAt;
     const value: Task = {
       id,
       title,
@@ -546,9 +636,13 @@ export class Tasks extends TaskRecordStore {
       completedAt: input.completed ? input.completedAt || now : undefined,
       completedWallDate: input.completed ? input.completedWallDate : undefined,
       completedWallTime: input.completed ? input.completedWallTime : undefined,
-      dueDate: input.dueDate,
-      dueTime: input.dueTime,
-      reminderAt: input.reminderAt,
+      dueDate,
+      dueTime,
+      reminderAt,
+      reminderDate,
+      reminderTime,
+      urgent: input.urgent || undefined,
+      scheduleVersion: calendarWrite ? 2 : input.scheduleVersion,
       recurrenceRule: input.recurrenceRule,
       priority: input.priority || "none",
       flagged: !!input.flagged,
@@ -557,15 +651,16 @@ export class Tasks extends TaskRecordStore {
       schemaVersion: VERSION,
       seriesId: input.recurrenceRule ? input.seriesId || id : undefined,
       seriesStartDate: input.recurrenceRule
-        ? input.seriesStartDate || input.dueDate
+        ? input.seriesStartDate || dueDate
         : undefined,
       seriesStartTime: input.recurrenceRule
-        ? input.seriesStartTime || input.dueTime
+        ? input.seriesStartTime || dueTime
         : undefined,
       occurrenceKey: input.occurrenceKey,
       legacyReminderId: input.legacyReminderId,
       reminderLeadMinutes:
-        input.reminderLeadMinutes ?? reminderLeadMinutes(input),
+        input.reminderLeadMinutes ??
+        reminderLeadMinutes({ dueDate, dueTime, reminderAt }),
       localOnly: input.localOnly
     };
     validateTask(value);
@@ -590,6 +685,47 @@ export class Tasks extends TaskRecordStore {
       createdAt: old.createdAt,
       updatedAt: Date.now()
     };
+    const calendarWrite =
+      hasOwn(patch, "reminderDate") || hasOwn(patch, "reminderTime");
+    if (calendarWrite) {
+      if (!value.reminderDate) value.reminderTime = undefined;
+      const previousSchedule = taskReminderSchedule(old);
+      const dueMirrorsReminder =
+        !old.dueDate ||
+        (old.dueDate === previousSchedule.date &&
+          old.dueTime === previousSchedule.time);
+      if (dueMirrorsReminder) {
+        value.dueDate = value.reminderDate;
+        value.dueTime = value.reminderTime;
+      }
+      value.reminderAt = taskReminderTimestamp({
+        reminderDate: value.reminderDate,
+        reminderTime: value.reminderTime,
+        scheduleVersion: 2
+      });
+      value.scheduleVersion = 2;
+    } else if (
+      old.scheduleVersion === 2 &&
+      (hasOwn(patch, "dueDate") ||
+        hasOwn(patch, "dueTime") ||
+        hasOwn(patch, "reminderAt"))
+    ) {
+      // Older fork clients can still write the compatibility fields.
+      if (hasOwn(patch, "reminderAt")) {
+        const instant =
+          value.reminderAt === undefined
+            ? undefined
+            : new Date(value.reminderAt);
+        value.reminderDate = instant ? calendarDate(instant) : undefined;
+        value.reminderTime = instant ? calendarTime(instant) : undefined;
+      } else if (
+        old.dueDate === old.reminderDate &&
+        old.dueTime === old.reminderTime
+      ) {
+        value.reminderDate = value.dueDate;
+        value.reminderTime = value.dueTime;
+      }
+    }
     value.title = value.title.trim();
     if (
       hasOwn(patch, "recurrenceRule") &&
@@ -602,7 +738,7 @@ export class Tasks extends TaskRecordStore {
       value.seriesStartTime = value.recurrenceRule ? value.dueTime : undefined;
     } else if (
       value.recurrenceRule &&
-      (hasOwn(patch, "dueDate") || hasOwn(patch, "dueTime"))
+      (hasOwn(patch, "dueDate") || hasOwn(patch, "dueTime") || calendarWrite)
     ) {
       // Changing one occurrence does not move the series schedule.
       value.seriesStartDate = old.seriesStartDate || old.dueDate;
@@ -616,7 +752,8 @@ export class Tasks extends TaskRecordStore {
     if (
       hasOwn(patch, "dueDate") ||
       hasOwn(patch, "dueTime") ||
-      hasOwn(patch, "reminderAt")
+      hasOwn(patch, "reminderAt") ||
+      calendarWrite
     )
       value.reminderLeadMinutes = reminderLeadMinutes(value);
     validateTask(value);
@@ -652,6 +789,20 @@ export class Tasks extends TaskRecordStore {
       const nextId = makeId(`${PREFIX}occurrence:${seriesId}:${occurrenceKey}`);
       if (!this.recordExists(nextId)) {
         const reminderAt = nextReminderAt(completed, next);
+        const reminderInstant =
+          reminderAt === undefined ? undefined : new Date(reminderAt);
+        const reminderDate = completed.reminderDate
+          ? reminderInstant
+            ? calendarDate(reminderInstant)
+            : next.date
+          : undefined;
+        const reminderTime = completed.reminderDate
+          ? completed.reminderTime === undefined
+            ? undefined
+            : reminderInstant
+            ? calendarTime(reminderInstant)
+            : next.time
+          : undefined;
         try {
           await this.create({
             ...completed,
@@ -663,6 +814,9 @@ export class Tasks extends TaskRecordStore {
             dueDate: next.date,
             dueTime: next.time,
             reminderAt,
+            ...(completed.scheduleVersion === 2
+              ? { reminderDate, reminderTime }
+              : {}),
             seriesId,
             seriesStartDate: completed.seriesStartDate || completed.dueDate,
             seriesStartTime: completed.seriesStartTime || completed.dueTime,
@@ -737,22 +891,15 @@ export class Tasks extends TaskRecordStore {
               a.id.localeCompare(b.id)
           );
       case "today":
-        return tasks.filter(
-          (task) =>
-            !task.completed &&
-            ((task.dueDate !== undefined && task.dueDate <= today) ||
-              (task.reminderAt !== undefined &&
-                calendarDate(new Date(task.reminderAt)) === today))
-        );
+        return tasks.filter((task) => {
+          const schedule = taskReminderSchedule(task);
+          return !task.completed && !!schedule.date && schedule.date <= today;
+        });
       case "scheduled":
-        return tasks.filter(
-          (task) =>
-            !task.completed &&
-            (task.dueDate === undefined || task.dueDate >= today) &&
-            ((task.dueDate !== undefined && task.dueDate >= today) ||
-              (task.reminderAt !== undefined &&
-                task.reminderAt >= date.getTime()))
-        );
+        return tasks.filter((task) => {
+          const schedule = taskReminderSchedule(task);
+          return !task.completed && !!schedule.date && schedule.date >= today;
+        });
     }
   }
 
@@ -859,6 +1006,18 @@ function validateTask(task: Task) {
     throw new Error("Invalid Task due time.");
   if (task.reminderAt !== undefined && !Number.isFinite(task.reminderAt))
     throw new Error("Invalid Task reminder time.");
+  if (task.reminderDate && !isValidCalendarDate(task.reminderDate))
+    throw new Error("Invalid Task reminder date.");
+  if (
+    task.reminderTime &&
+    (!task.reminderDate || !TIME.test(task.reminderTime))
+  )
+    throw new Error("Invalid Task reminder time.");
+  if (
+    task.urgent &&
+    (!taskReminderSchedule(task).time || !taskReminderSchedule(task).date)
+  )
+    throw new Error("An urgent Task requires a reminder date and time.");
   if (task.recurrenceRule) {
     if (!task.dueDate) throw new Error("A recurring Task requires a due date.");
     RRule.parseString(task.recurrenceRule.replace(/^RRULE:/i, "").trim());

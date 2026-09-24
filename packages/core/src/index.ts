@@ -24,7 +24,11 @@ export * from "./content-types/index.js";
 export * from "./common.js";
 export { default as Database } from "./api/index.js";
 export { DefaultColors } from "./collections/colors.js";
-export { isTaskOverdue } from "./collections/tasks.js";
+export {
+  isTaskOverdue,
+  taskReminderSchedule,
+  taskReminderTimestamp
+} from "./collections/tasks.js";
 export type {
   Task,
   TaskInput,

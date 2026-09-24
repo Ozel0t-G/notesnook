@@ -32,6 +32,12 @@ import {
   planTaskNotifications,
   taskNotificationId
 } from "./task-notification-plan";
+import {
+  cancelAllTaskAlarms,
+  reconcileTaskAlarms,
+  requestUrgentPermission,
+  urgentStatus
+} from "./task-alarms";
 
 // Keep four slots free under iOS's 64 pending local notification limit.
 const MAX_TOTAL_PENDING = Platform.OS === "ios" ? 60 : 500;
@@ -74,7 +80,15 @@ async function reconcileNow() {
   const now = Date.now();
   const all = await db.tasks.list();
   const existing = await notifee.getTriggerNotifications();
-  const privacyHidden = Boolean(useSettingStore.getState().settings.appLockEnabled);
+  const privacyHidden = Boolean(
+    useSettingStore.getState().settings.appLockEnabled
+  );
+  const alarms = await reconcileTaskAlarms(all, privacyHidden);
+  if (alarms.failedTaskIds.length)
+    DatabaseLogger.warn("Urgent Task alarms could not be scheduled", {
+      status: alarms.status,
+      count: alarms.failedTaskIds.length
+    });
   const availableSlots = availableTaskNotificationSlots(
     existing.map((entry) => entry.notification.id || ""),
     MAX_TOTAL_PENDING
@@ -90,24 +104,25 @@ async function reconcileNow() {
       id: entry.notification.id as string,
       updatedAt: entry.notification.data?.updatedAt as string | undefined,
       privacyHidden: entry.notification.data?.privacyHidden === "1",
+      urgentFallback: entry.notification.data?.urgentFallback === "1",
       timestamp: (entry.trigger as TimestampTrigger | undefined)?.timestamp
     })),
     now,
     availableSlots,
-    privacyHidden
+    privacyHidden,
+    alarms.status !== "authorized"
   );
-  const eligibleCount = all.filter(
-    (task) => !task.completed && !!task.reminderAt && task.reminderAt > now
-  ).length;
+  const eligibleCount = plan.eligibleCount;
   const truncation =
-    eligibleCount > availableSlots
-      ? `${eligibleCount}:${availableSlots}`
-      : "";
+    eligibleCount > availableSlots ? `${eligibleCount}:${availableSlots}` : "";
   if (truncation && truncation !== lastTruncation)
-    DatabaseLogger.warn("Pending Task alerts exceed local notification capacity", {
-      eligibleCount,
-      availableSlots
-    });
+    DatabaseLogger.warn(
+      "Pending Task alerts exceed local notification capacity",
+      {
+        eligibleCount,
+        availableSlots
+      }
+    );
   lastTruncation = truncation;
   for (const id of plan.cancelIds) await notifee.cancelTriggerNotification(id);
 
@@ -123,16 +138,24 @@ async function reconcileNow() {
       : undefined;
 
   for (const task of plan.schedule) {
-    const id = taskNotificationId(task.id);
+    const id = task.notificationId;
     await notifee.createTriggerNotification(
       {
         id,
-        title: privacyHidden ? strings.tasksTitle() : task.title,
+        title: privacyHidden
+          ? strings.tasksTitle()
+          : task.urgentFallback
+            ? `Urgent Task (standard alert): ${task.title}`
+            : task.title,
+        body: task.urgentFallback
+          ? "Alarm unavailable. This is a standard notification."
+          : undefined,
         data: {
           type: "task",
           taskId: task.id,
           updatedAt: String(task.updatedAt),
-          privacyHidden: privacyHidden ? "1" : "0"
+          privacyHidden: privacyHidden ? "1" : "0",
+          urgentFallback: task.urgentFallback ? "1" : "0"
         },
         android: {
           channelId: channelId || "com.streetwriters.notesnook.tasks",
@@ -143,7 +166,7 @@ async function reconcileNow() {
       },
       {
         type: TriggerType.TIMESTAMP,
-        timestamp: task.reminderAt as number,
+        timestamp: task.timestamp,
         alarmManager: { allowWhileIdle: true }
       }
     );
@@ -153,7 +176,9 @@ async function reconcileNow() {
 function reconcile() {
   reconciliation = reconciliation
     .then(reconcileNow)
-    .catch((error) => DatabaseLogger.error(error as Error, "Task notifications"));
+    .catch((error) =>
+      DatabaseLogger.error(error as Error, "Task notifications")
+    );
   return reconciliation;
 }
 
@@ -184,12 +209,23 @@ function start() {
     if (state.settings.appLockEnabled !== previous.settings.appLockEnabled)
       queueReconcile();
   });
-  const logoutSubscription = db.eventManager.subscribe(EVENTS.userLoggedOut, () => {
-    clearTimeout(timer);
-    reconciliation = reconciliation
-      .then(cancelAllTaskTriggers)
-      .catch((error) => DatabaseLogger.error(error as Error, "Cancel Task alerts after logout"));
-  });
+  const logoutSubscription = db.eventManager.subscribe(
+    EVENTS.userLoggedOut,
+    () => {
+      clearTimeout(timer);
+      reconciliation = reconciliation
+        .then(async () => {
+          await cancelAllTaskTriggers();
+          await cancelAllTaskAlarms();
+        })
+        .catch((error) =>
+          DatabaseLogger.error(
+            error as Error,
+            "Cancel Task alerts after logout"
+          )
+        );
+    }
+  );
   stopSubscriptions = () => {
     databaseSubscription.unsubscribe();
     syncSubscription.unsubscribe();
@@ -220,5 +256,7 @@ export const TaskNotifications = {
   stop,
   reconcile,
   permissionStatus: taskNotificationPermission,
-  notificationId: taskNotificationId
+  notificationId: taskNotificationId,
+  urgentStatus,
+  requestUrgentPermission
 };

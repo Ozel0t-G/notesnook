@@ -53,6 +53,10 @@
 		A79A93DC9D0CAE8703462151 /* libPods-Notesnook-NotesnookTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 068FA9BDFA207A50B0A9E597 /* libPods-Notesnook-NotesnookTests.a */; };
 		D10000000000000000000001 /* ReminderWidgetModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* ReminderWidgetModule.swift */; };
 		D10000000000000000000002 /* ReminderWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* ReminderWidgetModule.m */; };
+		D10000000000000000000006 /* TaskAlarmModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000006 /* TaskAlarmModule.swift */; };
+		D10000000000000000000007 /* TaskAlarmModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000007 /* TaskAlarmModule.m */; };
+		D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000008 /* TaskSymbolViewManager.swift */; };
+		D10000000000000000000009 /* TaskSymbolViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000009 /* TaskSymbolViewManager.m */; };
 		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
 		D10000000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
 		D10000000000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* PrivacyInfo.xcprivacy */; };
@@ -173,6 +177,10 @@
 		C5367EAC4A122EA969687331 /* HandwritingModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* ReminderWidgetModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReminderWidgetModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* ReminderWidgetModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ReminderWidgetModule.m; sourceTree = "<group>"; };
+		D20000000000000000000006 /* TaskAlarmModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskAlarmModule.swift; sourceTree = "<group>"; };
+		D20000000000000000000007 /* TaskAlarmModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskAlarmModule.m; sourceTree = "<group>"; };
+		D20000000000000000000008 /* TaskSymbolViewManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskSymbolViewManager.swift; sourceTree = "<group>"; };
+		D20000000000000000000009 /* TaskSymbolViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskSymbolViewManager.m; sourceTree = "<group>"; };
 		D20000000000000000000003 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = ../../../resources/icon.png; sourceTree = SOURCE_ROOT; };
 		D20000000000000000000004 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		D20000000000000000000005 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -269,6 +277,7 @@
 				4B679E87FDFB1312CAD6CF45 /* PrivacyInfo.xcprivacy */,
 				5D6DE3F654DAAB9170CC0B2C /* Handwriting */,
 				D30000000000000000000001 /* ReminderWidget */,
+				D30000000000000000000006 /* TaskAlarm */,
 				A482053C4A6E06443DC525BD /* SceneDelegate.h */,
 				8630765778FA70C8BA4CA7AD /* SceneDelegate.m */,
 			);
@@ -387,6 +396,18 @@
 			);
 			name = ReminderWidget;
 			path = Notesnook/ReminderWidget;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000006 /* TaskAlarm */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000006 /* TaskAlarmModule.swift */,
+				D20000000000000000000007 /* TaskAlarmModule.m */,
+				D20000000000000000000008 /* TaskSymbolViewManager.swift */,
+				D20000000000000000000009 /* TaskSymbolViewManager.m */,
+			);
+			name = TaskAlarm;
+			path = Notesnook/TaskAlarm;
 			sourceTree = "<group>";
 		};
 		DA84645424CFBF19A44D64B3 /* Pods */ = {
@@ -968,6 +989,10 @@
 				567646CA0ED8A6E64B204FD0 /* HandwritingExporter.swift in Sources */,
 				D10000000000000000000001 /* ReminderWidgetModule.swift in Sources */,
 				D10000000000000000000002 /* ReminderWidgetModule.m in Sources */,
+				D10000000000000000000006 /* TaskAlarmModule.swift in Sources */,
+				D10000000000000000000007 /* TaskAlarmModule.m in Sources */,
+				D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */,
+				D10000000000000000000009 /* TaskSymbolViewManager.m in Sources */,
 				64F1C8C66C1A56ADE2A0CAA5 /* SceneDelegate.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

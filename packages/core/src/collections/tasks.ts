@@ -31,9 +31,13 @@ export type TaskSmartList =
 export interface Task {
   id: string;
   title: string;
+  description?: string;
   listId: string;
   completed: boolean;
   completedAt?: number;
+  /** Wall time captured at completion so recurrence reconciliation is zone-stable. */
+  completedWallDate?: string;
+  completedWallTime?: string;
   dueDate?: string;
   dueTime?: string;
   reminderAt?: number;
@@ -148,14 +152,33 @@ function nextOccurrence(
   const options = RRule.parseString(rule);
   const start = floatingInstant(
     task.seriesStartDate || task.dueDate,
-    task.seriesStartTime || task.dueTime
+    task.seriesStartDate !== undefined ? task.seriesStartTime : task.dueTime
   );
   const current = floatingInstant(task.dueDate, task.dueTime);
-  const next = new RRule({ ...options, dtstart: start }).after(current, false);
+  const isTimed =
+    task.seriesStartDate !== undefined
+      ? task.seriesStartTime !== undefined
+      : task.dueTime !== undefined;
+  let after = current;
+  if (task.completedAt !== undefined) {
+    const completed = new Date(task.completedAt);
+    const completedDate =
+      task.completedWallDate || completed.toISOString().slice(0, 10);
+    const completedTime =
+      task.completedWallTime || completed.toISOString().slice(11, 16);
+    const completionWallTime = floatingInstant(
+      completedDate,
+      isTimed ? completedTime : "00:00"
+    ).getTime();
+    // A date-only occurrence remains relevant for the whole completion day.
+    const cutoff = isTimed ? completionWallTime : completionWallTime - 1;
+    if (cutoff > after.getTime()) after = new Date(cutoff);
+  }
+  const next = new RRule({ ...options, dtstart: start }).after(after, false);
   if (!next) return;
   return {
     date: next.toISOString().slice(0, 10),
-    time: task.dueTime ? next.toISOString().slice(11, 16) : undefined
+    time: isTimed ? next.toISOString().slice(11, 16) : undefined
   };
 }
 
@@ -251,9 +274,15 @@ function isTaskRecord(record: unknown): record is Task {
     !!task.id &&
     typeof task.title === "string" &&
     !!task.title.trim() &&
+    (task.description === undefined || typeof task.description === "string") &&
     typeof task.listId === "string" &&
     !!task.listId &&
     typeof task.completed === "boolean" &&
+    (task.completedWallDate === undefined ||
+      isValidCalendarDate(task.completedWallDate)) &&
+    (task.completedWallTime === undefined ||
+      (typeof task.completedWallTime === "string" &&
+        TIME.test(task.completedWallTime))) &&
     typeof task.flagged === "boolean" &&
     ["none", "low", "medium", "high"].includes(task.priority) &&
     Number.isFinite(task.createdAt) &&
@@ -461,9 +490,12 @@ export class Tasks extends TaskRecordStore {
     const value: Task = {
       id,
       title,
+      description: input.description,
       listId,
       completed: !!input.completed,
       completedAt: input.completed ? input.completedAt || now : undefined,
+      completedWallDate: input.completed ? input.completedWallDate : undefined,
+      completedWallTime: input.completed ? input.completedWallTime : undefined,
       dueDate: input.dueDate,
       dueTime: input.dueTime,
       reminderAt: input.reminderAt,
@@ -510,17 +542,27 @@ export class Tasks extends TaskRecordStore {
     };
     value.title = value.title.trim();
     if (
-      hasOwn(patch, "recurrenceRule") ||
-      hasOwn(patch, "dueDate") ||
-      hasOwn(patch, "dueTime")
+      hasOwn(patch, "recurrenceRule") &&
+      patch.recurrenceRule !== old.recurrenceRule
     ) {
       value.seriesId = value.recurrenceRule
         ? old.seriesId || old.id
         : undefined;
       value.seriesStartDate = value.recurrenceRule ? value.dueDate : undefined;
       value.seriesStartTime = value.recurrenceRule ? value.dueTime : undefined;
+    } else if (
+      value.recurrenceRule &&
+      (hasOwn(patch, "dueDate") || hasOwn(patch, "dueTime"))
+    ) {
+      // Changing one occurrence does not move the series schedule.
+      value.seriesStartDate = old.seriesStartDate || old.dueDate;
+      value.seriesStartTime = old.seriesStartTime || old.dueTime;
     }
-    if (!value.completed) value.completedAt = undefined;
+    if (!value.completed) {
+      value.completedAt = undefined;
+      value.completedWallDate = undefined;
+      value.completedWallTime = undefined;
+    }
     if (
       hasOwn(patch, "dueDate") ||
       hasOwn(patch, "dueTime") ||
@@ -535,9 +577,19 @@ export class Tasks extends TaskRecordStore {
   async complete(id: string): Promise<Task> {
     const old = await this.get(id);
     if (!old) throw new Error("Task not found.");
+    const completedAt = Date.now();
+    const wallTime = new Date(completedAt);
     const completed = old.completed
       ? old
-      : await this.update(id, { completed: true, completedAt: Date.now() });
+      : await this.update(id, {
+          completed: true,
+          completedAt,
+          completedWallDate: calendarDate(wallTime),
+          completedWallTime: `${String(wallTime.getHours()).padStart(
+            2,
+            "0"
+          )}:${String(wallTime.getMinutes()).padStart(2, "0")}`
+        });
     await this.ensureNextOccurrence(completed);
     return completed;
   }
@@ -556,6 +608,8 @@ export class Tasks extends TaskRecordStore {
             id: nextId,
             completed: false,
             completedAt: undefined,
+            completedWallDate: undefined,
+            completedWallTime: undefined,
             dueDate: next.date,
             dueTime: next.time,
             reminderAt,
@@ -652,7 +706,7 @@ export class Tasks extends TaskRecordStore {
     }
   }
 
-  /** Runs at startup and after sync. Durable Task creation precedes Reminder deletion. */
+  /** Runs at startup and after sync. Durable Task creation precedes disabling the source Reminder. */
   async migrateLegacyReminders(): Promise<void> {
     await this.maintenanceMutex.runExclusive(() =>
       this.migrateLegacyRemindersUnsafe()
@@ -690,6 +744,17 @@ export class Tasks extends TaskRecordStore {
     for await (const reminder of this.db.reminders.all.iterate()) {
       if (!reminder.id || !reminder.title || !Number.isFinite(reminder.date))
         continue;
+      const recurrenceRule = legacyRule(reminder);
+      if (
+        reminder.mode !== "once" &&
+        (reminder.mode !== "repeat" || !recurrenceRule)
+      ) {
+        warnInvalidRecord(
+          `legacy:${reminder.id}`,
+          "unsupported legacy recurrence mode"
+        );
+        continue;
+      }
       const id = makeId(`${PREFIX}legacy:${reminder.id}`);
       if (!this.recordExists(id)) {
         listId ||= (await this.db.taskLists.default()).id;
@@ -697,24 +762,39 @@ export class Tasks extends TaskRecordStore {
         await this.create({
           id,
           title: reminder.title,
+          description: reminder.description ?? undefined,
           listId,
           dueDate: calendarDate(date),
           dueTime: `${String(date.getHours()).padStart(2, "0")}:${String(
             date.getMinutes()
           ).padStart(2, "0")}`,
-          reminderAt: reminder.disabled ? undefined : reminder.date,
-          recurrenceRule: legacyRule(reminder),
+          reminderAt: reminder.disabled
+            ? undefined
+            : reminder.snoozeUntil !== undefined &&
+              Number.isFinite(reminder.snoozeUntil)
+            ? reminder.snoozeUntil
+            : reminder.date,
+          recurrenceRule,
           legacyReminderId: reminder.id,
           localOnly: reminder.localOnly
         });
       }
-      await this.db.reminders.remove(reminder.id);
+      // Keep the original payload for a Web or fork rollback. The Task is the
+      // fork's only visible record; disabling the source avoids duplicate alerts.
+      if (!reminder.disabled)
+        await this.db.reminders.add({ id: reminder.id, disabled: true });
     }
   }
 }
 
 function validateTask(task: Task) {
   if (!task.title) throw new Error("Task title is required.");
+  if (task.description !== undefined && typeof task.description !== "string")
+    throw new Error("Invalid Task description.");
+  if (task.completedWallDate && !isValidCalendarDate(task.completedWallDate))
+    throw new Error("Invalid Task completion date.");
+  if (task.completedWallTime && !TIME.test(task.completedWallTime))
+    throw new Error("Invalid Task completion time.");
   if (task.dueDate && !isValidCalendarDate(task.dueDate))
     throw new Error("Invalid Task due date.");
   if (task.dueTime && (!task.dueDate || !TIME.test(task.dueTime)))

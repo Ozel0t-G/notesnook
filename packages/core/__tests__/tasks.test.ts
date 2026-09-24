@@ -4,6 +4,15 @@ import { isTaskOverdue, Tasks } from "../src/collections/tasks.js";
 import Collector from "../src/api/sync/collector.js";
 import { Sync } from "../src/api/sync/index.js";
 
+async function atTime<T>(time: number, action: () => Promise<T>): Promise<T> {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(time);
+  try {
+    return await action();
+  } finally {
+    clock.mockRestore();
+  }
+}
+
 describe("standalone Tasks", () => {
   test("create rejects an existing Task ID and a tombstoned ID", async () => {
     const db = await databaseTest();
@@ -149,7 +158,9 @@ describe("standalone Tasks", () => {
       dueTime: "09:00",
       recurrenceRule: rule
     });
-    await db.tasks.complete(task.id);
+    await atTime(new Date(`${start}T12:00:00`).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
     const history = await db.tasks.list();
     const active = history.filter((item) => !item.completed);
     expect(active).toHaveLength(1);
@@ -174,10 +185,120 @@ describe("standalone Tasks", () => {
       reminderAt: new Date(2026, 9, 23, 18).getTime(),
       recurrenceRule: "FREQ=WEEKLY;BYDAY=FR"
     });
-    await db.tasks.complete(task.id);
+    await atTime(new Date(2026, 10, 1, 12).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
     const next = (await db.tasks.smartList("all"))[0];
     expect(next.dueDate).toBe("2026-11-06");
     expect(next.reminderAt).toBe(new Date(2026, 9, 30, 18).getTime());
+  });
+
+  test("editing one recurring due date and time retains the series schedule", async () => {
+    const db = await databaseTest();
+    const task = await db.tasks.create({
+      title: "Friday series",
+      dueDate: "2026-03-06",
+      dueTime: "09:00",
+      recurrenceRule: "FREQ=WEEKLY;BYDAY=FR"
+    });
+    const moved = await db.tasks.update(task.id, {
+      dueDate: "2026-03-07"
+    });
+    expect(moved.seriesStartDate).toBe("2026-03-06");
+    const edited = await db.tasks.update(task.id, {
+      dueTime: "15:00",
+      recurrenceRule: "FREQ=WEEKLY;BYDAY=FR"
+    });
+    expect(edited.seriesStartDate).toBe("2026-03-06");
+    expect(edited.seriesStartTime).toBe("09:00");
+    await atTime(new Date(2026, 2, 8, 12).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
+    expect((await db.tasks.smartList("all"))[0]).toMatchObject({
+      dueDate: "2026-03-13",
+      dueTime: "09:00",
+      seriesStartDate: "2026-03-06",
+      seriesStartTime: "09:00"
+    });
+  });
+
+  test("late completion skips missed timed occurrences without moving the anchor", async () => {
+    const db = await databaseTest();
+    const task = await db.tasks.create({
+      title: "Daily",
+      dueDate: "2026-03-07",
+      dueTime: "09:00",
+      reminderAt: new Date(2026, 2, 6, 9).getTime(),
+      recurrenceRule: "FREQ=DAILY"
+    });
+    await atTime(new Date(2026, 8, 24, 12).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
+    const [next] = await db.tasks.smartList("all");
+    expect(next.dueDate).toBe("2026-09-25");
+    expect(next.dueTime).toBe("09:00");
+    expect(next.reminderAt).toBe(new Date(2026, 8, 24, 9).getTime());
+    await db.tasks.reconcileRecurrence();
+    await db.tasks.complete(task.id);
+    expect((await db.tasks.smartList("all")).map((item) => item.id)).toEqual([
+      next.id
+    ]);
+    expect(await db.tasks.smartList("completed")).toHaveLength(1);
+  });
+
+  test("late completion of a date-only series keeps today's occurrence", async () => {
+    const db = await databaseTest();
+    const task = await db.tasks.create({
+      title: "Daily date-only",
+      dueDate: "2026-03-07",
+      recurrenceRule: "FREQ=DAILY"
+    });
+    await atTime(new Date(2026, 8, 24, 12).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
+    const [next] = await db.tasks.smartList("all");
+    expect(next.dueDate).toBe("2026-09-24");
+    expect(next.dueTime).toBeUndefined();
+  });
+
+  test("recurrence recovery uses the stored completion wall date after a timezone change", async () => {
+    const originalZone = process.env.TZ;
+    try {
+      process.env.TZ = "Europe/Oslo";
+      const db = await databaseTest();
+      const task = await db.tasks.create({
+        title: "Date-only recovery",
+        dueDate: "2026-03-07",
+        recurrenceRule: "FREQ=DAILY"
+      });
+      const originalUpsert = db.settings.collection.upsert.bind(
+        db.settings.collection
+      );
+      let writes = 0;
+      const upsert = vi
+        .spyOn(db.settings.collection, "upsert")
+        .mockImplementation(async (item) => {
+          if (++writes === 2) throw new Error("interrupted");
+          return originalUpsert(item);
+        });
+      try {
+        await expect(
+          atTime(new Date(2026, 2, 10, 0, 30).getTime(), () =>
+            db.tasks.complete(task.id)
+          )
+        ).rejects.toThrow("interrupted");
+      } finally {
+        upsert.mockRestore();
+      }
+      expect((await db.tasks.get(task.id))?.completedWallDate).toBe(
+        "2026-03-10"
+      );
+      process.env.TZ = "America/Los_Angeles";
+      await db.tasks.reconcileRecurrence();
+      expect((await db.tasks.smartList("all"))[0].dueDate).toBe("2026-03-10");
+    } finally {
+      process.env.TZ = originalZone;
+    }
   });
 
   test.each([
@@ -196,7 +317,9 @@ describe("standalone Tasks", () => {
           dueTime: "09:00",
           recurrenceRule: "FREQ=WEEKLY;BYDAY=FR"
         });
-        await db.tasks.complete(task.id);
+        await atTime(new Date(`${start}T12:00:00`).getTime(), () =>
+          db.tasks.complete(task.id)
+        );
         expect((await db.tasks.smartList("all"))[0]).toMatchObject({
           dueDate: next,
           dueTime: "09:00"
@@ -214,9 +337,13 @@ describe("standalone Tasks", () => {
       dueDate: "2026-03-07",
       recurrenceRule: "FREQ=DAILY;COUNT=2"
     });
-    await db.tasks.complete(task.id);
+    await atTime(new Date(2026, 2, 7, 12).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
     const [second] = await db.tasks.smartList("all");
-    await db.tasks.complete(second.id);
+    await atTime(new Date(2026, 2, 8, 12).getTime(), () =>
+      db.tasks.complete(second.id)
+    );
     expect(await db.tasks.smartList("all")).toEqual([]);
     expect(await db.tasks.smartList("completed")).toHaveLength(2);
   });
@@ -259,17 +386,33 @@ describe("standalone Tasks", () => {
   test("legacy migration is idempotent and preserves legacy due and reminder", async () => {
     const db = await databaseTest();
     const date = new Date(2026, 9, 31, 18).getTime();
-    const id = await db.reminders.add({ title: "Legacy", date, mode: "once" });
+    const snoozeUntil = new Date(2026, 10, 1, 9).getTime();
+    const id = await db.reminders.add({
+      title: "Legacy",
+      description: "Bring the original document",
+      date,
+      mode: "once",
+      snoozeUntil
+    });
     await db.tasks.migrateLegacyReminders();
     await db.tasks.migrateLegacyReminders();
     const tasks = (await db.tasks.list()).filter(
       (item) => item.legacyReminderId === id
     );
     expect(tasks).toHaveLength(1);
-    expect(tasks[0].reminderAt).toBe(date);
+    expect(tasks[0].description).toBe("Bring the original document");
+    expect(tasks[0].reminderAt).toBe(snoozeUntil);
     expect(tasks[0].dueDate).toBe("2026-10-31");
     expect(tasks[0].dueTime).toBe("18:00");
-    expect(await db.reminders.reminder(id!)).toBeUndefined();
+    expect(await db.reminders.reminder(id!)).toEqual(
+      expect.objectContaining({
+        title: "Legacy",
+        description: "Bring the original document",
+        date,
+        snoozeUntil,
+        disabled: true
+      })
+    );
   });
 
   test("disabled legacy Reminder does not regain a scheduled reminder", async () => {
@@ -285,6 +428,58 @@ describe("standalone Tasks", () => {
     );
     expect(task.dueDate).toBe("2026-10-31");
     expect(task.reminderAt).toBeUndefined();
+    expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
+  });
+
+  test("200 legacy Reminders migrate once across multiple iterator pages", async () => {
+    const db = await databaseTest();
+    db.options.batchSize = 31;
+    const date = new Date(2026, 9, 31, 18).getTime();
+    for (let index = 0; index < 200; index++)
+      await db.reminders.add({ title: `Reminder ${index}`, date });
+    const disable = vi.spyOn(db.reminders, "add");
+    const scan = vi.spyOn(db.reminders, "all", "get");
+    try {
+      await db.tasks.migrateLegacyReminders();
+      expect(scan).toHaveBeenCalledTimes(1);
+      expect(
+        (await db.tasks.list()).filter((task) => task.legacyReminderId)
+      ).toHaveLength(200);
+      expect(disable).toHaveBeenCalledTimes(200);
+      expect(
+        (await db.reminders.all.items()).every((reminder) => reminder.disabled)
+      ).toBe(true);
+      await db.tasks.migrateLegacyReminders();
+      expect(scan).toHaveBeenCalledTimes(3);
+      expect(
+        (await db.tasks.list()).filter((task) => task.legacyReminderId)
+      ).toHaveLength(200);
+      expect(disable).toHaveBeenCalledTimes(200);
+    } finally {
+      scan.mockRestore();
+      disable.mockRestore();
+    }
+  });
+
+  test("unsupported legacy modes stay recoverable and are not disabled", async () => {
+    const db = await databaseTest();
+    const date = new Date(2026, 9, 31, 18).getTime();
+    const permanent = await db.reminders.add({
+      title: "Permanent",
+      date,
+      mode: "permanent"
+    });
+    const unknownRepeat = await db.reminders.add({
+      title: "Unknown repeat",
+      date,
+      mode: "repeat"
+    });
+    await db.tasks.migrateLegacyReminders();
+    expect(await db.tasks.list()).toEqual([]);
+    expect((await db.reminders.reminder(permanent!))?.disabled).not.toBe(true);
+    expect((await db.reminders.reminder(unknownRepeat!))?.disabled).not.toBe(
+      true
+    );
   });
 
   test("local-only legacy Reminder remains local-only in encrypted sync", async () => {
@@ -449,14 +644,14 @@ describe("standalone Tasks", () => {
     }
   });
 
-  test("migration resumes after Task persistence but before Reminder deletion", async () => {
+  test("migration resumes after Task persistence but before disabling Reminder", async () => {
     const db = await databaseTest();
     const id = await db.reminders.add({
       title: "Interrupted",
       date: new Date(2026, 10, 3, 9).getTime()
     });
-    const removal = vi
-      .spyOn(db.reminders, "remove")
+    const disable = vi
+      .spyOn(db.reminders, "add")
       .mockRejectedValueOnce(new Error("interrupted"));
     await expect(db.tasks.migrateLegacyReminders()).rejects.toThrow(
       "interrupted"
@@ -464,13 +659,13 @@ describe("standalone Tasks", () => {
     expect(
       (await db.tasks.list()).filter((item) => item.legacyReminderId === id)
     ).toHaveLength(1);
-    expect(await db.reminders.reminder(id!)).toBeDefined();
-    removal.mockRestore();
+    expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
+    disable.mockRestore();
     await db.tasks.migrateLegacyReminders();
     expect(
       (await db.tasks.list()).filter((item) => item.legacyReminderId === id)
     ).toHaveLength(1);
-    expect(await db.reminders.reminder(id!)).toBeUndefined();
+    expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
   });
 
   test("completed occurrence recovers its next Task after interrupted persistence", async () => {
@@ -488,7 +683,11 @@ describe("standalone Tasks", () => {
         if (++writes === 2) throw new Error("interrupted");
         return original(item);
       });
-    await expect(db.tasks.complete(task.id)).rejects.toThrow("interrupted");
+    await expect(
+      atTime(new Date(2026, 2, 7, 12).getTime(), () =>
+        db.tasks.complete(task.id)
+      )
+    ).rejects.toThrow("interrupted");
     upsert.mockRestore();
     expect((await db.tasks.get(task.id))?.completed).toBe(true);
     await db.tasks.reconcileRecurrence();
@@ -505,7 +704,9 @@ describe("standalone Tasks", () => {
       dueDate: "2026-03-07",
       recurrenceRule: "FREQ=DAILY"
     });
-    await Promise.all([db.tasks.complete(task.id), db.tasks.complete(task.id)]);
+    await atTime(new Date(2026, 2, 7, 12).getTime(), () =>
+      Promise.all([db.tasks.complete(task.id), db.tasks.complete(task.id)])
+    );
     expect(
       (await db.tasks.smartList("all")).map((item) => item.dueDate)
     ).toEqual(["2026-03-08"]);
@@ -518,7 +719,9 @@ describe("standalone Tasks", () => {
       dueDate: "2026-03-07",
       recurrenceRule: "FREQ=DAILY"
     });
-    await db.tasks.complete(task.id);
+    await atTime(new Date(2026, 2, 7, 12).getTime(), () =>
+      db.tasks.complete(task.id)
+    );
     const [next] = await db.tasks.smartList("all");
     await db.tasks.remove(next.id);
     await db.tasks.reconcileRecurrence();
@@ -573,11 +776,12 @@ describe("standalone Tasks", () => {
     await db.reminders.add({
       id,
       title: "Legacy",
-      date: new Date(2026, 9, 1, 9).getTime()
+      date: new Date(2026, 9, 1, 9).getTime(),
+      disabled: false
     });
     await db.tasks.migrateLegacyReminders();
     expect(await db.tasks.get(task.id)).toBeUndefined();
-    expect(await db.reminders.reminder(id!)).toBeUndefined();
+    expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
   });
 
   test("malformed namespaced setting records cannot enter Task queries", async () => {
@@ -643,6 +847,7 @@ describe("standalone Tasks", () => {
     const title = "Confidential October appointment";
     const task = await source.tasks.create({
       title,
+      description: "Bring the confidential paperwork",
       listId: list.id,
       dueDate: "2026-10-31",
       reminderAt,
@@ -664,6 +869,7 @@ describe("standalone Tasks", () => {
       expect(backup.encrypted).toBe(true);
       expect(backup.data).toBeTypeOf("object");
       expect(data).not.toContain(title);
+      expect(data).not.toContain("Bring the confidential paperwork");
     }
 
     const restored = await databaseTest();
@@ -678,6 +884,7 @@ describe("standalone Tasks", () => {
       expect.objectContaining({
         id: task.id,
         title,
+        description: "Bring the confidential paperwork",
         listId: list.id,
         dueDate: "2026-10-31",
         reminderAt,
@@ -704,7 +911,11 @@ describe("standalone Tasks", () => {
         if (++writes === 2) throw new Error("interrupted");
         return original(item);
       });
-    await expect(db.tasks.complete(task.id)).rejects.toThrow("interrupted");
+    await expect(
+      atTime(new Date(2026, 2, 7, 12).getTime(), () =>
+        db.tasks.complete(task.id)
+      )
+    ).rejects.toThrow("interrupted");
     upsert.mockRestore();
     const files = [];
     for await (const entry of db.backup.export({ type: "node" }))

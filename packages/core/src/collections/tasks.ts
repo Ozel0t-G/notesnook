@@ -90,6 +90,12 @@ function calendarDate(date: Date) {
   )}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function calendarTime(date: Date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+}
+
 function isValidCalendarDate(date: string) {
   if (!DATE.test(date)) return false;
   const [year, month, day] = date.split("-").map(Number);
@@ -215,6 +221,50 @@ function legacyRule(reminder: Reminder): string | undefined {
         days.length ? `;BYMONTHDAY=${days.join(",")}` : ""
       }`;
     }
+  }
+}
+
+function legacySchedule(
+  seed: Date,
+  recurrenceRule: string | undefined,
+  migrationTime: Date
+): { dueDate: string; dueTime: string; dueAt: number } | undefined {
+  if (!Number.isFinite(seed.getTime())) return;
+  if (!recurrenceRule)
+    return {
+      dueDate: calendarDate(seed),
+      dueTime: calendarTime(seed),
+      dueAt: seed.getTime()
+    };
+  try {
+    const start = floatingInstant(calendarDate(seed), calendarTime(seed));
+    const cutoff = new Date(
+      Date.UTC(
+        migrationTime.getFullYear(),
+        migrationTime.getMonth(),
+        migrationTime.getDate(),
+        migrationTime.getHours(),
+        migrationTime.getMinutes(),
+        migrationTime.getSeconds(),
+        migrationTime.getMilliseconds()
+      )
+    );
+    const next = new RRule({
+      ...RRule.parseString(recurrenceRule),
+      dtstart: start
+    }).after(cutoff, true);
+    if (!next) return;
+    const dueDate = next.toISOString().slice(0, 10);
+    const dueTime = next.toISOString().slice(11, 16);
+    const [year, month, day] = dueDate.split("-").map(Number);
+    const [hour, minute] = dueTime.split(":").map(Number);
+    return {
+      dueDate,
+      dueTime,
+      dueAt: new Date(year, month - 1, day, hour, minute).getTime()
+    };
+  } catch {
+    return;
   }
 }
 
@@ -741,6 +791,7 @@ export class Tasks extends TaskRecordStore {
 
   private async migrateLegacyRemindersUnsafe(): Promise<void> {
     let listId: string | undefined;
+    const migrationTime = new Date(Date.now());
     for await (const reminder of this.db.reminders.all.iterate()) {
       if (!reminder.id || !reminder.title || !Number.isFinite(reminder.date))
         continue;
@@ -757,24 +808,31 @@ export class Tasks extends TaskRecordStore {
       }
       const id = makeId(`${PREFIX}legacy:${reminder.id}`);
       if (!this.recordExists(id)) {
+        const seed = new Date(reminder.date);
+        const schedule = legacySchedule(seed, recurrenceRule, migrationTime);
+        if (!schedule) {
+          warnInvalidRecord(`legacy:${reminder.id}`, "invalid legacy schedule");
+          continue;
+        }
         listId ||= (await this.db.taskLists.default()).id;
-        const date = new Date(reminder.date);
+        const snooze = reminder.snoozeUntil;
+        const validSnooze = snooze !== undefined && Number.isFinite(snooze);
         await this.create({
           id,
           title: reminder.title,
           description: reminder.description ?? undefined,
           listId,
-          dueDate: calendarDate(date),
-          dueTime: `${String(date.getHours()).padStart(2, "0")}:${String(
-            date.getMinutes()
-          ).padStart(2, "0")}`,
+          dueDate: schedule.dueDate,
+          dueTime: schedule.dueTime,
           reminderAt: reminder.disabled
             ? undefined
-            : reminder.snoozeUntil !== undefined &&
-              Number.isFinite(reminder.snoozeUntil)
-            ? reminder.snoozeUntil
-            : reminder.date,
+            : validSnooze &&
+              (!recurrenceRule || snooze > migrationTime.getTime())
+            ? snooze
+            : schedule.dueAt,
           recurrenceRule,
+          seriesStartDate: recurrenceRule ? calendarDate(seed) : undefined,
+          seriesStartTime: recurrenceRule ? calendarTime(seed) : undefined,
           legacyReminderId: reminder.id,
           localOnly: reminder.localOnly
         });

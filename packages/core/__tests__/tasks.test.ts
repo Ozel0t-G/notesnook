@@ -415,6 +415,85 @@ describe("standalone Tasks", () => {
     );
   });
 
+  test.each([
+    ["day", "2026-01-01", undefined, "2026-09-25"],
+    ["week", "2026-01-02", [1, 3, 5], "2026-09-25"],
+    ["month", "2026-01-30", [15, 30], "2026-09-30"],
+    ["year", "2024-10-31", undefined, "2026-10-31"]
+  ] as const)(
+    "stale legacy %s repeat rolls forward to the next scheduled occurrence",
+    async (recurringMode, seedDate, selectedDays, nextDate) => {
+      const db = await databaseTest();
+      const seed = new Date(`${seedDate}T09:00:00`).getTime();
+      const id = await db.reminders.add({
+        title: `Legacy ${recurringMode}`,
+        date: seed,
+        mode: "repeat",
+        recurringMode,
+        selectedDays: selectedDays ? [...selectedDays] : undefined
+      });
+      await atTime(new Date(2026, 8, 24, 12).getTime(), () =>
+        db.tasks.migrateLegacyReminders()
+      );
+      const [task] = (await db.tasks.list()).filter(
+        (item) => item.legacyReminderId === id
+      );
+      expect(task).toMatchObject({
+        dueDate: nextDate,
+        dueTime: "09:00",
+        seriesStartDate: seedDate,
+        seriesStartTime: "09:00",
+        reminderAt: new Date(`${nextDate}T09:00:00`).getTime()
+      });
+      expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
+      await atTime(new Date(2026, 9, 1, 12).getTime(), () =>
+        db.tasks.migrateLegacyReminders()
+      );
+      expect(
+        (await db.tasks.list()).filter((item) => item.legacyReminderId === id)
+      ).toEqual([task]);
+    }
+  );
+
+  test("migrated repeating Reminder retains a future snooze and replaces an expired one", async () => {
+    const db = await databaseTest();
+    const seed = new Date(2026, 0, 1, 9).getTime();
+    const futureSnooze = new Date(2026, 8, 24, 15).getTime();
+    const futureId = await db.reminders.add({
+      title: "Future snooze",
+      date: seed,
+      mode: "repeat",
+      recurringMode: "day",
+      snoozeUntil: futureSnooze
+    });
+    const expiredId = await db.reminders.add({
+      title: "Expired snooze",
+      date: seed,
+      mode: "repeat",
+      recurringMode: "day",
+      snoozeUntil: new Date(2026, 8, 23, 15).getTime()
+    });
+    await atTime(new Date(2026, 8, 24, 12).getTime(), () =>
+      db.tasks.migrateLegacyReminders()
+    );
+    const migrated = await db.tasks.list();
+    const future = migrated.find((item) => item.legacyReminderId === futureId)!;
+    const expired = migrated.find(
+      (item) => item.legacyReminderId === expiredId
+    )!;
+    expect(future.dueDate).toBe("2026-09-25");
+    expect(future.reminderAt).toBe(futureSnooze);
+    expect(expired.reminderAt).toBe(new Date(2026, 8, 25, 9).getTime());
+    await atTime(new Date(2026, 8, 25, 12).getTime(), () =>
+      db.tasks.complete(future.id)
+    );
+    const successor = (await db.tasks.smartList("all")).find(
+      (item) => item.seriesId === future.id
+    );
+    expect(successor?.dueDate).toBe("2026-09-26");
+    expect(successor?.reminderAt).toBe(new Date(2026, 8, 25, 15).getTime());
+  });
+
   test("disabled legacy Reminder does not regain a scheduled reminder", async () => {
     const db = await databaseTest();
     const id = await db.reminders.add({
@@ -665,6 +744,40 @@ describe("standalone Tasks", () => {
     expect(
       (await db.tasks.list()).filter((item) => item.legacyReminderId === id)
     ).toHaveLength(1);
+    expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
+  });
+
+  test("stale recurring Reminder migration resumes without duplicating the rolled Task", async () => {
+    const db = await databaseTest();
+    const id = await db.reminders.add({
+      title: "Interrupted daily",
+      date: new Date(2026, 0, 1, 9).getTime(),
+      mode: "repeat",
+      recurringMode: "day"
+    });
+    const disable = vi
+      .spyOn(db.reminders, "add")
+      .mockRejectedValueOnce(new Error("interrupted"));
+    try {
+      await expect(
+        atTime(new Date(2026, 8, 24, 12).getTime(), () =>
+          db.tasks.migrateLegacyReminders()
+        )
+      ).rejects.toThrow("interrupted");
+    } finally {
+      disable.mockRestore();
+    }
+    const [persisted] = (await db.tasks.list()).filter(
+      (task) => task.legacyReminderId === id
+    );
+    expect(persisted.dueDate).toBe("2026-09-25");
+    expect((await db.reminders.reminder(id!))?.disabled).not.toBe(true);
+    await atTime(new Date(2026, 8, 24, 13).getTime(), () =>
+      db.tasks.migrateLegacyReminders()
+    );
+    expect(
+      (await db.tasks.list()).filter((task) => task.legacyReminderId === id)
+    ).toEqual([persisted]);
     expect((await db.reminders.reminder(id!))?.disabled).toBe(true);
   });
 

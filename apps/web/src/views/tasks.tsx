@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { Box, Button, Flex, Text } from "@theme-ui/components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { strings } from "@notesnook/intl";
 import {
@@ -43,15 +42,31 @@ import { NavigationEvents } from "../navigation";
 import { showToast } from "../utils/toast";
 import { logger } from "../utils/logger";
 import { Menu } from "../hooks/use-menu";
+import { isMac } from "../utils/platform";
+import {
+  Check,
+  MoreHorizontal,
+  Plus,
+  ArrowLeft,
+  Search,
+  Cross,
+  Calendar,
+  Date as DateIcon,
+  TableOfContents,
+  Pin,
+  CheckCircleOutline,
+  type Icon
+} from "../components/icons";
+import "../styles/veyran-mac-tasks.css";
 
 type TaskSelection = SmartTaskList | `list:${string}`;
 
-const smartLists: { id: SmartTaskList; title: () => string; icon: string }[] = [
-  { id: "today", title: strings.tasksToday, icon: "◉" },
-  { id: "scheduled", title: strings.tasksScheduled, icon: "▦" },
-  { id: "all", title: strings.tasksAll, icon: "☷" },
-  { id: "flagged", title: strings.tasksFlagged, icon: "⚑" },
-  { id: "completed", title: strings.tasksCompleted, icon: "✓" }
+const smartLists: { id: SmartTaskList; title: () => string; icon: Icon }[] = [
+  { id: "today", title: strings.tasksToday, icon: Calendar },
+  { id: "scheduled", title: strings.tasksScheduled, icon: DateIcon },
+  { id: "all", title: strings.tasksAll, icon: TableOfContents },
+  { id: "flagged", title: strings.tasksFlagged, icon: Pin },
+  { id: "completed", title: strings.tasksCompleted, icon: CheckCircleOutline }
 ];
 
 function todayKey(): string {
@@ -103,6 +118,34 @@ function reminderLabel(task: TaskRecord): string | undefined {
   return `${formatted} · ${time}`;
 }
 
+function repeatLabel(task: TaskRecord): string {
+  switch (task.recurrenceRule) {
+    case undefined:
+    case "":
+      return strings.tasksNone();
+    case "FREQ=DAILY":
+      return strings.tasksDaily();
+    case "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR":
+      return strings.tasksWeekdays();
+    case "FREQ=WEEKLY;BYDAY=SA,SU":
+      return strings.tasksWeekends();
+    case "FREQ=WEEKLY":
+      return strings.tasksWeekly();
+    case "FREQ=WEEKLY;INTERVAL=2":
+      return strings.tasksBiweekly();
+    case "FREQ=MONTHLY":
+      return strings.tasksMonthly();
+    case "FREQ=MONTHLY;INTERVAL=3":
+      return strings.tasksEveryThreeMonths();
+    case "FREQ=MONTHLY;INTERVAL=6":
+      return strings.tasksEverySixMonths();
+    case "FREQ=YEARLY":
+      return strings.tasksYearly();
+    default:
+      return strings.tasksCustom();
+  }
+}
+
 function scheduledGroups(tasks: TaskRecord[]) {
   const byDate = new Map<string, TaskRecord[]>();
   for (const task of tasks) {
@@ -133,13 +176,12 @@ export default function Tasks() {
   const [visibleLimit, setVisibleLimit] = useState(100);
   const [lists, setLists] = useState<TaskListRecord[]>([]);
   const [favorites, setFavorites] = useState<TaskFavorite[]>([]);
-  const [editingFavorites, setEditingFavorites] = useState(false);
   const favoritesRef = useRef<TaskFavorite[]>([]);
-  const editingFavoritesRef = useRef(false);
   const favoriteSave = useRef(Promise.resolve());
-  const [favoriteChoice, setFavoriteChoice] =
-    useState<TaskFavorite>("smart:today");
+  const pendingFavoriteWrites = useRef(0);
   const draggedFavorite = useRef<TaskFavorite | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [taskQuery, setTaskQuery] = useState("");
   const [defaultListId, setDefaultListId] = useState("");
   const [title, setTitle] = useState("");
   const [quickReminderDate, setQuickReminderDate] = useState("");
@@ -172,12 +214,14 @@ export default function Tasks() {
       if (request !== refreshId.current) return;
       setTasks(allTasks);
       setLists(allLists);
-      if (!editingFavoritesRef.current) {
-        const resolvedFavorites = savedFavorites.filter(
-          (item) =>
-            !item.startsWith("list:") ||
-            allLists.some((list) => list.id === item.slice(5))
-        );
+      const resolvedFavorites = savedFavorites.filter(
+        (item) =>
+          !item.startsWith("list:") ||
+          allLists.some((list) => list.id === item.slice(5))
+      );
+      // A settings update can trigger refresh before an optimistic Favorites
+      // write finishes. Keep the queued local order until storage catches up.
+      if (pendingFavoriteWrites.current === 0) {
         favoritesRef.current = resolvedFavorites;
         setFavorites(resolvedFavorites);
       }
@@ -263,6 +307,7 @@ export default function Tasks() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!window.location.pathname.startsWith("/tasks")) return;
       if (
         !(event.metaKey || event.ctrlKey) ||
         !event.shiftKey ||
@@ -288,9 +333,19 @@ export default function Tasks() {
       strings.tasksTitle()
     );
   }, [selection, lists]);
+  const filteredTasks = useMemo(() => {
+    const query = taskQuery.trim().toLocaleLowerCase();
+    return query
+      ? visibleTasks.filter((task) =>
+          `${task.title} ${task.description || ""}`
+            .toLocaleLowerCase()
+            .includes(query)
+        )
+      : visibleTasks;
+  }, [visibleTasks, taskQuery]);
   const displayedTasks = useMemo(
-    () => visibleTasks.slice(0, visibleLimit),
-    [visibleTasks, visibleLimit]
+    () => filteredTasks.slice(0, visibleLimit),
+    [filteredTasks, visibleLimit]
   );
   const availableFavorites = useMemo(
     () =>
@@ -299,6 +354,29 @@ export default function Tasks() {
         ...lists.map((item) => `list:${item.id}` as TaskFavorite)
       ].filter((item) => !favorites.includes(item)),
     [lists, favorites]
+  );
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId),
+    [tasks, selectedTaskId]
+  );
+  const selectedList = useMemo(
+    () => lists.find((list) => list.id === selectedTask?.listId),
+    [lists, selectedTask]
+  );
+  const listCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const task of tasks) {
+      if (!task.completed)
+        counts.set(task.listId, (counts.get(task.listId) || 0) + 1);
+    }
+    return counts;
+  }, [tasks]);
+  const smartCounts = useMemo(
+    () =>
+      new Map(
+        smartLists.map((list) => [list.id, countForSmartList(list.id, tasks)])
+      ),
+    [tasks]
   );
 
   function favoriteTitle(item: TaskFavorite): string {
@@ -363,6 +441,7 @@ export default function Tasks() {
 
   async function saveFavorites(next: TaskFavorite[]) {
     const previous = favoritesRef.current;
+    pendingFavoriteWrites.current += 1;
     favoritesRef.current = next;
     setFavorites(next);
     const save = favoriteSave.current
@@ -378,6 +457,9 @@ export default function Tasks() {
       }
       logger.error(cause);
       showToast("error", strings.tasksCouldNotSave());
+    } finally {
+      pendingFavoriteWrites.current -= 1;
+      if (pendingFavoriteWrites.current === 0) void refresh();
     }
   }
 
@@ -451,450 +533,579 @@ export default function Tasks() {
     }
   }
 
+  function openFavoriteMenu(item?: TaskFavorite) {
+    const index = item ? favoritesRef.current.indexOf(item) : -1;
+    Menu.openMenu(
+      item
+        ? [
+            {
+              type: "button",
+              key: "move-favorite-up",
+              title: strings.tasksMoveFavoriteUp(),
+              isDisabled: index <= 0,
+              onClick: () => moveFavorite(item, -1)
+            },
+            {
+              type: "button",
+              key: "move-favorite-down",
+              title: strings.tasksMoveFavoriteDown(),
+              isDisabled: index < 0 || index >= favoritesRef.current.length - 1,
+              onClick: () => moveFavorite(item, 1)
+            },
+            {
+              type: "button",
+              key: "remove-favorite",
+              title: strings.tasksRemoveFavorite(),
+              onClick: () =>
+                void saveFavorites(
+                  favoritesRef.current.filter((value) => value !== item)
+                )
+            }
+          ]
+        : availableFavorites.map((favorite) => ({
+            type: "button" as const,
+            key: favorite,
+            title: favoriteTitle(favorite),
+            onClick: () =>
+              void saveFavorites([...favoritesRef.current, favorite])
+          }))
+    );
+  }
+
+  function openListMenu(list: TaskListRecord) {
+    Menu.openMenu([
+      {
+        type: "button",
+        key: "edit-list",
+        title: strings.tasksEditList(),
+        onClick: () => void editList(list)
+      },
+      ...(list.id === defaultListId
+        ? []
+        : [
+            {
+              type: "button" as const,
+              key: "delete-list",
+              title: strings.tasksDeleteList(),
+              onClick: () => void deleteList(list)
+            }
+          ])
+    ]);
+  }
+
   return (
-    <Flex
-      sx={{ flexDirection: "column", height: "100%", minHeight: 0 }}
+    <div
+      className={
+        IS_DESKTOP_APP && isMac() ? "veyran-mac-tasks" : "veyran-web-tasks"
+      }
       data-test-id="tasks-view"
     >
-      <Box sx={{ overflowY: "auto", flex: 1, px: 3, py: 2 }}>
-        <Flex
-          sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}
-        >
-          <Text sx={{ fontWeight: "bold" }}>{strings.tasksFavorites()}</Text>
-          <Button
-            variant="transparent"
-            onClick={() => {
-              editingFavoritesRef.current = !editingFavoritesRef.current;
-              setEditingFavorites(editingFavoritesRef.current);
-              if (!editingFavoritesRef.current)
-                void favoriteSave.current.then(refresh, refresh);
-            }}
-            aria-label={strings.tasksEditFavorites()}
-            aria-pressed={editingFavorites}
-          >
-            {strings.tasksEditFavorites()}
-          </Button>
-        </Flex>
-        {favorites.length === 0 ? (
-          <Text sx={{ color: "paragraph-muted", mb: 2 }}>
-            {strings.tasksNoFavorites()}
-          </Text>
-        ) : null}
-        <Flex sx={{ flexWrap: "wrap", gap: 2, mb: 3 }}>
-          {favorites.map((item, index) => {
-            const custom = item.startsWith("list:");
-            const smart = custom
-              ? undefined
-              : smartLists.find((value) => value.id === item.slice(6));
-            const list = custom
-              ? lists.find((value) => value.id === item.slice(5))
-              : undefined;
-            const target = custom
-              ? (item as TaskSelection)
-              : (item.slice(6) as SmartTaskList);
-            const count = custom
-              ? tasks.filter(
-                  (task) => !task.completed && task.listId === list?.id
-                ).length
-              : countForSmartList(smart!.id, tasks);
-            return (
+      <aside className="veyran-task-sources" aria-label={strings.tasksTitle()}>
+        <div className="veyran-task-sources-scroll">
+          <div className="veyran-task-section-heading">
+            <span>{strings.tasksFavorites()}</span>
+            <button
+              type="button"
+              className="veyran-task-icon-button"
+              aria-label={strings.tasksAddFavorite()}
+              title={strings.tasksAddFavorite()}
+              disabled={availableFavorites.length === 0}
+              onClick={() => openFavoriteMenu()}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          {favorites.length === 0 ? (
+            <p className="veyran-task-source-empty">
+              {strings.tasksNoFavorites()}
+            </p>
+          ) : null}
+          <div className="veyran-task-source-group">
+            {favorites.map((item, index) => {
+              const custom = item.startsWith("list:");
+              const smart = custom
+                ? undefined
+                : smartLists.find((value) => value.id === item.slice(6));
+              const list = custom
+                ? lists.find((value) => value.id === item.slice(5))
+                : undefined;
+              const SmartIcon = smart?.icon;
+              const target = custom
+                ? (item as TaskSelection)
+                : (item.slice(6) as SmartTaskList);
+              const count = custom
+                ? listCounts.get(list?.id || "") || 0
+                : smartCounts.get(smart!.id) || 0;
+              return (
+                <div
+                  key={item}
+                  className="veyran-task-source-wrap"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    const from = draggedFavorite.current;
+                    if (from && from !== item)
+                      moveFavorite(from, index - favorites.indexOf(from));
+                    draggedFavorite.current = null;
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    openFavoriteMenu(item);
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="veyran-task-source"
+                    title={favoriteTitle(item)}
+                    aria-current={selection === target ? "page" : undefined}
+                    onClick={() => {
+                      setSelection(target);
+                      setSelectedTaskId(null);
+                    }}
+                  >
+                    <span
+                      className="veyran-task-source-symbol"
+                      aria-hidden="true"
+                    >
+                      {list ? (
+                        <TaskListGlyph
+                          symbol={list.symbol}
+                          color={list.color}
+                          size={17}
+                        />
+                      ) : SmartIcon ? (
+                        <SmartIcon size={16} />
+                      ) : null}
+                    </span>
+                    <span className="veyran-task-source-name">
+                      {favoriteTitle(item)}
+                    </span>
+                    <span className="veyran-task-source-count">{count}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="veyran-task-drag-handle"
+                    draggable
+                    aria-label={`${strings.tasksDragFavorites()}: ${favoriteTitle(
+                      item
+                    )}`}
+                    title={strings.tasksDragFavorites()}
+                    onDragStart={(event) => {
+                      draggedFavorite.current = item;
+                      event.dataTransfer.effectAllowed = "move";
+                    }}
+                    onDragEnd={() => {
+                      draggedFavorite.current = null;
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "ArrowUp" ||
+                        event.key === "ArrowDown"
+                      ) {
+                        event.preventDefault();
+                        moveFavorite(item, event.key === "ArrowUp" ? -1 : 1);
+                      }
+                    }}
+                  >
+                    <span aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="veyran-task-source-more veyran-task-icon-button"
+                    aria-label={`${favoriteTitle(
+                      item
+                    )}: ${strings.tasksEditFavorites()}`}
+                    title={strings.tasksEditFavorites()}
+                    onClick={() => openFavoriteMenu(item)}
+                  >
+                    <MoreHorizontal size={16} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="veyran-task-section-heading veyran-task-list-heading">
+            <span>{strings.tasksLists()}</span>
+            <button
+              type="button"
+              className="veyran-task-icon-button"
+              aria-label={strings.tasksNewList()}
+              title={strings.tasksNewList()}
+              onClick={() => void createList()}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          <div className="veyran-task-source-group">
+            {lists.map((list) => (
               <div
-                key={item}
-                draggable={editingFavorites}
-                onDragStart={() => {
-                  draggedFavorite.current = item;
-                }}
-                onDragOver={(event) => {
-                  if (editingFavorites) event.preventDefault();
-                }}
-                onDrop={(event) => {
+                key={list.id}
+                className="veyran-task-source-wrap"
+                onContextMenu={(event) => {
                   event.preventDefault();
-                  const from = draggedFavorite.current;
-                  if (from && from !== item)
-                    moveFavorite(from, index - favorites.indexOf(from));
-                  draggedFavorite.current = null;
+                  openListMenu(list);
                 }}
-                style={{ flex: "1 1 145px", maxWidth: 250 }}
               >
                 <button
                   type="button"
-                  aria-pressed={selection === target}
-                  onClick={() => setSelection(target)}
-                  style={{
-                    width: "100%",
-                    minHeight: 64,
-                    textAlign: "left",
-                    border: "1px solid var(--border)",
-                    borderRadius: 10,
-                    padding: "10px 12px",
-                    background:
-                      selection === target
-                        ? "var(--background-selected)"
-                        : "var(--background-secondary)",
-                    color: "var(--paragraph)",
-                    cursor: editingFavorites ? "grab" : "pointer",
-                    font: "inherit"
+                  className="veyran-task-source"
+                  title={list.name}
+                  aria-current={
+                    selection === `list:${list.id}` ? "page" : undefined
+                  }
+                  onClick={() => {
+                    setSelection(`list:${list.id}`);
+                    setQuickListId(list.id);
+                    setSelectedTaskId(null);
                   }}
                 >
-                  <Flex
-                    sx={{
-                      justifyContent: "space-between",
-                      alignItems: "center"
-                    }}
+                  <span
+                    className="veyran-task-source-symbol"
+                    aria-hidden="true"
                   >
-                    {list ? (
-                      <TaskListGlyph
-                        symbol={list.symbol}
-                        color={list.color}
-                        size={20}
-                      />
-                    ) : (
-                      <Text
-                        aria-hidden="true"
-                        sx={{ color: "accent", fontSize: 20 }}
-                      >
-                        {smart?.icon}
-                      </Text>
-                    )}
-                    <Text sx={{ fontWeight: "bold" }}>{count}</Text>
-                  </Flex>
-                  <Text sx={{ fontWeight: "bold" }}>{favoriteTitle(item)}</Text>
+                    <TaskListGlyph
+                      symbol={list.symbol}
+                      color={list.color}
+                      size={17}
+                    />
+                  </span>
+                  <span className="veyran-task-source-name">{list.name}</span>
+                  <span className="veyran-task-source-count">
+                    {listCounts.get(list.id) || 0}
+                  </span>
                 </button>
-                {editingFavorites ? (
-                  <Flex sx={{ gap: 1, mt: 1, justifyContent: "flex-end" }}>
-                    <button
-                      type="button"
-                      aria-label={`${strings.tasksMoveFavoriteUp()}: ${favoriteTitle(
-                        item
-                      )}`}
-                      disabled={index === 0}
-                      onClick={() => moveFavorite(item, -1)}
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${strings.tasksMoveFavoriteDown()}: ${favoriteTitle(
-                        item
-                      )}`}
-                      disabled={index === favorites.length - 1}
-                      onClick={() => moveFavorite(item, 1)}
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`${strings.tasksRemoveFavorite()}: ${favoriteTitle(
-                        item
-                      )}`}
-                      onClick={() =>
-                        void saveFavorites(
-                          favoritesRef.current.filter((value) => value !== item)
-                        )
-                      }
-                    >
-                      ×
-                    </button>
-                  </Flex>
-                ) : null}
+                <button
+                  type="button"
+                  className="veyran-task-source-more veyran-task-icon-button"
+                  aria-label={`${list.name}: ${strings.tasksEditList()}`}
+                  title={strings.tasksEditList()}
+                  onClick={() => openListMenu(list)}
+                >
+                  <MoreHorizontal size={16} />
+                </button>
               </div>
-            );
-          })}
-        </Flex>
-        {editingFavorites && availableFavorites.length > 0 ? (
-          <Flex sx={{ gap: 2, mb: 3 }}>
-            <select
-              aria-label={strings.tasksAddFavorite()}
-              value={
-                availableFavorites.includes(favoriteChoice)
-                  ? favoriteChoice
-                  : availableFavorites[0]
-              }
-              onChange={(event) =>
-                setFavoriteChoice(event.target.value as TaskFavorite)
-              }
-            >
-              {availableFavorites.map((item) => (
-                <option key={item} value={item}>
-                  {favoriteTitle(item)}
-                </option>
-              ))}
-            </select>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                void saveFavorites([
-                  ...favoritesRef.current,
-                  availableFavorites.includes(favoriteChoice)
-                    ? favoriteChoice
-                    : availableFavorites[0]
-                ])
-              }
-            >
-              {strings.tasksAddFavorite()}
-            </Button>
-          </Flex>
-        ) : null}
-        <Flex
-          sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}
-        >
-          <Text sx={{ fontWeight: "bold" }}>{strings.tasksLists()}</Text>
-          <Button
-            variant="transparent"
-            onClick={createList}
-            aria-label={strings.tasksNewList()}
-            title={strings.tasksNewList()}
-          >
-            +
-          </Button>
-        </Flex>
-        <Flex sx={{ flexDirection: "column", gap: 1, mb: 4 }}>
-          {lists.map((list) => (
-            <Flex key={list.id} sx={{ alignItems: "center", gap: 1 }}>
-              <button
-                type="button"
-                aria-pressed={selection === `list:${list.id}`}
-                onClick={() => {
-                  setSelection(`list:${list.id}`);
-                  setQuickListId(list.id);
-                }}
-                style={{
-                  flex: 1,
-                  textAlign: "left",
-                  border: 0,
-                  borderRadius: 6,
-                  padding: "9px 10px",
-                  background:
-                    selection === `list:${list.id}`
-                      ? "var(--background-selected)"
-                      : "transparent",
-                  color: "var(--paragraph)",
-                  cursor: "pointer",
-                  font: "inherit"
-                }}
-              >
-                <span
-                  style={{
-                    display: "inline-flex",
-                    verticalAlign: "middle",
-                    marginRight: 8
-                  }}
-                >
-                  <TaskListGlyph
-                    symbol={list.symbol}
-                    color={list.color}
-                    size={19}
-                  />
-                </span>
-                {list.name} ·{" "}
-                {
-                  tasks.filter(
-                    (task) => !task.completed && task.listId === list.id
-                  ).length
-                }
-              </button>
-              <Button
-                variant="transparent"
-                aria-label={strings.tasksEditList()}
-                title={strings.tasksEditList()}
-                onClick={() => editList(list)}
-              >
-                ⋯
-              </Button>
-              {list.id !== defaultListId ? (
-                <Button
-                  variant="transparent"
-                  aria-label={strings.tasksDeleteList()}
-                  title={strings.tasksDeleteList()}
-                  onClick={() => deleteList(list)}
-                >
-                  ×
-                </Button>
-              ) : null}
-            </Flex>
-          ))}
-        </Flex>
-        <Flex
-          sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}
-        >
-          <Text sx={{ fontSize: "subheading", fontWeight: "bold" }}>
-            {selectedTitle}
-          </Text>
-          <Button
-            variant="transparent"
-            onClick={() => openTask()}
+            ))}
+          </div>
+        </div>
+      </aside>
+      <main className="veyran-task-main">
+        <header className="veyran-task-header">
+          <div className="veyran-task-heading">
+            <span className="veyran-task-eyebrow">{strings.tasksTitle()}</span>
+            <h1>{selectedTitle}</h1>
+          </div>
+          <button
+            type="button"
+            className="veyran-task-primary-button"
+            onClick={() => void openTask()}
             aria-label={strings.tasksAddTask()}
             title={strings.tasksAddTask()}
           >
-            +
-          </Button>
-        </Flex>
-        {loading ? (
-          <Text>{strings.tasksLoading()}</Text>
-        ) : error ? (
-          <Text sx={{ color: "error" }}>{error}</Text>
-        ) : visibleTasks.length === 0 ? (
-          <Text sx={{ color: "paragraph-muted", py: 3 }}>
-            {strings.tasksNoTasks()}
-          </Text>
-        ) : selection === "scheduled" ? (
-          <Flex sx={{ flexDirection: "column", gap: 3, pb: 4 }}>
-            {scheduledGroups(displayedTasks).map(([date, group]) => (
-              <Box key={date}>
-                <Text
-                  as="div"
-                  sx={{ color: "accent", fontWeight: "bold", mb: 2 }}
+            <Plus size={17} /> <span>{strings.tasksAddTask()}</span>
+          </button>
+        </header>
+        <div className="veyran-task-search-wrap">
+          <Search size={15} color="icon" />
+          <input
+            id="veyran-task-search"
+            data-test-id="task-search"
+            type="search"
+            aria-label={strings.search()}
+            placeholder={strings.search()}
+            value={taskQuery}
+            onChange={(event) => setTaskQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setTaskQuery("");
+            }}
+          />
+          {taskQuery ? (
+            <button
+              type="button"
+              className="veyran-task-icon-button"
+              aria-label={strings.clear()}
+              onClick={() => setTaskQuery("")}
+            >
+              <Cross size={14} />
+            </button>
+          ) : null}
+        </div>
+        <div className="veyran-task-list-scroll">
+          {loading ? (
+            <p className="veyran-task-message">{strings.tasksLoading()}</p>
+          ) : error ? (
+            <p className="veyran-task-message">{error}</p>
+          ) : filteredTasks.length === 0 ? (
+            <div className="veyran-task-empty">
+              <span className="veyran-task-empty-symbol" aria-hidden="true">
+                {taskQuery ? (
+                  <Search size={21} />
+                ) : (
+                  <CheckCircleOutline size={22} />
+                )}
+              </span>
+              <span className="veyran-task-empty-eyebrow">{selectedTitle}</span>
+              <h2>
+                {taskQuery ? strings.noResultsFound() : strings.tasksNoTasks()}
+              </h2>
+              {!taskQuery ? (
+                <button
+                  type="button"
+                  className="veyran-task-empty-action"
+                  onClick={() => void openTask()}
                 >
-                  {sectionDateLabel(date)}
-                </Text>
-                <Flex sx={{ flexDirection: "column", gap: 1 }}>
-                  {group.map((task) => (
-                    <TaskRow
-                      key={task.id}
-                      task={task}
-                      onOpen={() => openTask(task)}
-                      onToggle={() => toggleTask(task)}
-                      onFlag={() => toggleFlag(task)}
-                      onDelete={() => deleteTask(task)}
-                    />
-                  ))}
-                </Flex>
-              </Box>
-            ))}
-          </Flex>
-        ) : (
-          <Flex sx={{ flexDirection: "column", gap: 1, pb: 4 }}>
-            {displayedTasks.map((task) => (
+                  <Plus size={15} /> {strings.tasksAddTask()}
+                </button>
+              ) : null}
+            </div>
+          ) : selection === "scheduled" ? (
+            scheduledGroups(displayedTasks).map(([date, group]) => (
+              <section key={date} className="veyran-task-date-section">
+                <h2>{sectionDateLabel(date)}</h2>
+                {group.map((task) => (
+                  <TaskRow
+                    key={task.id}
+                    task={task}
+                    selected={selectedTaskId === task.id}
+                    onOpen={() => setSelectedTaskId(task.id)}
+                    onEdit={() => void openTask(task)}
+                    onToggle={() => void toggleTask(task)}
+                    onFlag={() => void toggleFlag(task)}
+                    onDelete={() => void deleteTask(task)}
+                  />
+                ))}
+              </section>
+            ))
+          ) : (
+            displayedTasks.map((task) => (
               <TaskRow
                 key={task.id}
                 task={task}
-                onOpen={() => openTask(task)}
-                onToggle={() => toggleTask(task)}
-                onFlag={() => toggleFlag(task)}
-                onDelete={() => deleteTask(task)}
+                selected={selectedTaskId === task.id}
+                onOpen={() => setSelectedTaskId(task.id)}
+                onEdit={() => void openTask(task)}
+                onToggle={() => void toggleTask(task)}
+                onFlag={() => void toggleFlag(task)}
+                onDelete={() => void deleteTask(task)}
               />
-            ))}
-          </Flex>
-        )}
-        {visibleTasks.length > visibleLimit ? (
-          <Button
-            variant="secondary"
-            sx={{ mb: 4 }}
-            onClick={() => setVisibleLimit((limit) => limit + 100)}
-          >
-            {strings.tasksShowMore()}
-          </Button>
-        ) : null}
-      </Box>
-      <Box
-        sx={{
-          borderTop: "1px solid var(--separator)",
-          px: 3,
-          py: 2,
-          bg: "background"
-        }}
-      >
-        <Flex sx={{ gap: 1 }}>
-          <input
-            ref={quickInputRef}
-            aria-label={strings.tasksQuickAdd()}
-            placeholder={strings.tasksAddTask()}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void quickAdd();
-              }
-              if (event.key === "Escape") setTitle("");
-            }}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              background: "var(--background-secondary)",
-              color: "var(--paragraph)",
-              border: "1px solid var(--border)",
-              borderRadius: 7,
-              padding: "8px 10px",
-              font: "inherit"
-            }}
-          />
-          <Button
-            variant="primary"
-            disabled={!title.trim()}
-            onClick={quickAdd}
-            aria-label={strings.tasksAddTask()}
-          >
-            +
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={() => setShowQuickOptions((value) => !value)}
-            aria-expanded={showQuickOptions}
-            aria-label={strings.tasksQuickAdd()}
-          >
-            ⋯
-          </Button>
-        </Flex>
-        {showQuickOptions ? (
-          <Flex sx={{ flexWrap: "wrap", gap: 1, mt: 2, alignItems: "center" }}>
-            <select
-              aria-label={strings.tasksList()}
-              value={quickListId}
-              onChange={(event) => setQuickListId(event.target.value)}
+            ))
+          )}
+          {filteredTasks.length > visibleLimit ? (
+            <button
+              type="button"
+              className="veyran-task-inline-button"
+              onClick={() => setVisibleLimit((limit) => limit + 100)}
             >
-              {lists.map((list) => (
-                <option key={list.id} value={list.id}>
-                  {list.name}
-                </option>
-              ))}
-            </select>
+              {strings.tasksShowMore()}
+            </button>
+          ) : null}
+        </div>
+        <div className="veyran-task-quick-add">
+          <div className="veyran-task-quick-row">
+            <Plus size={17} color="icon" />
             <input
-              type="date"
-              aria-label={`${strings.tasksReminder()} ${strings.tasksDate()}`}
-              value={quickReminderDate}
-              onChange={(event) => {
-                setQuickReminderDate(event.target.value);
-                if (!event.target.value) setQuickReminderTime("");
+              ref={quickInputRef}
+              aria-label={strings.tasksQuickAdd()}
+              placeholder={strings.tasksQuickAdd()}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void quickAdd();
+                }
+                if (event.key === "Escape") setTitle("");
               }}
             />
-            <input
-              type="time"
-              aria-label={`${strings.tasksReminder()} ${strings.tasksTime()}`}
-              disabled={!quickReminderDate}
-              value={quickReminderTime}
-              onChange={(event) => setQuickReminderTime(event.target.value)}
-            />
-            <select
-              aria-label={strings.tasksPriority()}
-              value={quickPriority}
-              onChange={(event) =>
-                setQuickPriority(event.target.value as typeof quickPriority)
-              }
+            <button
+              type="button"
+              className="veyran-task-quick-submit"
+              disabled={!title.trim()}
+              onClick={() => void quickAdd()}
+              aria-label={strings.tasksAddTask()}
+              title={strings.tasksAddTask()}
             >
-              <option value="none">{strings.tasksPriorityNone()}</option>
-              <option value="low">{strings.tasksPriorityLow()}</option>
-              <option value="medium">{strings.tasksPriorityMedium()}</option>
-              <option value="high">{strings.tasksPriorityHigh()}</option>
-            </select>
-            <label>
+              {strings.tasksAddTask()}
+            </button>
+            <button
+              type="button"
+              className="veyran-task-icon-button"
+              onClick={() => setShowQuickOptions((value) => !value)}
+              aria-expanded={showQuickOptions}
+              aria-label={strings.tasksQuickAdd()}
+              title={strings.tasksQuickAdd()}
+            >
+              <MoreHorizontal size={17} />
+            </button>
+          </div>
+          {showQuickOptions ? (
+            <div className="veyran-task-quick-options">
+              <select
+                aria-label={strings.tasksList()}
+                value={quickListId}
+                onChange={(event) => setQuickListId(event.target.value)}
+              >
+                {lists.map((list) => (
+                  <option key={list.id} value={list.id}>
+                    {list.name}
+                  </option>
+                ))}
+              </select>
               <input
-                type="checkbox"
-                checked={quickFlagged}
-                onChange={(event) => setQuickFlagged(event.target.checked)}
-              />{" "}
-              {strings.tasksFlag()}
-            </label>
-          </Flex>
-        ) : null}
-      </Box>
-    </Flex>
+                type="date"
+                aria-label={`${strings.tasksReminder()} ${strings.tasksDate()}`}
+                value={quickReminderDate}
+                onChange={(event) => {
+                  setQuickReminderDate(event.target.value);
+                  if (!event.target.value) setQuickReminderTime("");
+                }}
+              />
+              <input
+                type="time"
+                aria-label={`${strings.tasksReminder()} ${strings.tasksTime()}`}
+                disabled={!quickReminderDate}
+                value={quickReminderTime}
+                onChange={(event) => setQuickReminderTime(event.target.value)}
+              />
+              <select
+                aria-label={strings.tasksPriority()}
+                value={quickPriority}
+                onChange={(event) =>
+                  setQuickPriority(event.target.value as typeof quickPriority)
+                }
+              >
+                <option value="none">{strings.tasksPriorityNone()}</option>
+                <option value="low">{strings.tasksPriorityLow()}</option>
+                <option value="medium">{strings.tasksPriorityMedium()}</option>
+                <option value="high">{strings.tasksPriorityHigh()}</option>
+              </select>
+              <label className="veyran-task-checkbox">
+                <input
+                  type="checkbox"
+                  checked={quickFlagged}
+                  onChange={(event) => setQuickFlagged(event.target.checked)}
+                />
+                {strings.tasksFlag()}
+              </label>
+            </div>
+          ) : null}
+        </div>
+      </main>
+      {selectedTask ? (
+        <aside
+          className="veyran-task-inspector"
+          aria-label={strings.tasksEditTask()}
+        >
+          <div className="veyran-task-inspector-header">
+            <button
+              type="button"
+              className="veyran-task-icon-button veyran-task-inspector-back"
+              aria-label={strings.back()}
+              onClick={() => setSelectedTaskId(null)}
+            >
+              <ArrowLeft size={17} />
+            </button>
+            <span>{strings.tasksTitle()}</span>
+            <button
+              type="button"
+              className="veyran-task-icon-button"
+              aria-label={strings.tasksEditTask()}
+              title={strings.tasksEditTask()}
+              onClick={() => void openTask(selectedTask)}
+            >
+              <MoreHorizontal size={17} />
+            </button>
+          </div>
+          <div className="veyran-task-inspector-scroll">
+            <div className="veyran-task-inspector-title-row">
+              <button
+                type="button"
+                className={`veyran-task-complete ${
+                  selectedTask.completed ? "is-completed" : ""
+                }`}
+                aria-label={
+                  selectedTask.completed
+                    ? strings.tasksUncomplete()
+                    : strings.tasksComplete()
+                }
+                aria-pressed={selectedTask.completed}
+                onClick={() => void toggleTask(selectedTask)}
+              >
+                {selectedTask.completed ? <Check size={15} /> : null}
+              </button>
+              <h2>{selectedTask.title}</h2>
+            </div>
+            {selectedTask.description ? (
+              <p className="veyran-task-inspector-description">
+                {selectedTask.description}
+              </p>
+            ) : null}
+            <dl className="veyran-task-detail-list">
+              <div>
+                <dt>{strings.tasksList()}</dt>
+                <dd className="veyran-task-detail-list-value">
+                  {selectedList ? (
+                    <TaskListGlyph
+                      symbol={selectedList.symbol}
+                      color={selectedList.color}
+                      size={16}
+                    />
+                  ) : null}
+                  {selectedList?.name || strings.tasksLists()}
+                </dd>
+              </div>
+              <div>
+                <dt>{strings.tasksReminder()}</dt>
+                <dd>
+                  {reminderLabel(selectedTask) || strings.tasksNoReminder()}
+                </dd>
+              </div>
+              <div>
+                <dt>{strings.tasksRepeat()}</dt>
+                <dd>{repeatLabel(selectedTask)}</dd>
+              </div>
+              <div>
+                <dt>{strings.tasksPriority()}</dt>
+                <dd>{priorityLabel(selectedTask.priority)}</dd>
+              </div>
+              <div>
+                <dt>{strings.tasksFlag()}</dt>
+                <dd>
+                  {selectedTask.flagged
+                    ? strings.tasksFlag()
+                    : strings.tasksNone()}
+                </dd>
+              </div>
+              {selectedTask.completedAt ? (
+                <div>
+                  <dt>{strings.tasksCompleted()}</dt>
+                  <dd>
+                    {new Intl.DateTimeFormat(undefined, {
+                      dateStyle: "medium",
+                      timeStyle: "short"
+                    }).format(selectedTask.completedAt)}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+            <button
+              type="button"
+              className="veyran-task-standard-button"
+              onClick={() => void openTask(selectedTask)}
+            >
+              {strings.tasksEditTask()}
+            </button>
+          </div>
+        </aside>
+      ) : null}
+    </div>
   );
 }
 
 function TaskRow(props: {
   task: TaskRecord;
+  selected: boolean;
   onOpen: () => void;
+  onEdit: () => void;
   onToggle: () => void;
   onFlag: () => void;
   onDelete: () => void;
@@ -902,17 +1113,8 @@ function TaskRow(props: {
   const { task } = props;
   const overdue = taskIsOverdue(task);
   return (
-    <Flex
-      sx={{
-        alignItems: "start",
-        gap: 2,
-        p: 2,
-        borderRadius: 8,
-        bg: "background-secondary",
-        cursor: "pointer",
-        ":hover": { bg: "hover" }
-      }}
-      onClick={props.onOpen}
+    <div
+      className={`veyran-task-row ${props.selected ? "is-selected" : ""}`}
       onContextMenu={(event) => {
         event.preventDefault();
         Menu.openMenu([
@@ -920,7 +1122,7 @@ function TaskRow(props: {
             type: "button",
             key: "edit-task",
             title: strings.tasksEditTask(),
-            onClick: props.onOpen
+            onClick: props.onEdit
           },
           {
             type: "button",
@@ -933,7 +1135,7 @@ function TaskRow(props: {
           {
             type: "button",
             key: "flag-task",
-            title: strings.tasksFlag(),
+            title: task.flagged ? strings.tasksUnflag() : strings.tasksFlag(),
             onClick: props.onFlag
           },
           {
@@ -945,17 +1147,6 @@ function TaskRow(props: {
         ]);
       }}
       data-test-id="task-row"
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          props.onOpen();
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      aria-label={`${task.title}${
-        overdue ? `, ${strings.tasksOverdue()}` : ""
-      }`}
     >
       <button
         type="button"
@@ -963,68 +1154,49 @@ function TaskRow(props: {
           task.completed ? strings.tasksUncomplete() : strings.tasksComplete()
         }
         aria-pressed={task.completed}
-        onClick={(event) => {
-          event.stopPropagation();
-          props.onToggle();
-        }}
-        onKeyDown={(event) => event.stopPropagation()}
-        style={{
-          flexShrink: 0,
-          width: 28,
-          height: 28,
-          borderRadius: 14,
-          border: "2px solid var(--accent)",
-          background: task.completed ? "var(--accent)" : "transparent",
-          color: "var(--background)",
-          cursor: "pointer"
-        }}
+        onClick={props.onToggle}
+        className={`veyran-task-complete ${
+          task.completed ? "is-completed" : ""
+        }`}
       >
-        {task.completed ? "✓" : ""}
+        {task.completed ? <Check size={15} /> : null}
       </button>
-      <Box sx={{ minWidth: 0, flex: 1 }}>
-        <Text
-          as="div"
-          sx={{
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            textDecoration: task.completed ? "line-through" : "none",
-            color: task.completed ? "paragraph-muted" : "paragraph"
-          }}
+      <button
+        type="button"
+        className="veyran-task-row-open"
+        aria-label={`${task.title}${
+          overdue ? `, ${strings.tasksOverdue()}` : ""
+        }`}
+        aria-current={props.selected ? "true" : undefined}
+        onClick={props.onOpen}
+      >
+        <span
+          className={`veyran-task-row-title ${
+            task.completed ? "is-completed" : ""
+          }`}
         >
           {task.title}
-        </Text>
-        <Flex
-          sx={{
-            flexWrap: "wrap",
-            gap: 2,
-            mt: 1,
-            color: overdue ? "error" : "paragraph-muted",
-            fontSize: "subBody"
-          }}
-        >
-          {overdue ? <Text>{strings.tasksOverdue()}</Text> : null}
-          {reminderLabel(task) ? (
-            <Text aria-label={strings.tasksReminder()}>
-              {reminderLabel(task)}
-            </Text>
-          ) : null}
+        </span>
+        <span className={`veyran-task-row-meta ${overdue ? "is-overdue" : ""}`}>
+          {overdue ? <span>{strings.tasksOverdue()}</span> : null}
+          {reminderLabel(task) ? <span>{reminderLabel(task)}</span> : null}
           {task.priority !== "none" ? (
-            <Text>{priorityLabel(task.priority)}</Text>
+            <span>{priorityLabel(task.priority)}</span>
           ) : null}
-          {task.flagged ? <Text>{strings.tasksFlag()}</Text> : null}
-          {task.recurrenceRule ? <Text>{strings.tasksRepeat()}</Text> : null}
+          {task.flagged ? <span>{strings.tasksFlag()}</span> : null}
+          {task.recurrenceRule ? <span>{strings.tasksRepeat()}</span> : null}
           {task.completedAt ? (
-            <Text>
+            <span>
               {strings.tasksCompleted()} ·{" "}
               {new Intl.DateTimeFormat(undefined, {
                 dateStyle: "medium",
                 timeStyle: "short"
               }).format(task.completedAt)}
-            </Text>
+            </span>
           ) : null}
-        </Flex>
-      </Box>
-    </Flex>
+        </span>
+      </button>
+    </div>
   );
 }
 

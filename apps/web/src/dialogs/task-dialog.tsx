@@ -34,6 +34,8 @@ import { logger } from "../utils/logger";
 import { strings } from "@notesnook/intl";
 import { TaskListGlyph } from "../components/task-list-appearance";
 import { taskReminderSchedule } from "@notesnook/core";
+import { isMac } from "../utils/platform";
+import "../styles/veyran-mac-tasks.css";
 
 type TaskDialogProps = BaseDialogProps<boolean> & {
   task?: TaskRecord;
@@ -217,7 +219,12 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
         onClick: () => props.onClose(false)
       }}
     >
-      <Flex sx={{ flexDirection: "column", gap: 3 }}>
+      <Flex
+        className={
+          IS_DESKTOP_APP && isMac() ? "veyran-mac-task-dialog" : undefined
+        }
+        sx={{ flexDirection: "column", gap: 3 }}
+      >
         <TaskControl label={strings.tasksTaskTitle()}>
           <input
             autoFocus
@@ -430,7 +437,11 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
                 ? strings.tasksUncomplete()
                 : strings.tasksComplete()}
             </Button>
-            <Button variant="secondary" onClick={remove}>
+            <Button
+              className="veyran-task-destructive"
+              variant="secondary"
+              onClick={remove}
+            >
               {strings.tasksDelete()}
             </Button>
           </Flex>

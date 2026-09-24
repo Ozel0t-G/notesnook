@@ -35,6 +35,8 @@ import { BaseDialogProps, DialogManager } from "../common/dialog-manager";
 import { TaskListRecord, taskDomain } from "../common/task-domain";
 import { logger } from "../utils/logger";
 import { showToast } from "../utils/toast";
+import { isMac } from "../utils/platform";
+import "../styles/veyran-mac-tasks.css";
 
 type Props = BaseDialogProps<boolean> & { list?: TaskListRecord };
 
@@ -78,7 +80,7 @@ export const TaskListDialog = DialogManager.register(function TaskListDialog(
       testId="task-list-dialog"
       onClose={() => props.onClose(false)}
       positiveButton={{
-        text: props.list ? strings.tasksSave() : strings.tasksCreateList(),
+        text: props.list ? strings.save() : strings.tasksCreateList(),
         disabled: !name.trim() || saving,
         onClick: save
       }}
@@ -87,7 +89,12 @@ export const TaskListDialog = DialogManager.register(function TaskListDialog(
         onClick: () => props.onClose(false)
       }}
     >
-      <Flex sx={{ flexDirection: "column", gap: 3 }}>
+      <Flex
+        className={
+          IS_DESKTOP_APP && isMac() ? "veyran-mac-task-dialog" : undefined
+        }
+        sx={{ flexDirection: "column", gap: 3 }}
+      >
         <Flex
           sx={{
             alignItems: "center",

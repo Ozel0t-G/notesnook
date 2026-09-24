@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { Button, Flex, FlexProps, Text } from "@theme-ui/components";
 import { Menu } from "../../hooks/use-menu";
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, type KeyboardEvent } from "react";
 import { Icon } from "../icons";
 import { SchemeColors, createButtonVariant } from "@notesnook/theme";
 import { MenuItem } from "@notesnook/ui";
@@ -52,6 +52,7 @@ function NavigationItem(
     isCollapsed,
     selected,
     onClick,
+    onKeyDown,
     menuItems,
     sx,
     containerRef,
@@ -61,6 +62,12 @@ function NavigationItem(
   return (
     <Flex
       {...restProps}
+      className="veyran-sidebar-row"
+      data-selected={selected ? "true" : "false"}
+      role="button"
+      tabIndex={0}
+      aria-current={selected ? "page" : undefined}
+      aria-label={title}
       ref={containerRef}
       onDragOver={(e) => {
         e.preventDefault();
@@ -87,6 +94,15 @@ function NavigationItem(
       onClick={() => {
         AppEventManager.publish(AppEvents.toggleSideMenu, false);
         if (onClick) onClick();
+      }}
+      onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented || event.target !== event.currentTarget)
+          return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.currentTarget.click();
+        }
       }}
       data-test-id={`navigation-item`}
       title={title}

@@ -1,0 +1,381 @@
+/* The Mac shell is deliberately scoped to the packaged Electron renderer. */
+html[data-theme="light"] #app.veyran-mac {
+  --mac-window-surface: #f7f8fa;
+  --mac-content-surface: #ffffff;
+  --mac-sidebar-surface: rgba(229, 235, 241, 0.92);
+  --mac-navigation-surface: #f8f9fb;
+  --mac-toolbar-surface: rgba(243, 246, 249, 0.94);
+  --mac-secondary-surface: #f2f4f6;
+  --mac-elevated-surface: #ffffff;
+  --mac-inspector-surface: #f8f9fa;
+  --mac-text-primary: #20242a;
+  --mac-text-secondary: #5f6771;
+  --mac-text-tertiary: #858d97;
+  --mac-text-disabled: #a9afb7;
+  --mac-separator: rgba(47, 56, 65, 0.13);
+  --mac-subtle-separator: rgba(47, 56, 65, 0.075);
+  --mac-separator-subtle: var(--mac-subtle-separator);
+  --mac-selected-row: color-mix(in srgb, var(--accent) 15%, #e6ebf0);
+  --mac-inactive-selection: #e8ebee;
+  --mac-hover-row: rgba(47, 56, 65, 0.075);
+  --mac-pressed-row: rgba(47, 56, 65, 0.13);
+  --mac-focus-ring: color-mix(in srgb, var(--accent) 78%, #1f3b51);
+  --mac-control-shadow: 0 1px 2px rgba(20, 29, 39, 0.08);
+  --mac-floating-shadow: 0 15px 45px rgba(20, 29, 39, 0.18);
+}
+
+html[data-theme="dark"] #app.veyran-mac {
+  --mac-window-surface: #1d2025;
+  --mac-content-surface: #22262c;
+  --mac-sidebar-surface: rgba(41, 45, 51, 0.86);
+  --mac-navigation-surface: #25292f;
+  --mac-toolbar-surface: rgba(42, 46, 52, 0.84);
+  --mac-secondary-surface: #30353c;
+  --mac-elevated-surface: #343941;
+  --mac-inspector-surface: #292e35;
+  --mac-text-primary: #f1f3f5;
+  --mac-text-secondary: #bbc1c8;
+  --mac-text-tertiary: #929aa4;
+  --mac-text-disabled: #747d88;
+  --mac-separator: rgba(236, 241, 245, 0.13);
+  --mac-subtle-separator: rgba(236, 241, 245, 0.08);
+  --mac-separator-subtle: var(--mac-subtle-separator);
+  --mac-selected-row: color-mix(in srgb, var(--accent) 25%, #384049);
+  --mac-inactive-selection: #383e45;
+  --mac-hover-row: rgba(239, 244, 248, 0.075);
+  --mac-pressed-row: rgba(239, 244, 248, 0.13);
+  --mac-focus-ring: color-mix(in srgb, var(--accent) 78%, #f1f3f5);
+  --mac-control-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --mac-floating-shadow: 0 18px 48px rgba(0, 0, 0, 0.4);
+}
+
+#app.veyran-mac {
+  --mac-control-radius: 9px;
+  --mac-content-radius: 12px;
+  --mac-popover-radius: 14px;
+  --mac-sheet-radius: 18px;
+  --mac-space-1: 4px;
+  --mac-space-2: 8px;
+  --mac-space-3: 12px;
+  --mac-space-4: 16px;
+  --mac-space-5: 20px;
+  --mac-sidebar-spacing: 8px;
+  --mac-toolbar-spacing: 6px;
+  --mac-row-spacing: 7px;
+  --mac-pane-margin: 20px;
+  background: var(--mac-window-surface) !important;
+  color: var(--mac-text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+}
+
+html.veyran-mac-window .veyran-mac-root {
+  background-color: var(--background);
+}
+
+/* Native traffic lights own these actions on macOS, including during startup. */
+html.veyran-mac-window [data-veyran-window-control="true"] {
+  display: none !important;
+}
+
+#app.veyran-mac .veyran-mac-main {
+  min-height: 0;
+  position: relative;
+}
+
+#app.veyran-mac .global-split-pane {
+  background: var(--mac-content-surface);
+}
+
+#app.veyran-mac .global-split-pane .react-split__sash {
+  z-index: 8;
+  width: 6px !important;
+}
+
+#app.veyran-mac .global-split-pane .split-sash-content-active,
+#app.veyran-mac
+  .global-split-pane
+  .react-split__sash:hover
+  .split-sash-content {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+#app.veyran-mac #nav-pane {
+  z-index: 9 !important;
+  background: var(--mac-sidebar-surface);
+}
+
+#app.veyran-mac .veyran-navigation-sidebar {
+  padding-top: 0 !important;
+  background: var(--mac-sidebar-surface) !important;
+  border-right: 1px solid var(--mac-subtle-separator) !important;
+  transition: none !important;
+}
+
+#app.veyran-mac .veyran-navigation-sidebar > div:first-of-type {
+  box-sizing: border-box;
+  min-height: 52px;
+  margin-inline: 0;
+  padding-inline: 8px;
+  border-bottom: 1px solid var(--mac-subtle-separator);
+}
+
+html.veyran-mac-window:not(.veyran-mac-native-titlebar)
+  #app.veyran-mac
+  .veyran-sidebar-brand {
+  min-width: 0;
+  padding-left: 76px;
+  -webkit-app-region: drag;
+}
+
+html.veyran-mac-native-titlebar #app.veyran-mac .veyran-sidebar-brand {
+  min-width: 0;
+  padding-left: 8px;
+}
+
+#app.veyran-mac .veyran-sidebar-brand img {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  box-shadow: var(--mac-control-shadow);
+}
+
+#app.veyran-mac .veyran-sidebar-brand span {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--mac-text-primary);
+}
+
+#app.veyran-mac .veyran-sidebar-tabs {
+  min-height: 43px;
+  margin: 0 8px 7px;
+  padding: 6px 3px;
+  border: 0 !important;
+  border-bottom: 1px solid var(--mac-subtle-separator) !important;
+  background: transparent;
+}
+
+#app.veyran-mac .veyran-sidebar-tabs > div > div,
+#app.veyran-mac .veyran-sidebar-tabs button,
+#app.veyran-mac .veyran-navigation-sidebar > div:first-of-type button {
+  border-radius: var(--mac-control-radius);
+  color: var(--mac-text-secondary);
+  -webkit-app-region: no-drag;
+}
+
+#app.veyran-mac .veyran-sidebar-tabs > div > div:hover,
+#app.veyran-mac .veyran-sidebar-tabs button:hover,
+#app.veyran-mac .veyran-navigation-sidebar > div:first-of-type button:hover {
+  background: var(--mac-hover-row);
+}
+
+#app.veyran-mac #navigation-menu {
+  padding-block: 4px 10px;
+}
+
+#app.veyran-mac .veyran-sidebar-row {
+  min-height: 32px;
+  box-sizing: border-box;
+  border-radius: var(--mac-control-radius) !important;
+  padding: 6px 9px !important;
+  margin-block: 1px;
+  color: var(--mac-text-primary);
+  cursor: default;
+  transition: background-color 110ms ease, color 110ms ease;
+}
+
+#app.veyran-mac .veyran-sidebar-row:hover {
+  background: var(--mac-hover-row) !important;
+}
+
+#app.veyran-mac .veyran-sidebar-row:active {
+  background: var(--mac-pressed-row) !important;
+}
+
+#app.veyran-mac .veyran-sidebar-row[data-selected="true"] {
+  background: var(--mac-selected-row) !important;
+  box-shadow: inset 0 0 0 1px var(--mac-subtle-separator);
+}
+
+#app.veyran-mac .veyran-sidebar-row[data-selected="true"] > div > span {
+  font-weight: 600;
+}
+
+#app.veyran-mac .veyran-sidebar-row svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+#app.veyran-mac .veyran-sidebar-row:focus-visible,
+#app.veyran-mac button:focus-visible,
+#app.veyran-mac [role="button"]:focus-visible,
+#app.veyran-mac input:focus-visible,
+#app.veyran-mac select:focus-visible {
+  outline: 2px solid var(--mac-focus-ring) !important;
+  outline-offset: 2px;
+}
+
+#app.veyran-mac #list-pane {
+  min-width: 0;
+  background: var(--mac-navigation-surface);
+}
+
+#app.veyran-mac #list-pane .listMenu {
+  background: var(--mac-navigation-surface) !important;
+  border-right: 1px solid var(--mac-subtle-separator) !important;
+}
+
+#app.veyran-mac #editor-pane {
+  min-width: 0;
+  background: var(--mac-content-surface) !important;
+}
+
+#app.veyran-mac .route-container-header,
+#app.veyran-mac .editor-action-bar,
+#app.veyran-mac .veyran-task-header {
+  box-sizing: border-box;
+  min-height: 52px;
+  background: var(--mac-toolbar-surface);
+  border-bottom: 1px solid var(--mac-subtle-separator);
+  -webkit-app-region: drag;
+}
+
+#app.veyran-mac
+  :is(.route-container-header, .editor-action-bar, .veyran-task-header)
+  :is(button, input, textarea, select, a, [role="button"]) {
+  -webkit-app-region: no-drag;
+}
+
+#app.veyran-mac .route-container-header:not(.veyran-note-list-header) {
+  padding: 8px 13px !important;
+}
+
+#app.veyran-mac .editor-action-bar {
+  backdrop-filter: none;
+}
+
+#app.veyran-mac .veyran-mac-task-workspace #list-pane {
+  right: 0;
+  width: auto !important;
+  z-index: 7;
+  background: var(--mac-content-surface);
+}
+
+#app.veyran-mac .veyran-mac-task-workspace #list-pane .listMenu {
+  border-right: 0 !important;
+  background: var(--mac-content-surface) !important;
+}
+
+#app.veyran-mac .veyran-mac-task-workspace .route-container-header {
+  display: none;
+}
+
+#app.veyran-mac .veyran-mac-task-workspace #editor-pane {
+  pointer-events: none;
+}
+
+#app.veyran-mac .veyran-mac-task-workspace .react-split__sash:last-child {
+  display: none;
+}
+
+/* Keep pane identities stable through Focus Mode while the editor takes the canvas. */
+#app.veyran-mac.app-focus-mode
+  .global-split-pane:not(.veyran-mac-task-workspace)
+  :is(#nav-pane, #list-pane, .react-split__sash) {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+#app.veyran-mac.app-focus-mode
+  .global-split-pane:not(.veyran-mac-task-workspace)
+  #editor-pane {
+  left: 0 !important;
+  width: 100% !important;
+  z-index: 10;
+}
+
+#app.veyran-mac.app-focus-mode
+  .global-split-pane:not(.veyran-mac-task-workspace)
+  .editor-action-bar {
+  padding-left: 80px;
+}
+
+#app.veyran-mac .veyran-mac-tasks {
+  --task-surface: var(--mac-content-surface);
+  --task-secondary: var(--mac-navigation-surface);
+  --task-text: var(--mac-text-primary);
+  --task-muted: var(--mac-text-secondary);
+  --task-line: var(--mac-subtle-separator);
+}
+
+#app.veyran-mac .veyran-task-sources {
+  position: relative;
+}
+
+#app.veyran-mac .veyran-task-sources::before {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 1;
+  height: 52px;
+  content: "";
+  background: var(--mac-toolbar-surface);
+  border-bottom: 1px solid var(--mac-subtle-separator);
+  pointer-events: none;
+}
+
+#app.veyran-mac .veyran-task-sources-scroll {
+  box-sizing: border-box;
+  padding-top: 68px;
+}
+
+#app.veyran-mac .veyran-task-header {
+  min-height: 52px;
+  padding: 8px 20px;
+  align-items: center;
+}
+
+#app.veyran-mac .veyran-task-eyebrow {
+  display: none;
+}
+
+#app.veyran-mac .veyran-task-heading h1 {
+  font-size: 17px;
+  font-weight: 650;
+}
+
+#app.veyran-mac.veyran-mac-inactive {
+  --mac-selected-row: var(--mac-hover-row);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  #app.veyran-mac #nav-pane,
+  #app.veyran-mac .veyran-navigation-sidebar,
+  #app.veyran-mac .route-container-header,
+  #app.veyran-mac .editor-action-bar,
+  #app.veyran-mac .veyran-task-header,
+  #app.veyran-mac .veyran-task-sources::before {
+    background: var(--mac-secondary-surface) !important;
+    backdrop-filter: none !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  #app.veyran-mac .veyran-sidebar-row[data-selected="true"] {
+    outline: 1px solid var(--accent);
+  }
+
+  #app.veyran-mac .veyran-navigation-sidebar,
+  #app.veyran-mac #list-pane .listMenu {
+    border-color: var(--mac-separator) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app.veyran-mac .veyran-sidebar-row {
+    transition: none;
+  }
+}

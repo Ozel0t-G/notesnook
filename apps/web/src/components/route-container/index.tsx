@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { PropsWithChildren, useEffect, useRef } from "react";
 import { Box, Button, Flex, Text } from "@theme-ui/components";
-import { Close, AddReminder, Menu } from "../icons";
+import { Close, AddReminder, Menu, Plus } from "../icons";
 import { useStore as useSearchStore } from "../../stores/search-store";
 import useMobile from "../../hooks/use-mobile";
 import { debounce, usePromise } from "@notesnook/common";
@@ -29,6 +29,8 @@ import { RouteResult } from "../../navigation/types";
 import { CREATE_BUTTON_MAP } from "../../common";
 import { AppEventManager, AppEvents } from "../../common/app-events";
 import { hashNavigate } from "../../navigation";
+import { isMac } from "../../utils/platform";
+import "../../styles/veyran-mac-notes.css";
 
 export type RouteContainerButtons = {
   search?: {
@@ -67,6 +69,24 @@ function Header(props: RouteContainerProps) {
   const isSearching = useSearchStore((store) => store.isSearching);
   const query = useSearchStore((store) => store.query);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isMacNotes =
+    IS_DESKTOP_APP &&
+    isMac() &&
+    (type === "notes" || type === "notebook" || type === "trash");
+  const routeFallback =
+    type === "notes"
+      ? strings.routes.Notes()
+      : type === "notebook"
+      ? strings.routes.Notebooks()
+      : type === "trash"
+      ? strings.routes.Trash()
+      : type;
+  const routeName =
+    titlePromise.status === "fulfilled"
+      ? titlePromise.value || routeFallback
+      : typeof props.title === "string"
+      ? props.title
+      : routeFallback;
 
   useEffect(() => {
     if (inputRef.current && inputRef.current.value !== query) {
@@ -105,17 +125,39 @@ function Header(props: RouteContainerProps) {
         zIndex: 2,
         p: 1
       }}
-      className="route-container-header search-container"
+      className={`route-container-header search-container${
+        isMacNotes ? " veyran-note-list-header" : ""
+      }`}
       data-test-id="routeHeader"
-      data-header={
-        titlePromise.status === "fulfilled" ? titlePromise.value || type : type
-      }
+      data-header={routeName}
     >
+      {isMacNotes ? (
+        <Flex className="veyran-note-list-heading">
+          <Text as="h1" className="veyran-note-list-title">
+            {routeName}
+          </Text>
+          {type !== "trash" ? (
+            <Button
+              variant="secondary"
+              className="veyran-note-create-button"
+              title={strings.newNote()}
+              aria-label={strings.newNote()}
+              data-test-id="mac-create-new-note"
+              onClick={CREATE_BUTTON_MAP.notes.onClick}
+              onAuxClick={CREATE_BUTTON_MAP.notes.onAuxClick}
+            >
+              <Plus size={15} />
+            </Button>
+          ) : null}
+        </Flex>
+      ) : null}
       <Field
         inputRef={inputRef}
         data-test-id="search-input"
         id="search"
         name="search"
+        className={isMacNotes ? "veyran-note-search-input" : undefined}
+        aria-label={strings.searchInRoute(routeName)}
         type="text"
         sx={{
           bg: "background",
@@ -142,11 +184,7 @@ function Header(props: RouteContainerProps) {
           }
         }}
         defaultValue={query}
-        placeholder={strings.searchInRoute(
-          titlePromise.status === "fulfilled"
-            ? titlePromise.value || type
-            : type
-        )}
+        placeholder={strings.searchInRoute(routeName)}
         onChange={debounce(
           (e) => useSearchStore.setState({ query: e.target.value }),
           250

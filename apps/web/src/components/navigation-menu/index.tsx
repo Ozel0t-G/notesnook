@@ -238,9 +238,11 @@ const tabs: NavigationTabItem[] = [
 
 function NavigationMenu({
   onExpand,
+  onCollapse,
   canExpand
 }: {
   onExpand?: () => void;
+  onCollapse?: () => void;
   canExpand: boolean;
 }) {
   const isFocusMode = useAppStore((store) => store.isFocusMode);
@@ -272,6 +274,7 @@ function NavigationMenu({
   return (
     <ScopedThemeProvider
       scope="navigationMenu"
+      className="veyran-navigation-sidebar"
       sx={{
         display: isFocusMode ? "none" : "flex",
         zIndex: 1,
@@ -331,7 +334,7 @@ function NavigationMenu({
           }}
         >
           <Flex
-            className="navigation-menu-header"
+            className="navigation-menu-header veyran-sidebar-brand"
             sx={{
               flex: 1,
               flexDirection: "row",
@@ -353,6 +356,18 @@ function NavigationMenu({
             </Text>
           </Flex>
           <Flex sx={{ gap: "small", alignItems: "center" }}>
+            {IS_DESKTOP_APP && onCollapse && !isNavPaneCollapsed ? (
+              <Button
+                className="veyran-sidebar-collapse"
+                variant="secondary"
+                sx={{ p: 1, bg: "transparent" }}
+                onClick={onCollapse}
+                title={strings.hide()}
+                aria-label={strings.hide()}
+              >
+                <ExpandSidebar size={15} color="icon" />
+              </Button>
+            ) : null}
             {isNavPaneCollapsed ? (
               <Button
                 variant="secondary"
@@ -369,6 +384,7 @@ function NavigationMenu({
         </Flex>
       )}
       <Flex
+        className="veyran-sidebar-tabs"
         sx={{
           justifyContent: isCollapsed ? "center" : "space-between",
           alignItems: "center",

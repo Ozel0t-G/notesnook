@@ -35,17 +35,24 @@ import { Text } from "@theme-ui/components";
 import { EV, EVENTS } from "@notesnook/core";
 import { useEffect, useState } from "react";
 import { isAuthRoute } from "./navigation/auth-routes";
+import { isMac } from "./utils/platform";
 
 export async function startApp(children?: React.ReactNode) {
   const rootElement = document.getElementById("root");
   if (!rootElement) return;
   const root = createRoot(rootElement);
+  const isMacDesktop = IS_DESKTOP_APP && isMac();
+  document.documentElement.classList.toggle("veyran-mac-window", isMacDesktop);
 
   window.hasNativeTitlebar =
     !IS_DESKTOP_APP ||
     !!(await desktop?.integration.desktopIntegration
       .query()
       ?.then((s) => s.nativeTitlebar));
+  document.documentElement.classList.toggle(
+    "veyran-mac-native-titlebar",
+    isMacDesktop && window.hasNativeTitlebar
+  );
 
   const TitleBar = window.hasNativeTitlebar
     ? () => <></>
@@ -62,6 +69,7 @@ export async function startApp(children?: React.ReactNode) {
         <ErrorBoundary>
           <GlobalErrorHandler>
             <BaseThemeProvider
+              className={isMacDesktop ? "veyran-mac-root" : undefined}
               onRender={() => document.getElementById("splash")?.remove()}
               sx={{ bg: "background", flex: 1, overflow: "hidden" }}
             >

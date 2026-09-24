@@ -32,8 +32,8 @@ export function useWindowFocus() {
     window.addEventListener("focus", onFocus);
     window.addEventListener("blur", onBlur);
     return () => {
-      document.removeEventListener("focus", onFocus);
-      document.removeEventListener("blur", onBlur);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
     };
   }, []);
 

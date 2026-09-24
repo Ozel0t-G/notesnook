@@ -168,7 +168,11 @@ async function createWindow() {
     cliOptions.hidden = true;
   }
 
-  const mainWindowState = new WindowState({});
+  const mainWindowState = new WindowState(
+    process.platform === "darwin"
+      ? { defaultWidth: 1280, defaultHeight: 800 }
+      : {}
+  );
   const mainWindow = new BrowserWindow({
     show: !cliOptions.hidden,
     paintWhenInitiallyHidden: cliOptions.hidden,
@@ -177,8 +181,18 @@ async function createWindow() {
     y: mainWindowState.y,
     width: mainWindowState.width,
     height: mainWindowState.height,
+    minWidth: process.platform === "darwin" ? 820 : undefined,
+    minHeight: process.platform === "darwin" ? 560 : undefined,
     darkTheme: getTheme() === "dark",
-    backgroundColor: getBackgroundColor(),
+    // Keep a solid startup canvas. A transparent BrowserWindow exposes resize
+    // and shadow artifacts before the renderer is ready; pane materials remain
+    // renderer-scoped even when macOS supplies the native backdrop below them.
+    backgroundColor:
+      process.platform === "darwin" && getTheme() === "system"
+        ? nativeTheme.shouldUseDarkColors
+          ? "#1d2025"
+          : "#f7f8fa"
+        : getBackgroundColor(),
     opacity: 0,
     autoHideMenuBar: false,
     icon: AssetManager.appIcon({
@@ -194,15 +208,21 @@ async function createWindow() {
               ? "hidden"
               : "default",
           frame: process.platform === "win32" || process.platform === "darwin",
-          titleBarOverlay: {
-            height: 37,
-            color: "#00000000",
-            symbolColor: config.windowControlsIconColor
-          },
-          trafficLightPosition: {
-            x: 16,
-            y: 12
-          }
+          // Window controls overlay colors are only used by Windows and Linux.
+          // macOS keeps its native traffic lights in the integrated toolbar.
+          ...(process.platform === "darwin"
+            ? {
+                vibrancy: "sidebar" as const,
+                visualEffectState: "followWindow" as const,
+                trafficLightPosition: { x: 18, y: 17 }
+              }
+            : {
+                titleBarOverlay: {
+                  height: 37,
+                  color: "#00000000",
+                  symbolColor: config.windowControlsIconColor
+                }
+              })
         }),
 
     webPreferences: {
@@ -255,6 +275,7 @@ async function createWindow() {
     mainWindow.setSkipTaskbar(false)
   );
   mainWindow.once("closed", () => {
+    nativeTheme.off("updated", updateNativeTheme);
     globalThis.window = null;
     taskRendererReady = false;
   });
@@ -283,10 +304,20 @@ async function createWindow() {
     }
   });
 
-  nativeTheme.on("updated", () => {
+  function updateNativeTheme() {
+    if (
+      process.platform === "darwin" &&
+      getTheme() === "system" &&
+      !mainWindow.isDestroyed()
+    ) {
+      mainWindow.setBackgroundColor(
+        nativeTheme.shouldUseDarkColors ? "#1d2025" : "#f7f8fa"
+      );
+    }
     setupTray();
     setupJumplist();
-  });
+  }
+  nativeTheme.on("updated", updateNativeTheme);
 
   if (pendingNNLink) {
     bridge.onOpenLink(pendingNNLink);

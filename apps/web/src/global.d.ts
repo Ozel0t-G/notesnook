@@ -70,6 +70,9 @@ declare global {
     };
   }
   interface Window {
+    veyranMenu?: {
+      onCommand(callback: (command: string) => void): () => void;
+    };
     ApplePaySession?: {
       canMakePayments(): boolean | Promise<boolean>;
     };

@@ -43,11 +43,15 @@ import { Global } from "@emotion/react";
 import { isMac } from "./utils/platform";
 import useSlider from "./hooks/use-slider";
 import { AppEventManager, AppEvents } from "./common/app-events";
-import { TITLE_BAR_HEIGHT } from "./components/title-bar";
 import { getFontSizes } from "@notesnook/theme/theme/font/fontsize.js";
 import { useWindowControls } from "./hooks/use-window-controls";
 import { STATUS_BAR_HEIGHT } from "./common/constants";
 import { NavigationEvents } from "./navigation";
+import { getCurrentPath, hashNavigate, navigate } from "./navigation";
+import useLocation from "./hooks/use-location";
+import { CREATE_BUTTON_MAP } from "./common";
+import { useStore as useSearchStore } from "./stores/search-store";
+import "./styles/veyran-mac-shell.css";
 
 new WebExtensionRelay();
 
@@ -58,6 +62,7 @@ function App() {
   const { isFullscreen } = useWindowControls();
   const hasNativeTitlebar =
     useSettingStore.getState().desktopIntegrationSettings?.nativeTitlebar;
+  const isMacDesktop = IS_DESKTOP_APP && isMac();
   console.timeEnd("loading app");
 
   useEffect(() => {
@@ -70,7 +75,7 @@ function App() {
 
   return (
     <>
-      {isFocused ? null : (
+      {!isMacDesktop && !isFocused ? (
         <Global
           styles={`
           .nav-pane {
@@ -78,22 +83,15 @@ function App() {
           }
         `}
         />
-      )}
-      {IS_DESKTOP_APP && isMac() && !isFullscreen && !hasNativeTitlebar ? (
+      ) : null}
+      {isMacDesktop && !isFullscreen && !hasNativeTitlebar ? (
         <Global
           // These styles to make sure the app content doesn't overlap with the traffic lights.
           styles={`
-            .nav-pane .theme-scope-navigationMenu,
-            .mobile-nav-pane .theme-scope-navigationMenu {
-              padding-top: env(titlebar-area-height) !important;
-            }
             .editor-pane:first-of-type .editor-action-bar,
             .mobile-editor-pane.pane-active .editor-action-bar,
             .mobile-list-pane.pane-active .route-container-header {
                 padding-left: 80px;
-            }
-            .route-container-header, .editor-action-bar {
-                transition: padding-left 0.4s ease-out;
             }
             .editor-action-bar {
               border-bottom: none;
@@ -101,9 +99,6 @@ function App() {
             .route-container-header .routeHeader {
               font-size: ${getFontSizes().title};
             }
-            // .global-split-pane .react-split__sash {
-            //   height: calc(100% - ${TITLE_BAR_HEIGHT}px);
-            // }
           `}
         />
       ) : null}
@@ -118,7 +113,13 @@ function App() {
       <Flex
         id="app"
         bg="background"
-        className={isFocusMode ? "app-focus-mode" : ""}
+        className={[
+          isFocusMode ? "app-focus-mode" : "",
+          isMacDesktop ? "veyran-mac" : "",
+          isMacDesktop && !isFocused ? "veyran-mac-inactive" : ""
+        ]
+          .filter(Boolean)
+          .join(" ")}
         sx={{
           overflow: "hidden",
           flexDirection: "column",
@@ -141,12 +142,90 @@ function DesktopAppContents() {
   const isFocusMode = useStore((store) => store.isFocusMode);
   const isListPaneVisible = useStore((store) => store.isListPaneVisible);
   const isTablet = useTablet();
+  const isMacDesktop = IS_DESKTOP_APP && isMac();
   const navPane = useRef<SplitPaneImperativeHandle>(null);
+  const autoCollapsedSidebar = useRef(false);
+  const pendingNewNote = useRef(false);
+  const [location] = useLocation();
+  const isMacTasks = isMacDesktop && location.startsWith("/tasks");
 
   useEffect(() => {
+    // CachedRouter publishes onNavigate after the destination route has mounted.
+    if (!pendingNewNote.current || !location.startsWith("/notes")) return;
+    pendingNewNote.current = false;
+    CREATE_BUTTON_MAP.notes.onClick();
+  }, [location]);
+
+  useEffect(() => {
+    if (!isMacDesktop) return;
+    const onMenuCommand = (command: string) => {
+      switch (command) {
+        case "toggle-sidebar":
+          autoCollapsedSidebar.current = false;
+          window.localStorage.removeItem("veyran:mac:auto-sidebar-collapsed");
+          if (navPane.current?.isCollapsed(0)) navPane.current?.reset(0);
+          else navPane.current?.collapse(0);
+          break;
+        case "new-note":
+          if (getCurrentPath().startsWith("/tasks")) {
+            pendingNewNote.current = true;
+            navigate("/notes", { notify: true });
+          } else {
+            CREATE_BUTTON_MAP.notes.onClick();
+          }
+          break;
+        case "new-task":
+          hashNavigate("/tasks/create");
+          break;
+        case "show-notes":
+          navigate("/notes", { notify: true });
+          break;
+        case "show-tasks":
+          navigate("/tasks", { notify: true });
+          break;
+        case "search":
+          if (getCurrentPath().startsWith("/tasks")) {
+            document.getElementById("veyran-task-search")?.focus();
+          } else {
+            useSearchStore.setState({ isSearching: true, searchType: "notes" });
+          }
+          break;
+      }
+    };
+    return window.veyranMenu?.onCommand(onMenuCommand);
+  }, [isMacDesktop]);
+
+  useEffect(() => {
+    if (!isMacDesktop) return;
+    autoCollapsedSidebar.current =
+      window.localStorage.getItem("veyran:mac:auto-sidebar-collapsed") ===
+      "true";
+    const adaptToWindow = () => {
+      const pane = navPane.current;
+      if (!pane) return;
+      if (window.innerWidth < 1060 && !pane.isCollapsed(0)) {
+        autoCollapsedSidebar.current = true;
+        window.localStorage.setItem("veyran:mac:auto-sidebar-collapsed", "true");
+        pane.collapse(0);
+      } else if (window.innerWidth >= 1060 && autoCollapsedSidebar.current) {
+        autoCollapsedSidebar.current = false;
+        window.localStorage.removeItem("veyran:mac:auto-sidebar-collapsed");
+        pane.expand(0);
+      }
+    };
+    const frame = requestAnimationFrame(adaptToWindow);
+    window.addEventListener("resize", adaptToWindow);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("resize", adaptToWindow);
+    };
+  }, [isMacDesktop]);
+
+  useEffect(() => {
+    if (isMacDesktop) return;
     if (isTablet) navPane.current?.collapse(0);
     else if (navPane.current?.isCollapsed(0)) navPane.current?.expand(0);
-  }, [isTablet]);
+  }, [isMacDesktop, isTablet]);
 
   useEffect(() => {
     const event = AppEventManager.subscribe(
@@ -161,7 +240,9 @@ function DesktopAppContents() {
       }
     );
 
-    const navEvent = NavigationEvents.subscribe("onNavigate", () => {
+    const navEvent = NavigationEvents.subscribe("onNavigate", (_route, path) => {
+      if (IS_DESKTOP_APP && isMac() && String(path).startsWith("/tasks"))
+        return;
       useStore.getState().toggleListPane(true);
     });
     return () => {
@@ -186,12 +267,13 @@ function DesktopAppContents() {
     <>
       <Flex
         variant="rowFill"
+        className="veyran-mac-main"
         sx={{
           overflow: "hidden"
         }}
       >
         <SplitPane
-          className="global-split-pane"
+          className={`global-split-pane${isMacTasks ? " veyran-mac-task-workspace" : ""}`}
           ref={navPane}
           autoSaveId="global-panel-group"
           direction="vertical"
@@ -202,14 +284,14 @@ function DesktopAppContents() {
             });
           }}
         >
-          {isFocusMode ? null : (
+          {isFocusMode && !isMacDesktop ? null : (
             <Pane
               id="nav-pane"
-              initialSize={isTablet ? 0 : 250}
+              initialSize={isTablet && !isMacDesktop ? 0 : 250}
               className={`nav-pane`}
               snapSize={150}
               minSize={50}
-              maxSize={isTablet ? 0 : 500}
+              maxSize={isTablet && !isMacDesktop ? 0 : 500}
               style={{
                 overflow: "initial",
                 zIndex: 3
@@ -217,11 +299,16 @@ function DesktopAppContents() {
             >
               <NavigationMenu
                 onExpand={() => navPane.current?.reset(0)}
-                canExpand={!isTablet}
+                onCollapse={
+                  isMacDesktop
+                    ? () => navPane.current?.collapse(0)
+                    : undefined
+                }
+                canExpand={isMacDesktop || !isTablet}
               />
             </Pane>
           )}
-          {isFocusMode ? null : (
+          {isFocusMode && !isMacDesktop ? null : (
             <Pane
               id="list-pane"
               initialSize={380}
@@ -260,7 +347,7 @@ function DesktopAppContents() {
           </Pane>
         </SplitPane>
       </Flex>
-      <StatusBar />
+      {isMacTasks ? null : <StatusBar />}
     </>
   );
 }
@@ -330,7 +417,7 @@ function MobileAppContents() {
           flexShrink: 0
         }}
       >
-        <NavigationMenu />
+        <NavigationMenu canExpand={false} />
       </Flex>
       <Flex
         className="mobile-list-pane"

@@ -22,7 +22,12 @@ import { useEditorStore } from "../stores/editor-store";
 import { useStore as useSearchStore } from "../stores/search-store";
 import { useEditorManager } from "../components/editor/manager";
 import { CommandPaletteDialog } from "../dialogs/command-palette";
-import { hashNavigate } from "../navigation";
+import {
+  getCurrentPath,
+  hashNavigate,
+  navigate,
+  NavigationEvents
+} from "../navigation";
 import { getKeybinding, keybindings } from "@notesnook/common";
 import { KeyboardShortcutsDialog } from "../dialogs/keyboard-shortcuts-dialog";
 import { isMac } from "../utils/platform";
@@ -39,7 +44,21 @@ const actions: Partial<
   nextTab: () => useEditorStore.getState().focusNextTab(),
   previousTab: () => useEditorStore.getState().focusPreviousTab(),
   newTab: () => useEditorStore.getState().addTab(),
-  newNote: () => useEditorStore.getState().newSession(),
+  newNote: () => {
+    if (IS_DESKTOP_APP && isMac() && getCurrentPath().startsWith("/tasks")) {
+      const subscription = NavigationEvents.subscribe(
+        "onNavigate",
+        (_route, path) => {
+          if (typeof path !== "string" || !path.startsWith("/notes")) return;
+          subscription.unsubscribe();
+          useEditorStore.getState().newSession();
+        }
+      );
+      navigate("/notes", { notify: true });
+      return;
+    }
+    useEditorStore.getState().newSession();
+  },
   closeActiveTab: () => {
     const activeTab = useEditorStore.getState().getActiveTab();
     if (activeTab?.pinned) {

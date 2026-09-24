@@ -22,6 +22,9 @@ import { Menu, MenuItem, clipboard, shell } from "electron";
 
 function setupApplicationMenu() {
   if (process.platform !== "darwin") return;
+  const command = (name: string) => () => {
+    globalThis.window?.webContents.send("veyran:menu-command", name);
+  };
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
@@ -38,9 +41,46 @@ function setupApplicationMenu() {
           { label: "Quit VeyraN", role: "quit" }
         ]
       },
-      { role: "fileMenu" },
+      {
+        label: "File",
+        submenu: [
+          {
+            label: "New Note",
+            accelerator: "Command+N",
+            registerAccelerator: false, // the existing renderer keymap owns ⌘N
+            click: command("new-note")
+          },
+          {
+            label: "New Task",
+            accelerator: "Command+Shift+N",
+            click: command("new-task")
+          },
+          { type: "separator" },
+          { role: "close" }
+        ]
+      },
       { role: "editMenu" },
-      { role: "viewMenu" },
+      {
+        label: "View",
+        submenu: [
+          { label: "Show Notes", click: command("show-notes") },
+          { label: "Show Tasks", click: command("show-tasks") },
+          { type: "separator" },
+          {
+            label: "Show or Hide Sidebar",
+            accelerator: "Option+Command+S",
+            click: command("toggle-sidebar")
+          },
+          {
+            label: "Search",
+            accelerator: "Command+F",
+            registerAccelerator: false, // preserved renderer search binding
+            click: command("search")
+          },
+          { type: "separator" },
+          { role: "togglefullscreen" }
+        ]
+      },
       { role: "windowMenu" }
     ])
   );

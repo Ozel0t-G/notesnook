@@ -39,11 +39,14 @@ export function getWindowControls(
   isTablet?: boolean,
   isMobile?: boolean
 ) {
-  if (isMobile || isTablet) return [];
+  // macOS always owns window controls through the native BrowserWindow frame.
+  // Keep this independent of the titlebar setting, which can lag during startup.
+  if (isMobile || isTablet || (IS_DESKTOP_APP && isMac())) return [];
   return [
     {
       title: strings.minimize(),
       icon: WindowMinimize,
+      windowControl: true,
       hidden: hasNativeWindowControls || isFullscreen,
       enabled: true,
       onClick: () => desktop?.window.minimze.mutate()
@@ -51,6 +54,7 @@ export function getWindowControls(
     {
       title: isMaximized ? strings.restore() : strings.maximize(),
       icon: isMaximized ? WindowRestore : WindowMaximize,
+      windowControl: true,
       enabled: true,
       hidden: hasNativeWindowControls || isFullscreen,
       onClick: () =>
@@ -61,6 +65,7 @@ export function getWindowControls(
     {
       title: strings.close(),
       icon: WindowClose,
+      windowControl: true,
       hidden: hasNativeWindowControls || isFullscreen,
       enabled: true,
       onClick: () => window.close()
@@ -133,6 +138,7 @@ export function TitleBar({
         {tools.map((tool) => (
           <Button
             data-test-id={tool.title}
+            data-veyran-window-control={tool.windowControl}
             disabled={!tool.enabled}
             variant={tool.title === "Close" ? "error" : "secondary"}
             title={tool.title}

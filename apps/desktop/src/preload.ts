@@ -35,5 +35,27 @@ const electronTRPC = {
 
 const os = () => (MAC_APP_STORE ? "mas" : process.platform);
 
+// The application menu has a fixed, one-way command set. Keep it separate
+// from the general desktop bridge so no renderer-controlled IPC is added.
+const menuCommands = new Set([
+  "toggle-sidebar",
+  "new-note",
+  "new-task",
+  "show-notes",
+  "show-tasks",
+  "search"
+]);
+const veyranMenu = {
+  onCommand(callback: (command: string) => void) {
+    const listener = (_event: Electron.IpcRendererEvent, command: unknown) => {
+      if (typeof command === "string" && menuCommands.has(command))
+        callback(command);
+    };
+    ipcRenderer.on("veyran:menu-command", listener);
+    return () => ipcRenderer.removeListener("veyran:menu-command", listener);
+  }
+};
+
 contextBridge.exposeInMainWorld("electronTRPC", electronTRPC);
 contextBridge.exposeInMainWorld("os", os);
+contextBridge.exposeInMainWorld("veyranMenu", veyranMenu);

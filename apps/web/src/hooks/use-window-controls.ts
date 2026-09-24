@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { useEffect, useState } from "react";
 import { desktop } from "../common/desktop-bridge";
-import { getPlatform } from "../utils/platform";
+import { getPlatform, isMac } from "../utils/platform";
 
 export function useWindowControls() {
   const [isMaximized, setIsMaximized] = useState<boolean>();
@@ -51,7 +51,7 @@ export function useWindowControls() {
     hasNativeWindowControls:
       !IS_DESKTOP_APP ||
       hasNativeTitlebar ||
-      getPlatform() === "darwin" ||
+      isMac() ||
       getPlatform() === "win32"
   };
 }

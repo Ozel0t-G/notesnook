@@ -98,6 +98,9 @@ export const SplitPane = React.forwardRef<
   const sashes = useRef<(HTMLDivElement | null)[]>([]);
   const paneSizes = useRef<PaneOptions[]>([]);
   const wrapSize = useRef(0);
+  const pendingSaves = useRef(
+    new Map<string, { timer: ReturnType<typeof setTimeout>; value: unknown }>()
+  );
   const childrenLength = childrenToArray(children).length;
   const autoSaveKey = autoSaveId ? `csp:${autoSaveId}` : undefined;
 
@@ -110,6 +113,32 @@ export const SplitPane = React.forwardRef<
       } as const),
     [direction]
   );
+
+  // Live window and sash resizing must not synchronously write localStorage
+  // for every pane on every animation frame.
+  const flushPaneSizes = useCallback(() => {
+    for (const [key, pending] of pendingSaves.current) {
+      clearTimeout(pending.timer);
+      if (pending.value == null || pending.value === Infinity) Config.remove(key);
+      else Config.set(key, pending.value);
+    }
+    pendingSaves.current.clear();
+  }, []);
+
+  const savePaneValue = useCallback((key: string, value: unknown) => {
+    const existing = pendingSaves.current.get(key);
+    if (existing) clearTimeout(existing.timer);
+    const timer = setTimeout(() => {
+      const pending = pendingSaves.current.get(key);
+      if (!pending || pending.timer !== timer) return;
+      if (pending.value == null || pending.value === Infinity) Config.remove(key);
+      else Config.set(key, pending.value);
+      pendingSaves.current.delete(key);
+    }, 250);
+    pendingSaves.current.set(key, { timer, value });
+  }, []);
+
+  useEffect(() => () => flushPaneSizes(), [flushPaneSizes]);
 
   const updatePaneLimitSizes = useCallback(
     (children: React.ReactNode) => {
@@ -131,46 +160,54 @@ export const SplitPane = React.forwardRef<
             limits.snap = assertsSize(snapSize, wrapSize.current, 0);
             limits.initialSize = assertsSize(initialSize, wrapSize.current);
 
+            let savedCollapsed = Config.get(
+              `${autoSaveKey}-${id}:collapsed`,
+              collapsed
+            );
+            let savedSize = Config.get(
+              `${autoSaveKey}-${id}`,
+              assertsSize(initialSize, wrapSize.current)
+            );
+            let savedExpandedSize = Config.get(
+              `${autoSaveKey}-${id}:expandedSize`,
+              assertsSize(initialSize, wrapSize.current)
+            );
+
             Object.defineProperty(limits, "collapsed", {
               get() {
-                return Config.get(`${autoSaveKey}-${id}:collapsed`, collapsed);
+                return savedCollapsed;
               },
               set(v) {
-                if (v == null) Config.remove(`${autoSaveKey}-${id}:collapsed`);
-                else Config.set(`${autoSaveKey}-${id}:collapsed`, v);
+                if (savedCollapsed === v) return;
+                savedCollapsed = v;
+                savePaneValue(`${autoSaveKey}-${id}:collapsed`, v);
               }
             });
             Object.defineProperty(limits, "size", {
               get() {
-                return Config.get(
-                  `${autoSaveKey}-${id}`,
-                  assertsSize(initialSize, wrapSize.current)
-                );
+                return savedSize;
               },
               set(v) {
-                if (v === null || v === undefined || v === Infinity)
-                  Config.remove(`${autoSaveKey}-${id}`);
-                else Config.set(`${autoSaveKey}-${id}`, v);
+                if (savedSize === v) return;
+                savedSize = v;
+                savePaneValue(`${autoSaveKey}-${id}`, v);
               }
             });
             Object.defineProperty(limits, "expandedSize", {
               get() {
-                return Config.get(
-                  `${autoSaveKey}-${id}:expandedSize`,
-                  assertsSize(initialSize, wrapSize.current)
-                );
+                return savedExpandedSize;
               },
               set(v) {
-                if (v === null || v === undefined || v === Infinity)
-                  Config.remove(`${autoSaveKey}-${id}:expandedSize`);
-                else Config.set(`${autoSaveKey}-${id}:expandedSize`, v);
+                if (savedExpandedSize === v) return;
+                savedExpandedSize = v;
+                savePaneValue(`${autoSaveKey}-${id}:expandedSize`, v);
               }
             });
           }
           return limits;
         }) || [];
     },
-    [autoSaveKey]
+    [autoSaveKey, savePaneValue]
   );
 
   useLayoutEffect(() => {
@@ -180,6 +217,7 @@ export const SplitPane = React.forwardRef<
     }
 
     if (wrapSize.current === 0) return;
+    flushPaneSizes();
     updatePaneLimitSizes(children);
     setSizes(paneSizes.current, wrapSize.current, true);
   }, [children, childrenLength]);
@@ -321,9 +359,10 @@ export const SplitPane = React.forwardRef<
     function (e: React.MouseEvent<HTMLDivElement, MouseEvent>) {
       document?.body?.classList?.remove(bodyDisableUserSelect);
       wrapper.current?.classList.toggle(splitDragClassName);
+      flushPaneSizes();
       onDragEnd(e);
     },
-    [onDragEnd]
+    [flushPaneSizes, onDragEnd]
   );
 
   const onDragging = useCallback(

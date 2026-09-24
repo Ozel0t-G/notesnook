@@ -1,6 +1,6 @@
 # VeyraN brand and identifier migration plan
 
-Updated 2026-09-24 on `test`. The user selected **VeyraN** after research found the bare **Veyra** App Store name occupied and a directly overlapping **Veyra Notes** app. No App Store Connect name reservation or trademark clearance is claimed. No remote rename, push, TestFlight upload, or App Store submission is part of this change.
+Updated 2026-09-24 on `test`. The user selected **VeyraN** after research found the bare **Veyra** App Store name occupied and a directly overlapping **Veyra Notes** app. The existing App Store Connect app accepted **VeyraN** for its English (U.S.) name, and private TestFlight build `3.4.16 (15)` was uploaded; see `NOTESNOOK_APPLE_HANDOFF.md` for exact release evidence and processing status. No trademark clearance, remote rename, push, or App Store submission is claimed.
 
 ## Public-name validation
 
@@ -17,7 +17,7 @@ The bare Veyra name is already used by an [App Store app](https://apps.apple.com
 | iPhone/iPad display name | `VeyraN` | Set in active and pencil xcconfigs; TestFlight archive script copies pencil over active. |
 | Electron `productName` and package label | `VeyraN` | Set in package and builder; old app ID, internal app name, and user-data directory stay for encrypted-profile continuity. |
 | Settings/About | `About VeyraN`; provenance in Licenses | Implemented while version/build and third-party notices remain. |
-| App Store Connect/TestFlight app-record name | `VeyraN` | Manual, unconfirmed; binary display name alone does not rename the record. |
+| App Store Connect/TestFlight app-record name | `VeyraN` | Saved in the existing app record, Apple ID `6813860928`; processed TestFlight build metadata also says `App Name: VeyraN`. |
 | GitHub repository | `veyran`, fallback `veyran-app` | Recommendation only. |
 | Custom scheme | `veyran://` | Accepted alongside `ShareMedia://` and `nn://`; see routes below. |
 
@@ -76,7 +76,7 @@ On Linux, the package now declares both `x-scheme-handler/nn` and `x-scheme-hand
 
 ## App Store Connect and release checklist
 
-The private app record was previously named `Notesnook Pencil Beta` and uses `com.ozel0t.note.notesnookpencil`. In App Store Connect, inspect and eventually set the app-record name to VeyraN in each desired localization, confirm bundle association, and review subtitle, primary language, support URL, privacy URL, marketing URL, beta description, screenshots, keywords, and icon. Keep the existing SKU unless an account-specific reason requires a new record; SKU is not a display name. The built binary's `CFBundleDisplayName` controls the home-screen label; the app-record name controls App Store/TestFlight listing surfaces. Confirm both in a processed build. Do not upload or publish automatically.
+The private app record was previously named `Notesnook Pencil Beta` and uses `com.ozel0t.note.notesnookpencil`. The existing record now has the saved English (U.S.) name `VeyraN`; its SKU remains `notesnookpencil`. Its subtitle, feedback email, support/privacy/marketing URLs, keywords, category, and iPhone/iPad App Store screenshots remain empty, pending owned assets and public-launch work. The TestFlight Beta App Description was updated to VeyraN. The built binary's `CFBundleDisplayName` controls the Home Screen label; the app-record name controls App Store/TestFlight listing surfaces. The `3.4.16 (15)` package was accepted by Apple at 2026-09-24 20:40:54 CEST, completed processing, and its processed metadata reports `App Name: VeyraN` and `Binary State: Validated`. It was automatically assigned to the existing one-tester internal group. Installation and on-device presentation of build 15 remain unverified. No App Store version was submitted or published.
 
 For this private TestFlight channel, `scripts/build-pencil-testflight.sh` copies `ios-build.pencil.xcconfig` into `ios-build.active.xcconfig`; both contain `APP_DISPLAY_NAME = VeyraN`. The separate upstream production/staging xcconfigs still say Notesnook and are not VeyraN distribution inputs. Check the active config and bundle ID at archive time before any upload.
 

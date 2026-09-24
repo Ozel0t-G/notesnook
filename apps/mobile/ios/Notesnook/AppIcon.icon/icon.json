@@ -1,0 +1,200 @@
+{
+  "features": [
+    "refractivity"
+  ],
+  "fill": {
+    "solid": "extended-srgb:0.99000,0.97000,0.94000,1.00000"
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "GreyFold_light.svg",
+          "name": "GreyFold Light",
+          "opacity-specializations": [
+            {
+              "appearance": "dark",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "image-name": "GreyFold_dark.svg",
+          "name": "GreyFold Dark",
+          "opacity-specializations": [
+            {
+              "value": 0
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "name": "GreyFold",
+      "refractivity": {
+        "depth": 0.12,
+        "enabled": true,
+        "strength": 0.18
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.28
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.1
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "YellowFold_light.svg",
+          "name": "YellowFold Light",
+          "opacity-specializations": [
+            {
+              "appearance": "dark",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "image-name": "YellowFold_dark.svg",
+          "name": "YellowFold Dark",
+          "opacity-specializations": [
+            {
+              "value": 0
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "name": "YellowFold",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.23
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.16
+      },
+      "refractivity": {
+        "enabled": true,
+        "strength": 0.16,
+        "depth": 0.1
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "OrangeFold_light.svg",
+          "name": "OrangeFold Light",
+          "opacity-specializations": [
+            {
+              "appearance": "dark",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "image-name": "OrangeFold_dark.svg",
+          "name": "OrangeFold Dark",
+          "opacity-specializations": [
+            {
+              "value": 0
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "name": "OrangeFold",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.2
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.08
+      },
+      "refractivity": {
+        "enabled": true,
+        "strength": 0.12,
+        "depth": 0.08
+      }
+    },
+    {
+      "layers": [
+        {
+          "image-name": "RedFold_light.svg",
+          "name": "RedFold Light",
+          "opacity-specializations": [
+            {
+              "appearance": "dark",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "image-name": "RedFold_dark.svg",
+          "name": "RedFold Dark",
+          "opacity-specializations": [
+            {
+              "value": 0
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ]
+        },
+        {
+          "glass": false,
+          "image-name": "Background_light.svg",
+          "name": "Background Light",
+          "opacity-specializations": [
+            {
+              "appearance": "dark",
+              "value": 0
+            }
+          ]
+        },
+        {
+          "glass": false,
+          "image-name": "Background_dark.svg",
+          "name": "Background Dark",
+          "opacity-specializations": [
+            {
+              "value": 0
+            },
+            {
+              "appearance": "dark",
+              "value": 1
+            }
+          ]
+        }
+      ],
+      "name": "Base",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}

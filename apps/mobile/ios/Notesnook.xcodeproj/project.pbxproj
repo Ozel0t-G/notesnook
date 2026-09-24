@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1C0A1C0A1C0A1C0A1C0A1C0 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */; };
 		00E356F31AD99517003FC87E /* NotesnookTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* NotesnookTests.m */; };
 		01EB83A26658BBA7965AD9F6 /* HandwritingPaper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A16B1B0D911292F7962D997 /* HandwritingPaper.swift */; };
 		06B3A7F98D370B7811B5BF82 /* HandwritingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B259038A5D1207C9F28314CD /* HandwritingViewController.swift */; };
@@ -111,6 +112,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = AppIcon.icon; path = Notesnook/AppIcon.icon; sourceTree = "<group>"; };
 		008F07F21AC5B25A0029DE68 /* main.jsbundle */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = main.jsbundle; sourceTree = "<group>"; };
 		00E356EE1AD99517003FC87E /* NotesnookTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NotesnookTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		00E356F11AD99517003FC87E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -262,6 +264,7 @@
 		13B07FAE1A68108700A75B9A /* Notesnook */ = {
 			isa = PBXGroup;
 			children = (
+				A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */,
 				6593E4A2281C345400492C50 /* AppDelegate.mm */,
 				6529A13D279BC4C70048D4A8 /* BootSplash.storyboard */,
 				659BE46625E11A5100E05671 /* notesnook-text.png */,
@@ -618,6 +621,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1C0A1C0A1C0A1C0A1C0A1C0 /* AppIcon.icon in Resources */,
 				659201D82EA78265006B16DB /* Inter-Bold.ttf in Resources */,
 				65AD1F4B2F6289110033176F /* EvilIcons.ttf in Resources */,
 				659201D92EA78265006B16DB /* Inter-Italic.ttf in Resources */,

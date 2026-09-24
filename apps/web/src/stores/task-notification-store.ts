@@ -1,7 +1,7 @@
 /*
 This file is part of the Notesnook project (https://notesnook.com/)
 
-Copyright (C) 2026 Streetwriters (Private) Limited
+Copyright (C) 2023 Streetwriters (Private) Limited
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -10,14 +10,19 @@ the Free Software Foundation, either version 3 of the License, or
 
 This program is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { DatabaseUpdatedEvent, EVENTS, Task } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
 import dayjs from "dayjs";
 import { db } from "../common/db";
 import { desktop } from "../common/desktop-bridge";
+import { useKeyStore } from "../interfaces/key-store";
 import { hashNavigate } from "../navigation";
 import Config from "../utils/config";
 import { logger } from "../utils/logger";
@@ -26,6 +31,22 @@ import { TaskScheduler } from "../utils/task-scheduler";
 let started = false;
 let timer: ReturnType<typeof setTimeout> | undefined;
 let updateQueue = Promise.resolve();
+let lastDesktopSchedule: { id: string; reminderAt: number }[] = [];
+
+function taskTitlesArePrivate() {
+  const keys = useKeyStore.getState();
+  return keys.isLocked || keys.activeCredentials().length > 0;
+}
+
+async function redactDesktopSchedule() {
+  if (!IS_DESKTOP_APP) return;
+  await desktop?.integration.replaceTaskReminders.mutate(
+    lastDesktopSchedule.map((task) => ({
+      ...task,
+      title: strings.tasksTitle()
+    }))
+  );
+}
 
 function cron(timestamp: number) {
   return dayjs(timestamp).format("ss mm HH DD MM * YYYY");
@@ -38,9 +59,12 @@ async function notify(task: Task) {
     return;
 
   if ("Notification" in window && Notification.permission === "granted") {
-    const notification = new Notification(task.title, {
-      tag: `task:${task.id}`
-    });
+    const notification = new Notification(
+      taskTitlesArePrivate() ? strings.tasksTitle() : current.title,
+      {
+        tag: `task:${task.id}`
+      }
+    );
     notification.onclick = () => {
       window.focus();
       hashNavigate(`/tasks/${task.id}/edit`);
@@ -50,6 +74,10 @@ async function notify(task: Task) {
 
 async function refreshNow() {
   if (!db.isInitialized) return;
+  if (useKeyStore.getState().isLocked) {
+    await redactDesktopSchedule();
+    return;
+  }
   await db.tasks.reconcile();
   await TaskScheduler.stopAllWithPrefix("task:");
   const now = Date.now();
@@ -62,14 +90,23 @@ async function refreshNow() {
     );
 
   if (IS_DESKTOP_APP) {
+    lastDesktopSchedule = Config.get("reminderNotifications", true)
+      ? tasks.map((task) => ({
+          id: task.id,
+          reminderAt: task.reminderAt as number
+        }))
+      : [];
     await desktop?.integration.replaceTaskReminders.mutate(
-      Config.get("reminderNotifications", true)
-        ? tasks.map((task) => ({
+      taskTitlesArePrivate()
+        ? lastDesktopSchedule.map((task) => ({
+            ...task,
+            title: strings.tasksTitle()
+          }))
+        : tasks.map((task) => ({
             id: task.id,
             title: task.title.slice(0, 2048),
             reminderAt: task.reminderAt as number
           }))
-        : []
     );
     return;
   }
@@ -110,7 +147,21 @@ function start() {
     }
   );
   db.eventManager.subscribe(EVENTS.syncCompleted, queueRefresh);
+  useKeyStore.subscribe((state, previous) => {
+    if (
+      state.isLocked === previous.isLocked &&
+      state.credentials === previous.credentials
+    )
+      return;
+    if (taskTitlesArePrivate())
+      updateQueue = updateQueue
+        .then(redactDesktopSchedule)
+        .catch((error) => logger.error(error));
+    queueRefresh();
+  });
   db.eventManager.subscribe(EVENTS.userLoggedOut, () => {
+    lastDesktopSchedule = [];
+    clearTimeout(timer);
     if (IS_DESKTOP_APP)
       void desktop?.integration.replaceTaskReminders.mutate([]);
     else void TaskScheduler.stopAllWithPrefix("task:");

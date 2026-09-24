@@ -24,9 +24,12 @@ import notifee, { AuthorizationStatus } from "@notifee/react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import React from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  findNodeHandle,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   Switch,
@@ -39,13 +42,41 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
 import { NavigationProps } from "../../services/navigation";
+import { TaskNotifications } from "../../services/task-notifications";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 
-type RepeatMode = "none" | "daily" | "weekly" | "monthly" | "yearly" | "custom";
-const RRULES: Record<Exclude<RepeatMode, "none" | "custom">, string> = {
+type ScheduledTask = Task & {
+  reminderDate?: string;
+  reminderTime?: string;
+  urgent?: boolean;
+};
+type UrgentStatus = "unsupported" | "notDetermined" | "denied" | "authorized";
+const urgentNotifications = TaskNotifications as typeof TaskNotifications & {
+  urgentStatus(): Promise<UrgentStatus>;
+  requestUrgentPermission(): Promise<UrgentStatus>;
+};
+type RepeatMode =
+  | "never"
+  | "daily"
+  | "weekdays"
+  | "weekends"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "quarterly"
+  | "halfyearly"
+  | "yearly"
+  | "custom";
+
+const REPEAT_RULES: Partial<Record<RepeatMode, string>> = {
   daily: "FREQ=DAILY",
+  weekdays: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR",
+  weekends: "FREQ=WEEKLY;BYDAY=SA,SU",
   weekly: "FREQ=WEEKLY",
+  biweekly: "FREQ=WEEKLY;INTERVAL=2",
   monthly: "FREQ=MONTHLY",
+  quarterly: "FREQ=MONTHLY;INTERVAL=3",
+  halfyearly: "FREQ=MONTHLY;INTERVAL=6",
   yearly: "FREQ=YEARLY"
 };
 
@@ -53,29 +84,53 @@ function pad(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function dateOnly(date: Date) {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+function calendarDate(value: Date) {
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(
+    value.getDate()
+  )}`;
 }
 
-function fromDateOnly(value?: string): Date {
-  if (!value) return new Date();
+function wallTime(value: Date) {
+  return `${pad(value.getHours())}:${pad(value.getMinutes())}`;
+}
+
+function dateFromCalendar(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day, 12);
 }
 
-function fromTime(value?: string): Date {
+function dateFromTime(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
   const date = new Date();
-  const [hour, minute] = (value || "09:00").split(":").map(Number);
   date.setHours(hour, minute, 0, 0);
   return date;
 }
 
-function repeatMode(rule?: string): RepeatMode {
-  if (!rule) return "none";
-  for (const [key, value] of Object.entries(RRULES)) {
-    if (value === rule) return key as RepeatMode;
+function nextHour() {
+  const value = new Date();
+  value.setHours(value.getHours() + 1, 0, 0, 0);
+  return value;
+}
+
+function scheduleFromTask(task: ScheduledTask) {
+  // Old records are not rewritten by opening the editor. An explicit legacy
+  // reminder wins over its separate due date until the domain migrates it.
+  if (task.reminderDate)
+    return { date: task.reminderDate, time: task.reminderTime };
+  if (task.reminderAt) {
+    const value = new Date(task.reminderAt);
+    return { date: calendarDate(value), time: wallTime(value) };
   }
-  return "custom";
+  return { date: task.dueDate, time: task.dueTime };
+}
+
+function repeatMode(rule?: string): RepeatMode {
+  if (!rule) return "never";
+  return (
+    (Object.entries(REPEAT_RULES).find(([, value]) => value === rule)?.[0] as
+      | RepeatMode
+      | undefined) || "custom"
+  );
 }
 
 export default function TaskDetail({
@@ -89,25 +144,30 @@ export default function TaskDetail({
   const legacyReminderId = (
     route.params as { reminder?: { id?: string } } | undefined
   )?.reminder?.id;
-  const [task, setTask] = React.useState<Task>();
+  const [task, setTask] = React.useState<ScheduledTask>();
   const [lists, setLists] = React.useState<TaskList[]>([]);
   const [title, setTitle] = React.useState(route.params?.initialTitle || "");
   const [description, setDescription] = React.useState("");
   const [listId, setListId] = React.useState(route.params?.listId || "");
-  const [dueDate, setDueDate] = React.useState<string>();
-  const [dueTime, setDueTime] = React.useState<string>();
-  const [reminderAt, setReminderAt] = React.useState<number>();
+  const [reminderDate, setReminderDate] = React.useState<string>();
+  const [reminderTime, setReminderTime] = React.useState<string>();
+  const [urgent, setUrgent] = React.useState(false);
+  const [urgentStatus, setUrgentStatus] = React.useState<UrgentStatus>();
   const [rule, setRule] = React.useState("");
   const [priority, setPriority] = React.useState<TaskPriority>("none");
   const [flagged, setFlagged] = React.useState(false);
-  const [picker, setPicker] = React.useState<
-    "dueDate" | "dueTime" | "reminderDate" | "reminderTime" | undefined
-  >();
+  const [expandedPicker, setExpandedPicker] = React.useState<"date" | "time">();
   const [showLists, setShowLists] = React.useState(false);
+  const [choiceSheet, setChoiceSheet] = React.useState<{
+    options: string[];
+    onChoose: (index: number) => void;
+  }>();
   const [loading, setLoading] = React.useState(true);
   const [notFound, setNotFound] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [notificationsDenied, setNotificationsDenied] = React.useState(false);
+  const repeatRow = React.useRef<View>(null);
+  const priorityRow = React.useRef<View>(null);
 
   React.useEffect(() => {
     notifee
@@ -118,6 +178,12 @@ export default function TaskDetail({
         )
       )
       .catch(() => {});
+    urgentNotifications
+      .urgentStatus()
+      .then(setUrgentStatus)
+      .catch(() => {
+        setUrgentStatus("unsupported");
+      });
   }, []);
 
   React.useEffect(() => {
@@ -129,28 +195,30 @@ export default function TaskDetail({
           taskId
             ? db.tasks.get(taskId)
             : legacyReminderId
-              ? db.tasks
-                  .list()
-                  .then((tasks) =>
-                    tasks.find(
-                      (item) => item.legacyReminderId === legacyReminderId
-                    )
+            ? db.tasks
+                .list()
+                .then((tasks) =>
+                  tasks.find(
+                    (item) => item.legacyReminderId === legacyReminderId
                   )
-              : Promise.resolve(undefined)
+                )
+            : Promise.resolve(undefined)
         ]);
         if (!active) return;
         setLists(allLists);
         if (existing) {
-          setTask(existing);
-          setTitle(existing.title);
-          setDescription(existing.description || "");
-          setListId(existing.listId);
-          setDueDate(existing.dueDate);
-          setDueTime(existing.dueTime);
-          setReminderAt(existing.reminderAt);
-          setRule(existing.recurrenceRule || "");
-          setPriority(existing.priority);
-          setFlagged(existing.flagged);
+          const scheduled = existing as ScheduledTask;
+          const schedule = scheduleFromTask(scheduled);
+          setTask(scheduled);
+          setTitle(scheduled.title);
+          setDescription(scheduled.description || "");
+          setListId(scheduled.listId);
+          setReminderDate(schedule.date);
+          setReminderTime(schedule.time);
+          setUrgent(!!scheduled.urgent);
+          setRule(scheduled.recurrenceRule || "");
+          setPriority(scheduled.priority);
+          setFlagged(scheduled.flagged);
         } else if (taskId || legacyReminderId) {
           setNotFound(true);
         } else if (!route.params?.listId) {
@@ -171,8 +239,12 @@ export default function TaskDetail({
 
   const save = async () => {
     if (!title.trim() || saving || notFound) return;
-    if (rule.trim() && !dueDate) {
+    if (rule.trim() && !reminderDate) {
       Alert.alert(strings.tasksTitle(), strings.tasksRepeatNeedsDueDate());
+      return;
+    }
+    if (urgent && !reminderTime) {
+      Alert.alert(strings.tasksTitle(), "Urgent reminders need a time.");
       return;
     }
     setSaving(true);
@@ -181,9 +253,9 @@ export default function TaskDetail({
         title: title.trim(),
         description: description.trim() || undefined,
         listId,
-        dueDate,
-        dueTime: dueDate ? dueTime : undefined,
-        reminderAt,
+        reminderDate,
+        reminderTime: reminderDate ? reminderTime : undefined,
+        urgent: !!reminderDate && !!reminderTime && urgent,
         recurrenceRule: rule.trim() || undefined,
         priority,
         flagged
@@ -191,7 +263,7 @@ export default function TaskDetail({
       if (task) await db.tasks.update(task.id, input);
       else await db.tasks.create(input);
       navigation.goBack();
-    } catch (error) {
+    } catch {
       Alert.alert(
         strings.tasksTitle(),
         rule ? strings.tasksInvalidRecurrence() : strings.tasksCouldNotSave()
@@ -207,7 +279,7 @@ export default function TaskDetail({
       const updated = task.completed
         ? await db.tasks.uncomplete(task.id)
         : await db.tasks.complete(task.id);
-      setTask(updated);
+      setTask(updated as ScheduledTask);
     } catch {
       Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
     }
@@ -232,119 +304,186 @@ export default function TaskDetail({
     ]);
   };
 
-  const choosePickerDate = (value: Date) => {
-    switch (picker) {
-      case "dueDate":
-        setDueDate(dateOnly(value));
-        break;
-      case "dueTime":
-        setDueTime(`${pad(value.getHours())}:${pad(value.getMinutes())}`);
-        break;
-      case "reminderDate": {
-        const current = reminderAt ? new Date(reminderAt) : new Date();
-        current.setFullYear(
-          value.getFullYear(),
-          value.getMonth(),
-          value.getDate()
+  const setDateEnabled = (enabled: boolean) => {
+    if (enabled) {
+      setReminderDate(calendarDate(new Date()));
+      setExpandedPicker("date");
+    } else {
+      setReminderDate(undefined);
+      setReminderTime(undefined);
+      setUrgent(false);
+      setRule("");
+      setExpandedPicker(undefined);
+    }
+  };
+
+  const setTimeEnabled = (enabled: boolean) => {
+    if (enabled) {
+      if (!reminderDate) setReminderDate(calendarDate(new Date()));
+      setReminderTime(wallTime(nextHour()));
+      setExpandedPicker("time");
+    } else {
+      setReminderTime(undefined);
+      setUrgent(false);
+      if (expandedPicker === "time") setExpandedPicker(undefined);
+    }
+  };
+
+  const setUrgentEnabled = async (enabled: boolean) => {
+    if (!enabled) {
+      setUrgent(false);
+      return;
+    }
+    if (!reminderTime) {
+      Alert.alert(
+        strings.tasksTitle(),
+        "Choose a reminder time before enabling Urgent."
+      );
+      return;
+    }
+    try {
+      const currentStatus =
+        urgentStatus || (await urgentNotifications.urgentStatus());
+      const status =
+        currentStatus === "notDetermined"
+          ? await urgentNotifications.requestUrgentPermission()
+          : currentStatus;
+      setUrgentStatus(status);
+      if (status === "authorized") setUrgent(true);
+      else if (status === "unsupported")
+        Alert.alert(
+          "Urgent",
+          "Alarm reminders are unavailable on this device. Standard reminders still work."
         );
-        setReminderAt(current.getTime());
-        break;
-      }
-      case "reminderTime": {
-        const current = reminderAt ? new Date(reminderAt) : new Date();
-        current.setHours(value.getHours(), value.getMinutes(), 0, 0);
-        setReminderAt(current.getTime());
-        break;
-      }
+      else
+        Alert.alert(
+          "Urgent",
+          "Allow alarms in Settings to use Urgent reminders."
+        );
+    } catch {
+      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
     }
   };
 
-  const selectedListName =
-    lists.find((item) => item.id === listId)?.name || strings.tasksChooseList();
-  const chooseRepeat = (option: RepeatMode) => {
-    if (option !== "none" && !dueDate) setDueDate(dateOnly(new Date()));
-    if (option === "none") setRule("");
-    else if (option === "custom")
-      setRule(mode === "custom" ? rule : "FREQ=WEEKLY;BYDAY=MO,WE,FR");
-    else setRule(RRULES[option]);
-  };
-  const openDueDate = () => {
-    if (!dueDate) setDueDate(dateOnly(new Date()));
-    setPicker("dueDate");
-  };
-  const openDueTime = () => {
-    if (!dueTime) {
-      const nextHour = new Date(Date.now() + 60 * 60 * 1000);
-      setDueTime(`${pad(nextHour.getHours())}:${pad(nextHour.getMinutes())}`);
-    }
-    setPicker("dueTime");
-  };
-  const openReminderDate = () => {
-    if (!reminderAt) setReminderAt(Date.now() + 60 * 60 * 1000);
-    setPicker("reminderDate");
-  };
+  const repeatOptions: { mode: RepeatMode; label: string }[] = [
+    { mode: "never", label: strings.never() },
+    { mode: "daily", label: strings.tasksDaily() },
+    { mode: "weekdays", label: "Weekdays" },
+    { mode: "weekends", label: "Weekends" },
+    { mode: "weekly", label: strings.tasksWeekly() },
+    { mode: "biweekly", label: "Biweekly" },
+    { mode: "monthly", label: strings.tasksMonthly() },
+    { mode: "quarterly", label: "Every 3 Months" },
+    { mode: "halfyearly", label: "Every 6 Months" },
+    { mode: "yearly", label: strings.tasksYearly() },
+    { mode: "custom", label: strings.tasksCustom() }
+  ];
+  const priorityOptions: { value: TaskPriority; label: string }[] = [
+    { value: "none", label: strings.tasksPriorityNone() },
+    { value: "low", label: strings.tasksPriorityLow() },
+    { value: "medium", label: strings.tasksPriorityMedium() },
+    { value: "high", label: strings.tasksPriorityHigh() }
+  ];
   const mode = repeatMode(rule);
-  const priorityOptions: { value: TaskPriority; label: () => string }[] = [
-    { value: "none", label: strings.tasksPriorityNone },
-    { value: "low", label: strings.tasksPriorityLow },
-    { value: "medium", label: strings.tasksPriorityMedium },
-    { value: "high", label: strings.tasksPriorityHigh }
-  ];
-  const repeatOptions: { value: RepeatMode; label: () => string }[] = [
-    { value: "none", label: strings.tasksNone },
-    { value: "daily", label: strings.tasksDaily },
-    { value: "weekly", label: strings.tasksWeekly },
-    { value: "monthly", label: strings.tasksMonthly },
-    { value: "yearly", label: strings.tasksYearly },
-    { value: "custom", label: strings.tasksCustom }
-  ];
+  const selectedList = lists.find((item) => item.id === listId);
 
-  const section = (label: string, content: React.ReactNode) => (
-    <View style={{ marginTop: 22 }}>
-      <Text
-        style={{
-          color: visual.secondaryText,
-          fontSize: 13,
-          fontWeight: "600",
-          marginBottom: 8
-        }}
-      >
-        {label}
-      </Text>
-      {content}
+  const showChoices = (
+    options: string[],
+    anchor: React.RefObject<View | null>,
+    onChoose: (index: number) => void
+  ) => {
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [...options, strings.cancel()],
+          cancelButtonIndex: options.length,
+          ...(Platform.isPad
+            ? { anchor: findNodeHandle(anchor.current) || undefined }
+            : {}),
+          userInterfaceStyle: isDark ? "dark" : "light"
+        },
+        (index) => {
+          if (index < options.length) onChoose(index);
+        }
+      );
+    } else {
+      setChoiceSheet({ options, onChoose });
+    }
+  };
+
+  const chooseRepeat = (next: RepeatMode) => {
+    if (next !== "never" && !reminderDate)
+      setReminderDate(calendarDate(new Date()));
+    if (next === "never") setRule("");
+    else if (next === "custom")
+      setRule(mode === "custom" ? rule : "FREQ=WEEKLY;BYDAY=MO,WE,FR");
+    else setRule(REPEAT_RULES[next] || "");
+  };
+
+  const group = (children: React.ReactNode) => (
+    <View
+      style={{
+        borderRadius: visual.cardRadius,
+        backgroundColor: visual.contentSurface,
+        paddingHorizontal: 16,
+        overflow: "hidden"
+      }}
+    >
+      {children}
     </View>
   );
-
-  const row = (
+  const divider = (
+    <View style={{ height: 0.5, backgroundColor: visual.separator }} />
+  );
+  const sectionTitle = (label: string) => (
+    <Text
+      style={{
+        color: visual.secondaryText,
+        fontSize: 14,
+        fontWeight: "600",
+        marginTop: 24,
+        marginBottom: 9,
+        marginLeft: 10
+      }}
+    >
+      {label}
+    </Text>
+  );
+  const actionRow = (
     label: string,
     value: string,
+    icon: string,
     onPress: () => void,
-    selected = true
+    selected = false
   ) => (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${label}: ${value}`}
-      style={{
-        minHeight: 52,
-        flexDirection: "row",
-        alignItems: "center",
-        borderBottomColor: visual.separator,
-        borderBottomWidth: 0.5
-      }}
+      style={{ minHeight: 57, flexDirection: "row", alignItems: "center" }}
     >
-      <Text style={{ flex: 1, color: visual.primaryText, fontSize: 16 }}>
+      <Icon name={icon} size={22} color={visual.secondaryText} />
+      <Text
+        style={{
+          flex: 1,
+          color: visual.primaryText,
+          fontSize: 16,
+          marginLeft: 14
+        }}
+      >
         {label}
       </Text>
       <Text
+        numberOfLines={1}
         style={{
           color: selected ? colors.primary.accent : visual.secondaryText,
+          maxWidth: "43%",
           fontSize: 15
         }}
       >
         {value}
       </Text>
-      <Icon name="chevron-right" size={19} color={visual.tertiaryText} />
+      <Icon name="chevron-right" size={20} color={visual.tertiaryText} />
     </Pressable>
   );
 
@@ -392,7 +531,7 @@ export default function TaskDetail({
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: 16,
-          paddingTop: 14,
+          paddingTop: 10,
           paddingBottom: 8
         }}
       >
@@ -400,7 +539,7 @@ export default function TaskDetail({
           onPress={() => navigation.goBack()}
           accessibilityRole="button"
           accessibilityLabel={strings.back()}
-          style={{ width: 48, height: 48, justifyContent: "center" }}
+          style={{ width: 46, height: 46, justifyContent: "center" }}
         >
           <Icon name="arrow-left" color={visual.primaryText} size={25} />
         </Pressable>
@@ -438,154 +577,235 @@ export default function TaskDetail({
           alignSelf: "center",
           width: "100%",
           maxWidth: width >= 700 ? 720 : undefined,
-          paddingHorizontal: 22,
-          paddingBottom: 70
+          paddingHorizontal: width >= 700 ? 28 : 20,
+          paddingBottom: 90
         }}
       >
-        <TextInput
-          value={title}
-          onChangeText={setTitle}
-          placeholder={strings.tasksTaskTitle()}
-          placeholderTextColor={visual.tertiaryText}
-          accessibilityLabel={strings.tasksTaskTitle()}
-          autoFocus={!taskId}
-          multiline
-          style={{
-            color: visual.primaryText,
-            fontSize: 24,
-            fontWeight: "600",
-            minHeight: 64,
-            paddingVertical: 10
-          }}
-        />
-        {section(
-          strings.description(),
-          <TextInput
-            value={description}
-            onChangeText={setDescription}
-            placeholder={strings.description()}
-            placeholderTextColor={visual.tertiaryText}
-            accessibilityLabel={strings.description()}
-            multiline
-            style={{
-              color: visual.primaryText,
-              backgroundColor: visual.contentSurface,
-              borderRadius: visual.controlRadius,
-              minHeight: 86,
-              padding: 12,
-              fontSize: 16,
-              textAlignVertical: "top"
-            }}
-          />
+        {group(
+          <>
+            <TextInput
+              value={title}
+              onChangeText={setTitle}
+              placeholder={strings.tasksTaskTitle()}
+              placeholderTextColor={visual.tertiaryText}
+              accessibilityLabel={strings.tasksTaskTitle()}
+              autoFocus={!taskId}
+              multiline
+              blurOnSubmit
+              returnKeyType="done"
+              onSubmitEditing={save}
+              style={{
+                color: visual.primaryText,
+                fontSize: 23,
+                fontWeight: "600",
+                minHeight: 64,
+                paddingTop: 12,
+                paddingBottom: 10
+              }}
+            />
+            {divider}
+            <TextInput
+              value={description}
+              onChangeText={setDescription}
+              placeholder={strings.description()}
+              placeholderTextColor={visual.tertiaryText}
+              accessibilityLabel={strings.description()}
+              multiline
+              style={{
+                color: visual.primaryText,
+                fontSize: 15,
+                minHeight: 57,
+                paddingVertical: 12,
+                textAlignVertical: "top"
+              }}
+            />
+          </>
         )}
-        {section(
-          strings.tasksList(),
-          row(strings.tasksList(), selectedListName, () => setShowLists(true))
-        )}
-        {section(
-          strings.tasksDue(),
-          <View
-            style={{
-              borderRadius: visual.controlRadius,
-              backgroundColor: visual.contentSurface,
-              paddingHorizontal: 14
-            }}
-          >
-            {row(
-              strings.tasksDueDate(),
-              dueDate
-                ? fromDateOnly(dueDate).toLocaleDateString()
-                : strings.tasksNone(),
-              openDueDate,
-              !!dueDate
-            )}
-            {dueDate &&
-              row(
-                strings.tasksDueTime(),
-                dueTime || strings.tasksNone(),
-                openDueTime,
-                !!dueTime
-              )}
-            {dueDate && (
+
+        {sectionTitle(strings.tasksReminder())}
+        {group(
+          <>
+            <View
+              style={{
+                minHeight: 68,
+                flexDirection: "row",
+                alignItems: "center"
+              }}
+            >
+              <Icon
+                name="calendar-month-outline"
+                size={22}
+                color={visual.secondaryText}
+              />
               <Pressable
                 onPress={() => {
-                  setDueDate(undefined);
-                  setDueTime(undefined);
+                  if (!reminderDate) setDateEnabled(true);
+                  else
+                    setExpandedPicker(
+                      expandedPicker === "date" ? undefined : "date"
+                    );
                 }}
                 accessibilityRole="button"
-                accessibilityLabel={strings.tasksNone()}
-                style={{ alignSelf: "flex-end", padding: 12 }}
+                accessibilityLabel={`${strings.date()}: ${
+                  reminderDate
+                    ? dateFromCalendar(reminderDate).toLocaleDateString()
+                    : strings.tasksNone()
+                }`}
+                style={{ flex: 1, paddingVertical: 11, marginLeft: 14 }}
               >
-                <Text style={{ color: colors.primary.accent }}>
-                  {strings.tasksNone()}
+                <Text style={{ color: visual.primaryText, fontSize: 16 }}>
+                  {strings.date()}
                 </Text>
+                {reminderDate && (
+                  <Text
+                    style={{
+                      color: colors.primary.accent,
+                      fontSize: 13,
+                      marginTop: 2
+                    }}
+                  >
+                    {dateFromCalendar(reminderDate).toLocaleDateString(
+                      undefined,
+                      {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric"
+                      }
+                    )}
+                  </Text>
+                )}
               </Pressable>
+              <Switch
+                value={!!reminderDate}
+                onValueChange={setDateEnabled}
+                trackColor={{ true: colors.primary.accent }}
+                accessibilityLabel={strings.date()}
+              />
+            </View>
+            {reminderDate && expandedPicker === "date" && (
+              <DateTimePicker
+                value={dateFromCalendar(reminderDate)}
+                mode="date"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                themeVariant={isDark ? "dark" : "light"}
+                onChange={(_, value) => {
+                  if (value) setReminderDate(calendarDate(value));
+                }}
+                style={{ alignSelf: "stretch" }}
+              />
             )}
-            {dueTime && (
+            {divider}
+            <View
+              style={{
+                minHeight: 68,
+                flexDirection: "row",
+                alignItems: "center"
+              }}
+            >
+              <Icon
+                name="clock-outline"
+                size={22}
+                color={visual.secondaryText}
+              />
               <Pressable
-                onPress={() => setDueTime(undefined)}
+                onPress={() => {
+                  if (!reminderTime) setTimeEnabled(true);
+                  else
+                    setExpandedPicker(
+                      expandedPicker === "time" ? undefined : "time"
+                    );
+                }}
                 accessibilityRole="button"
-                accessibilityLabel={`${strings.tasksDueTime()}: ${strings.tasksNone()}`}
-                style={{ alignSelf: "flex-end", padding: 12 }}
+                accessibilityLabel={`${strings.time()}: ${
+                  reminderTime || strings.tasksNone()
+                }`}
+                style={{ flex: 1, paddingVertical: 11, marginLeft: 14 }}
               >
-                <Text style={{ color: colors.primary.accent }}>
-                  {strings.tasksDueTime()}: {strings.tasksNone()}
+                <Text style={{ color: visual.primaryText, fontSize: 16 }}>
+                  {strings.time()}
                 </Text>
+                {reminderTime && (
+                  <Text
+                    style={{
+                      color: colors.primary.accent,
+                      fontSize: 13,
+                      marginTop: 2
+                    }}
+                  >
+                    {dateFromTime(reminderTime).toLocaleTimeString(undefined, {
+                      hour: "numeric",
+                      minute: "2-digit"
+                    })}
+                  </Text>
+                )}
               </Pressable>
+              <Switch
+                value={!!reminderTime}
+                onValueChange={setTimeEnabled}
+                trackColor={{ true: colors.primary.accent }}
+                accessibilityLabel={strings.time()}
+              />
+            </View>
+            {reminderTime && expandedPicker === "time" && (
+              <DateTimePicker
+                value={dateFromTime(reminderTime)}
+                mode="time"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                themeVariant={isDark ? "dark" : "light"}
+                onChange={(_, value) => {
+                  if (value) setReminderTime(wallTime(value));
+                }}
+                style={{ alignSelf: "stretch" }}
+              />
             )}
-          </View>
-        )}
-        {section(
-          strings.tasksReminder(),
-          <View
-            style={{
-              borderRadius: visual.controlRadius,
-              backgroundColor: visual.contentSurface,
-              paddingHorizontal: 14
-            }}
-          >
-            {row(
-              strings.tasksReminderAt(),
-              reminderAt
-                ? new Date(reminderAt).toLocaleDateString()
-                : strings.tasksNoReminder(),
-              openReminderDate,
-              !!reminderAt
-            )}
-            {reminderAt &&
-              row(
-                strings.tasksDueTime(),
-                new Date(reminderAt).toLocaleTimeString(undefined, {
-                  hour: "numeric",
-                  minute: "2-digit"
-                }),
-                () => setPicker("reminderTime")
-              )}
-            {reminderAt && (
-              <Pressable
-                onPress={() => setReminderAt(undefined)}
-                accessibilityRole="button"
-                accessibilityLabel={strings.tasksNoReminder()}
-                style={{ alignSelf: "flex-end", padding: 12 }}
-              >
-                <Text style={{ color: colors.primary.accent }}>
-                  {strings.tasksNoReminder()}
+            {divider}
+            <View
+              style={{
+                minHeight: 68,
+                flexDirection: "row",
+                alignItems: "center"
+              }}
+            >
+              <Icon
+                name="alarm-light-outline"
+                size={22}
+                color={visual.secondaryText}
+              />
+              <View style={{ flex: 1, marginLeft: 14, paddingVertical: 11 }}>
+                <Text style={{ color: visual.primaryText, fontSize: 16 }}>
+                  Urgent
                 </Text>
-              </Pressable>
-            )}
-          </View>
+                <Text
+                  style={{
+                    color: visual.secondaryText,
+                    fontSize: 12,
+                    marginTop: 2
+                  }}
+                >
+                  {urgentStatus === "unsupported"
+                    ? "Alarms unavailable on this device"
+                    : !reminderTime
+                    ? "Choose a time to enable an alarm"
+                    : "Alarm until explicitly stopped"}
+                </Text>
+              </View>
+              <Switch
+                value={urgent}
+                onValueChange={setUrgentEnabled}
+                disabled={!reminderTime || urgentStatus === "unsupported"}
+                trackColor={{ true: colors.primary.accent }}
+                accessibilityLabel="Urgent alarm"
+              />
+            </View>
+          </>
         )}
-        {reminderAt && notificationsDenied && (
+        {reminderDate && notificationsDenied && !urgent && (
           <Pressable
             onPress={() => notifee.openNotificationSettings()}
             accessibilityRole="button"
             accessibilityLabel={strings.openSettings()}
-            style={{
-              marginTop: 10,
-              padding: 12,
-              borderRadius: visual.controlRadius,
-              backgroundColor: visual.secondarySurface
-            }}
+            style={{ padding: 12 }}
           >
             <Text style={{ color: visual.secondaryText, fontSize: 13 }}>
               {strings.tasksNotificationsDisabled()}
@@ -594,47 +814,31 @@ export default function TaskDetail({
               style={{
                 color: colors.primary.accent,
                 fontSize: 13,
-                fontWeight: "600",
-                marginTop: 5
+                marginTop: 4
               }}
             >
               {strings.openSettings()}
             </Text>
           </Pressable>
         )}
-        {section(
-          strings.tasksRepeat(),
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {repeatOptions.map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => chooseRepeat(option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: mode === option.value }}
-                style={{
-                  borderRadius: 12,
-                  backgroundColor:
-                    mode === option.value
-                      ? visual.selectedSurface
-                      : visual.contentSurface,
-                  paddingHorizontal: 13,
-                  paddingVertical: 10
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      mode === option.value
-                        ? colors.primary.accent
-                        : visual.primaryText
-                  }}
-                >
-                  {option.label()}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
+
+        {sectionTitle(strings.tasksRepeat())}
+        <View ref={repeatRow} collapsable={false}>
+          {group(
+            actionRow(
+              strings.tasksRepeat(),
+              repeatOptions.find((item) => item.mode === mode)?.label ||
+                strings.never(),
+              "repeat",
+              () =>
+                showChoices(
+                  repeatOptions.map((item) => item.label),
+                  repeatRow,
+                  (index) => chooseRepeat(repeatOptions[index].mode)
+                )
+            )
+          )}
+        </View>
         {mode === "custom" && (
           <TextInput
             value={rule}
@@ -649,55 +853,59 @@ export default function TaskDetail({
               backgroundColor: visual.contentSurface,
               borderRadius: visual.controlRadius,
               padding: 14,
-              marginTop: 10
+              marginTop: 8,
+              fontSize: 15
             }}
           />
         )}
-        {section(
-          strings.tasksPriority(),
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {priorityOptions.map((option) => (
-              <Pressable
-                key={option.value}
-                onPress={() => setPriority(option.value)}
-                accessibilityRole="button"
-                accessibilityState={{ selected: priority === option.value }}
-                style={{
-                  borderRadius: 12,
-                  backgroundColor:
-                    priority === option.value
-                      ? visual.selectedSurface
-                      : visual.contentSurface,
-                  paddingHorizontal: 13,
-                  paddingVertical: 10
-                }}
-              >
-                <Text
-                  style={{
-                    color:
-                      priority === option.value
-                        ? colors.primary.accent
-                        : visual.primaryText
-                  }}
-                >
-                  {option.label()}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+
+        {sectionTitle(strings.tasksList())}
+        {group(
+          actionRow(
+            strings.tasksList(),
+            selectedList?.name || strings.tasksChooseList(),
+            "format-list-checks",
+            () => setShowLists(true),
+            !!selectedList
+          )
         )}
-        {section(
-          strings.tasksFlag(),
+
+        {sectionTitle(strings.tasksPriority())}
+        <View ref={priorityRow} collapsable={false}>
+          {group(
+            actionRow(
+              strings.tasksPriority(),
+              priorityOptions.find((item) => item.value === priority)?.label ||
+                strings.tasksPriorityNone(),
+              "exclamation",
+              () =>
+                showChoices(
+                  priorityOptions.map((item) => item.label),
+                  priorityRow,
+                  (index) => setPriority(priorityOptions[index].value)
+                )
+            )
+          )}
+        </View>
+
+        {sectionTitle(strings.tasksFlag())}
+        {group(
           <View
             style={{
+              minHeight: 57,
               flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: visual.contentSurface,
-              padding: 13,
-              borderRadius: visual.controlRadius
+              alignItems: "center"
             }}
           >
-            <Text style={{ color: visual.primaryText, fontSize: 16, flex: 1 }}>
+            <Icon name="flag-outline" size={22} color={visual.secondaryText} />
+            <Text
+              style={{
+                flex: 1,
+                color: visual.primaryText,
+                fontSize: 16,
+                marginLeft: 14
+              }}
+            >
               {strings.tasksFlag()}
             </Text>
             <Switch
@@ -708,105 +916,47 @@ export default function TaskDetail({
             />
           </View>
         )}
+
         {task && (
-          <View style={{ marginTop: 30, gap: 10 }}>
-            <Pressable
-              onPress={toggleComplete}
-              accessibilityRole="button"
-              accessibilityLabel={
-                task.completed
-                  ? strings.tasksUncomplete()
-                  : strings.tasksComplete()
-              }
-              style={{
-                backgroundColor: visual.contentSurface,
-                borderRadius: visual.controlRadius,
-                padding: 16
-              }}
-            >
-              <Text style={{ color: colors.primary.accent, fontWeight: "600" }}>
-                {task.completed
-                  ? strings.tasksUncomplete()
-                  : strings.tasksComplete()}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={remove}
-              accessibilityRole="button"
-              accessibilityLabel={strings.tasksDelete()}
-              style={{
-                backgroundColor: visual.contentSurface,
-                borderRadius: visual.controlRadius,
-                padding: 16
-              }}
-            >
-              <Text
-                style={{ color: colors.error.paragraph, fontWeight: "600" }}
+          <View style={{ marginTop: 28, gap: 9 }}>
+            {group(
+              <Pressable
+                onPress={toggleComplete}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  task.completed
+                    ? strings.tasksUncomplete()
+                    : strings.tasksComplete()
+                }
+                style={{ paddingVertical: 17 }}
               >
-                {strings.tasksDelete()}
-              </Text>
-            </Pressable>
+                <Text
+                  style={{ color: colors.primary.accent, fontWeight: "600" }}
+                >
+                  {task.completed
+                    ? strings.tasksUncomplete()
+                    : strings.tasksComplete()}
+                </Text>
+              </Pressable>
+            )}
+            {group(
+              <Pressable
+                onPress={remove}
+                accessibilityRole="button"
+                accessibilityLabel={strings.tasksDelete()}
+                style={{ paddingVertical: 17 }}
+              >
+                <Text
+                  style={{ color: colors.error.paragraph, fontWeight: "600" }}
+                >
+                  {strings.tasksDelete()}
+                </Text>
+              </Pressable>
+            )}
           </View>
         )}
       </ScrollView>
 
-      <Modal
-        visible={!!picker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setPicker(undefined)}
-      >
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "flex-end",
-            backgroundColor: "#0008"
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: visual.contentSurface,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              padding: 18
-            }}
-          >
-            <Pressable
-              onPress={() => setPicker(undefined)}
-              accessibilityRole="button"
-              accessibilityLabel={strings.done()}
-              style={{ alignSelf: "flex-end", padding: 10 }}
-            >
-              <Text style={{ color: colors.primary.accent, fontWeight: "700" }}>
-                {strings.done()}
-              </Text>
-            </Pressable>
-            {picker && (
-              <DateTimePicker
-                value={
-                  picker === "dueDate"
-                    ? fromDateOnly(dueDate)
-                    : picker === "dueTime"
-                      ? fromTime(dueTime)
-                      : reminderAt
-                        ? new Date(reminderAt)
-                        : new Date()
-                }
-                mode={
-                  picker === "dueDate" || picker === "reminderDate"
-                    ? "date"
-                    : "time"
-                }
-                display="spinner"
-                onChange={(_, value) => {
-                  if (value) choosePickerDate(value);
-                }}
-                style={{ alignSelf: "center" }}
-              />
-            )}
-          </View>
-        </View>
-      </Modal>
       <Modal
         visible={showLists}
         transparent
@@ -849,8 +999,9 @@ export default function TaskDetail({
                   }}
                   accessibilityRole="button"
                   accessibilityState={{ selected: listId === list.id }}
+                  accessibilityLabel={list.name}
                   style={{
-                    minHeight: 52,
+                    minHeight: 54,
                     flexDirection: "row",
                     alignItems: "center",
                     borderBottomColor: visual.separator,
@@ -872,6 +1023,59 @@ export default function TaskDetail({
                 </Pressable>
               ))}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+      <Modal
+        visible={!!choiceSheet}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setChoiceSheet(undefined)}
+      >
+        <View
+          style={{
+            flex: 1,
+            justifyContent: "flex-end",
+            backgroundColor: "#0008"
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: visual.contentSurface,
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              paddingHorizontal: 18,
+              paddingTop: 12,
+              maxHeight: "75%"
+            }}
+          >
+            <ScrollView>
+              {choiceSheet?.options.map((option, index) => (
+                <Pressable
+                  key={`${option}-${index}`}
+                  onPress={() => {
+                    choiceSheet.onChoose(index);
+                    setChoiceSheet(undefined);
+                  }}
+                  accessibilityRole="button"
+                  style={{ minHeight: 52, justifyContent: "center" }}
+                >
+                  <Text style={{ color: visual.primaryText, fontSize: 16 }}>
+                    {option}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+            <Pressable
+              onPress={() => setChoiceSheet(undefined)}
+              accessibilityRole="button"
+              accessibilityLabel={strings.cancel()}
+              style={{ minHeight: 52, justifyContent: "center" }}
+            >
+              <Text style={{ color: colors.primary.accent, fontSize: 16 }}>
+                {strings.cancel()}
+              </Text>
+            </Pressable>
           </View>
         </View>
       </Modal>

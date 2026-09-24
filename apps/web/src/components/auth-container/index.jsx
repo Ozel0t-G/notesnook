@@ -27,6 +27,7 @@ import { hosts } from "@notesnook/core";
 import { SettingsDialog } from "../../dialogs/settings";
 import { strings } from "@notesnook/intl";
 import { FixedColorSchemeThemeProvider } from "../theme-provider";
+import { isMac } from "../../utils/platform";
 
 const testimonials = [
   {
@@ -63,6 +64,7 @@ function randomTitle() {
 }
 
 function AuthContainer(props) {
+  const isVeyranMac = IS_DESKTOP_APP && isMac();
   const testimonial = useMemo(() => getRandomTestimonial(), []);
   const title = useMemo(() => randomTitle(), []);
 
@@ -114,29 +116,34 @@ function AuthContainer(props) {
             }}
           />
           <Text variant={"heading"} sx={{ fontSize: 48 }}>
-            {title}
+            {isVeyranMac ? "VeyraN" : title}
           </Text>
           <Text
             variant="body"
             mt={10}
             sx={{ fontSize: 16, color: "paragraph-secondary" }}
           >
-            {testimonial.text}
+            {isVeyranMac ? strings.veyranMacWelcome() : testimonial.text}
           </Text>
-          <Flex mt={2} sx={{ alignItems: "center", justifyContent: "center" }}>
-            <Image
-              src={testimonial.image}
-              sx={{ borderRadius: 50, width: 40 }}
-            />
-            <Flex ml={2} sx={{ flexDirection: "column" }}>
-              <Text variant="body" sx={{ fontSize: 16, fontWeight: "bold" }}>
-                {testimonial.name}
-              </Text>
-              <Text variant="subBody" sx={{ fontSize: 13 }}>
-                @{testimonial.username}
-              </Text>
+          {!isVeyranMac && (
+            <Flex
+              mt={2}
+              sx={{ alignItems: "center", justifyContent: "center" }}
+            >
+              <Image
+                src={testimonial.image}
+                sx={{ borderRadius: 50, width: 40 }}
+              />
+              <Flex ml={2} sx={{ flexDirection: "column" }}>
+                <Text variant="body" sx={{ fontSize: 16, fontWeight: "bold" }}>
+                  {testimonial.name}
+                </Text>
+                <Text variant="subBody" sx={{ fontSize: 13 }}>
+                  @{testimonial.username}
+                </Text>
+              </Flex>
             </Flex>
-          </Flex>
+          )}
 
           <Flex
             mt={2}
@@ -158,7 +165,11 @@ function AuthContainer(props) {
                   )}
                 </>
               ) : (
-                <>{strings.usingOfficialInstance()}</>
+                <>
+                  {isVeyranMac
+                    ? strings.usingOfficialService()
+                    : strings.usingOfficialInstance()}
+                </>
               )}
             </Text>
             <Button

@@ -7817,6 +7817,10 @@ msgstr "Using Notesnook without an account will NOT sync your notes across devic
 msgid "Using official Notesnook instance"
 msgstr "Using official Notesnook instance"
 
+#: src/strings.ts:2371
+msgid "Using the official sync service"
+msgstr "Using the official sync service"
+
 #: src/strings.ts:1816
 msgid "v{version} available"
 msgstr "v{version} available"
@@ -8435,6 +8439,10 @@ msgstr "Your notebooks"
 #: src/strings.ts:957
 msgid "Your notes"
 msgstr "Your notes"
+
+#: src/strings.ts:2373
+msgid "Your notes, Tasks, and reminders in one private space."
+msgstr "Your notes, Tasks, and reminders in one private space."
 
 #: src/strings.ts:1999
 msgid "Your password is always hashed before leaving this device."

@@ -1,0 +1,215 @@
+/* The Settings dialog is portaled outside #app, so scope to the Mac html class. */
+html.veyran-mac-window .ReactModal__Content:has(.veyran-settings-layout) > div {
+  width: min(968px, calc(100vw - 64px)) !important;
+  max-height: min(720px, calc(100vh - 64px)) !important;
+  height: auto !important;
+  border: 1px solid var(--separator) !important;
+  border-radius: 17px !important;
+  background: var(--background) !important;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.24) !important;
+}
+
+html.veyran-mac-window .veyran-settings-layout {
+  width: 100%;
+  height: min(720px, calc(100vh - 64px)) !important;
+  min-height: 440px;
+  background: var(--background);
+}
+
+html.veyran-mac-window .veyran-settings-sidebar {
+  width: 232px !important;
+  min-width: 232px;
+  border-right: 1px solid var(--separator);
+  background: var(--background-secondary) !important;
+}
+
+html.veyran-mac-window .veyran-settings-sidebar > div {
+  padding: 18px 8px 24px;
+}
+
+html.veyran-mac-window .veyran-settings-search {
+  width: calc(100% - 12px) !important;
+  height: 33px;
+  margin: 0 6px 16px !important;
+  padding: 5px 11px !important;
+  border: 1px solid var(--separator) !important;
+  border-radius: 9px !important;
+  background: var(--background) !important;
+  color: var(--paragraph);
+  font-size: 12px;
+}
+
+html.veyran-mac-window .veyran-settings-search:focus-visible,
+html.veyran-mac-window .veyran-settings-content button:focus-visible,
+html.veyran-mac-window .veyran-settings-content input:focus-visible,
+html.veyran-mac-window .veyran-settings-select:focus-visible {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 2px;
+}
+
+html.veyran-mac-window .veyran-settings-nav-group {
+  margin: 0 4px 8px !important;
+  gap: 2px !important;
+}
+
+html.veyran-mac-window .veyran-settings-nav-heading {
+  margin: 12px 10px 5px !important;
+  color: var(--paragraph-secondary) !important;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
+}
+
+html.veyran-mac-window .veyran-settings-sidebar .veyran-sidebar-row {
+  min-height: 31px;
+  padding: 5px 10px !important;
+  border-radius: 8px !important;
+  cursor: pointer;
+}
+
+html.veyran-mac-window .veyran-settings-sidebar .veyran-sidebar-row:hover {
+  background: var(--hover) !important;
+}
+
+html.veyran-mac-window .veyran-settings-sidebar .veyran-sidebar-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+html.veyran-mac-window
+  .veyran-settings-sidebar
+  .veyran-sidebar-row[data-selected="true"] {
+  background: var(--background-selected) !important;
+}
+
+html.veyran-mac-window
+  .veyran-settings-sidebar
+  .veyran-sidebar-row[data-selected="true"]
+  [data-test-id="title"] {
+  font-weight: 600;
+}
+
+html.veyran-mac-window .veyran-settings-content {
+  min-width: 0;
+  padding: 27px 34px 40px !important;
+  gap: 22px !important;
+  background: var(--background) !important;
+}
+
+html.veyran-mac-window .veyran-settings-title {
+  margin: 0 0 2px;
+  color: var(--heading);
+  font: 650 24px/1.25 -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    sans-serif;
+  letter-spacing: -0.025em;
+}
+
+html.veyran-mac-window .veyran-settings-group {
+  gap: 8px !important;
+  overflow: visible !important;
+}
+
+html.veyran-mac-window .veyran-settings-group-heading {
+  margin: 5px 0 2px;
+  color: var(--paragraph-secondary) !important;
+  font-size: 10px !important;
+  font-weight: 650;
+  letter-spacing: 0.055em;
+}
+
+html.veyran-mac-window .veyran-setting-row {
+  min-width: 0;
+  padding: 12px 0 16px !important;
+  border-color: var(--separator) !important;
+}
+
+html.veyran-mac-window .veyran-setting-row-main {
+  min-width: 0;
+  align-items: center;
+  gap: 22px;
+}
+
+html.veyran-mac-window .veyran-setting-row-main > div:first-child {
+  min-width: 0;
+}
+
+html.veyran-mac-window
+  .veyran-setting-row-main
+  > div:first-child
+  > div:first-child {
+  font-size: 13px;
+}
+
+html.veyran-mac-window .veyran-setting-row-main > div:first-child > div + div {
+  max-width: 520px;
+  color: var(--paragraph-secondary) !important;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+html.veyran-mac-window .veyran-setting-row-controls {
+  flex-wrap: wrap;
+  gap: 8px !important;
+}
+
+html.veyran-mac-window .veyran-setting-row-controls button {
+  min-height: 30px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+html.veyran-mac-window
+  .veyran-setting-row-controls
+  input:not([type="checkbox"]),
+html.veyran-mac-window .veyran-settings-select {
+  max-width: min(250px, 100%);
+  min-height: 31px;
+  border: 1px solid var(--separator) !important;
+  border-radius: 8px !important;
+  background-color: var(--background-secondary) !important;
+  color: var(--paragraph) !important;
+  font-size: 12px;
+}
+
+html.veyran-mac-window .veyran-settings-select {
+  min-width: 138px;
+  padding: 6px 30px 6px 10px !important;
+  appearance: none;
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 12px 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5' fill='none' stroke='%23757d87' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.4'/%3E%3C/svg%3E");
+}
+
+html[data-theme="dark"].veyran-mac-window .veyran-settings-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='m2.5 4.5 3.5 3.5 3.5-3.5' fill='none' stroke='%23bbc1c8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.4'/%3E%3C/svg%3E");
+}
+
+@media (max-width: 760px) {
+  html.veyran-mac-window
+    .ReactModal__Content:has(.veyran-settings-layout)
+    > div {
+    width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 24px) !important;
+  }
+
+  html.veyran-mac-window .veyran-settings-layout {
+    height: calc(100vh - 24px) !important;
+  }
+
+  html.veyran-mac-window .veyran-settings-sidebar {
+    width: 184px !important;
+    min-width: 184px;
+  }
+
+  html.veyran-mac-window .veyran-settings-content {
+    padding: 22px 20px 32px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.veyran-mac-window .veyran-settings-layout * {
+    scroll-behavior: auto !important;
+  }
+}

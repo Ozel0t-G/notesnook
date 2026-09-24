@@ -84,6 +84,8 @@ import { InboxSettings } from "./inbox-settings";
 import { withFeatureCheck } from "../../common";
 import { NotesnookCircleSettings } from "./notesnook-circle-settings";
 import { hashNavigate } from "../../navigation";
+import { isMac } from "../../utils/platform";
+import "../../styles/veyran-mac-settings.css";
 
 type SettingsDialogProps = BaseDialogProps<false> & {
   activeSection?: SectionKeys;
@@ -223,12 +225,14 @@ export const SettingsDialog = DialogManager.register(function SettingsDialog(
   return (
     <Dialog
       isOpen={true}
+      testId="settings-dialog"
       width={"968px"}
       onClose={() => props.onClose(false)}
       noScroll
       sx={{ bg: "transparent" }}
     >
       <Flex
+        className="veyran-settings-layout"
         sx={{
           height: "80vw",
           overflow: "hidden"
@@ -244,6 +248,7 @@ export const SettingsDialog = DialogManager.register(function SettingsDialog(
         />
         <FlexScrollContainer
           id="settings-scrollbar"
+          className="veyran-settings-content"
           style={{
             display: "flex",
             backgroundColor: "var(--background)",
@@ -255,6 +260,11 @@ export const SettingsDialog = DialogManager.register(function SettingsDialog(
             overflow: "auto"
           }}
         >
+          {IS_DESKTOP_APP && isMac() ? (
+            <Text as="h1" className="veyran-settings-title">
+              {strings.settings()}
+            </Text>
+          ) : null}
           {activeSettings.length > 0 ? (
             activeSettings.map((group) => (
               <SettingsGroupComponent item={group} />
@@ -288,7 +298,7 @@ function SettingsSideBar(props: SettingsSideBarProps) {
   return (
     <FlexScrollContainer
       id="settings-side-menu"
-      className="theme-scope-navigationMenu"
+      className="theme-scope-navigationMenu veyran-settings-sidebar"
       style={{
         width: 240,
         overflow: "auto",
@@ -308,6 +318,8 @@ function SettingsSideBar(props: SettingsSideBarProps) {
           <Input
             id="search"
             name="search"
+            className="veyran-settings-search"
+            aria-label={strings.search()}
             autoFocus
             placeholder={strings.search()}
             data-test-id="settings-search"
@@ -377,9 +389,11 @@ function SettingsSideBar(props: SettingsSideBarProps) {
           {sectionGroups.map((group) => (
             <Flex
               key={group.key}
+              className="veyran-settings-nav-group"
               sx={{ flexDirection: "column", mx: 1, gap: "small" }}
             >
               <Text
+                className="veyran-settings-nav-heading"
                 variant={"subBody"}
                 sx={{
                   fontWeight: "bold",
@@ -443,6 +457,7 @@ function SettingsGroupComponent(props: { item: SettingsGroup }) {
 
   return (
     <Flex
+      className="veyran-settings-group"
       sx={{
         flexDirection: "column",
         flexShrink: 0,
@@ -452,6 +467,7 @@ function SettingsGroupComponent(props: { item: SettingsGroup }) {
     >
       {typeof item.header === "string" ? (
         <Text
+          className="veyran-settings-group-heading"
           variant="subBody"
           sx={{
             fontSize: 11,
@@ -508,6 +524,7 @@ function SettingItem(props: { item: Setting }) {
 
   return (
     <Flex
+      className="veyran-setting-row"
       sx={{
         flexDirection: "column",
         pb: 4,
@@ -516,6 +533,7 @@ function SettingItem(props: { item: Setting }) {
       data-test-id={`setting-${item.key}`}
     >
       <Flex
+        className="veyran-setting-row-main"
         sx={{
           flexDirection: "row",
           justifyContent: "space-between",
@@ -552,6 +570,7 @@ function SettingItem(props: { item: Setting }) {
         </Flex>
 
         <Flex
+          className="veyran-setting-row-controls"
           sx={{
             alignItems: "center",
             justifyContent: "end",
@@ -655,6 +674,7 @@ export function SelectComponent(props: Omit<DropdownSettingComponent, "type">) {
 
   return (
     <select
+      className="veyran-settings-select"
       style={{
         backgroundColor: "var(--background-secondary)",
         outline: "none",
@@ -705,6 +725,7 @@ function NumberInput({
   return (
     <Flex sx={{ flexDirection: "column", alignItems: "flex-end" }}>
       <Input
+        className="veyran-settings-number-input"
         ref={inputRef}
         type={"number"}
         min={min}

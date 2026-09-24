@@ -7767,6 +7767,10 @@ msgstr ""
 msgid "Using official Notesnook instance"
 msgstr ""
 
+#: src/strings.ts:2371
+msgid "Using the official sync service"
+msgstr ""
+
 #: src/strings.ts:1816
 msgid "v{version} available"
 msgstr ""
@@ -8373,6 +8377,10 @@ msgstr ""
 
 #: src/strings.ts:957
 msgid "Your notes"
+msgstr ""
+
+#: src/strings.ts:2373
+msgid "Your notes, Tasks, and reminders in one private space."
 msgstr ""
 
 #: src/strings.ts:1999

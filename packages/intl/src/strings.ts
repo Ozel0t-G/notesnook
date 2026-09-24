@@ -2368,6 +2368,9 @@ Use this if changes from other devices are not appearing on this device. This wi
   pasteWithoutFormatting: () => t`Paste without formatting`,
   configure: () => t`Configure`,
   usingOfficialInstance: () => t`Using official Notesnook instance`,
+  usingOfficialService: () => t`Using the official sync service`,
+  veyranMacWelcome: () =>
+    t`Your notes, Tasks, and reminders in one private space.`,
   usingInstance: (instance: string, version: string) =>
     t`Using ${instance} (v${version})`,
 

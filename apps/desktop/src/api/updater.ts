@@ -24,7 +24,6 @@ import type { AppUpdaterEvents } from "electron-updater/out/AppUpdater";
 import { z } from "zod";
 import { config } from "../utils/config";
 import { app } from "electron";
-import { isFlatpak, isPortable, isSnap } from "../utils";
 
 type UpdateInfo = { version: string };
 type Progress = { percent: number };
@@ -32,13 +31,16 @@ type Progress = { percent: number };
 const t = initTRPC.create();
 let cancellationToken: CancellationToken | undefined = undefined;
 let downloadTimeout: NodeJS.Timeout | undefined = undefined;
-const updatesSupported = !isFlatpak() && !isSnap() && !isPortable();
+// Re-enable only after a VeyraN-owned, signed update feed is configured.
+const updatesSupported = false;
 export const updaterRouter = t.router({
   autoUpdates: t.procedure.query(
     () => updatesSupported && config.automaticUpdates
   ),
   releaseTrack: t.procedure.query(() => config.releaseTrack),
-  install: t.procedure.query(() => autoUpdater.quitAndInstall()),
+  install: t.procedure.query(() => {
+    if (updatesSupported) autoUpdater.quitAndInstall();
+  }),
   download: t.procedure.query(async () => {
     if (!updatesSupported || cancellationToken) return;
     clearTimeout(downloadTimeout);
@@ -70,11 +72,12 @@ export const updaterRouter = t.router({
   toggleAutoUpdates: t.procedure
     .input(z.object({ enabled: z.boolean() }))
     .mutation(({ input: { enabled } }) => {
-      config.automaticUpdates = enabled;
+      if (updatesSupported) config.automaticUpdates = enabled;
     }),
   changeReleaseTrack: t.procedure
     .input(z.object({ track: z.string() }))
     .mutation(({ input: { track } }) => {
+      if (!updatesSupported) return;
       config.releaseTrack = track;
       app.relaunch();
       app.exit();

@@ -103,16 +103,16 @@ function AuthContainer(props) {
             justifyContent: "end"
           }}
         >
-          <svg
+          <img
+            src="/brand-icon.png"
+            alt="VeyraN"
             style={{
               height: 90,
               width: 90,
               alignSelf: "start",
               marginBottom: 20
             }}
-          >
-            <use href="#full-logo" />
-          </svg>
+          />
           <Text variant={"heading"} sx={{ fontSize: 48 }}>
             {title}
           </Text>

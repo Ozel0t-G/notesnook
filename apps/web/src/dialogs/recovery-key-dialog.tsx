@@ -21,7 +21,6 @@ import React, { useState } from "react";
 import { Text, Flex, Button } from "@theme-ui/components";
 import Dialog from "../components/dialog";
 import { db } from "../common/db";
-import Logo from "../assets/notesnook-logo.png";
 import { writeText } from "clipboard-polyfill";
 import { Suspense } from "react";
 import Config from "../utils/config";
@@ -85,7 +84,7 @@ export const RecoveryKeyDialog = DialogManager.register(
                 <Suspense fallback={<div />}>
                   <QRCode
                     value={key.value}
-                    logoImage={Logo}
+                    logoImage="/brand-icon.png"
                     logoWidth={40}
                     logoHeight={40}
                     ecLevel={"M"}

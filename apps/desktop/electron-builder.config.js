@@ -18,7 +18,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 const path = require("path");
-const pkg = require("./package.json");
 
 const buildRoot = process.env.NN_BUILD_ROOT || ".";
 const buildFiles = [
@@ -29,14 +28,13 @@ const buildFiles = [
   `!${buildRoot}/build/*.png`
 ];
 
-const productName = process.env.NN_PRODUCT_NAME || "Notesnook";
+const productName = process.env.NN_PRODUCT_NAME || "VeyraN";
 const appId = process.env.NN_APP_ID || "org.streetwriters.notesnook";
 const outputDir = process.env.NN_OUTPUT_DIR || "output";
 const linuxExecutableName = process.env.NN_PRODUCT_NAME
   ? process.env.NN_PRODUCT_NAME.toLowerCase().replace(/\s+/g, "-")
-  : "notesnook";
+  : "veyran";
 const year = new Date().getFullYear();
-const isBeta = pkg.version.includes("-beta");
 
 /**
  * @type {import("app-builder-lib").Configuration}
@@ -45,8 +43,8 @@ module.exports = {
   appId: appId,
   productName: productName,
   copyright: `Copyright © ${year} Streetwriters (Private) Limited`,
-  artifactName: "notesnook_${os}_${arch}.${ext}",
-  generateUpdatesFilesForAllChannels: true,
+  artifactName: "veyran_${os}_${arch}.${ext}",
+  generateUpdatesFilesForAllChannels: false,
   asar: true,
   asarUnpack: [
     "node_modules/sqlite-better-trigram-@(linux|darwin|windows)-${arch}/**/*",
@@ -96,7 +94,7 @@ module.exports = {
     "node_modules/sodium-native/package.json"
   ],
   afterPack: "./scripts/removeLocales.js",
-  protocols: [{ name: "Notesnook", schemes: ["nn"] }],
+  protocols: [{ name: "VeyraN", schemes: ["nn", "veyran"] }],
   mac: {
     bundleVersion: "240",
     minimumSystemVersion: "10.12.0",
@@ -134,7 +132,7 @@ module.exports = {
       }
     ],
     icon: "assets/icons/app.icns",
-    title: "Install Notesnook"
+    title: "Install VeyraN"
   },
   mas: {
     entitlements: "assets/entitlements.mas.plist",
@@ -160,7 +158,7 @@ module.exports = {
     icon: "assets/icons/app.ico"
   },
   portable: {
-    artifactName: "notesnook_${os}_${arch}_portable.${ext}"
+    artifactName: "veyran_${os}_${arch}_portable.${ext}"
   },
   nsis: {
     oneClick: true,
@@ -182,7 +180,7 @@ module.exports = {
     icon: "assets/icons/app.icns",
     description: "Your private note taking space",
     executableName: linuxExecutableName,
-    mimeTypes: ["x-scheme-handler/nn"],
+    mimeTypes: ["x-scheme-handler/nn", "x-scheme-handler/veyran"],
     desktop: {
       desktopActions: {
         "new-note": {
@@ -210,7 +208,7 @@ module.exports = {
       autoStart: false
     }
   },
-  extraResources: ["app-update.yml", "./assets/**"],
+  extraResources: ["./assets/**"],
   extraMetadata: {
     main: path.join(buildRoot, "build", "electron.js")
   },
@@ -218,12 +216,5 @@ module.exports = {
     buildResources: "assets",
     output: outputDir
   },
-  publish: [
-    {
-      provider: "github",
-      repo: "notesnook",
-      owner: "streetwriters",
-      channel: isBeta ? "beta" : "latest"
-    }
-  ]
+  publish: []
 };

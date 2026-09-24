@@ -19,7 +19,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import { Image, View } from "react-native";
-import { NOTESNOOK_LOGO_SVG } from "../../assets/images/assets";
 import { useUserStore } from "../../stores/use-user-store";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
@@ -28,7 +27,6 @@ import { UserSheet } from "../sheets/user";
 import AppIcon from "../ui/AppIcon";
 import { IconButton, IconButtonProps } from "../ui/icon-button";
 import { Pressable } from "../ui/pressable";
-import { SvgView } from "../ui/svg";
 import Heading from "../ui/typography/heading";
 import { useSideBarDraggingStore } from "./dragging-store";
 import SyncStatusButton from "./sync-status-button";
@@ -95,18 +93,11 @@ export const SideMenuHeader = (props: { rightButtons?: IconButtonProps[] }) => {
           alignItems: "center"
         }}
       >
-        <View
-          style={{
-            backgroundColor: "black",
-            width: 28,
-            height: 28,
-            borderRadius: 10
-          }}
-        >
-          <SvgView width={28} height={28} src={NOTESNOOK_LOGO_SVG} />
-        </View>
-
-        <Heading size={AppFontSize.lg}>Notesnook</Heading>
+        <Image
+          source={require("../../assets/images/veyran-icon.png")}
+          style={{ width: 28, height: 28 }}
+        />
+        <Heading size={AppFontSize.lg}>VeyraN</Heading>
       </View>
 
       <View

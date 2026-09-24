@@ -14,7 +14,7 @@
     "Ongoing" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Laufend" } } } },
     "Overdue reminder" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Überfällige Erinnerung" } } } },
     "Overdue" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Überfällig" } } } },
-    "Open Notesnook to refresh tasks" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Notesnook öffnen, um Aufgaben zu aktualisieren" } } } },
+    "Open VeyraN to refresh tasks" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "VeyraN öffnen, um Aufgaben zu aktualisieren" } } } },
     "Quick Note" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Schnelle Notiz" } } } },
     "Reminders" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Erinnerungen" } } } },
     "See today's tasks, complete tasks, and create a task." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Heutige Aufgaben anzeigen, erledigen und neue erstellen." } } } },

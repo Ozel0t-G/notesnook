@@ -339,14 +339,7 @@ function NavigationMenu({
               gap: 1
             }}
           >
-            <svg
-              style={{
-                width: 20,
-                height: 20
-              }}
-            >
-              <use href="#full-logo" />
-            </svg>
+            <img src="/brand-icon.png" alt="" width={20} height={20} />
 
             <Text
               variant="heading"
@@ -356,7 +349,7 @@ function NavigationMenu({
                 display: "block"
               }}
             >
-              Notesnook
+              VeyraN
             </Text>
           </Flex>
           <Flex sx={{ gap: "small", alignItems: "center" }}>

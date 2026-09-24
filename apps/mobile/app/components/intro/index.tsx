@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Linking, useWindowDimensions, View } from "react-native";
+import { useWindowDimensions, View } from "react-native";
 import { SwiperFlatList } from "react-native-swiper-flatlist";
 import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
 import Navigation from "../../services/navigation";
@@ -96,19 +96,6 @@ const Intro = () => {
             <Paragraph size={AppFontSize.sm}>{item.body()}</Paragraph>
           ) : null}
 
-          {item.tesimonial ? (
-            <Paragraph
-              style={{
-                fontStyle: "italic",
-                fontSize: AppFontSize.lg
-              }}
-              onPress={() => {
-                Linking.openURL(item.link);
-              }}
-            >
-              {item.tesimonial()} — {item.user}
-            </Paragraph>
-          ) : null}
         </View>
       </View>
     ),

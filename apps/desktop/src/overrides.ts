@@ -19,6 +19,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { app } from "electron";
 import path from "path";
 
+// Keep the safeStorage keyring identity and Windows AppUserModelID used by the
+// existing encrypted profile. The packaged application name remains VeyraN.
+app.setName("Notesnook");
+
 const customVersion = process.env.CUSTOM_APP_VERSION;
 if (customVersion) {
   app.getVersion = () => customVersion;
@@ -38,4 +42,7 @@ if (process.env.CUSTOM_USER_DATA_DIR) {
     "documents",
     path.join(process.env.CUSTOM_USER_DATA_DIR, "Documents")
   );
+} else {
+  // Preserve the existing encrypted profile when the package display name changes.
+  app.setPath("userData", path.join(app.getPath("appData"), "Notesnook"));
 }

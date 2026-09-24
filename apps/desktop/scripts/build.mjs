@@ -83,13 +83,13 @@ if (args.run) {
     `yarn electron-builder --dir --${process.arch} --config=electron-builder.config.js`
   );
   if (process.platform === "win32") {
-    await exec(`.\\output\\win-unpacked\\Notesnook.exe`);
+    await exec(`.\\output\\win-unpacked\\VeyraN.exe`);
   } else if (process.platform === "darwin") {
     if (process.arch === "arm64")
-      await exec(`./output/mac-arm64/Notesnook.app/Contents/MacOS/Notesnook`);
-    else await exec(`./output/mac/Notesnook.app/Contents/MacOS/Notesnook`);
+      await exec(`./output/mac-arm64/VeyraN.app/Contents/MacOS/VeyraN`);
+    else await exec(`./output/mac/VeyraN.app/Contents/MacOS/VeyraN`);
   } else {
-    await exec(`./output/linux-unpacked/Notesnook`);
+    await exec(`./output/linux-unpacked/veyran`);
   }
 }
 

@@ -147,7 +147,7 @@ private extension TaskAlarmModule {
       CharacterSet.controlCharacters.contains(scalar) || scalar.value == 0x2028 || scalar.value == 0x2029
         ? " " : String(scalar)
     }.joined()
-    let safeTitle = privacyHidden ? "Notesnook Task" : String(cleanedTitle.prefix(120))
+    let safeTitle = privacyHidden ? "VeyraN Task" : String(cleanedTitle.prefix(120))
     let input = "\(timestamp.doubleValue)|\(privacyHidden)|\(updatedAt.doubleValue)"
     let fingerprint = SHA256.hash(data: Data(input.utf8))
       .map { String(format: "%02x", $0) }.joined()

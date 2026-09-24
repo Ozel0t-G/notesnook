@@ -45,7 +45,7 @@ export const config = {
   isSpellCheckerEnabled: true,
   zoomFactor: 1,
   theme: nativeTheme.themeSource,
-  automaticUpdates: true,
+  automaticUpdates: false,
   proxyRules: "",
   customDns: true,
   releaseTrack: autoUpdater.currentVersion.raw.includes("-beta")

@@ -17,32 +17,9 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { autoUpdater } from "electron-updater";
-import { config } from "./config";
-
 async function configureAutoUpdater() {
-  const releaseTrack =
-    config.releaseTrack === "stable" ? "latest" : config.releaseTrack;
-  autoUpdater.setFeedURL({
-    provider: "generic",
-    url: `https://notesnook.com/api/v1/releases/${process.platform}/${releaseTrack}`,
-    useMultipleRangeRequest: false,
-    channel: releaseTrack
-  });
-
-  autoUpdater.autoDownload = config.automaticUpdates;
-  autoUpdater.allowDowngrade =
-    // only allow downgrade if the current version is a prerelease
-    // and the user has changed the release track to stable
-    config.releaseTrack === "stable" &&
-    autoUpdater.currentVersion.prerelease.length > 0;
-  autoUpdater.allowPrerelease = false;
-  // Do NOT auto-install on quit. On Windows, if the system shuts down while
-  // the NSIS installer is running, it first removes all old files and then
-  // gets killed before copying new ones — leaving an empty install directory.
-  // Updates should only be installed when the user explicitly triggers it.
-  autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.disableWebInstaller = true;
+  // VeyraN has no owned update feed yet. Do not configure the upstream
+  // Notesnook endpoint: it could replace this fork with an upstream build.
 }
 
 export { configureAutoUpdater };

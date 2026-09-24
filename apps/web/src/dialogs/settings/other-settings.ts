@@ -21,7 +21,11 @@ import { SettingComponent, SettingsGroup } from "./types";
 import { appVersion } from "../../utils/version";
 import { writeText } from "clipboard-polyfill";
 import { showToast } from "../../utils/toast";
-import { checkForUpdate, downloadUpdate } from "../../utils/updater";
+import {
+  checkForUpdate,
+  desktopUpdatesConfigured,
+  downloadUpdate
+} from "../../utils/updater";
 import { isMacStoreApp } from "../../utils/platform";
 import { clearLogs, downloadLogs } from "../../utils/logger";
 import { useAutoUpdateStore } from "../../hooks/use-auto-updater";
@@ -62,7 +66,8 @@ export const AboutSettings: SettingsGroup[] = [
           if (
             useSettingStore.getState().isFlatpak ||
             useSettingStore.getState().isSnap ||
-            useSettingStore.getState().isPortable
+            useSettingStore.getState().isPortable ||
+            (IS_DESKTOP_APP && !desktopUpdatesConfigured)
           ) {
             return [copyVersionButton];
           }
@@ -92,7 +97,8 @@ export const AboutSettings: SettingsGroup[] = [
         isHidden: () =>
           useSettingStore.getState().isFlatpak ||
           useSettingStore.getState().isSnap ||
-          useSettingStore.getState().isPortable,
+          useSettingStore.getState().isPortable ||
+          (IS_DESKTOP_APP && !desktopUpdatesConfigured),
         components: [
           {
             type: "dropdown",

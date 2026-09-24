@@ -1,10 +1,10 @@
-// Private "Notesnook Pencil Beta" TestFlight identity for this fork.
+// Private VeyraN TestFlight display name; stable identifiers are preserved.
 IOS_CURRENT_PROJECT_VERSION = 14
 IOS_MARKETING_VERSION = 3.4.16
 IOS_MAIN_BUNDLE_ID = com.ozel0t.note.notesnookpencil
 IOS_WIDGET_BUNDLE_ID = com.ozel0t.note.notesnookpencil.widget
 IOS_SHARE_BUNDLE_ID = com.ozel0t.note.notesnookpencil.share
-APP_DISPLAY_NAME = Notesnook Pencil Beta
+APP_DISPLAY_NAME = VeyraN
 // Automatic signing: no provisioning profile names.
 IOS_MAIN_PROFILE =
 IOS_WIDGET_PROFILE =

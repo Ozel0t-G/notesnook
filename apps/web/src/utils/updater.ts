@@ -21,8 +21,11 @@ import { AppEventManager, AppEvents } from "../common/app-events";
 import { desktop } from "../common/desktop-bridge";
 import { appVersion, getServiceWorkerVersion } from "./version";
 
+// Desktop releases have no VeyraN-owned update endpoint in V1.
+export const desktopUpdatesConfigured = false;
+
 export async function checkForUpdate(checkOnDesktop = true) {
-  if (IS_DESKTOP_APP && checkOnDesktop) {
+  if (IS_DESKTOP_APP && checkOnDesktop && desktopUpdatesConfigured) {
     await desktop?.updater.check.query().catch(console.error);
   }
 

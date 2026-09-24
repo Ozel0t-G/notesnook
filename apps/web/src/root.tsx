@@ -135,16 +135,17 @@ function RouteWrapper(props: {
           alignItems: "center"
         }}
       >
-        <svg
+        <img
+          src="/brand-icon.png"
+          alt="VeyraN"
           style={{
             height: 120,
+            width: 120,
             transform: "scale(1)",
             animation: "pulse 2s infinite",
             marginBottom: 10
           }}
-        >
-          <use href="#themed-logo" />
-        </svg>
+        />
         <Text variant="body" sx={{ fontFamily: "monospace" }}>
           {isMigrating
             ? "Migrating database. This might take a while."

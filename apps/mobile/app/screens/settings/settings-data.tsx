@@ -1818,7 +1818,7 @@ export const settingsGroups: SettingSection[] = [
   },
   {
     id: "about",
-    name: strings.about(),
+    name: "About VeyraN",
     sections: [
       {
         id: "download",
@@ -1862,13 +1862,6 @@ export const settingsGroups: SettingSection[] = [
         id: "app-version",
         name: strings.appVersion(),
         icon: "alpha-v",
-        modifer: async () => {
-          try {
-            await Linking.openURL("https://notesnook.com");
-          } catch (e) {
-            console.error(e);
-          }
-        },
         description: getVersion()
       }
     ]

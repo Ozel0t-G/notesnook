@@ -437,7 +437,9 @@ function SummarySlide({ stats }: { stats: WrappedStats }) {
         p: 5
       }}
     >
-      <svg
+      <img
+        src="/brand-icon.png"
+        alt=""
         style={{
           height: 20,
           width: 20,
@@ -445,9 +447,7 @@ function SummarySlide({ stats }: { stats: WrappedStats }) {
           bottom: "20px",
           right: "20px"
         }}
-      >
-        <use href="#themed-logo" />
-      </svg>
+      />
       <Text
         variant="heading"
         sx={{

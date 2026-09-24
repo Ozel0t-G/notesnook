@@ -131,17 +131,17 @@ export function ErrorComponent({ error, resetErrorBoundary }: FallbackProps) {
             flexDirection: "column"
           }}
         >
-          <svg
+          <img
+            src="/brand-icon.png"
+            alt="VeyraN"
             style={{
               borderRadius: "default",
               height: 60,
-              width: 40,
+              width: 60,
               alignSelf: "start",
               marginBottom: 20
             }}
-          >
-            <use href="#full-logo" />
-          </svg>
+          />
           <Text
             variant="heading"
             sx={{ borderBottom: "1px solid var(--border)", pb: 1 }}

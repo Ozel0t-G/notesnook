@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { LegendList } from "@legendapp/list";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Linking, Platform } from "react-native";
+import { Image, Linking, Platform, View } from "react-native";
 import { Pressable } from "../../components/ui/pressable";
 import Heading from "../../components/ui/typography/heading";
 import Paragraph from "../../components/ui/typography/paragraph";
@@ -75,6 +75,27 @@ export const Licenses = () => {
       style={{
         width: "100%"
       }}
+      ListHeaderComponent={
+        <View style={{ padding: DefaultAppStyles.GAP }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Image
+              source={require("../../assets/images/veyran-icon.png")}
+              style={{ width: 40, height: 40 }}
+            />
+            <Heading size={AppFontSize.md}>VeyraN</Heading>
+          </View>
+          <Paragraph>
+            Based on Notesnook by Streetwriters (Private) Limited. Source
+            copyright and GPL notices are retained. Third-party licenses are
+            listed below.
+          </Paragraph>
+          <Pressable
+            onPress={() => Linking.openURL("https://github.com/streetwriters/notesnook")}
+          >
+            <Paragraph>Notesnook upstream source</Paragraph>
+          </Pressable>
+        </View>
+      }
       renderItem={renderItem}
     />
   );

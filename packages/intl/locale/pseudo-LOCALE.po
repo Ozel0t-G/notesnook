@@ -1391,6 +1391,10 @@ msgstr ""
 msgid "Browse"
 msgstr ""
 
+#: src/strings.ts:835
+msgid "Built from Notesnook"
+msgstr ""
+
 #: src/strings.ts:2391
 msgid "Bullet list"
 msgstr ""
@@ -3713,11 +3717,11 @@ msgid "If this continues to happen, please reach out to us via"
 msgstr ""
 
 #: src/strings.ts:2230
-msgid "If true, Notesnook will automatically start up when you turn on & login to your system."
+msgid "If true, VeyraN will automatically start up when you turn on & login to your system."
 msgstr ""
 
 #: src/strings.ts:2233
-msgid "If true, Notesnook will start minimized to either the system tray or your system taskbar/dock. This setting only works with Auto start on system startup is enabled."
+msgid "If true, VeyraN will start minimized to either the system tray or your system taskbar/dock. This setting only works with Auto start on system startup is enabled."
 msgstr ""
 
 #: src/strings.ts:1831
@@ -5007,7 +5011,7 @@ msgid "Open source"
 msgstr ""
 
 #: src/strings.ts:1395
-msgid "Open source libraries used in Notesnook"
+msgid "Open source libraries used in VeyraN"
 msgstr ""
 
 #: src/strings.ts:1394
@@ -5829,7 +5833,7 @@ msgid "Reminders"
 msgstr ""
 
 #: src/strings.ts:1486
-msgid "Reminders cannot be set because notifications have been disabled from app settings. If you want to keep receiving reminder notifications, enable notifications for Notesnook from app settings."
+msgid "Reminders cannot be set because notifications have been disabled from app settings. If you want to keep receiving reminder notifications, enable notifications for VeyraN from app settings."
 msgstr ""
 
 #: src/strings.ts:2060
@@ -7639,7 +7643,7 @@ msgid "Urgent alarm"
 msgstr ""
 
 #: src/strings.ts:1017
-msgid "Urgent alarms are prepared for the next five repeats. Open Notesnook regularly to schedule more."
+msgid "Urgent alarms are prepared for the next five repeats. Open VeyraN regularly to schedule more."
 msgstr ""
 
 #: src/strings.ts:1025
@@ -7829,6 +7833,10 @@ msgstr ""
 
 #: src/strings.ts:2909
 msgid "Version history cleared"
+msgstr ""
+
+#: src/strings.ts:837
+msgid "VeyraN is a modified Notesnook client. Notesnook and its original authors, Streetwriters, are credited in Licenses."
 msgstr ""
 
 #: src/strings.ts:50
@@ -8210,10 +8218,6 @@ msgid ""
 "Continue without attachments?"
 msgstr ""
 
-#: src/strings.ts:836
-msgid "You simply cannot get any better of a note taking app than @notesnook. The UI is clean and slick, it is feature rich, encrypted, reasonably priced (esp. for students & educators) & open source"
-msgstr ""
-
 #: src/strings.ts:1175
 msgid "You subscribed to Notesnook Pro on {date}. Verify this subscription?"
 msgstr ""
@@ -8376,7 +8380,7 @@ msgid "Your password is always hashed before leaving this device."
 msgstr ""
 
 #: src/strings.ts:832
-msgid "Your privacy matters to us, no matter who you are. In a world where everyone is trying to spy on you, Notesnook encrypts all your data before it leaves your device. With Notesnook no one can ever sell your data again."
+msgid "Your privacy matters to us, no matter who you are. In a world where everyone is trying to spy on you, VeyraN encrypts all your data before it leaves your device. With VeyraN no one can ever sell your data again."
 msgstr ""
 
 #: src/strings.ts:1416

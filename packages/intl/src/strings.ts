@@ -829,15 +829,15 @@ $day$: Current day (eg. Monday)`,
         () => t`privileged few`
       ],
       body: () =>
-        t`Your privacy matters to us, no matter who you are. In a world where everyone is trying to spy on you, Notesnook encrypts all your data before it leaves your device. With Notesnook no one can ever sell your data again.`
+        t`Your privacy matters to us, no matter who you are. In a world where everyone is trying to spy on you, VeyraN encrypts all your data before it leaves your device. With VeyraN no one can ever sell your data again.`
     },
     {
-      tesimonial: () =>
-        t`You simply cannot get any better of a note taking app than @notesnook. The UI is clean and slick, it is feature rich, encrypted, reasonably priced (esp. for students & educators) & open source`,
-      link: "https://twitter.com/andrewsayer/status/1637817220113002503",
-      user: "@andrewsayer on Twitter"
+      headings: [() => t`Built from Notesnook`],
+      body: () =>
+        t`VeyraN is a modified Notesnook client. Notesnook and its original authors, Streetwriters, are credited in Licenses.`
     }
   ],
+
   shortcutCreated: () => actions.created.shortcut(1),
   notebookRestored: () => actions.restored.notebook(1),
   restoreNotebook: () => doActions.restore.notebook(1),
@@ -1014,7 +1014,7 @@ $day$: Current day (eg. Monday)`,
   tasksUrgentTimeRequired: () => t`Choose a time to enable an alarm`,
   tasksUrgentUntilStopped: () => t`Alarm until explicitly stopped`,
   tasksUrgentRepeatLimit: () =>
-    t`Urgent alarms are prepared for the next five repeats. Open Notesnook regularly to schedule more.`,
+    t`Urgent alarms are prepared for the next five repeats. Open VeyraN regularly to schedule more.`,
   tasksLegacyMigrationNotice: () =>
     t`This Task came from a Reminder. Changes made in older app versions will not update this Task.`,
   tasksUrgentAlarmLabel: () => t`Urgent alarm`,
@@ -1392,7 +1392,7 @@ $day$: Current day (eg. Monday)`,
   privacyPolicy: () => t`Privacy policy`,
   privacyPolicyDesc: () => t`Read the privacy policy`,
   licenses: () => t`Open source licenses`,
-  ossLibs: () => t`Open source libraries used in Notesnook`,
+  ossLibs: () => t`Open source libraries used in VeyraN`,
   about: () => t`About`,
   downloadOnDesktop: () => t`Download on desktop`,
   downloadOnDesktopDesc: () =>
@@ -1483,7 +1483,7 @@ $day$: Current day (eg. Monday)`,
   disable: () => t`Disable`,
   notificationsDisabled: () => t`Notifications disabled`,
   notificationsDisabledDesc: () =>
-    t`Reminders cannot be set because notifications have been disabled from app settings. If you want to keep receiving reminder notifications, enable notifications for Notesnook from app settings.`,
+    t`Reminders cannot be set because notifications have been disabled from app settings. If you want to keep receiving reminder notifications, enable notifications for VeyraN from app settings.`,
   openSettings: () => t`Open settings`,
   close: () => t`Close`,
   getNotesnookPro: () => t`Get Notesnook Pro`,
@@ -2227,10 +2227,10 @@ Please note that we will respond to your feature request on the link above. **We
   desktopIntegration: () => t`Desktop integration`,
   autoStartOnSystemStartup: () => t`Auto start on system startup`,
   autoStartDescription: () =>
-    t`If true, Notesnook will automatically start up when you turn on & login to your system.`,
+    t`If true, VeyraN will automatically start up when you turn on & login to your system.`,
   startMinimized: () => t`Start minimized`,
   startMinimizedDescription: () =>
-    t`If true, Notesnook will start minimized to either the system tray or your system taskbar/dock. This setting only works with Auto start on system startup is enabled.`,
+    t`If true, VeyraN will start minimized to either the system tray or your system taskbar/dock. This setting only works with Auto start on system startup is enabled.`,
   minimizeToSystemTray: () => t`Minimize to system tray`,
   minimizeToSystemTrayDescription: () =>
     t`Pressing "—" will hide the app in your system tray.`,

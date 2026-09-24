@@ -28,6 +28,7 @@ import { TimeFormat, DayFormat } from "@notesnook/core";
 import { TrashCleanupInterval } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { checkFeature } from "../../common";
+import { desktopUpdatesConfigured } from "../../utils/updater";
 
 export const BehaviourSettings: SettingsGroup[] = [
   {
@@ -241,7 +242,8 @@ export const BehaviourSettings: SettingsGroup[] = [
         isHidden: () =>
           useSettingStore.getState().isFlatpak ||
           useSettingStore.getState().isSnap ||
-          useSettingStore.getState().isPortable,
+          useSettingStore.getState().isPortable ||
+          !desktopUpdatesConfigured,
         components: [
           {
             type: "toggle",

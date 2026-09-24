@@ -381,7 +381,7 @@ private struct ReminderWidgetEntryView: View {
         )
 
         VStack(alignment: .leading, spacing: -1) {
-          Text("Notesnook")
+          Text("VeyraN")
             .font(.system(size: family == .systemSmall ? 13 : 15, weight: .semibold))
             .foregroundStyle(.primary)
           Text("Tasks · Today")
@@ -418,7 +418,7 @@ private struct ReminderWidgetEntryView: View {
         reminderLayout(Array(snapshot.tasks.prefix(visibleCount)))
       }
     } else {
-      emptyState(title: "Open Notesnook to refresh tasks")
+      emptyState(title: "Open VeyraN to refresh tasks")
     }
   }
 

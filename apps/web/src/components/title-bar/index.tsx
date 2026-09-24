@@ -116,18 +116,18 @@ export function TitleBar({
       injectCssVars
     >
       {tools.filter((t) => !t.hidden).length > 0 ? (
-        <svg
+        <img
           className="titlebarLogo"
+          src="/brand-icon.png"
+          alt=""
           style={{
             alignSelf: "center",
             height: 16,
-            width: 12,
+            width: 16,
             marginRight: 10,
             marginLeft: 10
           }}
-        >
-          <use href="#themed-logo" />
-        </svg>
+        />
       ) : null}
       <Flex sx={{ alignItems: "center" }}>
         {tools.map((tool) => (

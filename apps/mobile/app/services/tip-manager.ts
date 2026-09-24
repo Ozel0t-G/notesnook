@@ -156,7 +156,7 @@ const placeholderTips = [
   "Get Notesnook on all your devices. Or even open it in browser by going to https://app.notesnook.com to access all your notes",
   "With note history, you can restore back to an older version of the note if you accidentally deleted something.",
   "When your heart speaks, take good notes. - Judith Campbell",
-  "You can publish a note and share it with anyone. Even if they don't use Notesnook!",
+  "You can publish a note and share it with anyone. Even if they don't use VeyraN!",
   "Published notes can be encrypted. Which means only you and the person you share the password with can read them.",
   "You can change default font size from editor settings at the end of toolbar",
   "The editor toolbar can be scrolled horizontally to add more formats and blocks",

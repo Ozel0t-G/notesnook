@@ -20,6 +20,32 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { strings } from "@notesnook/intl";
 import { Menu, MenuItem, clipboard, shell } from "electron";
 
+function setupApplicationMenu() {
+  if (process.platform !== "darwin") return;
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "VeyraN",
+        submenu: [
+          { label: "About VeyraN", role: "about" },
+          { type: "separator" },
+          { role: "services" },
+          { type: "separator" },
+          { label: "Hide VeyraN", role: "hide" },
+          { role: "hideOthers" },
+          { role: "unhide" },
+          { type: "separator" },
+          { label: "Quit VeyraN", role: "quit" }
+        ]
+      },
+      { role: "fileMenu" },
+      { role: "editMenu" },
+      { role: "viewMenu" },
+      { role: "windowMenu" }
+    ])
+  );
+}
+
 function setupMenu() {
   if (!globalThis.window) return;
 
@@ -184,4 +210,4 @@ function setupMenu() {
     if (menu.items.length > 0) menu.popup();
   });
 }
-export { setupMenu };
+export { setupApplicationMenu, setupMenu };

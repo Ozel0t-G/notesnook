@@ -23,8 +23,8 @@ import path from "path";
 const LINUX_DESKTOP_ENTRY = (hidden: boolean) => `[Desktop Entry]
 Type=Application
 Version=${app.getVersion()}
-Name=${app.getName()}
-Comment=${app.getName()} startup script
+Name=VeyraN
+Comment=VeyraN startup script
 Exec=${
   process.env.APPIMAGE
     ? `${process.env.APPIMAGE}${hidden ? " --hidden" : ""}`

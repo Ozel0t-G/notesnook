@@ -50,7 +50,7 @@ import { useReminderStore } from "../stores/use-reminder-store";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useUserStore } from "../stores/use-user-store";
 import { eCloseSimpleDialog, eOnLoadNote } from "../utils/events";
-import { fluidTabsRef } from "../utils/global-refs";
+import { fluidTabsRef, rootNavigatorRef } from "../utils/global-refs";
 import { convertNoteToText } from "../utils/note-to-text";
 import { NotesnookModule } from "../utils/notesnook-module";
 import { sleep } from "../utils/time";
@@ -59,6 +59,7 @@ import { eSendEvent } from "./event-manager";
 import Navigation from "./navigation";
 import { ReminderWidget } from "./reminder-widget";
 import SettingsService from "./settings";
+import { claimTaskNotificationPress, TaskNotifications } from "./task-notifications";
 
 let pinned: DisplayedNotification[] = [];
 
@@ -124,6 +125,10 @@ const onEvent = async ({ type, detail }: Event) => {
   }
 
   if (type === EventType.DELIVERED && Platform.OS === "android") {
+    if (notification?.data?.type === "task") {
+      updateRemindersForWidget();
+      return;
+    }
     if (notification?.id) {
       const reminder = await db.reminders?.reminder(
         notification?.id?.split("_")[0]
@@ -143,6 +148,16 @@ const onEvent = async ({ type, detail }: Event) => {
   if (type === EventType.PRESS) {
     notifee.decrementBadgeCount();
     if (notification?.data?.type === "quickNote") return;
+    if (notification?.data?.type === "task") {
+      const taskId = notification.data.taskId;
+      if (typeof taskId !== "string" || !(await db.tasks.get(taskId))) return;
+      // On a cold start the navigation tree is not ready; the initial
+      // notification is consumed by use-app-events after database setup.
+      if (!rootNavigatorRef.current || !claimTaskNotificationPress(taskId)) return;
+      Navigation.navigate("Tasks");
+      setTimeout(() => Navigation.push("TaskDetail", { taskId }), 0);
+      return;
+    }
     if (notification?.data?.type === "reminder" && notification?.id) {
       const reminder = await db.reminders?.reminder(
         notification.id?.split("_")[0]
@@ -961,6 +976,7 @@ function get(): Promise<DisplayedNotification[]> {
 function init() {
   notifee.onBackgroundEvent(onEvent);
   notifee.onForegroundEvent(onEvent);
+  TaskNotifications.start();
 }
 
 async function pinQuickNote() {
@@ -996,6 +1012,7 @@ async function pinQuickNote() {
  */
 
 async function setupReminders(checkNeedsScheduling = false) {
+  await db.tasks.reconcile();
   const reminders = ((await db.reminders?.all.items()) as Reminder[]) || [];
   let notificationsCancelled = false;
   if (Platform.OS === "android") {
@@ -1040,6 +1057,7 @@ async function setupReminders(checkNeedsScheduling = false) {
   // have been removed.
   const staleTriggers: TriggerNotification[] = [];
   for (const trigger of triggers) {
+    if (trigger.notification.id?.startsWith("task:")) continue;
     if (
       reminders.findIndex((r) => trigger.notification.id?.startsWith(r.id)) ===
       -1
@@ -1048,12 +1066,15 @@ async function setupReminders(checkNeedsScheduling = false) {
     }
   }
   // Remove any stale triggers that are pending
-  staleTriggers.forEach(
-    (trigger) =>
-      trigger.notification.id &&
-      notifee.cancelTriggerNotification(trigger.notification.id as string)
+  await Promise.all(
+    staleTriggers.map((trigger) =>
+      trigger.notification.id
+        ? notifee.cancelTriggerNotification(trigger.notification.id)
+        : Promise.resolve()
+    )
   );
   updateRemindersForWidget();
+  await TaskNotifications.reconcile();
 }
 
 class PinnedNotesStorage {

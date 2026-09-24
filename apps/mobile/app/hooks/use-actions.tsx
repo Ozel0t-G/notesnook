@@ -49,7 +49,6 @@ import { useSideBarDraggingStore } from "../components/side-menu/dragging-store"
 import { ButtonProps } from "../components/ui/button";
 import AddReminder from "../screens/add-reminder";
 import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
-import RelationsList from "../screens/relations-list";
 import {
   eSendEvent,
   eSubscribeEvent,
@@ -1063,36 +1062,6 @@ export const useActions = ({
         onPress: openHistory
       },
       {
-        id: "reminders",
-        title: strings.dataTypesPluralCamelCase.reminder(),
-        icon: "clock-outline",
-        onPress: async () => {
-          close();
-          RelationsList.present({
-            item,
-            referenceType: "reminder",
-            relationType: "from",
-            title: strings.dataTypesPluralCamelCase.reminder(),
-            onAdd: async () => {
-              if (features && !features.activeReminders.isAllowed) {
-                ToastManager.show({
-                  type: "info",
-                  message: features.activeReminders.error,
-                  actionText: strings.upgrade(),
-                  func: () => {
-                    PaywallSheet.present(features.activeReminders);
-                  }
-                });
-              }
-              AddReminder.present(undefined, item);
-              close();
-            }
-          });
-        },
-        locked: !features?.activeReminders.isAllowed
-      },
-
-      {
         id: "copy",
         title: strings.copy(),
         icon: "content-copy",
@@ -1127,12 +1096,12 @@ export const useActions = ({
 
       {
         id: "add-reminder",
-        title: strings.remindMe(),
+        title: strings.tasksAddTask(),
         icon: "clock-plus-outline",
         onPress: async () => {
           close();
           await sleep(100);
-          AddReminder.present(undefined, item);
+          Navigation.push("TaskDetail", {});
         }
       },
       {

@@ -1578,11 +1578,31 @@ export const settingsGroups: SettingSection[] = [
         featureId: "createNoteFromNotificationDrawer"
       },
       {
+        id: "task-notifications-ios",
+        type: "screen",
+        name: strings.tasksTitle(),
+        icon: "format-list-checks",
+        description: strings.tasksNotificationsSettingsDesc(),
+        hidden: () => Platform.OS !== "ios",
+        sections: [
+          {
+            id: "task-notification-permission-ios",
+            name: strings.openSettings(),
+            description: strings.tasksNotificationsSettingsDesc(),
+            icon: "bell-outline",
+            modifer: async () => {
+              await notifee.openNotificationSettings();
+            }
+          }
+        ]
+      },
+      {
         id: "reminders",
         type: "screen",
         name: strings.reminders(),
         icon: "bell",
         description: strings.remindersDesc(),
+        hidden: () => Platform.OS === "ios",
         sections: [
           {
             id: "enable-reminders",

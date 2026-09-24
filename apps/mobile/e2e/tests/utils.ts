@@ -74,10 +74,30 @@ class Element {
 const Tests = {
   awaitLaunch: async () => {
     await device.disableSynchronization();
-    await waitFor(element(by.id(notesnook.ids.default.root)))
+    const addNote = element(by.id(notesnook.buttons.add));
+    try {
+      await waitFor(addNote).toBeVisible().withTimeout(10000);
+      return;
+    } catch {
+      // Fresh installs show onboarding before the Notes screen is available.
+    }
+    const splash = element(by.id("notesnook.splashscreen"));
+    try {
+      await waitFor(splash).toBeVisible().withTimeout(2000);
+      await element(by.text("Get started")).tap();
+    } catch {
+      // A previous test run may have reached the offline account choice.
+    }
+    await waitFor(element(by.text("Use offline")))
       .toBeVisible()
-      //@ts-ignore
-      .withTimeout(globalThis["DEBUG_MODE"] ? 4000 : 500);
+      .withTimeout(10000);
+    await Tests.sleep(750);
+    await element(by.text("Use offline")).tap();
+    await waitFor(element(by.text("I understand")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await element(by.text("I understand")).tap();
+    await waitFor(addNote).toBeVisible().withTimeout(30000);
   },
   sleep: (duration: number) => {
     return new Promise((resolve) =>
@@ -89,23 +109,41 @@ const Tests = {
   fromId: Element.fromId,
   fromText: Element.fromText,
   async exitEditor() {
-    await _device.pressBack();
-    await _device.pressBack();
+    if (device.getPlatform() === "ios") {
+      await web()
+        .element(by.web.cssSelector("#header button:first-child"))
+        .tap();
+    } else {
+      await _device.pressBack();
+      await _device.pressBack();
+    }
+  },
+  async waitForEditor() {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      try {
+        await expect(web().element(by.web.className("ProseMirror"))).toExist();
+        return;
+      } catch (error) {
+        if (attempt === 19) throw error;
+        await Tests.sleep(500);
+      }
+    }
   },
   async createNote(title?: string, _body?: string) {
     let body =
       _body ||
       "Test note description that is very long and should not fit in text.";
     await Tests.fromId(notesnook.buttons.add).tap();
+    await Tests.sleep(1500);
     if (title) {
       await web().element(by.web.id("editor-title")).focus();
       await web().element(by.web.id("editor-title")).typeText(title, false);
     }
-    await expect(web().element(by.web.className("ProseMirror"))).toExist();
+    await Tests.waitForEditor();
     await web().element(by.web.className("ProseMirror")).focus();
     await web().element(by.web.className("ProseMirror")).typeText(body, true);
     await Tests.exitEditor();
-    await Tests.fromText(body).isVisible();
+    await Tests.fromText(body).isVisible(10000);
     return { title, body };
   },
   async navigate(screen: RouteName | ({} & string)) {

@@ -40,8 +40,8 @@ const defaultShortcuts: ShortcutItem[] = [
   },
   {
     type: "notesnook.action.newreminder",
-    title: strings.setReminder(),
-    shortTitle: strings.newReminder(),
+    title: strings.tasksAddTask(),
+    shortTitle: strings.tasksAddTask(),
     iconName: Platform.OS === "android" ? "ic_newnote" : "plus"
   }
 ];

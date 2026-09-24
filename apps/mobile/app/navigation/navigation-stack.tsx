@@ -29,14 +29,11 @@ import { useSelectionStore } from "../stores/use-selection-store";
 import { useSettingStore } from "../stores/use-setting-store";
 import { fluidTabsRef, rootNavigatorRef } from "../utils/global-refs";
 import Navigation from "../services/navigation";
-import { isFeatureAvailable, useIsFeatureAvailable } from "@notesnook/common";
+import { isFeatureAvailable } from "@notesnook/common";
 import { isInternalLink, parseInternalLink } from "@notesnook/core";
 import { eSendEvent } from "../services/event-manager";
 import { editorState } from "../screens/editor/tiptap/utils";
 import { eOnLoadNote } from "../utils/events";
-import { strings } from "@notesnook/intl";
-import PaywallSheet from "../components/sheets/paywall";
-import { presentDialog } from "../components/dialog/functions";
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 
@@ -55,7 +52,6 @@ let Notebook: any = null;
 let Search: any = null;
 let Favorites: any = null;
 let Trash: any = null;
-let Reminders: any = null;
 let Monographs: any = null;
 let TaggedNotes: any = null;
 let ColoredNotes: any = null;
@@ -74,7 +70,7 @@ const AppNavigation = React.memo(
         const url = useSettingStore.getState().initialUrl;
         if (url) {
           if (parseReminderWidgetLink(url)) {
-            setHome({ name: "Reminders", params: undefined });
+            setHome(DEFAULT_HOME);
             return;
           }
           const parsedLink = isInternalLink(url)
@@ -258,10 +254,7 @@ const AppNavigation = React.memo(
 
         <AppStack.Screen
           name="Reminders"
-          getComponent={() => {
-            Reminders = Reminders || require("../screens/reminders").default;
-            return Reminders;
-          }}
+          getComponent={() => require("../screens/tasks").default}
         />
 
         <AppStack.Screen
@@ -308,6 +301,8 @@ let AddReminder: any = null;
 let RelationsList: any = null;
 let PayWall: any = null;
 let Wrapped: any = null;
+let Tasks: any = null;
+let TaskDetail: any = null;
 export const RootNavigation = () => {
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
@@ -317,7 +312,9 @@ export const RootNavigation = () => {
     useSettingStore.getState().pendingShortcut
   ).current;
 
-  const reminderFeature = useIsFeatureAvailable("activeReminders");
+  const isAppLoading = useSettingStore((state) => state.isAppLoading);
+  const pendingShortcut = useSettingStore((state) => state.pendingShortcut);
+  const [navigationReady, setNavigationReady] = React.useState(false);
   const clearSelection = useSelectionStore((state) => state.clearSelection);
   const resetTimer = React.useRef<NodeJS.Timeout>(undefined);
 
@@ -343,27 +340,7 @@ export const RootNavigation = () => {
         return;
       }
 
-      if (pendingShortcut.type === "notesnook.action.newreminder") {
-        if (reminderFeature === undefined) return;
-
-        if (!reminderFeature.isAllowed) {
-          presentDialog({
-            title: strings.upgrade(),
-            paragraph: reminderFeature.error,
-            positiveText: strings.upgrade(),
-            negativeText: strings.cancel(),
-            positivePress: async () => {
-              PaywallSheet.present(reminderFeature);
-            }
-          });
-          useSettingStore.setState({
-            pendingShortcut: null
-          });
-          return;
-        }
-
-        rootNavigatorRef.current?.navigate("AddReminder" as any);
-      } else if (pendingShortcut.type === "notesnook.action.newnote") {
+      if (pendingShortcut.type === "notesnook.action.newnote") {
         if (fluidTabsRef.current) {
           rootNavigatorRef.current?.navigate("FluidPanelsView" as any);
           eSendEvent(eOnLoadNote, { newNote: true });
@@ -380,16 +357,28 @@ export const RootNavigation = () => {
     });
 
     return unsubscribe;
-  }, [reminderFeature]);
+  }, []);
 
-  const initialRouteName = !introCompleted
-    ? "Welcome"
-    : initialShortcut?.type === "notesnook.action.newreminder"
-      ? "AddReminder"
-      : "FluidPanelsView";
+  React.useEffect(() => {
+    if (
+      isAppLoading ||
+      !navigationReady ||
+      pendingShortcut?.type !== "notesnook.action.newreminder" ||
+      !rootNavigatorRef.current?.isReady()
+    )
+      return;
+    rootNavigatorRef.current.navigate("TaskDetail" as any);
+    useSettingStore.setState({ pendingShortcut: null });
+  }, [isAppLoading, navigationReady, pendingShortcut]);
+
+  const initialRouteName = !introCompleted ? "Welcome" : "FluidPanelsView";
 
   return (
-    <NavigationContainer onStateChange={onStateChange} ref={rootNavigatorRef}>
+    <NavigationContainer
+      onReady={() => setNavigationReady(true)}
+      onStateChange={onStateChange}
+      ref={rootNavigatorRef}
+    >
       <RootStack.Navigator
         screenOptions={{
           headerShown: false
@@ -473,9 +462,28 @@ export const RootNavigation = () => {
         <RootStack.Screen
           name="AddReminder"
           getComponent={() => {
+            // Legacy editor entry points navigate here. Present the standalone
+            // Task editor without changing the Notes editor bridge.
             AddReminder =
-              AddReminder || require("../screens/add-reminder").default;
+              AddReminder || require("../screens/tasks/detail").default;
             return AddReminder;
+          }}
+        />
+
+        <RootStack.Screen
+          name="Tasks"
+          getComponent={() => {
+            Tasks = Tasks || require("../screens/tasks").default;
+            return Tasks;
+          }}
+        />
+
+        <RootStack.Screen
+          name="TaskDetail"
+          getComponent={() => {
+            TaskDetail =
+              TaskDetail || require("../screens/tasks/detail").default;
+            return TaskDetail;
           }}
         />
 

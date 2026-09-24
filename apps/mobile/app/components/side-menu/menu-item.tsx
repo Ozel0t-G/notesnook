@@ -89,6 +89,9 @@ export function MenuItem({
             case "Reminders":
               setItemCount(await db.reminders.all.count());
               break;
+            case "Tasks":
+              setItemCount((await db.tasks.smartList("all")).length);
+              break;
             case "Monographs":
               setItemCount(await db.monographs.all.count());
               break;

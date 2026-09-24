@@ -11,13 +11,21 @@ import WidgetKit
 
 private enum WidgetURLs {
   static let quickNote = URL(string: "ShareMedia://QuickNoteWidget")!
-  static let reminders = URL(string: "ShareMedia://RemindersWidget")!
-  static let newReminder = URL(string: "ShareMedia://NewReminderWidget")!
+  static let reminders = URL(string: "ShareMedia://TasksWidget")!
+  static let newReminder = URL(string: "ShareMedia://NewTaskWidget")!
 
   static func reminder(id: String) -> URL {
     var components = URLComponents()
     components.scheme = "ShareMedia"
-    components.host = "ReminderWidget"
+    components.host = "TaskWidget"
+    components.queryItems = [URLQueryItem(name: "id", value: id)]
+    return components.url ?? reminders
+  }
+
+  static func complete(id: String) -> URL {
+    var components = URLComponents()
+    components.scheme = "ShareMedia"
+    components.host = "CompleteTaskWidget"
     components.queryItems = [URLQueryItem(name: "id", value: id)]
     return components.url ?? reminders
   }
@@ -79,19 +87,25 @@ private struct QuickNoteWidget: Widget {
 
 private struct ReminderSnapshot: Codable {
   let schemaVersion: Int
+  let privacyHidden: Bool?
   let updatedAt: Double
+  let generatedForDate: String
+  let generatedForTimeZone: String
+  let utcOffsetMinutes: Int
   let count: Int
   let appearance: String
   let accentLight: String
   let accentDark: String
-  let reminders: [ReminderSnapshotItem]
+  let tasks: [ReminderSnapshotItem]
 }
 
 private struct ReminderSnapshotItem: Codable, Identifiable {
   let id: String
   let title: String
-  let timestamp: Double?
-  let displayKind: String?
+  let dueDate: String?
+  let dueTime: String?
+  let flagged: Bool
+  let priority: String
 }
 
 private enum ReminderSnapshotState {
@@ -99,10 +113,67 @@ private enum ReminderSnapshotState {
   case available(ReminderSnapshot)
 }
 
+private enum TaskWidgetClock {
+  static var calendar: Calendar {
+    var value = Calendar(identifier: .gregorian)
+    value.timeZone = .autoupdatingCurrent
+    return value
+  }
+
+  static func localDate(_ date: Date) -> String {
+    let parts = calendar.dateComponents([.year, .month, .day], from: date)
+    return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
+  }
+
+  static func utcOffsetMinutes(_ date: Date) -> Int {
+    TimeZone.autoupdatingCurrent.secondsFromGMT(for: date) / 60
+  }
+
+  static func normalizedTimeZone(_ identifier: String) -> String {
+    switch identifier {
+    case "UTC", "Etc/UTC", "Etc/GMT", "GMT": return "UTC"
+    default: return identifier
+    }
+  }
+
+  static func isFresh(_ snapshot: ReminderSnapshot, at date: Date) -> Bool {
+    if snapshot.privacyHidden == true { return true }
+    return snapshot.generatedForDate == localDate(date)
+      && snapshot.utcOffsetMinutes == utcOffsetMinutes(date)
+      && (snapshot.generatedForTimeZone.isEmpty
+        || normalizedTimeZone(snapshot.generatedForTimeZone)
+          == normalizedTimeZone(TimeZone.autoupdatingCurrent.identifier))
+  }
+
+  static func nextMidnight(after date: Date) -> Date {
+    let nextDay = calendar.date(byAdding: .day, value: 1, to: date) ?? date.addingTimeInterval(86400)
+    return calendar.startOfDay(for: nextDay)
+  }
+
+  static func dueInstant(_ task: ReminderSnapshotItem) -> Date? {
+    guard let dueDate = task.dueDate, let dueTime = task.dueTime else { return nil }
+    let day = dueDate.split(separator: "-").compactMap { Int($0) }
+    let time = dueTime.split(separator: ":").compactMap { Int($0) }
+    guard day.count == 3, time.count == 2 else { return nil }
+    return calendar.date(from: DateComponents(
+      year: day[0], month: day[1], day: day[2], hour: time[0], minute: time[1]
+    ))
+  }
+
+  static func isOverdue(_ task: ReminderSnapshotItem, at date: Date) -> Bool {
+    guard let dueDate = task.dueDate else { return false }
+    let today = localDate(date)
+    if dueDate < today { return true }
+    if dueDate > today { return false }
+    guard let dueInstant = dueInstant(task) else { return false }
+    return dueInstant < date
+  }
+}
+
 private enum ReminderSnapshotStore {
   private static let filename = "reminder-widget-snapshot.json"
 
-  static func load() -> ReminderSnapshotState {
+  static func load(at now: Date = Date()) -> ReminderSnapshotState {
     guard
       let appGroup = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
       !appGroup.isEmpty,
@@ -117,8 +188,9 @@ private enum ReminderSnapshotStore {
     guard
       let data = try? Data(contentsOf: url),
       let snapshot = try? JSONDecoder().decode(ReminderSnapshot.self, from: data),
-      snapshot.schemaVersion == 1,
-      snapshot.count >= 0
+      snapshot.schemaVersion == 3,
+      snapshot.count >= 0,
+      TaskWidgetClock.isFresh(snapshot, at: now)
     else {
       return .unavailable
     }
@@ -140,10 +212,11 @@ private struct ReminderProvider: TimelineProvider {
     in context: Context,
     completion: @escaping (ReminderEntry) -> Void
   ) {
+    let now = Date()
     let state = context.isPreview
       ? Self.previewEntry.state
-      : ReminderSnapshotStore.load()
-    completion(ReminderEntry(date: Date(), state: state))
+      : ReminderSnapshotStore.load(at: now)
+    completion(ReminderEntry(date: now, state: state))
   }
 
   func getTimeline(
@@ -151,15 +224,30 @@ private struct ReminderProvider: TimelineProvider {
     completion: @escaping (Timeline<ReminderEntry>) -> Void
   ) {
     let now = Date()
-    let entry = ReminderEntry(date: now, state: ReminderSnapshotStore.load())
-    let nextMidnight = Calendar.current.startOfDay(
-      for: Calendar.current.date(byAdding: .day, value: 1, to: now) ?? now
-    )
+    let state = ReminderSnapshotStore.load(at: now)
+    let nextMidnight = TaskWidgetClock.nextMidnight(after: now)
+    var entries = [ReminderEntry(date: now, state: state)]
+    if case let .available(snapshot) = state {
+      let dueChanges = Set(snapshot.tasks.compactMap(TaskWidgetClock.dueInstant).map {
+        $0.addingTimeInterval(1)
+      }.filter { $0 > now && $0 < nextMidnight })
+      entries.append(contentsOf: dueChanges.sorted().map {
+        ReminderEntry(date: $0, state: state)
+      })
+    }
+    // This entry hides yesterday's Tasks even if WidgetKit delays a reload.
+    let midnightState: ReminderSnapshotState
+    if case let .available(snapshot) = state, snapshot.privacyHidden == true {
+      midnightState = state
+    } else {
+      midnightState = .unavailable
+    }
+    entries.append(ReminderEntry(date: nextMidnight, state: midnightState))
     let periodicRefresh = now.addingTimeInterval(15 * 60)
     completion(
       Timeline(
-        entries: [entry],
-        policy: .after(min(nextMidnight, periodicRefresh))
+        entries: entries,
+        policy: .after(min(nextMidnight.addingTimeInterval(1), periodicRefresh))
       )
     )
   }
@@ -168,38 +256,41 @@ private struct ReminderProvider: TimelineProvider {
 
   private static func makePreviewEntry() -> ReminderEntry {
     let now = Date()
-    let previewData: [(String, String, TimeInterval)] = [
-      ("1", "Unify Router", 60 * 60),
-      ("2", "Apple TV", 5 * 60 * 60),
-      ("3", "Decken Würfel", 23 * 60 * 60),
-      ("4", "Netzwerk prüfen", 8 * 60 * 60),
-      ("5", "Versicherung", 2 * 24 * 60 * 60),
-      ("6", "Einkauf", 2 * 24 * 60 * 60 + 6 * 60 * 60),
-      ("7", "Stromzähler", 3 * 24 * 60 * 60),
-      ("8", "Oma Handy Konto", 4 * 24 * 60 * 60),
-      ("9", "Termin bestätigen", 5 * 24 * 60 * 60),
-      ("10", "Unterlagen vorbereiten", 6 * 24 * 60 * 60)
+    let today = TaskWidgetClock.localDate(now)
+    let yesterday = TaskWidgetClock.localDate(
+      TaskWidgetClock.calendar.date(byAdding: .day, value: -1, to: now) ?? now
+    )
+    let previewData: [(String, String, String)] = [
+      ("1", "Review proposal", today),
+      ("2", "Pick up groceries", today),
+      ("3", "Call Alex", yesterday)
     ]
-    var reminders: [ReminderSnapshotItem] = []
-    for (id, title, offset) in previewData {
-      reminders.append(
+    var tasks: [ReminderSnapshotItem] = []
+    for (id, title, dueDate) in previewData {
+      tasks.append(
         ReminderSnapshotItem(
           id: id,
           title: title,
-          timestamp: (now.timeIntervalSince1970 + offset) * 1000,
-          displayKind: nil
+          dueDate: dueDate,
+          dueTime: nil,
+          flagged: id == "1",
+          priority: "none"
         )
       )
     }
 
     let snapshot = ReminderSnapshot(
-      schemaVersion: 1,
+      schemaVersion: 3,
+      privacyHidden: false,
       updatedAt: now.timeIntervalSince1970 * 1000,
-      count: 12,
+      generatedForDate: today,
+      generatedForTimeZone: TimeZone.autoupdatingCurrent.identifier,
+      utcOffsetMinutes: TaskWidgetClock.utcOffsetMinutes(now),
+      count: tasks.count,
       appearance: "system",
       accentLight: "#008837",
       accentDark: "#20A65A",
-      reminders: reminders
+      tasks: tasks
     )
     return ReminderEntry(date: now, state: .available(snapshot))
   }
@@ -214,14 +305,17 @@ private struct ReminderWidgetEntryView: View {
   let entry: ReminderEntry
 
   private var snapshot: ReminderSnapshot? {
-    if case let .available(snapshot) = entry.state { return snapshot }
+    if case let .available(snapshot) = entry.state,
+       TaskWidgetClock.isFresh(snapshot, at: max(entry.date, Date())) {
+      return snapshot
+    }
     return nil
   }
 
   private var visibleCount: Int {
     switch family {
     case .systemSmall: return 2
-    case .systemMedium: return 6
+    case .systemMedium: return 4
     case .systemLarge: return 8
     default: return 2
     }
@@ -257,14 +351,13 @@ private struct ReminderWidgetEntryView: View {
           .frame(width: plusSize, height: plusSize)
           .background(accent)
           .clipShape(Circle())
-          .accessibilityLabel(Text("New reminder"))
+          .accessibilityLabel(Text("New task"))
       }
       .buttonStyle(.plain)
     }
     .padding(family == .systemSmall ? 11 : 13)
     .widgetSurface()
     .environment(\.colorScheme, effectiveColorScheme)
-    .widgetURL(WidgetURLs.reminders)
   }
 
   private var plusSize: CGFloat {
@@ -291,7 +384,7 @@ private struct ReminderWidgetEntryView: View {
           Text("Notesnook")
             .font(.system(size: family == .systemSmall ? 13 : 15, weight: .semibold))
             .foregroundStyle(.primary)
-          Text("Reminders")
+          Text("Tasks · Today")
             .font(.system(size: family == .systemSmall ? 9 : 10.5))
             .foregroundStyle(.secondary)
         }
@@ -299,7 +392,7 @@ private struct ReminderWidgetEntryView: View {
 
         Spacer(minLength: 4)
 
-        if let snapshot {
+        if let snapshot, snapshot.privacyHidden != true {
           Text("\(snapshot.count)")
             .font(.system(size: family == .systemSmall ? 11 : 12, weight: .semibold))
             .foregroundStyle(.primary)
@@ -307,7 +400,7 @@ private struct ReminderWidgetEntryView: View {
             .frame(height: family == .systemSmall ? 23 : 25)
             .background(accent.opacity(effectiveColorScheme == .dark ? 0.28 : 0.16))
             .clipShape(Capsule())
-            .accessibilityLabel(Text("\(snapshot.count) active reminders"))
+            .accessibilityLabel(Text("\(snapshot.count) tasks today"))
         }
       }
       .contentShape(Rectangle())
@@ -316,15 +409,16 @@ private struct ReminderWidgetEntryView: View {
   }
 
   @ViewBuilder private var content: some View {
-    switch entry.state {
-    case .unavailable:
-      emptyState(title: "No data")
-    case let .available(snapshot):
-      if snapshot.count == 0 {
-        emptyState(title: "No active reminders")
+    if let snapshot {
+      if snapshot.privacyHidden == true {
+        emptyState(title: "Tasks hidden by App Lock")
+      } else if snapshot.count == 0 {
+        emptyState(title: "No tasks today")
       } else {
-        reminderLayout(Array(snapshot.reminders.prefix(visibleCount)))
+        reminderLayout(Array(snapshot.tasks.prefix(visibleCount)))
       }
+    } else {
+      emptyState(title: "Open Notesnook to refresh tasks")
     }
   }
 
@@ -339,57 +433,17 @@ private struct ReminderWidgetEntryView: View {
   @ViewBuilder private func reminderLayout(
     _ reminders: [ReminderSnapshotItem]
   ) -> some View {
-    if family == .systemSmall {
-      VStack(spacing: 0) {
-        ForEach(Array(reminders.enumerated()), id: \.element.id) { index, reminder in
-          ReminderRow(
-            reminder: reminder,
-            compact: true,
-            drawDivider: index < reminders.count - 1
-          )
-        }
-        Spacer(minLength: plusSize - 2)
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    } else {
-      let rowsPerColumn = family == .systemMedium ? 3 : 4
-      HStack(alignment: .top, spacing: 11) {
-        reminderColumn(
-          Array(reminders.prefix(rowsPerColumn)),
-          compact: family == .systemMedium,
-          protectLastRow: false
-        )
-        Rectangle()
-          .fill(Color.secondary.opacity(0.18))
-          .frame(width: 0.5)
-        reminderColumn(
-          Array(reminders.dropFirst(rowsPerColumn).prefix(rowsPerColumn)),
-          compact: family == .systemMedium,
-          protectLastRow: true
-        )
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-    }
-  }
-
-  private func reminderColumn(
-    _ reminders: [ReminderSnapshotItem],
-    compact: Bool,
-    protectLastRow: Bool
-  ) -> some View {
     VStack(spacing: 0) {
       ForEach(Array(reminders.enumerated()), id: \.element.id) { index, reminder in
         ReminderRow(
           reminder: reminder,
-          compact: compact,
+          referenceDate: max(entry.date, Date()),
+          accent: accent,
+          compact: family == .systemSmall,
           drawDivider: index < reminders.count - 1
         )
-        .padding(
-          .trailing,
-          protectLastRow && index == reminders.count - 1 ? plusSize + 4 : 0
-        )
       }
-      Spacer(minLength: 0)
+      Spacer(minLength: plusSize - 2)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
   }
@@ -397,17 +451,33 @@ private struct ReminderWidgetEntryView: View {
 
 private struct ReminderRow: View {
   let reminder: ReminderSnapshotItem
+  let referenceDate: Date
+  let accent: Color
   let compact: Bool
   let drawDivider: Bool
 
+  private var isOverdue: Bool {
+    TaskWidgetClock.isOverdue(reminder, at: max(referenceDate, Date()))
+  }
+
   var body: some View {
-    Link(destination: WidgetURLs.reminder(id: reminder.id)) {
+    HStack(spacing: compact ? 6 : 9) {
+      Link(destination: WidgetURLs.complete(id: reminder.id)) {
+        Image(systemName: "circle")
+          .font(.system(size: compact ? 18 : 21))
+          .foregroundStyle(accent)
+          .frame(width: compact ? 24 : 30, height: compact ? 28 : 34)
+          .contentShape(Rectangle())
+      }
+      .accessibilityLabel(Text("Complete \(reminder.title)"))
+
+      Link(destination: WidgetURLs.reminder(id: reminder.id)) {
       VStack(alignment: .leading, spacing: compact ? 1 : 2) {
         HStack(spacing: compact ? 3 : 4) {
-          if isOverdue {
-            Image(systemName: "bell.fill")
+          if reminder.flagged {
+            Image(systemName: "flag.fill")
               .font(.system(size: compact ? 10 : 12, weight: .semibold))
-              .foregroundStyle(Color(UIColor.systemRed))
+              .foregroundStyle(Color(UIColor.systemOrange))
               .frame(width: compact ? 11 : 13)
               .accessibilityHidden(true)
           }
@@ -436,46 +506,23 @@ private struct ReminderRow: View {
             .frame(height: 0.5)
         }
       }
+      }
+      .accessibilityLabel(accessibilityLabel)
     }
     .buttonStyle(.plain)
-    .accessibilityLabel(accessibilityLabel)
-  }
-
-  private var isOverdue: Bool {
-    guard let milliseconds = reminder.timestamp else { return false }
-    return Date(timeIntervalSince1970: milliseconds / 1000) < Date()
   }
 
   private var accessibilityLabel: String {
     if isOverdue {
-      return "\(String(localized: "Overdue reminder")), \(reminder.title), \(secondaryText)"
+      return "\(String(localized: "Overdue")), \(reminder.title), \(secondaryText)"
     }
     return "\(reminder.title), \(secondaryText)"
   }
 
   private var secondaryText: String {
-    guard let milliseconds = reminder.timestamp else {
-      return String(localized: "Ongoing")
-    }
-    let date = Date(timeIntervalSince1970: milliseconds / 1000)
-    let calendar = Calendar.current
-    let dateText: String
-    if calendar.isDateInToday(date) {
-      dateText = String(localized: "Today")
-    } else if calendar.isDateInTomorrow(date) {
-      dateText = String(localized: "Tomorrow")
-    } else {
-      let formatter = DateFormatter()
-      formatter.locale = .current
-      formatter.setLocalizedDateFormatFromTemplate("d MMM")
-      dateText = formatter.string(from: date)
-    }
-
-    let timeFormatter = DateFormatter()
-    timeFormatter.locale = .current
-    timeFormatter.timeStyle = .short
-    timeFormatter.dateStyle = .none
-    return "\(dateText) • \(timeFormatter.string(from: date))"
+    if isOverdue { return String(localized: "Overdue") }
+    if let time = reminder.dueTime { return "\(String(localized: "Today")) · \(time)" }
+    return String(localized: "Today")
   }
 }
 
@@ -486,8 +533,8 @@ private struct ReminderWidget: Widget {
     StaticConfiguration(kind: kind, provider: ReminderProvider()) { entry in
       ReminderWidgetEntryView(entry: entry)
     }
-    .configurationDisplayName("Reminders")
-    .description("See upcoming reminders and create a new reminder.")
+    .configurationDisplayName("Tasks")
+    .description("See today's tasks, complete tasks, and create a task.")
     .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
   }
 }

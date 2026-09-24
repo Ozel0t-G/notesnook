@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { isFeatureAvailable } from "@notesnook/common";
 import {
   EV,
   EVENTS,
@@ -55,9 +54,7 @@ import { deleteDCacheFiles } from "../common/filesystem/io";
 import { endProgress, startProgress } from "../components/dialogs/progress";
 import Migrate from "../components/sheets/migrate";
 import NewFeature from "../components/sheets/new-feature";
-import PaywallSheet from "../components/sheets/paywall";
 import { Walkthrough } from "../components/walkthroughs";
-import AddReminder from "../screens/add-reminder";
 import {
   resetTabStore,
   useTabStore
@@ -86,6 +83,12 @@ import Notifications from "../services/notifications";
 import PremiumService from "../services/premium";
 import { ReminderWidget } from "../services/reminder-widget";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
+import { claimTaskNotificationPress } from "../services/task-notifications";
+import {
+  canReplayTaskWidgetCompletion,
+  isValidTaskWidgetId,
+  PendingTaskCompletions
+} from "./task-widget-completion-intents";
 import SettingsService from "../services/settings";
 import Sync from "../services/sync";
 import { clearAllStores, initAfterSync } from "../stores";
@@ -112,6 +115,52 @@ import { getGithubVersion } from "../utils/github-version";
 import { fluidTabsRef } from "../utils/global-refs";
 import { sleep } from "../utils/time";
 import useFeatureManager from "./use-feature-manager";
+
+const pendingTaskCompletions = new PendingTaskCompletions(MMKV);
+let replayingTaskCompletions = false;
+
+async function currentAccountId(): Promise<string | null> {
+  return (await db.user.getUser())?.id || null;
+}
+
+function canReplayPendingTaskCompletions() {
+  return canReplayTaskWidgetCompletion({
+    databaseReady: db.isInitialized,
+    appLoading: useSettingStore.getState().isAppLoading,
+    appLocked: useUserStore.getState().appLocked,
+    loggingOut: useUserStore.getState().isLoggingOut
+  });
+}
+
+async function replayPendingTaskCompletions() {
+  if (replayingTaskCompletions) return;
+  replayingTaskCompletions = true;
+  try {
+    while (canReplayPendingTaskCompletions()) {
+      const accountId = await currentAccountId();
+      if (!canReplayPendingTaskCompletions()) break;
+      const id = pendingTaskCompletions.peekNext(accountId);
+      if (!id) break;
+      try {
+        await db.tasks.complete(id);
+      } catch {
+        // A deleted Task can remain in an old widget snapshot. Keep other
+        // failures queued so a restart can retry the idempotent completion.
+        try {
+          if (await db.tasks.get(id)) break;
+        } catch {
+          break;
+        }
+      }
+      if (!pendingTaskCompletions.acknowledge(id)) break;
+      ReminderWidget.update();
+    }
+  } catch {
+    // Keep the action in memory if account lookup failed before takeNext.
+  } finally {
+    replayingTaskCompletions = false;
+  }
+}
 
 const onCheckSyncStatus = async (type: SyncStatusEvent) => {
   const { disableSync, disableAutoSync } = SettingsService.get();
@@ -182,32 +231,31 @@ const onAppOpenedFromURL = async (event: {
       fluidTabsRef.current?.goToPage("editor", false);
       return;
     } else if (reminderWidgetLink) {
-      fluidTabsRef.current?.goToPage("home");
-      Navigation.navigate("Reminders");
-
-      if (reminderWidgetLink.action === "reminder") {
-        const reminder = await db.reminders.reminder(reminderWidgetLink.id);
-        if (reminder) {
-          setTimeout(() => {
-            Navigation.push("AddReminder", { reminder });
-          }, 0);
+      if (reminderWidgetLink.action === "complete") {
+        if (!isValidTaskWidgetId(reminderWidgetLink.id)) return;
+        const accountId = db.isInitialized
+          ? await currentAccountId()
+          : useUserStore.getState().user?.id || null;
+        if (useUserStore.getState().isLoggingOut) return;
+        pendingTaskCompletions.enqueue(reminderWidgetLink.id, accountId);
+        if (canReplayPendingTaskCompletions()) {
+          void replayPendingTaskCompletions();
         }
+      } else if (
+        reminderWidgetLink.action === "task" &&
+        !isValidTaskWidgetId(reminderWidgetLink.id)
+      ) {
+        return;
+      }
+      Navigation.navigate("Tasks");
+      if (reminderWidgetLink.action === "task") {
+        setTimeout(
+          () =>
+            Navigation.push("TaskDetail", { taskId: reminderWidgetLink.id }),
+          0
+        );
       } else if (reminderWidgetLink.action === "create") {
-        const reminderFeature = await isFeatureAvailable("activeReminders");
-        if (!reminderFeature.isAllowed) {
-          ToastManager.show({
-            type: "info",
-            message: reminderFeature.error,
-            actionText: strings.upgrade(),
-            func: () => {
-              PaywallSheet.present(reminderFeature);
-            }
-          });
-          return;
-        }
-        setTimeout(() => {
-          Navigation.push("AddReminder", {});
-        }, 0);
+        setTimeout(() => Navigation.push("TaskDetail", {}), 0);
       }
       return;
     } else if (
@@ -282,23 +330,19 @@ const onAppOpenedFromURL = async (event: {
     } else if (url.startsWith("https://app.notesnook.com/open_reminder")) {
       const id = new URL(url).searchParams.get("id");
       if (id) {
-        const reminder = await db.reminders.reminder(id);
-        if (reminder) AddReminder.present(reminder);
+        const task = (await db.tasks.list()).find(
+          (item) => item.legacyReminderId === id
+        );
+        Navigation.navigate("Tasks");
+        if (task)
+          setTimeout(
+            () => Navigation.push("TaskDetail", { taskId: task.id }),
+            0
+          );
       }
     } else if (url.startsWith("https://app.notesnook.com/new_reminder")) {
-      const reminderFeature = await isFeatureAvailable("activeReminders");
-      if (!reminderFeature.isAllowed) {
-        ToastManager.show({
-          type: "info",
-          message: reminderFeature.error,
-          actionText: strings.upgrade(),
-          func: () => {
-            PaywallSheet.present(reminderFeature);
-          }
-        });
-        return;
-      }
-      AddReminder.present();
+      Navigation.navigate("Tasks");
+      setTimeout(() => Navigation.push("TaskDetail", {}), 0);
     }
   } catch (e) {
     console.error(e);
@@ -364,6 +408,7 @@ const onRequestPartialSync = async (
 };
 
 const onLogout = async (reason: string) => {
+  pendingTaskCompletions.clear();
   DatabaseLogger.log("User Logged Out " + reason);
   setLoginMessage();
   await PremiumService.setPremiumStatus();
@@ -637,6 +682,49 @@ export const useAppEvents = () => {
         isInitialUrl: true
       });
     }
+  }, [initialUrl, isAppLoading]);
+
+  useEffect(() => {
+    if (!appLocked && !isAppLoading) void replayPendingTaskCompletions();
+  }, [appLocked, isAppLoading]);
+
+  useEffect(
+    () =>
+      useUserStore.subscribe((state, previous) => {
+        const previousId = previous.user?.id || null;
+        const nextId = state.user?.id || null;
+        if (
+          (previousId !== nextId &&
+            (previousId !== null ||
+              !pendingTaskCompletions.belongsToAccount(nextId))) ||
+          (!previous.isLoggingOut && state.isLoggingOut)
+        )
+          pendingTaskCompletions.clear();
+      }),
+    []
+  );
+
+  const initialTaskNotificationHandled = useRef(false);
+  useEffect(() => {
+    if (isAppLoading || initialTaskNotificationHandled.current) return;
+    initialTaskNotificationHandled.current = true;
+    // Deep links take precedence if both entry mechanisms were present.
+    if (parseReminderWidgetLink(initialUrl)) return;
+    notifee
+      .getInitialNotification()
+      .then((initial) => {
+        const data = initial?.notification?.data;
+        if (data?.type !== "task" || typeof data.taskId !== "string") return;
+        if (!isValidTaskWidgetId(data.taskId)) return;
+        if (!claimTaskNotificationPress(data.taskId)) return;
+        Navigation.navigate("Tasks");
+        setTimeout(
+          () =>
+            Navigation.push("TaskDetail", { taskId: data.taskId as string }),
+          0
+        );
+      })
+      .catch(() => {});
   }, [initialUrl, isAppLoading]);
 
   const subscribeToPurchaseListeners = useCallback(async () => {

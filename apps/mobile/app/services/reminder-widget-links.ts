@@ -18,16 +18,21 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 export const REMINDER_WIDGET_URLS = {
-  list: "ShareMedia://RemindersWidget",
-  create: "ShareMedia://NewReminderWidget",
+  list: "ShareMedia://TasksWidget",
+  create: "ShareMedia://NewTaskWidget",
+  task: (id: string) =>
+    `ShareMedia://TaskWidget?id=${encodeURIComponent(id)}`,
   reminder: (id: string) =>
-    `ShareMedia://ReminderWidget?id=${encodeURIComponent(id)}`
+    `ShareMedia://TaskWidget?id=${encodeURIComponent(id)}`,
+  complete: (id: string) =>
+    `ShareMedia://CompleteTaskWidget?id=${encodeURIComponent(id)}`
 } as const;
 
 export type ReminderWidgetLink =
   | { action: "list" }
   | { action: "create" }
-  | { action: "reminder"; id: string };
+  | { action: "task"; id: string }
+  | { action: "complete"; id: string };
 
 /** Parses only the private, explicit URLs emitted by the iOS widget. */
 export function parseReminderWidgetLink(
@@ -36,10 +41,16 @@ export function parseReminderWidgetLink(
   if (!value) return;
 
   const normalized = value.replace(/\/+$/, "");
-  if (normalized.toLowerCase() === REMINDER_WIDGET_URLS.list.toLowerCase()) {
+  if (
+    normalized.toLowerCase() === REMINDER_WIDGET_URLS.list.toLowerCase() ||
+    normalized.toLowerCase() === "sharemedia://reminderswidget"
+  ) {
     return { action: "list" };
   }
-  if (normalized.toLowerCase() === REMINDER_WIDGET_URLS.create.toLowerCase()) {
+  if (
+    normalized.toLowerCase() === REMINDER_WIDGET_URLS.create.toLowerCase() ||
+    normalized.toLowerCase() === "sharemedia://newreminderwidget"
+  ) {
     return { action: "create" };
   }
 
@@ -47,12 +58,17 @@ export function parseReminderWidgetLink(
     const url = new URL(value);
     if (
       url.protocol.toLowerCase() !== "sharemedia:" ||
-      url.hostname.toLowerCase() !== "reminderwidget"
+      !["taskwidget", "completetaskwidget", "reminderwidget"].includes(
+        url.hostname.toLowerCase()
+      )
     ) {
       return;
     }
     const id = url.searchParams.get("id")?.trim();
-    return id ? { action: "reminder", id } : undefined;
+    if (!id || !/^(?:[a-f0-9]{24}|[a-f0-9]{32})$/i.test(id)) return;
+    return url.hostname.toLowerCase() === "completetaskwidget"
+      ? { action: "complete", id }
+      : { action: "task", id };
   } catch {
     return;
   }

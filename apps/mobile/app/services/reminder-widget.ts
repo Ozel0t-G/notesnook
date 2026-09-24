@@ -22,8 +22,12 @@ import { NativeModules, Platform } from "react-native";
 import { db, DatabaseLogger } from "../common/database";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useThemeStore } from "../stores/use-theme-store";
+import { useUserStore } from "../stores/use-user-store";
 import SettingsService from "./settings";
-import { buildReminderWidgetSnapshot } from "./reminder-widget-snapshot";
+import {
+  buildPrivateTaskWidgetSnapshot,
+  buildTaskWidgetSnapshot
+} from "./task-widget-snapshot";
 
 type NativeReminderWidget = {
   writeSnapshot(snapshot: string): Promise<void>;
@@ -35,21 +39,49 @@ const Native: NativeReminderWidget | undefined =
 
 let updateTimer: NodeJS.Timeout | undefined;
 let writeQueue = Promise.resolve();
+let snapshotGeneration = 0;
+
+function mayExposeTaskTitles() {
+  return (
+    !useSettingStore.getState().settings.appLockEnabled &&
+    !useUserStore.getState().appLocked
+  );
+}
+
+function clearSnapshot() {
+  snapshotGeneration++;
+  clearTimeout(updateTimer);
+  if (!Native) return Promise.resolve();
+  writeQueue = writeQueue
+    .then(() => Native.clearSnapshot())
+    .catch((error) => DatabaseLogger.error(error as Error, "ReminderWidget.clear"));
+  return writeQueue;
+}
 
 async function writeCurrentSnapshot() {
   if (!Native || !db.isInitialized) return;
+  const generation = snapshotGeneration;
   const themeState = useThemeStore.getState();
-  const reminders = await db.reminders.all.items(undefined, {
-    sortBy: "dueDate",
-    sortDirection: "asc"
-  });
-  const snapshot = buildReminderWidgetSnapshot(reminders, {
-    appearance: SettingsService.getProperty("useSystemTheme")
-      ? "system"
-      : themeState.colorScheme,
+  const appearance = SettingsService.getProperty("useSystemTheme")
+    ? "system"
+    : themeState.colorScheme;
+  const options = {
+    appearance,
     accentLight: themeState.lightTheme.scopes.base.primary.accent,
     accentDark: themeState.darkTheme.scopes.base.primary.accent
-  });
+  } as const;
+  if (!mayExposeTaskTitles()) {
+    if (generation !== snapshotGeneration) return;
+    if (useSettingStore.getState().settings.appLockEnabled)
+      await Native.writeSnapshot(
+        JSON.stringify(buildPrivateTaskWidgetSnapshot(options))
+      );
+    else await Native.clearSnapshot();
+    return;
+  }
+  const tasks = await db.tasks.list();
+  if (generation !== snapshotGeneration || !mayExposeTaskTitles()) return;
+  const snapshot = buildTaskWidgetSnapshot(tasks, options);
   await Native.writeSnapshot(JSON.stringify(snapshot));
 }
 
@@ -70,7 +102,8 @@ function start() {
   const databaseSubscription = db.eventManager.subscribe(
     EVENTS.databaseUpdated,
     (event: DatabaseUpdatedEvent) => {
-      if (event.collection === "reminders") update();
+      if (event.collection === "settings" || event.collection === "reminders")
+        update();
     }
   );
   const syncSubscription = db.eventManager.subscribe(EVENTS.syncCompleted, () =>
@@ -78,7 +111,7 @@ function start() {
   );
   const logoutSubscription = db.eventManager.subscribe(
     EVENTS.userLoggedOut,
-    () => Native.clearSnapshot()
+    () => void clearSnapshot()
   );
   const unsubscribeTheme = useThemeStore.subscribe((state, previous) => {
     if (
@@ -90,7 +123,18 @@ function start() {
     }
   });
   const unsubscribeSettings = useSettingStore.subscribe((state, previous) => {
-    if (state.settings.useSystemTheme !== previous.settings.useSystemTheme) {
+    if (state.settings.appLockEnabled !== previous.settings.appLockEnabled) {
+      void clearSnapshot();
+      update();
+    } else if (state.settings.useSystemTheme !== previous.settings.useSystemTheme) {
+      update();
+    }
+  });
+  const unsubscribeUser = useUserStore.subscribe((state, previous) => {
+    if (state.user?.id !== previous.user?.id) {
+      void clearSnapshot();
+    } else if (state.appLocked !== previous.appLocked) {
+      if (state.appLocked) void clearSnapshot();
       update();
     }
   });
@@ -101,6 +145,7 @@ function start() {
     logoutSubscription.unsubscribe();
     unsubscribeTheme();
     unsubscribeSettings();
+    unsubscribeUser();
     clearTimeout(updateTimer);
   };
 }
@@ -109,5 +154,5 @@ export const ReminderWidget = {
   start,
   update,
   waitForUpdate: () => writeQueue,
-  clear: () => Native?.clearSnapshot() ?? Promise.resolve()
+  clear: clearSnapshot
 };

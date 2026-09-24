@@ -115,9 +115,11 @@ export function SideMenuHome() {
                         item={{
                           ...item,
                           title:
-                            strings.routes[
-                              item.title as keyof typeof strings.routes
-                            ]?.() || item.title,
+                            item.id === "Tasks"
+                              ? strings.tasksTitle()
+                              : strings.routes[
+                                  item.title as keyof typeof strings.routes
+                                ]?.() || item.title,
                           onLongPress: () => {
                             MenuItemProperties.present(item);
                           }

@@ -60,10 +60,9 @@ export const MenuItemsList: SideMenuItem[] = [
   //   icon: "pound"
   // },
   {
-    dataType: "reminder",
-    id: "Reminders",
-    title: "Reminders",
-    icon: "bell",
+    id: "Tasks",
+    title: "Tasks",
+    icon: "format-list-checks",
     type: "side-menu-item"
   },
   {

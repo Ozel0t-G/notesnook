@@ -1,9 +1,34 @@
 import { notesnook } from "../test.ids";
-import { TestBuilder } from "./utils";
+import { TestBuilder, Tests } from "./utils";
+import { expect as detoxExpect } from "detox";
+import { expect as jestExpect } from "@jest/globals";
 
 describe("NOTE TESTS", () => {
   it("Create a note in editor", async () => {
     await TestBuilder.create().prepare().createNote().run();
+  });
+
+  it("keeps the editor visible when a saved note is reopened", async () => {
+    const body = "Editor regression content survives reopen";
+    await TestBuilder.create()
+      .prepare()
+      .createNote(undefined, body)
+      .waitAndTapByText(body)
+      .addStep(async () => {
+        await Tests.waitForEditor();
+        const editor = web().element(by.web.className("ProseMirror"));
+        await detoxExpect(editor).toExist();
+        jestExpect(await editor.getText()).toContain(body);
+      })
+      .exitEditor()
+      .waitAndTapByText(body)
+      .addStep(async () => {
+        await Tests.waitForEditor();
+        const editor = web().element(by.web.className("ProseMirror"));
+        await detoxExpect(editor).toExist();
+        jestExpect(await editor.getText()).toContain(body);
+      })
+      .run();
   });
 
   it("Open and close a note", async () => {

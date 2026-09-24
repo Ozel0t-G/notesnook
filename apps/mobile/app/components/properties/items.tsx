@@ -50,7 +50,6 @@ const BOTTOM_BAR_ITEMS: ActionId[] = [
   "notebooks",
   "add-reminder",
   "history",
-  "reminders",
   "attachments",
   "references",
   "copy",

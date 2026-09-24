@@ -65,6 +65,8 @@ const routeNames = {
   Login: "Login",
   Signup: "Signup",
   Reminders: "Reminders",
+  Tasks: "Tasks",
+  TaskDetail: "TaskDetail",
   MoveNotebook: "MoveNotebook",
   LinkNotebooks: "LinkNotebooks",
   MoveNotes: "MoveNotes",
@@ -99,6 +101,7 @@ const routeUpdateFunctions: {
   TopicNotes: (params) => eSendEvent("TopicNotes", params),
   Monographs: (params) => eSendEvent("Monographs", params),
   Reminders: () => useReminderStore.getState().refresh(),
+  Tasks: () => {},
   Search: () => eSendEvent(eOnRefreshSearch),
   Archive: () => useArchivedStore.getState().refresh()
 };
@@ -177,7 +180,7 @@ function resetRootState(
 
   if (state.routes.length < 2) return;
 
-  let routes = state.routes.filter(
+  const routes = state.routes.filter(
     (route) =>
       (route.name !== "Auth" &&
         route.name !== "Welcome" &&

@@ -163,8 +163,8 @@ describe("reminder widget links", () => {
       action: "create"
     });
     expect(
-      parseReminderWidgetLink(REMINDER_WIDGET_URLS.reminder("a/b"))
-    ).toEqual({ action: "reminder", id: "a/b" });
+      parseReminderWidgetLink(REMINDER_WIDGET_URLS.reminder("0123456789abcdef01234567"))
+    ).toEqual({ action: "task", id: "0123456789abcdef01234567" });
   });
 
   test("rejects unrelated and malformed links", () => {

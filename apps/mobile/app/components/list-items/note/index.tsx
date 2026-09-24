@@ -51,7 +51,6 @@ import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { Properties } from "../../properties";
 import AppIcon from "../../ui/AppIcon";
 import { IconButton } from "../../ui/icon-button";
-import { ReminderTime } from "../../ui/reminder-time";
 import { TimeSince } from "../../ui/time-since";
 import Heading from "../../ui/typography/heading";
 import Paragraph from "../../ui/typography/paragraph";
@@ -79,7 +78,6 @@ const NoteItem = ({
   date,
   color,
   notebooks,
-  reminder,
   tags,
   attachmentsCount,
   locked,
@@ -267,23 +265,6 @@ const NoteItem = ({
                     name="star-outline"
                     size={AppFontSize.sm}
                     color="orange"
-                  />
-                ) : null}
-
-                {reminder ? (
-                  <ReminderTime
-                    reminder={reminder}
-                    color={color?.colorCode}
-                    textStyle={{
-                      fontSize: AppFontSize.xxs
-                    }}
-                    short
-                    iconSize={AppFontSize.xxs}
-                    style={{
-                      justifyContent: "flex-start",
-                      paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL / 2,
-                      alignSelf: "flex-start"
-                    }}
                   />
                 ) : null}
 

@@ -107,7 +107,7 @@ function TitleBox(props: TitleBoxProps) {
       id={`editor-title-${id}`}
       data-test-id="editor-title"
       data-session-id={id}
-      className="editorTitle"
+      className="editorTitle veyran-editor-title"
       placeholder={strings.noteTitle()}
       readOnly={readonly}
       spellCheck={sessionSpellcheck}

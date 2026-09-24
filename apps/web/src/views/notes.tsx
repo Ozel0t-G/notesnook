@@ -28,6 +28,8 @@ import { db } from "../common/db";
 import { handleDrop } from "../common/drop-handler";
 import { useEditorStore } from "../stores/editor-store";
 import { ListLoader } from "../components/loaders/list-loader";
+import { MacNotesEmptyState } from "./all-notes";
+import { isMac } from "../utils/platform";
 
 type NotesProps = { header?: JSX.Element };
 function Notes(props: NotesProps) {
@@ -64,19 +66,28 @@ function Notes(props: NotesProps) {
       isSearching={!!filteredItems}
       onDrop={(e) => handleDrop(e.dataTransfer, context)}
       placeholder={
-        <Placeholder
-          context={
-            filteredItems
-              ? "search"
-              : context.type === "favorite"
-              ? "favorites"
-              : context.type === "archive"
-              ? "archive"
-              : context.type === "monographs"
-              ? "monographs"
-              : "notes"
-          }
-        />
+        !filteredItems &&
+        IS_DESKTOP_APP &&
+        isMac() &&
+        context.type !== "favorite" &&
+        context.type !== "archive" &&
+        context.type !== "monographs" ? (
+          <MacNotesEmptyState />
+        ) : (
+          <Placeholder
+            context={
+              filteredItems
+                ? "search"
+                : context.type === "favorite"
+                ? "favorites"
+                : context.type === "archive"
+                ? "archive"
+                : context.type === "monographs"
+                ? "monographs"
+                : "notes"
+            }
+          />
+        )
       }
       button={{
         onClick: () => useEditorStore.getState().newSession()

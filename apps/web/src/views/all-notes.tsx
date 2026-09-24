@@ -26,6 +26,43 @@ import { useSearch } from "../hooks/use-search";
 import { db } from "../common/db";
 import { useEditorStore } from "../stores/editor-store";
 import { ListLoader } from "../components/loaders/list-loader";
+import { Button, Flex, Text } from "@theme-ui/components";
+import { strings } from "@notesnook/intl";
+import { Notes as NotesIcon, Plus } from "../components/icons";
+import { useStore as useAppStore } from "../stores/app-store";
+import { isMac } from "../utils/platform";
+
+export function MacNotesEmptyState() {
+  const syncStatus = useAppStore((store) => store.syncStatus);
+  const isFirstSync = useAppStore((store) => store.lastSynced === 0);
+
+  if (isFirstSync && syncStatus.key === "syncing") {
+    return <Placeholder context="notes" />;
+  }
+
+  return (
+    <Flex className="veyran-mac-notes-empty" role="status">
+      <Flex className="veyran-mac-notes-empty-symbol" aria-hidden="true">
+        <NotesIcon size={26} />
+      </Flex>
+      <Text as="h2" className="veyran-mac-notes-empty-title">
+        {strings.notesEmpty()}
+      </Text>
+      <Text className="veyran-mac-notes-empty-description">
+        {strings.startWritingNote()}
+      </Text>
+      <Button
+        variant="secondary"
+        className="veyran-mac-notes-empty-action"
+        data-test-id="mac-empty-new-note"
+        onClick={() => useEditorStore.getState().newSession()}
+      >
+        <Plus size={15} />
+        {strings.createNewNote()}
+      </Button>
+    </Flex>
+  );
+}
 
 function Home() {
   const notes = useStore((store) => store.notes);
@@ -60,7 +97,13 @@ function Home() {
       refresh={refresh}
       items={filteredItems || notes}
       isSearching={!!filteredItems}
-      placeholder={<Placeholder context={filteredItems ? "search" : "notes"} />}
+      placeholder={
+        filteredItems || !IS_DESKTOP_APP || !isMac() ? (
+          <Placeholder context={filteredItems ? "search" : "notes"} />
+        ) : (
+          <MacNotesEmptyState />
+        )
+      }
       button={{
         onClick: () => useEditorStore.getState().newSession()
       }}

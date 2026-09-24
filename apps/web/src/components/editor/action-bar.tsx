@@ -91,6 +91,7 @@ type ToolButton = {
   hidden?: boolean;
   hideOnMobile?: boolean;
   toggled?: boolean;
+  windowControl?: boolean;
   onClick: (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => void;
 };
 
@@ -189,13 +190,15 @@ export function EditorActionBar() {
       onClick: () => useEditorStore.getState().toggleProperties(),
       toggled: arePropertiesVisible
     },
-    ...getWindowControls(
-      hasNativeWindowControls,
-      isFullscreen,
-      isMaximized,
-      isTablet,
-      isMobile
-    )
+    ...(IS_DESKTOP_APP && isMac()
+      ? []
+      : getWindowControls(
+          hasNativeWindowControls,
+          isFullscreen,
+          isMaximized,
+          isTablet,
+          isMobile
+        ))
   ];
 
   return (
@@ -221,6 +224,7 @@ export function EditorActionBar() {
         <TabStrip />
       )}
       <Flex
+        className="veyran-editor-toolbar-actions"
         sx={{
           alignItems: "center",
           justifyContent: "center",
@@ -236,7 +240,10 @@ export function EditorActionBar() {
       >
         {tools.map((tool) => (
           <Button
+            className="veyran-editor-toolbar-button"
+            aria-label={tool.title}
             data-test-id={tool.title}
+            data-veyran-window-control={tool.windowControl}
             disabled={!tool.enabled}
             variant={tool.title === "Close" ? "error" : "secondary"}
             title={tool.title}
@@ -278,6 +285,7 @@ const TabStrip = React.memo(function TabStrip() {
   return (
     <Flex sx={{ flex: 1 }}>
       <Flex
+        className="veyran-editor-navigation-group"
         sx={{
           px: 1,
           borderRight: "1px solid var(--border)",
@@ -288,6 +296,8 @@ const TabStrip = React.memo(function TabStrip() {
         onDoubleClick={(e) => e.stopPropagation()}
       >
         <Button
+          className="veyran-editor-new-note"
+          aria-label={strings.newNote()}
           variant="accent"
           {...CREATE_BUTTON_MAP.notes}
           data-test-id={`create-new-note`}
@@ -300,6 +310,8 @@ const TabStrip = React.memo(function TabStrip() {
           <Plus size={16} color="accentForeground" />
         </Button>
         <Button
+          className="veyran-editor-nav-button"
+          aria-label={strings.goBack()}
           disabled={!canGoBack}
           onClick={() => useEditorStore.getState().goBack()}
           variant="secondary"
@@ -309,6 +321,8 @@ const TabStrip = React.memo(function TabStrip() {
           <ArrowLeft size={16} />
         </Button>
         <Button
+          className="veyran-editor-nav-button"
+          aria-label={strings.goForwardInTab()}
           disabled={!canGoForward}
           onClick={() => useEditorStore.getState().goForward()}
           variant="secondary"
@@ -466,6 +480,7 @@ const TabStrip = React.memo(function TabStrip() {
             }}
           />
           <div
+            className="veyran-tabs-filler"
             style={{ width: "100%", borderBottom: "1px solid var(--border)" }}
           />
         </Flex>

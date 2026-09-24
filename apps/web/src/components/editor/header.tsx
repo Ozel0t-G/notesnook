@@ -68,6 +68,7 @@ function Header(props: HeaderProps) {
   return (
     <>
       <Flex
+        className="veyran-editor-tags"
         sx={{
           lineHeight: 2.5,
           alignItems: "center",
@@ -212,6 +213,7 @@ export function Autosuggest<T>(props: AutosuggestProps<T>) {
 
   return (
     <Input
+      className="veyran-editor-tag-input"
       ref={inputRef}
       tabIndex={-1}
       variant="clean"

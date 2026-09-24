@@ -32,6 +32,7 @@ import { Item } from "@notesnook/core";
 import { setDragData } from "../../utils/data-transfer";
 
 type ListItemProps<TItem extends Item, TContext> = {
+  className?: string;
   colors?: {
     heading: SchemeColors;
     accent: SchemeColors;
@@ -103,7 +104,11 @@ function ListItem<TItem extends Item, TContext>(
   return (
     <Flex
       id={`id_${item.id}`}
-      className={isSelected ? "selected" : ""}
+      className={`${isSelected ? "selected " : ""}${
+        selected ? "is-active " : ""
+      }${isCompact ? "is-compact " : ""}list-item-row${
+        props.className ? ` ${props.className}` : ""
+      }`}
       ref={listItemRef}
       draggable={draggable}
       onDragEnter={onDragEnter}

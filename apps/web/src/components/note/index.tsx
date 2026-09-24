@@ -106,6 +106,7 @@ import { PublishDialog } from "../publish-view";
 import TimeAgo from "../time-ago";
 import { NoteExpiryDateDialog } from "../../dialogs/note-expiry-date-dialog";
 import { withFeatureCheck } from "../../common";
+import { isMac } from "../../utils/platform";
 
 type NoteProps = NoteResolvedData & {
   item: NoteType;
@@ -132,6 +133,7 @@ function Note(props: NoteProps) {
   const isOpened = useEditorStore((store) => store.isNoteOpen(item.id));
   const primary: SchemeColors = color ? color.colorCode : "accent-selected";
   const dateFormat = useSettingStore((store) => store.dateFormat);
+  const isMacNotes = IS_DESKTOP_APP && isMac();
 
   return (
     <ListItem
@@ -139,6 +141,7 @@ function Note(props: NoteProps) {
       isFocused={isOpened}
       isCompact={compact}
       item={note}
+      className={`veyran-note-row${isOpened ? " is-open" : ""}`}
       title={note.title}
       body={note.headline as string}
       onKeyPress={async (e) => {
@@ -153,11 +156,21 @@ function Note(props: NoteProps) {
         heading: color ? primary : "heading",
         background: "background"
       }}
-      sx={{
-        borderLeft: isOpened ? "4px solid" : "none",
-        pl: isOpened ? "3px" : "7px",
-        borderLeftColor: isOpened ? primary : "transparent"
-      }}
+      sx={
+        isMacNotes
+          ? compact
+            ? {}
+            : {
+                borderLeft: "none",
+                pl: 3,
+                pr: 3
+              }
+          : {
+              borderLeft: isOpened ? "4px solid" : "none",
+              pl: isOpened ? "3px" : "7px",
+              borderLeftColor: isOpened ? primary : "transparent"
+            }
+      }
       context={{ color, locked }}
       menuItems={noteMenuItems}
       onClick={() => useEditorStore.getState().openSession(note)}
@@ -165,7 +178,7 @@ function Note(props: NoteProps) {
         useEditorStore.getState().openSession(note, { openInNewTab: true })
       }
       header={
-        <Flex sx={{ alignItems: "center", mb: 1 }}>
+        <Flex className="veyran-note-date" sx={{ alignItems: "center", mb: 1 }}>
           <Text variant="subBody">
             {formatDate(date, { type: "date", dateFormat })}
           </Text>
@@ -173,6 +186,7 @@ function Note(props: NoteProps) {
       }
       footer={
         <Flex
+          className="veyran-note-metadata"
           sx={{
             fontSize: "subBody",
             color: "paragraph-secondary",
@@ -408,15 +422,19 @@ export const noteMenuItems: (
         }
       }
     },
-    ...(!IS_DESKTOP_APP ? [{
-      type: "button",
-      key: "remind-me",
-      title: strings.remindMe(),
-      icon: AddReminder.path,
-      onClick: async () => {
-        await AddReminderDialog.show({ note });
-      }
-    } as const] : []),
+    ...(!IS_DESKTOP_APP
+      ? [
+          {
+            type: "button",
+            key: "remind-me",
+            title: strings.remindMe(),
+            icon: AddReminder.path,
+            onClick: async () => {
+              await AddReminderDialog.show({ note });
+            }
+          } as const
+        ]
+      : []),
     {
       type: "button",
       key: "archive",

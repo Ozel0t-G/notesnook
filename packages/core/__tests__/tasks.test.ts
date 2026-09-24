@@ -834,7 +834,13 @@ describe("standalone Tasks", () => {
         name: "Work",
         color: "#f00"
       });
-      await first.taskFavorites.set([`list:${work.id}`, "smart:flagged"]);
+      const defaultList = await first.taskLists.default();
+      const favoriteOrder = [
+        `list:${defaultList.id}`,
+        `list:${work.id}`,
+        "smart:flagged"
+      ] as const;
+      await first.taskFavorites.set([...favoriteOrder]);
       const reminderAt = new Date(2026, 9, 30, 9).getTime();
       const task = await first.tasks.create({
         title: "Ship report",
@@ -852,10 +858,7 @@ describe("standalone Tasks", () => {
       expect(await second.taskLists.list()).toContainEqual(
         expect.objectContaining({ id: work.id, name: "Work", color: "#f00" })
       );
-      expect(await second.taskFavorites.list()).toEqual([
-        `list:${work.id}`,
-        "smart:flagged"
-      ]);
+      expect(await second.taskFavorites.list()).toEqual(favoriteOrder);
       expect(await second.tasks.get(task.id)).toEqual(
         expect.objectContaining({
           id: task.id,
@@ -885,6 +888,7 @@ describe("standalone Tasks", () => {
       await second.tasks.update(next!.id, { listId: personal.id });
 
       await transfer(second, first);
+      expect(await first.taskFavorites.list()).toEqual(favoriteOrder);
       expect(await first.tasks.get(task.id)).toEqual(
         expect.objectContaining({
           completed: true,
@@ -1107,6 +1111,8 @@ describe("standalone Tasks", () => {
   test("plain backup restores Task records and lists", async () => {
     const db = await databaseTest();
     const list = await db.taskLists.create("Shopping");
+    const defaultList = await db.taskLists.default();
+    await db.taskFavorites.set([`list:${defaultList.id}`, `list:${list.id}`]);
     const task = await db.tasks.create({
       title: "Milk",
       listId: list.id,
@@ -1125,6 +1131,10 @@ describe("standalone Tasks", () => {
     expect(
       (await restored.taskLists.list()).some((item) => item.id === list.id)
     ).toBe(true);
+    expect(await restored.taskFavorites.list()).toEqual([
+      `list:${defaultList.id}`,
+      `list:${list.id}`
+    ]);
     expect(
       restored.settings.collection.get(
         restored.settings.collection

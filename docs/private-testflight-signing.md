@@ -1,6 +1,6 @@
 # Private TestFlight signing — Notesnook Pencil Beta
 
-**Branch: `personal/testflight` only.** Never merge into `feature/apple-pencil`.
+Private signing identity for this fork. Build on `test` when a TestFlight upload is explicitly authorized; do not merge release-only signing changes into upstream branches.
 
 Team: `QXCNJY73A8` (individual, paid program). Signing: **Automatic** (Xcode-managed profiles). No keys, `.p12`, profiles or API keys are stored in the repository.
 

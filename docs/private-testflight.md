@@ -1,6 +1,6 @@
 # Private TestFlight — Notesnook Pencil Beta
 
-**Branch: `personal/testflight` only.** See also `private-testflight-signing.md`.
+Use the private bundle identity from branch `test` only when a TestFlight upload is explicitly authorized. See also `private-testflight-signing.md`.
 
 ## Prerequisites
 
@@ -27,7 +27,7 @@ scripts/build-pencil-testflight.sh
 scripts/build-pencil-testflight.sh --bump --upload
 ```
 
-Marketing version = upstream Notesnook version (3.4.13), build number is private and incremental. Internal label: *Pencil Beta 1*.
+Marketing version follows the mobile app version (currently 3.4.16); the private build number is incremental. The Tasks & Reminders test build is 3.4.16 (14).
 
 ### Headless authentication (no secrets in git)
 

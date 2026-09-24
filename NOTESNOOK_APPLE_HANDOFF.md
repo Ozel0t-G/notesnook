@@ -2,6 +2,10 @@
 
 Updated 2026-09-24 on branch `test`. Do not merge to `main`, push upstream, or upload to TestFlight without a later instruction. The pre-existing untracked `AGENTS.md` is user work and was not included in this implementation.
 
+## TestFlight build 3.4.16 (14)
+
+The account holder subsequently authorized a TestFlight upload from `test`. Build 14 uses the existing private bundle ID `com.ozel0t.note.notesnookpencil` and includes the Task implementation. The first archive used Xcode 27 beta 6 and App Store Connect rejected that SDK. A new device archive built successfully with release Xcode 27 (`27A266a`), retaining version `3.4.16` and build `14` in the app, widget, and Make Note extension. The widget's signed App Group entitlement was verified. `xcodebuild -exportArchive` reported `Upload succeeded` at 2026-09-24 11:09 CEST and that the package was processing; TestFlight processing and internal group availability were not independently verified because the web console required a new two-factor login. The export also warned that the Hermes VM dSYM was absent, so Hermes crash symbolication may be incomplete. No `main` merge, upstream push, or App Store release was performed.
+
 ## Important history and editor boundary
 
 The earlier Todo Widget approach stored tasks inside the Notes editor and caused a black-editor regression. It was rolled back. This implementation has an independent Task domain. It does not use Note IDs, Note bodies, TipTap nodes, ProseMirror positions, or editor bridge actions. Navigation and old Reminder affordances can open Task screens, but editor internals remain untouched. The ARM64 libsodium XCFramework remains in use; no simulator x86_64 exclusion or Rosetta workaround was introduced.

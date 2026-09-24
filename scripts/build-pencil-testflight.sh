@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds a private "Notesnook Pencil Beta" archive for TestFlight.
-# personal/testflight only. No secrets: signing uses Xcode's automatic signing
+# Private fork builds only. No secrets: signing uses Xcode's automatic signing
 # with the account that is signed in to Xcode.
 #
 # Optional headless auth (recommended; keeps credentials outside the repo):

@@ -90,6 +90,8 @@ class Collector {
           .where("dateModified", "<=", pushTimestamp)
           .set({ synced: true })
           .execute();
+        if (itemType === "settingitem")
+          this.db.settings.collection.markSynced(ids, pushTimestamp);
         pushTimestamp = Date.now();
       }
     }
@@ -126,9 +128,8 @@ function filterSyncableItems(items: MaybeDeletedItem<Item>[]): {
   const ids = [];
   const syncableItems = [];
   for (const item of items) {
-    delete item.synced;
-
     ids.push(item.id);
+    const { synced: _synced, ...withoutSyncFlag } = item;
     syncableItems.push(
       JSON.stringify(
         "localOnly" in item && item.localOnly
@@ -137,7 +138,7 @@ function filterSyncableItems(items: MaybeDeletedItem<Item>[]): {
               deleted: true,
               dateModified: item.dateModified
             }
-          : item
+          : withoutSyncFlag
       )
     );
   }

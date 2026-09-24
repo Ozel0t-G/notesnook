@@ -48,6 +48,7 @@ import { Pricing } from "./pricing.js";
 import { logger } from "../logger.js";
 import { Shortcuts } from "../collections/shortcuts.js";
 import { Reminders } from "../collections/reminders.js";
+import { Tasks, TaskLists } from "../collections/tasks.js";
 import { Relations } from "../collections/relations.js";
 import Subscriptions from "./subscriptions.js";
 import { InboxItemsHistory } from "../collections/inbox-items-history.js";
@@ -223,6 +224,8 @@ class Database {
   noteHistory = new NoteHistory(this);
   shortcuts = new Shortcuts(this);
   reminders = new Reminders(this);
+  taskLists = new TaskLists(this);
+  tasks = new Tasks(this);
   relations = new Relations(this);
   notes = new Notes(this);
   vaults = new Vaults(this);
@@ -300,6 +303,13 @@ class Database {
       this
     );
     this.eventManager.subscribe(EVENTS.tokenRefreshed, () => this.connectSSE());
+    this.eventManager.subscribe(EVENTS.syncCompleted, () => {
+      this.tasks
+        .reconcile()
+        .catch((error) =>
+          logger.error(error, "Failed to reconcile Tasks after sync")
+        );
+    });
     this.eventManager.subscribe(
       EVENTS.attachmentDeleted,
       async (attachment: Attachment) => {
@@ -327,6 +337,12 @@ class Database {
     this.isInitialized = true;
     if (this.migrations.required()) {
       logger.warn("Database migration is required.");
+    } else {
+      try {
+        await this.tasks.reconcile();
+      } catch (error) {
+        logger.error(error, "Task maintenance failed during database startup");
+      }
     }
   }
 

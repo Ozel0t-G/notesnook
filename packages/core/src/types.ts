@@ -507,6 +507,7 @@ export interface SettingItem<
 > extends BaseItem<"settingitem"> {
   key: TKey;
   value: SettingItemMap[TKey];
+  localOnly?: boolean;
 }
 
 export interface Vault extends BaseItem<"vault"> {

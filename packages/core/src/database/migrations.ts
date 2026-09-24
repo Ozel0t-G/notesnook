@@ -496,6 +496,16 @@ export class NNMigrationProvider implements MigrationProvider {
             .addColumn("errorContext", "text")
             .execute();
         }
+      },
+      "a-2026-09-24-tasks-local-only": {
+        async up(db) {
+          await ensureColumn(db, "settings", "localOnly", async () => {
+            await db.schema
+              .alterTable("settings")
+              .addColumn("localOnly", "boolean")
+              .execute();
+          });
+        }
       }
     };
   }

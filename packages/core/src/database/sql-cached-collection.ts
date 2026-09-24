@@ -19,7 +19,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { MaybeDeletedItem, isDeleted } from "../types.js";
 import EventManager from "../utils/event-manager.js";
-import { DatabaseAccessor, DatabaseCollection, DatabaseSchema } from "./index.js";
+import {
+  DatabaseAccessor,
+  DatabaseCollection,
+  DatabaseSchema
+} from "./index.js";
 import { SQLCollection } from "./sql-collection.js";
 import { Kysely } from "@streetwriters/kysely";
 import { Sanitizer } from "./sanitizer.js";
@@ -173,6 +177,19 @@ export class SQLCachedCollection<
 
   async unsyncedCount() {
     return this.collection.unsyncedCount();
+  }
+
+  /** Keep the in-memory sync flags aligned with Collector's timestamp-gated SQL update. */
+  markSynced(ids: string[], pushedBefore: number) {
+    for (const id of ids) {
+      const item = this.cache.get(id);
+      if (
+        item &&
+        typeof item.dateModified === "number" &&
+        item.dateModified <= pushedBefore
+      )
+        item.synced = true;
+    }
   }
 
   // has(id: string) {

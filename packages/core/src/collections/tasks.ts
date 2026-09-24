@@ -1,0 +1,730 @@
+/*
+This file is part of the Notesnook project (https://notesnook.com/)
+Copyright (C) 2026 Streetwriters (Private) Limited
+This program is free software under the GNU General Public License v3 or later.
+*/
+
+import { RRule } from "rrule";
+import { Mutex } from "async-mutex";
+import { strings } from "@notesnook/intl";
+import Database from "../api/index.js";
+import { Reminder, SettingItem } from "../types.js";
+import { getId, makeId } from "../utils/id.js";
+import { logger } from "../logger.js";
+
+const VERSION = 1;
+const PREFIX = "appleTasks:v1:";
+const DEFAULT_LIST_ID = makeId(`${PREFIX}defaultList`);
+const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
+const warnedRecordKeys = new Set<string>();
+const MAX_WARNED_RECORD_KEYS = 1000;
+
+export type TaskPriority = "none" | "low" | "medium" | "high";
+export type TaskSmartList =
+  | "today"
+  | "scheduled"
+  | "all"
+  | "flagged"
+  | "completed";
+
+export interface Task {
+  id: string;
+  title: string;
+  listId: string;
+  completed: boolean;
+  completedAt?: number;
+  dueDate?: string;
+  dueTime?: string;
+  reminderAt?: number;
+  recurrenceRule?: string;
+  priority: TaskPriority;
+  flagged: boolean;
+  createdAt: number;
+  updatedAt: number;
+  schemaVersion: 1;
+  /** The first occurrence of a recurring series. */
+  seriesId?: string;
+  seriesStartDate?: string;
+  seriesStartTime?: string;
+  occurrenceKey?: string;
+  legacyReminderId?: string;
+  /** Calendar wall-clock lead from due time to reminder time. */
+  reminderLeadMinutes?: number;
+  localOnly?: boolean;
+}
+
+export type TaskInput = Pick<Task, "title"> &
+  Partial<Omit<Task, "title" | "schemaVersion" | "createdAt" | "updatedAt">>;
+
+export interface TaskList {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+  schemaVersion: 1;
+  color?: string;
+  symbol?: string;
+}
+
+export type TaskListInput = Pick<TaskList, "name"> &
+  Partial<Pick<TaskList, "sortOrder" | "color" | "symbol">>;
+
+function key(kind: "task" | "list", id: string) {
+  return `${PREFIX}${kind}:${id}`;
+}
+
+function settingId(recordKey: string) {
+  return makeId(recordKey);
+}
+
+function calendarDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function isValidCalendarDate(date: string) {
+  if (!DATE.test(date)) return false;
+  const [year, month, day] = date.split("-").map(Number);
+  const test = new Date(year, month - 1, day);
+  return (
+    test.getFullYear() === year &&
+    test.getMonth() === month - 1 &&
+    test.getDate() === day
+  );
+}
+
+function floatingInstant(date: string, time = "00:00") {
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  return new Date(Date.UTC(year, month - 1, day, hour, minute));
+}
+
+function wallMinutes(date: Date) {
+  return (
+    Date.UTC(
+      date.getFullYear(),
+      date.getMonth(),
+      date.getDate(),
+      date.getHours(),
+      date.getMinutes()
+    ) / 60000
+  );
+}
+
+function reminderLeadMinutes(
+  task: Pick<Task, "dueDate" | "dueTime" | "reminderAt">
+) {
+  if (!task.dueDate || task.reminderAt === undefined) return;
+  return (
+    floatingInstant(task.dueDate, task.dueTime).getTime() / 60000 -
+    wallMinutes(new Date(task.reminderAt))
+  );
+}
+
+function hasOwn(value: object, key: string) {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function nextReminderAt(task: Task, next: { date: string; time?: string }) {
+  if (task.reminderAt === undefined) return;
+  const lead = task.reminderLeadMinutes ?? reminderLeadMinutes(task);
+  if (lead === undefined) return;
+  const [year, month, day] = next.date.split("-").map(Number);
+  const [hour, minute] = (next.time || "00:00").split(":").map(Number);
+  const reminder = new Date(year, month - 1, day, hour, minute);
+  reminder.setMinutes(reminder.getMinutes() - lead);
+  return reminder.getTime();
+}
+
+function nextOccurrence(
+  task: Task
+): { date: string; time?: string } | undefined {
+  if (!task.recurrenceRule || !task.dueDate) return;
+  const rule = task.recurrenceRule.replace(/^RRULE:/i, "").trim();
+  const options = RRule.parseString(rule);
+  const start = floatingInstant(
+    task.seriesStartDate || task.dueDate,
+    task.seriesStartTime || task.dueTime
+  );
+  const current = floatingInstant(task.dueDate, task.dueTime);
+  const next = new RRule({ ...options, dtstart: start }).after(current, false);
+  if (!next) return;
+  return {
+    date: next.toISOString().slice(0, 10),
+    time: task.dueTime ? next.toISOString().slice(11, 16) : undefined
+  };
+}
+
+function safeNextOccurrence(task: Task) {
+  try {
+    return nextOccurrence(task);
+  } catch {
+    warnInvalidRecord(`recurrence:${task.id}`, "invalid recurrence rule");
+    return;
+  }
+}
+
+function legacyRule(reminder: Reminder): string | undefined {
+  if (reminder.mode !== "repeat") return;
+  switch (reminder.recurringMode) {
+    case "day":
+      return "FREQ=DAILY";
+    case "year":
+      return "FREQ=YEARLY";
+    case "week": {
+      const dayCodes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+      const days = (reminder.selectedDays || []).filter(
+        (d) => d >= 0 && d <= 6
+      );
+      return `FREQ=WEEKLY${
+        days.length ? `;BYDAY=${days.map((d) => dayCodes[d]).join(",")}` : ""
+      }`;
+    }
+    case "month": {
+      const days = (reminder.selectedDays || []).filter(
+        (d) => d >= 1 && d <= 31
+      );
+      return `FREQ=MONTHLY${
+        days.length ? `;BYMONTHDAY=${days.join(",")}` : ""
+      }`;
+    }
+  }
+}
+
+function parseRecord<T extends { id: string; schemaVersion: number }>(
+  item: SettingItem | undefined,
+  prefix: string
+): T | undefined {
+  if (!item || !item.key.startsWith(prefix)) return;
+  if (typeof item.value !== "string") {
+    warnInvalidRecord(item.key, "missing JSON value");
+    return;
+  }
+  try {
+    const value: unknown = JSON.parse(item.value);
+    if (!value || typeof value !== "object") {
+      warnInvalidRecord(item.key, "invalid record shape");
+      return;
+    }
+    const record = value as T;
+    if (record.schemaVersion !== VERSION) {
+      warnInvalidRecord(item.key, "unsupported schema version");
+      return;
+    }
+    if (
+      item.key !== `${prefix}${record.id}` ||
+      (prefix.endsWith("task:") && !isTaskRecord(record)) ||
+      (prefix.endsWith("list:") && !isListRecord(record))
+    ) {
+      warnInvalidRecord(item.key, "invalid record shape");
+      return;
+    }
+    return record;
+  } catch {
+    warnInvalidRecord(item.key, "invalid JSON");
+    return;
+  }
+}
+
+function warnInvalidRecord(recordKey: string, reason: string) {
+  if (
+    warnedRecordKeys.has(recordKey) ||
+    warnedRecordKeys.size >= MAX_WARNED_RECORD_KEYS
+  )
+    return;
+  warnedRecordKeys.add(recordKey);
+  logger.warn("Skipping Task domain setting record", {
+    key: recordKey,
+    reason
+  });
+}
+
+function isTaskRecord(record: unknown): record is Task {
+  if (!record || typeof record !== "object") return false;
+  const task = record as Task;
+  return (
+    typeof task.id === "string" &&
+    !!task.id &&
+    typeof task.title === "string" &&
+    !!task.title.trim() &&
+    typeof task.listId === "string" &&
+    !!task.listId &&
+    typeof task.completed === "boolean" &&
+    typeof task.flagged === "boolean" &&
+    ["none", "low", "medium", "high"].includes(task.priority) &&
+    Number.isFinite(task.createdAt) &&
+    Number.isFinite(task.updatedAt) &&
+    (!task.dueDate || isValidCalendarDate(task.dueDate)) &&
+    (!task.dueTime ||
+      (typeof task.dueTime === "string" && TIME.test(task.dueTime))) &&
+    (task.reminderAt === undefined || Number.isFinite(task.reminderAt)) &&
+    (task.recurrenceRule === undefined ||
+      typeof task.recurrenceRule === "string")
+  );
+}
+
+function isListRecord(record: unknown): record is TaskList {
+  if (!record || typeof record !== "object") return false;
+  const list = record as TaskList;
+  return (
+    typeof list.id === "string" &&
+    !!list.id &&
+    typeof list.name === "string" &&
+    !!list.name.trim() &&
+    Number.isFinite(list.sortOrder) &&
+    Number.isFinite(list.createdAt) &&
+    Number.isFinite(list.updatedAt)
+  );
+}
+
+function compareTasks(a: Task, b: Task) {
+  const aDate = a.dueDate || "9999-12-31";
+  const bDate = b.dueDate || "9999-12-31";
+  return (
+    aDate.localeCompare(bDate) ||
+    (a.dueTime || "").localeCompare(b.dueTime || "") ||
+    a.createdAt - b.createdAt ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+/** A date-only Task becomes overdue after its calendar day ends. */
+export function isTaskOverdue(task: Task, now = new Date()): boolean {
+  if (task.completed || !task.dueDate) return false;
+  const today = calendarDate(now);
+  if (task.dueDate < today) return true;
+  if (task.dueDate > today || !task.dueTime) return false;
+  const [year, month, day] = task.dueDate.split("-").map(Number);
+  const [hour, minute] = task.dueTime.split(":").map(Number);
+  return new Date(year, month - 1, day, hour, minute).getTime() < now.getTime();
+}
+
+class TaskRecordStore {
+  constructor(protected readonly db: Database) {}
+
+  protected async save<T extends { id: string }>(
+    kind: "task" | "list",
+    value: T
+  ) {
+    const recordKey = key(kind, value.id);
+    await this.db.settings.collection.upsert({
+      id: settingId(recordKey),
+      type: "settingitem",
+      key: recordKey,
+      value: JSON.stringify(value),
+      localOnly: "localOnly" in value ? !!value.localOnly : undefined,
+      dateCreated: "createdAt" in value ? Number(value.createdAt) : Date.now()
+    } as SettingItem);
+  }
+
+  protected async delete(kind: "task" | "list", id: string) {
+    await this.db.settings.collection.softDelete([settingId(key(kind, id))]);
+  }
+
+  protected getRecord<T extends { id: string; schemaVersion: number }>(
+    kind: "task" | "list",
+    id: string
+  ): T | undefined {
+    return parseRecord<T>(
+      this.db.settings.collection.get(settingId(key(kind, id))),
+      `${PREFIX}${kind}:`
+    );
+  }
+
+  protected records<T extends { id: string; schemaVersion: number }>(
+    kind: "task" | "list"
+  ): T[] {
+    const prefix = `${PREFIX}${kind}:`;
+    return this.db.settings.collection.items().flatMap((item) => {
+      const record = parseRecord<T>(item, prefix);
+      return record ? [record] : [];
+    });
+  }
+}
+
+export class TaskLists extends TaskRecordStore {
+  listSync(): TaskList[] {
+    return this.records<TaskList>("list");
+  }
+
+  getSync(id: string): TaskList | undefined {
+    return this.getRecord<TaskList>("list", id);
+  }
+
+  async list(): Promise<TaskList[]> {
+    const result = this.records<TaskList>("list");
+    if (!result.some((item) => item.id === DEFAULT_LIST_ID))
+      result.push(await this.default());
+    return result.sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder ||
+        a.createdAt - b.createdAt ||
+        a.id.localeCompare(b.id)
+    );
+  }
+
+  async default(): Promise<TaskList> {
+    const existing = this.getRecord<TaskList>("list", DEFAULT_LIST_ID);
+    if (existing) return existing;
+    const recordKey = settingId(key("list", DEFAULT_LIST_ID));
+    if (this.db.settings.collection.records([recordKey])[recordKey])
+      throw new Error(
+        "The default Task list has an unsupported schema version."
+      );
+    const now = Date.now();
+    const value: TaskList = {
+      id: DEFAULT_LIST_ID,
+      name: strings.reminders(),
+      sortOrder: 0,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: VERSION
+    };
+    await this.save("list", value);
+    return value;
+  }
+
+  async create(input: TaskListInput | string): Promise<TaskList> {
+    const data = typeof input === "string" ? { name: input } : input;
+    const name = data.name.trim();
+    if (!name) throw new Error("Task list name is required.");
+    const now = Date.now();
+    const value: TaskList = {
+      id: getId(),
+      name,
+      sortOrder: data.sortOrder ?? now,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: VERSION,
+      color: data.color,
+      symbol: data.symbol
+    };
+    await this.save("list", value);
+    return value;
+  }
+
+  async update(id: string, patch: Partial<TaskListInput>): Promise<TaskList> {
+    const old = this.getRecord<TaskList>("list", id);
+    if (!old) throw new Error("Task list not found.");
+    const name = patch.name === undefined ? old.name : patch.name.trim();
+    if (!name) throw new Error("Task list name is required.");
+    const value: TaskList = { ...old, ...patch, name, updatedAt: Date.now() };
+    await this.save("list", value);
+    return value;
+  }
+
+  async remove(id: string): Promise<void> {
+    if (id === DEFAULT_LIST_ID)
+      throw new Error("The default Task list cannot be deleted.");
+    if (!this.getRecord<TaskList>("list", id)) return;
+    const fallback = await this.default();
+    for (const task of this.db.tasks
+      .listSync()
+      .filter((item) => item.listId === id))
+      await this.db.tasks.update(task.id, { listId: fallback.id });
+    await this.delete("list", id);
+  }
+}
+
+export class Tasks extends TaskRecordStore {
+  private readonly maintenanceMutex = new Mutex();
+  private readonly createMutex = new Mutex();
+  /** Includes completed history. */
+  async list(): Promise<Task[]> {
+    return this.listSync();
+  }
+  listSync(): Task[] {
+    return this.records<Task>("task").sort(compareTasks);
+  }
+
+  async get(id: string): Promise<Task | undefined> {
+    return this.getRecord<Task>("task", id);
+  }
+
+  private recordExists(id: string) {
+    const settingKey = settingId(key("task", id));
+    return !!this.db.settings.collection.records([settingKey])[settingKey];
+  }
+
+  async create(input: TaskInput): Promise<Task> {
+    const title = input.title.trim();
+    if (!title) throw new Error("Task title is required.");
+    const listId = input.listId || (await this.db.taskLists.default()).id;
+    if (!this.db.taskLists.getSync(listId))
+      throw new Error("Task list not found.");
+    const now = Date.now();
+    const id = input.id || getId();
+    const value: Task = {
+      id,
+      title,
+      listId,
+      completed: !!input.completed,
+      completedAt: input.completed ? input.completedAt || now : undefined,
+      dueDate: input.dueDate,
+      dueTime: input.dueTime,
+      reminderAt: input.reminderAt,
+      recurrenceRule: input.recurrenceRule,
+      priority: input.priority || "none",
+      flagged: !!input.flagged,
+      createdAt: now,
+      updatedAt: now,
+      schemaVersion: VERSION,
+      seriesId: input.recurrenceRule ? input.seriesId || id : undefined,
+      seriesStartDate: input.recurrenceRule
+        ? input.seriesStartDate || input.dueDate
+        : undefined,
+      seriesStartTime: input.recurrenceRule
+        ? input.seriesStartTime || input.dueTime
+        : undefined,
+      occurrenceKey: input.occurrenceKey,
+      legacyReminderId: input.legacyReminderId,
+      reminderLeadMinutes:
+        input.reminderLeadMinutes ?? reminderLeadMinutes(input),
+      localOnly: input.localOnly
+    };
+    validateTask(value);
+    return this.createMutex.runExclusive(async () => {
+      if (this.recordExists(id))
+        throw new Error("A Task with this ID already exists or was deleted.");
+      await this.save("task", value);
+      return value;
+    });
+  }
+
+  async update(id: string, patch: Partial<TaskInput>): Promise<Task> {
+    const old = await this.get(id);
+    if (!old) throw new Error("Task not found.");
+    if (patch.listId && !this.db.taskLists.getSync(patch.listId))
+      throw new Error("Task list not found.");
+    const value: Task = {
+      ...old,
+      ...patch,
+      id,
+      schemaVersion: VERSION,
+      createdAt: old.createdAt,
+      updatedAt: Date.now()
+    };
+    value.title = value.title.trim();
+    if (
+      hasOwn(patch, "recurrenceRule") ||
+      hasOwn(patch, "dueDate") ||
+      hasOwn(patch, "dueTime")
+    ) {
+      value.seriesId = value.recurrenceRule
+        ? old.seriesId || old.id
+        : undefined;
+      value.seriesStartDate = value.recurrenceRule ? value.dueDate : undefined;
+      value.seriesStartTime = value.recurrenceRule ? value.dueTime : undefined;
+    }
+    if (!value.completed) value.completedAt = undefined;
+    if (
+      hasOwn(patch, "dueDate") ||
+      hasOwn(patch, "dueTime") ||
+      hasOwn(patch, "reminderAt")
+    )
+      value.reminderLeadMinutes = reminderLeadMinutes(value);
+    validateTask(value);
+    await this.save("task", value);
+    return value;
+  }
+
+  async complete(id: string): Promise<Task> {
+    const old = await this.get(id);
+    if (!old) throw new Error("Task not found.");
+    const completed = old.completed
+      ? old
+      : await this.update(id, { completed: true, completedAt: Date.now() });
+    await this.ensureNextOccurrence(completed);
+    return completed;
+  }
+
+  private async ensureNextOccurrence(completed: Task): Promise<void> {
+    const next = safeNextOccurrence(completed);
+    if (next) {
+      const seriesId = completed.seriesId || completed.id;
+      const occurrenceKey = `${next.date}T${next.time || "date"}`;
+      const nextId = makeId(`${PREFIX}occurrence:${seriesId}:${occurrenceKey}`);
+      if (!this.recordExists(nextId)) {
+        const reminderAt = nextReminderAt(completed, next);
+        try {
+          await this.create({
+            ...completed,
+            id: nextId,
+            completed: false,
+            completedAt: undefined,
+            dueDate: next.date,
+            dueTime: next.time,
+            reminderAt,
+            seriesId,
+            seriesStartDate: completed.seriesStartDate || completed.dueDate,
+            seriesStartTime: completed.seriesStartTime || completed.dueTime,
+            occurrenceKey,
+            reminderLeadMinutes: completed.reminderLeadMinutes
+          });
+        } catch (error) {
+          // Another completion may have created the same stable occurrence.
+          if (!this.recordExists(nextId)) throw error;
+        }
+      }
+    }
+  }
+
+  async reconcileRecurrence(): Promise<void> {
+    await this.maintenanceMutex.runExclusive(() =>
+      this.reconcileRecurrenceUnsafe()
+    );
+  }
+
+  private async reconcileRecurrenceUnsafe(): Promise<void> {
+    for (const task of this.listSync()) {
+      if (
+        !task.completed ||
+        !task.recurrenceRule ||
+        !this.db.taskLists.getSync(task.listId)
+      )
+        continue;
+      await this.ensureNextOccurrence(task);
+    }
+  }
+
+  async uncomplete(id: string): Promise<Task> {
+    const old = await this.get(id);
+    if (!old) throw new Error("Task not found.");
+    if (!old.completed) return old;
+    if (old.recurrenceRule && old.dueDate) {
+      const next = safeNextOccurrence(old);
+      if (next) {
+        const occurrenceKey = `${next.date}T${next.time || "date"}`;
+        const nextId = makeId(
+          `${PREFIX}occurrence:${old.seriesId || old.id}:${occurrenceKey}`
+        );
+        if (this.recordExists(nextId))
+          throw new Error(
+            "Cannot reopen a recurring Task while its next occurrence exists."
+          );
+      }
+    }
+    return this.update(id, { completed: false, completedAt: undefined });
+  }
+
+  async remove(id: string): Promise<void> {
+    if (!this.getRecord<Task>("task", id)) return;
+    await this.delete("task", id);
+  }
+
+  async smartList(kind: TaskSmartList, date = new Date()): Promise<Task[]> {
+    const today = calendarDate(date);
+    const tasks = this.listSync();
+    switch (kind) {
+      case "all":
+        return tasks.filter((task) => !task.completed);
+      case "flagged":
+        return tasks.filter((task) => !task.completed && task.flagged);
+      case "completed":
+        return tasks
+          .filter((task) => task.completed)
+          .sort(
+            (a, b) =>
+              (b.completedAt || 0) - (a.completedAt || 0) ||
+              a.id.localeCompare(b.id)
+          );
+      case "today":
+        return tasks.filter(
+          (task) =>
+            !task.completed &&
+            ((task.dueDate !== undefined && task.dueDate <= today) ||
+              (task.reminderAt !== undefined &&
+                calendarDate(new Date(task.reminderAt)) === today))
+        );
+      case "scheduled":
+        return tasks.filter(
+          (task) =>
+            !task.completed &&
+            (task.dueDate === undefined || task.dueDate >= today) &&
+            ((task.dueDate !== undefined && task.dueDate >= today) ||
+              (task.reminderAt !== undefined &&
+                task.reminderAt >= date.getTime()))
+        );
+    }
+  }
+
+  /** Runs at startup and after sync. Durable Task creation precedes Reminder deletion. */
+  async migrateLegacyReminders(): Promise<void> {
+    await this.maintenanceMutex.runExclusive(() =>
+      this.migrateLegacyRemindersUnsafe()
+    );
+  }
+
+  async repairListReferences(): Promise<void> {
+    await this.maintenanceMutex.runExclusive(() =>
+      this.repairListReferencesUnsafe()
+    );
+  }
+
+  async reconcile(): Promise<void> {
+    await this.maintenanceMutex.runExclusive(async () => {
+      await this.migrateLegacyRemindersUnsafe();
+      await this.repairListReferencesUnsafe();
+      await this.reconcileRecurrenceUnsafe();
+    });
+  }
+
+  private async repairListReferencesUnsafe(): Promise<void> {
+    const tasks = this.listSync();
+    if (!tasks.length) return;
+    const lists = new Set(this.db.taskLists.listSync().map((list) => list.id));
+    if (tasks.every((task) => lists.has(task.listId))) return;
+    const fallback = await this.db.taskLists.default();
+    for (const task of tasks) {
+      if (lists.has(task.listId)) continue;
+      await this.update(task.id, { listId: fallback.id });
+    }
+  }
+
+  private async migrateLegacyRemindersUnsafe(): Promise<void> {
+    let listId: string | undefined;
+    for await (const reminder of this.db.reminders.all.iterate()) {
+      if (!reminder.id || !reminder.title || !Number.isFinite(reminder.date))
+        continue;
+      const id = makeId(`${PREFIX}legacy:${reminder.id}`);
+      if (!this.recordExists(id)) {
+        listId ||= (await this.db.taskLists.default()).id;
+        const date = new Date(reminder.date);
+        await this.create({
+          id,
+          title: reminder.title,
+          listId,
+          dueDate: calendarDate(date),
+          dueTime: `${String(date.getHours()).padStart(2, "0")}:${String(
+            date.getMinutes()
+          ).padStart(2, "0")}`,
+          reminderAt: reminder.disabled ? undefined : reminder.date,
+          recurrenceRule: legacyRule(reminder),
+          legacyReminderId: reminder.id,
+          localOnly: reminder.localOnly
+        });
+      }
+      await this.db.reminders.remove(reminder.id);
+    }
+  }
+}
+
+function validateTask(task: Task) {
+  if (!task.title) throw new Error("Task title is required.");
+  if (task.dueDate && !isValidCalendarDate(task.dueDate))
+    throw new Error("Invalid Task due date.");
+  if (task.dueTime && (!task.dueDate || !TIME.test(task.dueTime)))
+    throw new Error("Invalid Task due time.");
+  if (task.reminderAt !== undefined && !Number.isFinite(task.reminderAt))
+    throw new Error("Invalid Task reminder time.");
+  if (task.recurrenceRule) {
+    if (!task.dueDate) throw new Error("A recurring Task requires a due date.");
+    RRule.parseString(task.recurrenceRule.replace(/^RRULE:/i, "").trim());
+  }
+  if (!["none", "low", "medium", "high"].includes(task.priority))
+    throw new Error("Invalid Task priority.");
+}

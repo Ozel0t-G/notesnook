@@ -518,6 +518,10 @@ export default class Backup {
         : backup.version,
       decryptedAttachmentsKey
     );
+    // Import is chunked; this operation is idempotent and repairs an
+    // interrupted recurring completion after each persisted chunk.
+    await this.db.tasks.migrateLegacyReminders();
+    await this.db.tasks.reconcileRecurrence();
   }
 
   private migrateBackup(backup: BackupFile | LegacyBackupFile) {

@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import Database from "./index.js";
 import { CURRENT_DATABASE_VERSION } from "../common.js";
 import Migrator, { MigratableCollections } from "../database/migrator.js";
+import { logger } from "../logger.js";
 
 const collections: MigratableCollections = [
   {
@@ -107,6 +108,11 @@ class Migrations {
       await this.migrator.migrate(this.db, collections, this.version);
       await this.db.kv().write("v", CURRENT_DATABASE_VERSION);
       this.version = CURRENT_DATABASE_VERSION;
+      try {
+        await this.db.tasks.reconcile();
+      } catch (error) {
+        logger.error(error, "Task maintenance failed after database migration");
+      }
     } finally {
       this.migrating = false;
     }

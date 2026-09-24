@@ -24,6 +24,15 @@ export * from "./content-types/index.js";
 export * from "./common.js";
 export { default as Database } from "./api/index.js";
 export { DefaultColors } from "./collections/colors.js";
+export { isTaskOverdue } from "./collections/tasks.js";
+export type {
+  Task,
+  TaskInput,
+  TaskList,
+  TaskListInput,
+  TaskPriority,
+  TaskSmartList
+} from "./collections/tasks.js";
 export { EMPTY_CONTENT } from "./collections/content.js";
 export { type BackupFile, type LegacyBackupFile } from "./database/backup.js";
 export { type DatabaseUpdatedEvent } from "./database/index.js";

@@ -32,6 +32,7 @@ import { ConfirmDialog } from "./confirm";
 import { showToast } from "../utils/toast";
 import { logger } from "../utils/logger";
 import { strings } from "@notesnook/intl";
+import { TaskListGlyph } from "../components/task-list-appearance";
 
 type TaskDialogProps = BaseDialogProps<boolean> & {
   task?: TaskRecord;
@@ -54,11 +55,27 @@ function presetForRule(rule?: string): RepeatPreset {
   return (match?.[0] as RepeatPreset | undefined) || "custom";
 }
 
-function localDatetimeValue(timestamp?: number): string {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  const local = new Date(timestamp - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+function scheduleForTask(task?: TaskRecord) {
+  if (!task) return { date: "", time: "" };
+  const schedule = task as TaskRecord & {
+    reminderDate?: string;
+    reminderTime?: string;
+  };
+  if (schedule.reminderDate)
+    return { date: schedule.reminderDate, time: schedule.reminderTime || "" };
+  if (task.reminderAt) {
+    const value = new Date(task.reminderAt);
+    return {
+      date: `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(
+        2,
+        "0"
+      )}-${String(value.getDate()).padStart(2, "0")}`,
+      time: `${String(value.getHours()).padStart(2, "0")}:${String(
+        value.getMinutes()
+      ).padStart(2, "0")}`
+    };
+  }
+  return { date: task.dueDate || "", time: task.dueTime || "" };
 }
 
 const controlStyle = {
@@ -83,11 +100,8 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
   const [listId, setListId] = useState(
     task?.listId || props.defaultListId || lists[0]?.id || ""
   );
-  const [dueDate, setDueDate] = useState(task?.dueDate || "");
-  const [dueTime, setDueTime] = useState(task?.dueTime || "");
-  const [reminder, setReminder] = useState(
-    localDatetimeValue(task?.reminderAt)
-  );
+  const [reminderDate, setReminderDate] = useState(scheduleForTask(task).date);
+  const [reminderTime, setReminderTime] = useState(scheduleForTask(task).time);
   const [priority, setPriority] = useState<TaskPriority>(
     task?.priority || "none"
   );
@@ -102,17 +116,12 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
     if (!title.trim() || !listId || saving) return;
     const recurrenceRule =
       repeatPreset === "custom" ? customRule.trim() : presetRules[repeatPreset];
-    const reminderAt = reminder ? new Date(reminder).getTime() : undefined;
-    if (reminder && !Number.isFinite(reminderAt)) {
-      showToast("error", strings.tasksInvalidReminder());
-      return;
-    }
     if (repeatPreset === "custom" && !recurrenceRule) {
       showToast("error", strings.tasksInvalidRecurrence());
       return;
     }
-    if (recurrenceRule && !dueDate) {
-      showToast("error", strings.tasksRepeatNeedsDueDate());
+    if (recurrenceRule && !reminderDate) {
+      showToast("error", strings.tasksRepeatNeedsReminderDate());
       return;
     }
 
@@ -120,13 +129,15 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
       title: title.trim(),
       description: description.trim() || undefined,
       listId,
-      dueDate: dueDate || undefined,
-      dueTime: dueDate && dueTime ? dueTime : undefined,
-      reminderAt,
+      reminderDate: reminderDate || undefined,
+      reminderTime: reminderDate && reminderTime ? reminderTime : undefined,
+      urgent:
+        (task as (TaskRecord & { urgent?: boolean }) | undefined)?.urgent ||
+        false,
       recurrenceRule: recurrenceRule || undefined,
       priority,
       flagged
-    };
+    } as TaskInput;
 
     setSaving(true);
     try {
@@ -214,56 +225,75 @@ export const TaskDialog = DialogManager.register(function TaskDialog(
           />
         </TaskControl>
         <TaskControl label={strings.tasksList()}>
-          <select
-            aria-label={strings.tasksList()}
-            value={listId}
-            onChange={(event) => setListId(event.target.value)}
-            style={controlStyle}
-          >
-            {lists.map((list) => (
-              <option key={list.id} value={list.id}>
-                {list.name}
-              </option>
-            ))}
-          </select>
+          <Flex sx={{ alignItems: "center", gap: 2 }}>
+            <TaskListGlyph
+              symbol={lists.find((list) => list.id === listId)?.symbol}
+              color={lists.find((list) => list.id === listId)?.color}
+              size={22}
+            />
+            <select
+              aria-label={strings.tasksList()}
+              value={listId}
+              onChange={(event) => setListId(event.target.value)}
+              style={controlStyle}
+            >
+              {lists.map((list) => (
+                <option key={list.id} value={list.id}>
+                  {list.name}
+                </option>
+              ))}
+            </select>
+          </Flex>
         </TaskControl>
+        <Text sx={{ fontWeight: "bold" }}>{strings.tasksReminder()}</Text>
         <Flex sx={{ gap: 2, flexWrap: "wrap" }}>
           <Box sx={{ flex: "1 1 180px" }}>
-            <TaskControl label={strings.tasksDueDate()}>
+            <TaskControl label={strings.tasksDate()}>
               <input
                 type="date"
-                aria-label={strings.tasksDueDate()}
-                value={dueDate}
+                aria-label={`${strings.tasksReminder()} ${strings.tasksDate()}`}
+                value={reminderDate}
                 onChange={(event) => {
-                  setDueDate(event.target.value);
-                  if (!event.target.value) setDueTime("");
+                  setReminderDate(event.target.value);
+                  if (!event.target.value) setReminderTime("");
                 }}
                 style={controlStyle}
               />
             </TaskControl>
           </Box>
           <Box sx={{ flex: "1 1 140px" }}>
-            <TaskControl label={strings.tasksDueTime()}>
+            <TaskControl label={strings.tasksTime()}>
               <input
                 type="time"
-                aria-label={strings.tasksDueTime()}
-                disabled={!dueDate}
-                value={dueTime}
-                onChange={(event) => setDueTime(event.target.value)}
+                aria-label={`${strings.tasksReminder()} ${strings.tasksTime()}`}
+                disabled={!reminderDate}
+                value={reminderTime}
+                onChange={(event) => setReminderTime(event.target.value)}
                 style={controlStyle}
               />
             </TaskControl>
           </Box>
         </Flex>
-        <TaskControl label={strings.tasksReminder()}>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            opacity: 0.65
+          }}
+        >
           <input
-            type="datetime-local"
-            aria-label={strings.tasksReminder()}
-            value={reminder}
-            onChange={(event) => setReminder(event.target.value)}
-            style={controlStyle}
+            type="checkbox"
+            disabled
+            checked={Boolean(
+              (task as (TaskRecord & { urgent?: boolean }) | undefined)?.urgent
+            )}
           />
-        </TaskControl>
+          <Text>{strings.tasksUrgent()}</Text>
+        </label>
+        <Text variant="subBody" sx={{ color: "paragraph-muted" }}>
+          {strings.tasksUrgentMacUnavailable()}
+        </Text>
         <TaskControl label={strings.tasksRepeat()}>
           <select
             aria-label={strings.tasksRepeat()}

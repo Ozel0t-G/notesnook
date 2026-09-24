@@ -49,6 +49,7 @@ import { logger } from "../logger.js";
 import { Shortcuts } from "../collections/shortcuts.js";
 import { Reminders } from "../collections/reminders.js";
 import { Tasks, TaskLists } from "../collections/tasks.js";
+import { TaskFavorites } from "../collections/task-favorites.js";
 import { Relations } from "../collections/relations.js";
 import Subscriptions from "./subscriptions.js";
 import { InboxItemsHistory } from "../collections/inbox-items-history.js";
@@ -225,6 +226,7 @@ class Database {
   shortcuts = new Shortcuts(this);
   reminders = new Reminders(this);
   taskLists = new TaskLists(this);
+  taskFavorites = new TaskFavorites(this);
   tasks = new Tasks(this);
   relations = new Relations(this);
   notes = new Notes(this);

@@ -21,6 +21,7 @@ import { Box, Button, Flex, Text } from "@theme-ui/components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { strings } from "@notesnook/intl";
 import { DatabaseUpdatedEvent, EVENTS } from "@notesnook/core";
+import { TaskFavorite } from "@notesnook/core";
 import { db } from "../common/db";
 import {
   SmartTaskList,
@@ -31,7 +32,8 @@ import {
   taskIsOverdue
 } from "../common/task-domain";
 import { TaskDialog } from "../dialogs/task-dialog";
-import { ItemDialog } from "../dialogs/item-dialog";
+import { TaskListDialog } from "../dialogs/task-list-dialog";
+import { TaskListGlyph } from "../components/task-list-appearance";
 import { ConfirmDialog } from "../dialogs/confirm";
 import { NavigationEvents } from "../navigation";
 import { showToast } from "../utils/toast";
@@ -92,17 +94,35 @@ function todayKeyForTimestamp(timestamp: number): string {
   ].join("-");
 }
 
-function dueLabel(task: TaskRecord): string | undefined {
-  if (!task.dueDate) return undefined;
-  const [year, month, day] = task.dueDate.split("-").map(Number);
+function reminderLabel(task: TaskRecord): string | undefined {
+  const schedule = task as TaskRecord & {
+    reminderDate?: string;
+    reminderTime?: string;
+  };
+  const dateValue =
+    schedule.reminderDate ||
+    (task.reminderAt ? todayKeyForTimestamp(task.reminderAt) : undefined) ||
+    task.dueDate;
+  if (!dateValue) return undefined;
+  const timeValue =
+    schedule.reminderTime ||
+    (task.reminderAt && !schedule.reminderDate
+      ? new Intl.DateTimeFormat("en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false
+        }).format(task.reminderAt)
+      : undefined) ||
+    task.dueTime;
+  const [year, month, day] = dateValue.split("-").map(Number);
   const date = new Date(year, month - 1, day);
   const formatted = new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     ...(year !== new Date().getFullYear() ? { year: "numeric" } : {})
   }).format(date);
-  if (!task.dueTime) return formatted;
-  const [hour, minute] = task.dueTime.split(":").map(Number);
+  if (!timeValue) return formatted;
+  const [hour, minute] = timeValue.split(":").map(Number);
   const time = new Intl.DateTimeFormat(undefined, {
     hour: "numeric",
     minute: "2-digit"
@@ -142,11 +162,15 @@ export default function Tasks() {
   const [visibleTasks, setVisibleTasks] = useState<TaskRecord[]>([]);
   const [visibleLimit, setVisibleLimit] = useState(100);
   const [lists, setLists] = useState<TaskListRecord[]>([]);
+  const [favorites, setFavorites] = useState<TaskFavorite[]>([]);
+  const [editingFavorites, setEditingFavorites] = useState(false);
+  const [favoriteChoice, setFavoriteChoice] =
+    useState<TaskFavorite>("smart:today");
+  const draggedFavorite = useRef<TaskFavorite | null>(null);
   const [defaultListId, setDefaultListId] = useState("");
   const [title, setTitle] = useState("");
-  const [quickDueDate, setQuickDueDate] = useState("");
-  const [quickDueTime, setQuickDueTime] = useState("");
-  const [quickReminder, setQuickReminder] = useState("");
+  const [quickReminderDate, setQuickReminderDate] = useState("");
+  const [quickReminderTime, setQuickReminderTime] = useState("");
   const [quickPriority, setQuickPriority] = useState<
     "none" | "low" | "medium" | "high"
   >("none");
@@ -161,9 +185,10 @@ export default function Tasks() {
   const refresh = useCallback(async () => {
     const request = ++refreshId.current;
     try {
-      const [allTasks, allLists] = await Promise.all([
+      const [allTasks, allLists, savedFavorites] = await Promise.all([
         taskDomain.tasks.list(),
-        taskDomain.taskLists.list()
+        taskDomain.taskLists.list(),
+        taskDomain.taskFavorites.list()
       ]);
       const defaultList = await taskDomain.taskLists.default();
       const selectedTasks = selection.startsWith("list:")
@@ -174,6 +199,13 @@ export default function Tasks() {
       if (request !== refreshId.current) return;
       setTasks(allTasks);
       setLists(allLists);
+      setFavorites(
+        savedFavorites.filter(
+          (item) =>
+            !item.startsWith("list:") ||
+            allLists.some((list) => list.id === item.slice(5))
+        )
+      );
       setDefaultListId(defaultList.id);
       setVisibleTasks(
         selection === "completed"
@@ -235,7 +267,11 @@ export default function Tasks() {
     let midnight: ReturnType<typeof setTimeout>;
     const schedule = () => {
       const now = new Date();
-      const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      const next = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() + 1
+      );
       midnight = setTimeout(() => {
         void refresh();
         schedule();
@@ -281,6 +317,26 @@ export default function Tasks() {
     () => visibleTasks.slice(0, visibleLimit),
     [visibleTasks, visibleLimit]
   );
+  const availableFavorites = useMemo(
+    () =>
+      [
+        ...smartLists.map((item) => `smart:${item.id}` as TaskFavorite),
+        ...lists.map((item) => `list:${item.id}` as TaskFavorite)
+      ].filter((item) => !favorites.includes(item)),
+    [lists, favorites]
+  );
+
+  function favoriteTitle(item: TaskFavorite): string {
+    if (item.startsWith("list:"))
+      return (
+        lists.find((list) => list.id === item.slice(5))?.name ||
+        strings.tasksLists()
+      );
+    return (
+      smartLists.find((smart) => smart.id === item.slice(6))?.title() ||
+      strings.tasksTitle()
+    );
+  }
 
   async function openTask(task?: TaskRecord) {
     const changed = await TaskDialog.show({
@@ -296,28 +352,22 @@ export default function Tasks() {
   async function quickAdd() {
     if (!title.trim()) return;
     try {
-      const reminderAt = quickReminder
-        ? new Date(quickReminder).getTime()
-        : undefined;
-      if (quickReminder && !Number.isFinite(reminderAt)) {
-        showToast("error", strings.tasksInvalidReminder());
-        return;
-      }
       const defaultList =
         quickListId || (await taskDomain.taskLists.default()).id;
       await taskDomain.tasks.create({
         title: title.trim(),
         listId: defaultList,
-        dueDate: quickDueDate || undefined,
-        dueTime: quickDueDate && quickDueTime ? quickDueTime : undefined,
-        reminderAt,
+        reminderDate: quickReminderDate || undefined,
+        reminderTime:
+          quickReminderDate && quickReminderTime
+            ? quickReminderTime
+            : undefined,
         priority: quickPriority,
         flagged: quickFlagged
-      });
+      } as Parameters<typeof taskDomain.tasks.create>[0]);
       setTitle("");
-      setQuickDueDate("");
-      setQuickDueTime("");
-      setQuickReminder("");
+      setQuickReminderDate("");
+      setQuickReminderTime("");
       setQuickPriority("none");
       setQuickFlagged(false);
       await refresh();
@@ -329,31 +379,33 @@ export default function Tasks() {
   }
 
   async function createList() {
-    const name = await ItemDialog.show({ title: strings.tasksNewList() });
-    if (!name || typeof name !== "string") return;
+    if (await TaskListDialog.show({})) await refresh();
+  }
+
+  async function editList(list: TaskListRecord) {
+    if (await TaskListDialog.show({ list })) await refresh();
+  }
+
+  async function saveFavorites(next: TaskFavorite[]) {
+    const previous = favorites;
+    setFavorites(next);
     try {
-      const created = await taskDomain.taskLists.create({ name: name.trim() });
-      setSelection(`list:${created.id}`);
-      await refresh();
+      await taskDomain.taskFavorites.set(next);
     } catch (cause) {
+      setFavorites(previous);
       logger.error(cause);
       showToast("error", strings.tasksCouldNotSave());
     }
   }
 
-  async function editList(list: TaskListRecord) {
-    const name = await ItemDialog.show({
-      title: strings.tasksEditList(),
-      defaultValue: list.name
-    });
-    if (!name || typeof name !== "string") return;
-    try {
-      await taskDomain.taskLists.update(list.id, { name: name.trim() });
-      await refresh();
-    } catch (cause) {
-      logger.error(cause);
-      showToast("error", strings.tasksCouldNotSave());
-    }
+  function moveFavorite(item: TaskFavorite, offset: number) {
+    const from = favorites.indexOf(item);
+    const to = from + offset;
+    if (from < 0 || to < 0 || to >= favorites.length) return;
+    const next = [...favorites];
+    next.splice(from, 1);
+    next.splice(to, 0, item);
+    void saveFavorites(next);
   }
 
   async function deleteList(list: TaskListRecord) {
@@ -418,43 +470,179 @@ export default function Tasks() {
       data-test-id="tasks-view"
     >
       <Box sx={{ overflowY: "auto", flex: 1, px: 3, py: 2 }}>
-        <Flex sx={{ flexWrap: "wrap", gap: 2, mb: 3 }}>
-          {smartLists.map((smart) => (
-            <button
-              key={smart.id}
-              type="button"
-              aria-pressed={selection === smart.id}
-              onClick={() => setSelection(smart.id)}
-              style={{
-                flex: "1 1 145px",
-                minHeight: 64,
-                textAlign: "left",
-                border: "1px solid var(--border)",
-                borderRadius: 10,
-                padding: "10px 12px",
-                background:
-                  selection === smart.id
-                    ? "var(--background-selected)"
-                    : "var(--background-secondary)",
-                color: "var(--paragraph)",
-                cursor: "pointer",
-                font: "inherit"
-              }}
-            >
-              <Flex
-                sx={{ justifyContent: "space-between", alignItems: "center" }}
-              >
-                <Text aria-hidden="true" sx={{ color: "accent", fontSize: 20 }}>
-                  {smart.icon}
-                </Text>
-                <Text sx={{ fontWeight: "bold" }}>
-                  {countForSmartList(smart.id, tasks)}
-                </Text>
-              </Flex>
-              <Text sx={{ fontWeight: "bold" }}>{smart.title()}</Text>
-            </button>
-          ))}
+        <Flex
+          sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}
+        >
+          <Text sx={{ fontWeight: "bold" }}>{strings.tasksFavorites()}</Text>
+          <Button
+            variant="transparent"
+            onClick={() => setEditingFavorites((value) => !value)}
+            aria-label={strings.tasksEditFavorites()}
+            aria-pressed={editingFavorites}
+          >
+            {strings.tasksEditFavorites()}
+          </Button>
         </Flex>
+        {favorites.length === 0 ? (
+          <Text sx={{ color: "paragraph-muted", mb: 2 }}>
+            {strings.tasksNoFavorites()}
+          </Text>
+        ) : null}
+        <Flex sx={{ flexWrap: "wrap", gap: 2, mb: 3 }}>
+          {favorites.map((item, index) => {
+            const custom = item.startsWith("list:");
+            const smart = custom
+              ? undefined
+              : smartLists.find((value) => value.id === item.slice(6));
+            const list = custom
+              ? lists.find((value) => value.id === item.slice(5))
+              : undefined;
+            const target = custom
+              ? (item as TaskSelection)
+              : (item.slice(6) as SmartTaskList);
+            const count = custom
+              ? tasks.filter(
+                  (task) => !task.completed && task.listId === list?.id
+                ).length
+              : countForSmartList(smart!.id, tasks);
+            return (
+              <div
+                key={item}
+                draggable={editingFavorites}
+                onDragStart={() => {
+                  draggedFavorite.current = item;
+                }}
+                onDragOver={(event) => {
+                  if (editingFavorites) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const from = draggedFavorite.current;
+                  if (from && from !== item)
+                    moveFavorite(from, index - favorites.indexOf(from));
+                  draggedFavorite.current = null;
+                }}
+                style={{ flex: "1 1 145px", maxWidth: 250 }}
+              >
+                <button
+                  type="button"
+                  aria-pressed={selection === target}
+                  onClick={() => setSelection(target)}
+                  style={{
+                    width: "100%",
+                    minHeight: 64,
+                    textAlign: "left",
+                    border: "1px solid var(--border)",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    background:
+                      selection === target
+                        ? "var(--background-selected)"
+                        : "var(--background-secondary)",
+                    color: "var(--paragraph)",
+                    cursor: editingFavorites ? "grab" : "pointer",
+                    font: "inherit"
+                  }}
+                >
+                  <Flex
+                    sx={{
+                      justifyContent: "space-between",
+                      alignItems: "center"
+                    }}
+                  >
+                    {list ? (
+                      <TaskListGlyph
+                        symbol={list.symbol}
+                        color={list.color}
+                        size={20}
+                      />
+                    ) : (
+                      <Text
+                        aria-hidden="true"
+                        sx={{ color: "accent", fontSize: 20 }}
+                      >
+                        {smart?.icon}
+                      </Text>
+                    )}
+                    <Text sx={{ fontWeight: "bold" }}>{count}</Text>
+                  </Flex>
+                  <Text sx={{ fontWeight: "bold" }}>{favoriteTitle(item)}</Text>
+                </button>
+                {editingFavorites ? (
+                  <Flex sx={{ gap: 1, mt: 1, justifyContent: "flex-end" }}>
+                    <button
+                      type="button"
+                      aria-label={`${strings.tasksMoveFavoriteUp()}: ${favoriteTitle(
+                        item
+                      )}`}
+                      disabled={index === 0}
+                      onClick={() => moveFavorite(item, -1)}
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${strings.tasksMoveFavoriteDown()}: ${favoriteTitle(
+                        item
+                      )}`}
+                      disabled={index === favorites.length - 1}
+                      onClick={() => moveFavorite(item, 1)}
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${strings.tasksRemoveFavorite()}: ${favoriteTitle(
+                        item
+                      )}`}
+                      onClick={() =>
+                        void saveFavorites(
+                          favorites.filter((value) => value !== item)
+                        )
+                      }
+                    >
+                      ×
+                    </button>
+                  </Flex>
+                ) : null}
+              </div>
+            );
+          })}
+        </Flex>
+        {editingFavorites && availableFavorites.length > 0 ? (
+          <Flex sx={{ gap: 2, mb: 3 }}>
+            <select
+              aria-label={strings.tasksAddFavorite()}
+              value={
+                availableFavorites.includes(favoriteChoice)
+                  ? favoriteChoice
+                  : availableFavorites[0]
+              }
+              onChange={(event) =>
+                setFavoriteChoice(event.target.value as TaskFavorite)
+              }
+            >
+              {availableFavorites.map((item) => (
+                <option key={item} value={item}>
+                  {favoriteTitle(item)}
+                </option>
+              ))}
+            </select>
+            <Button
+              variant="secondary"
+              onClick={() =>
+                void saveFavorites([
+                  ...favorites,
+                  availableFavorites.includes(favoriteChoice)
+                    ? favoriteChoice
+                    : availableFavorites[0]
+                ])
+              }
+            >
+              {strings.tasksAddFavorite()}
+            </Button>
+          </Flex>
+        ) : null}
         <Flex
           sx={{ justifyContent: "space-between", alignItems: "center", mb: 2 }}
         >
@@ -493,6 +681,19 @@ export default function Tasks() {
                   font: "inherit"
                 }}
               >
+                <span
+                  style={{
+                    display: "inline-flex",
+                    verticalAlign: "middle",
+                    marginRight: 8
+                  }}
+                >
+                  <TaskListGlyph
+                    symbol={list.symbol}
+                    color={list.color}
+                    size={19}
+                  />
+                </span>
                 {list.name} ·{" "}
                 {
                   tasks.filter(
@@ -658,22 +859,19 @@ export default function Tasks() {
             </select>
             <input
               type="date"
-              aria-label={strings.tasksDueDate()}
-              value={quickDueDate}
-              onChange={(event) => setQuickDueDate(event.target.value)}
+              aria-label={`${strings.tasksReminder()} ${strings.tasksDate()}`}
+              value={quickReminderDate}
+              onChange={(event) => {
+                setQuickReminderDate(event.target.value);
+                if (!event.target.value) setQuickReminderTime("");
+              }}
             />
             <input
               type="time"
-              aria-label={strings.tasksDueTime()}
-              disabled={!quickDueDate}
-              value={quickDueTime}
-              onChange={(event) => setQuickDueTime(event.target.value)}
-            />
-            <input
-              type="datetime-local"
-              aria-label={strings.tasksReminder()}
-              value={quickReminder}
-              onChange={(event) => setQuickReminder(event.target.value)}
+              aria-label={`${strings.tasksReminder()} ${strings.tasksTime()}`}
+              disabled={!quickReminderDate}
+              value={quickReminderTime}
+              onChange={(event) => setQuickReminderTime(event.target.value)}
             />
             <select
               aria-label={strings.tasksPriority()}
@@ -813,14 +1011,9 @@ function TaskRow(props: {
           }}
         >
           {overdue ? <Text>{strings.tasksOverdue()}</Text> : null}
-          {dueLabel(task) ? <Text>{dueLabel(task)}</Text> : null}
-          {task.reminderAt ? (
+          {reminderLabel(task) ? (
             <Text aria-label={strings.tasksReminder()}>
-              {strings.tasksReminderAt()} ·{" "}
-              {new Intl.DateTimeFormat(undefined, {
-                dateStyle: "medium",
-                timeStyle: "short"
-              }).format(task.reminderAt)}
+              {reminderLabel(task)}
             </Text>
           ) : null}
           {task.priority !== "none" ? (

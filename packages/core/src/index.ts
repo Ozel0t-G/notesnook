@@ -29,6 +29,14 @@ export {
   taskReminderSchedule,
   taskReminderTimestamp
 } from "./collections/tasks.js";
+export {
+  TASK_LIST_SYMBOLS,
+  TASK_LIST_COLORS,
+  DEFAULT_TASK_LIST_SYMBOL,
+  DEFAULT_TASK_LIST_COLOR
+} from "./collections/task-list-appearance.js";
+export { DEFAULT_TASK_FAVORITES } from "./collections/task-favorites.js";
+export type { TaskFavorite } from "./collections/task-favorites.js";
 export type {
   Task,
   TaskInput,

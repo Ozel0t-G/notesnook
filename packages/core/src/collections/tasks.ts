@@ -1,7 +1,20 @@
 /*
 This file is part of the Notesnook project (https://notesnook.com/)
-Copyright (C) 2026 Streetwriters (Private) Limited
-This program is free software under the GNU General Public License v3 or later.
+
+Copyright (C) 2023 Streetwriters (Private) Limited
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { RRule } from "rrule";
@@ -11,6 +24,12 @@ import Database from "../api/index.js";
 import { Reminder, SettingItem } from "../types.js";
 import { getId, makeId } from "../utils/id.js";
 import { logger } from "../logger.js";
+import {
+  DEFAULT_TASK_LIST_COLOR,
+  DEFAULT_TASK_LIST_SYMBOL,
+  isTaskListColor,
+  isTaskListSymbol
+} from "./task-list-appearance.js";
 
 const VERSION = 1;
 const PREFIX = "appleTasks:v1:";
@@ -81,6 +100,13 @@ export interface TaskList {
 
 export type TaskListInput = Pick<TaskList, "name"> &
   Partial<Pick<TaskList, "sortOrder" | "color" | "symbol">>;
+
+function validListColor(color: string) {
+  return (
+    isTaskListColor(color) ||
+    /^#[0-9a-f]{3}([0-9a-f]{3})?([0-9a-f]{2})?$/i.test(color)
+  );
+}
 
 function key(kind: "task" | "list", id: string) {
   return `${PREFIX}${kind}:${id}`;
@@ -423,7 +449,9 @@ function isListRecord(record: unknown): record is TaskList {
     !!list.name.trim() &&
     Number.isFinite(list.sortOrder) &&
     Number.isFinite(list.createdAt) &&
-    Number.isFinite(list.updatedAt)
+    Number.isFinite(list.updatedAt) &&
+    (list.symbol === undefined || typeof list.symbol === "string") &&
+    (list.color === undefined || typeof list.color === "string")
   );
 }
 
@@ -531,7 +559,9 @@ export class TaskLists extends TaskRecordStore {
       sortOrder: 0,
       createdAt: now,
       updatedAt: now,
-      schemaVersion: VERSION
+      schemaVersion: VERSION,
+      symbol: DEFAULT_TASK_LIST_SYMBOL,
+      color: DEFAULT_TASK_LIST_COLOR
     };
     await this.save("list", value);
     return value;
@@ -541,6 +571,10 @@ export class TaskLists extends TaskRecordStore {
     const data = typeof input === "string" ? { name: input } : input;
     const name = data.name.trim();
     if (!name) throw new Error("Task list name is required.");
+    if (data.symbol && !isTaskListSymbol(data.symbol))
+      throw new Error("Invalid Task list symbol.");
+    if (data.color && !validListColor(data.color))
+      throw new Error("Invalid Task list color.");
     const now = Date.now();
     const value: TaskList = {
       id: getId(),
@@ -549,8 +583,8 @@ export class TaskLists extends TaskRecordStore {
       createdAt: now,
       updatedAt: now,
       schemaVersion: VERSION,
-      color: data.color,
-      symbol: data.symbol
+      color: data.color ?? DEFAULT_TASK_LIST_COLOR,
+      symbol: data.symbol ?? DEFAULT_TASK_LIST_SYMBOL
     };
     await this.save("list", value);
     return value;
@@ -561,6 +595,10 @@ export class TaskLists extends TaskRecordStore {
     if (!old) throw new Error("Task list not found.");
     const name = patch.name === undefined ? old.name : patch.name.trim();
     if (!name) throw new Error("Task list name is required.");
+    if (patch.symbol !== undefined && !isTaskListSymbol(patch.symbol))
+      throw new Error("Invalid Task list symbol.");
+    if (patch.color !== undefined && !validListColor(patch.color))
+      throw new Error("Invalid Task list color.");
     const value: TaskList = { ...old, ...patch, name, updatedAt: Date.now() };
     await this.save("list", value);
     return value;

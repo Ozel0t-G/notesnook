@@ -1,3 +1,22 @@
+/*
+This file is part of the Notesnook project (https://notesnook.com/)
+
+Copyright (C) 2023 Streetwriters (Private) Limited
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
 import { describe, expect, test, vi } from "vitest";
 import { databaseTest, loginFakeUser } from "./utils/index.js";
 import {
@@ -19,6 +38,38 @@ async function atTime<T>(time: number, action: () => Promise<T>): Promise<T> {
 }
 
 describe("standalone Tasks", () => {
+  test("Task favorites preserve order and an explicit empty selection", async () => {
+    const db = await databaseTest();
+    expect(await db.taskFavorites.list()).toEqual([
+      "smart:today",
+      "smart:scheduled",
+      "smart:all",
+      "smart:flagged",
+      "smart:completed"
+    ]);
+    const work = await db.taskLists.create({
+      name: "Work",
+      symbol: "briefcase",
+      color: "indigo"
+    });
+    expect(work).toEqual(
+      expect.objectContaining({ symbol: "briefcase", color: "indigo" })
+    );
+    await db.taskFavorites.set([`list:${work.id}`, "smart:today"]);
+    expect(db.taskFavorites.listSync()).toEqual([
+      `list:${work.id}`,
+      "smart:today"
+    ]);
+    await db.taskFavorites.set([]);
+    expect(db.taskFavorites.listSync()).toEqual([]);
+    await expect(
+      db.taskFavorites.set(["smart:today", "smart:today"])
+    ).rejects.toThrow();
+    await expect(
+      db.taskLists.create({ name: "Bad", symbol: "invalid" })
+    ).rejects.toThrow();
+  });
+
   test("create rejects an existing Task ID and a tombstoned ID", async () => {
     const db = await databaseTest();
     const task = await db.tasks.create({ title: "Original" });
@@ -777,6 +828,7 @@ describe("standalone Tasks", () => {
         name: "Work",
         color: "#f00"
       });
+      await first.taskFavorites.set([`list:${work.id}`, "smart:flagged"]);
       const reminderAt = new Date(2026, 9, 30, 9).getTime();
       const task = await first.tasks.create({
         title: "Ship report",
@@ -794,6 +846,10 @@ describe("standalone Tasks", () => {
       expect(await second.taskLists.list()).toContainEqual(
         expect.objectContaining({ id: work.id, name: "Work", color: "#f00" })
       );
+      expect(await second.taskFavorites.list()).toEqual([
+        `list:${work.id}`,
+        "smart:flagged"
+      ]);
       expect(await second.tasks.get(task.id)).toEqual(
         expect.objectContaining({
           id: task.id,

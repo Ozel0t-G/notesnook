@@ -42,3 +42,35 @@ test("create, complete, and reopen a standalone Task", async ({ page }) => {
     "Desktop task smoke"
   );
 });
+
+test("customize a Task List and persist an empty Favorites section", async ({
+  page
+}) => {
+  await page.waitForSelector(".ProseMirror");
+  await page
+    .locator('[data-test-id="navigation-item"]', { hasText: "Tasks" })
+    .click();
+  const tasksView = page.locator('[data-test-id="tasks-view"]');
+  await tasksView.getByRole("button", { name: "New List" }).click();
+  const editor = page.locator('[data-test-id="task-list-dialog"]');
+  await expect(editor).toBeVisible();
+  await editor.getByLabel("List name").fill("Studio");
+  await editor.getByRole("button", { name: "paintbrush" }).click();
+  await editor.getByRole("button", { name: "purple" }).click();
+  await editor.getByRole("button", { name: "Create List" }).click();
+  await expect(tasksView.getByRole("button", { name: /Studio/ })).toBeVisible();
+
+  await tasksView.getByRole("button", { name: "Edit Favorites" }).click();
+  for (const name of ["Today", "Scheduled", "All", "Flagged", "Completed"])
+    await tasksView
+      .getByRole("button", { name: `Remove from Favorites: ${name}` })
+      .click();
+  await expect(tasksView.getByText("No favorites selected")).toBeVisible();
+  await tasksView
+    .getByRole("combobox", { name: "Add to Favorites" })
+    .selectOption({ label: "Studio" });
+  await tasksView.getByRole("button", { name: "Add to Favorites" }).click();
+  await expect(tasksView.getByRole("button", { name: /Studio/ })).toHaveCount(
+    2
+  );
+});

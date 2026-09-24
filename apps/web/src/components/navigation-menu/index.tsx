@@ -33,6 +33,7 @@ import {
   Login,
   Circle,
   Icon,
+  TableOfContents,
   Reminders,
   User,
   Pro,
@@ -124,7 +125,7 @@ import { shouldShowWrapped } from "../../utils/should-show-wrapped";
 import { writeToClipboard } from "../../utils/clipboard";
 
 type Route = {
-  id: "notes" | "favorites" | "reminders" | "monographs" | "trash" | "archive";
+  id: "notes" | "favorites" | "tasks" | "reminders" | "monographs" | "trash" | "archive";
   title: string;
   path: string;
   icon: Icon;
@@ -140,7 +141,12 @@ const routes: Route[] = [
     path: "/favorites",
     icon: StarOutline
   },
-  {
+  IS_DESKTOP_APP ? {
+    id: "tasks",
+    title: strings.tasksTitle(),
+    path: "/tasks",
+    icon: TableOfContents
+  } : {
     id: "reminders",
     title: strings.routes.Reminders(),
     path: "/reminders",
@@ -839,6 +845,8 @@ function ItemCount({ item }: { item: Route | Color | Notebook | Tag }) {
             return notes?.length || 0;
           case "favorites":
             return db.notes.favorites.count();
+          case "tasks":
+            return 0;
           case "reminders":
             return reminders?.length || 0;
           case "trash":
@@ -853,6 +861,7 @@ function ItemCount({ item }: { item: Route | Color | Notebook | Tag }) {
       }
     })().then((c) => setCount(c || 0));
   }, [item, notes, trash, monographs, reminders]);
+  if (!("type" in item) && item.id === "tasks") return null;
   return <Text variant="subBody">{count}</Text>;
 }
 

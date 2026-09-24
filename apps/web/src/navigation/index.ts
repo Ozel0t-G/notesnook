@@ -100,7 +100,9 @@ export function getHomeRoute() {
 
   switch (homepage.type) {
     case "route":
-      return `/${homepage.id}`;
+      return IS_DESKTOP_APP && homepage.id === "reminders"
+        ? "/tasks"
+        : `/${homepage.id}`;
     case "notebook":
       return `/notebooks/${homepage.id}`;
     case "tag":

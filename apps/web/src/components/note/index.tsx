@@ -143,7 +143,6 @@ function Note(props: NoteProps) {
       body={note.headline as string}
       onKeyPress={async (e) => {
         if (e.key === "Delete") {
-          // @ts-expect-error write tests for this
           await Multiselect.moveNotesToTrash(
             selectionStore.get().selectedItems
           );
@@ -266,7 +265,7 @@ function Note(props: NoteProps) {
                   />
                 ))}
 
-              {reminder && isReminderActive(reminder) ? (
+              {!IS_DESKTOP_APP && reminder && isReminderActive(reminder) ? (
                 <IconTag
                   icon={Reminder}
                   text={getFormattedReminderTime(reminder, true)}
@@ -409,7 +408,7 @@ export const noteMenuItems: (
         }
       }
     },
-    {
+    ...(!IS_DESKTOP_APP ? [{
       type: "button",
       key: "remind-me",
       title: strings.remindMe(),
@@ -417,7 +416,7 @@ export const noteMenuItems: (
       onClick: async () => {
         await AddReminderDialog.show({ note });
       }
-    },
+    } as const] : []),
     {
       type: "button",
       key: "archive",

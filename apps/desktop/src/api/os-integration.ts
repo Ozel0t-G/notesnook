@@ -42,6 +42,7 @@ import { disableCustomDns, enableCustomDns } from "../utils/custom-dns";
 import type { MenuItem as NNMenuItem } from "@notesnook/ui";
 import { platform } from "os";
 import { strings } from "@notesnook/intl";
+import { taskReminderScheduler } from "../utils/task-reminder-scheduler";
 
 const t = initTRPC.create();
 
@@ -162,6 +163,21 @@ export const osIntegrationRouter = t.router({
         notification.once("click", () => resolve(input.tag));
       });
     }),
+  replaceTaskReminders: t.procedure
+    .input(
+      z
+        .array(
+          z.object({
+            id: z.string().min(1).max(256),
+            title: z.string().min(1).max(2048),
+            reminderAt: z.number().finite().int()
+          })
+        )
+        .max(100000)
+    )
+    .mutation(({ input }) => ({
+      scheduled: taskReminderScheduler.replace(input)
+    })),
   openPath: t.procedure
     .input(z.object({ type: z.literal("path"), link: z.string() }))
     .query(async ({ input }) => {

@@ -23,7 +23,8 @@ import { hideBin } from "yargs/helpers";
 export type CLIOptions = {
   note: boolean | string;
   notebook: boolean | string;
-  reminder: boolean | string;
+  reminder: boolean;
+  task: boolean;
   hidden: boolean;
 };
 
@@ -32,6 +33,7 @@ export async function parseArguments(argv: string[]): Promise<CLIOptions> {
     note: false,
     notebook: false,
     reminder: false,
+    task: false,
     hidden: false
   };
   const { hidden } = await yargs(hideBin(argv))
@@ -48,8 +50,11 @@ export async function parseArguments(argv: string[]): Promise<CLIOptions> {
         .command("notebook", "Create a new notebook", {}, () => {
           result.notebook = true;
         })
-        .command("reminder", "Add a new reminder", {}, () => {
+        .command("reminder", "Legacy alias for new task", {}, () => {
           result.reminder = true;
+        })
+        .command("task", "Add a new task", {}, () => {
+          result.task = true;
         });
     })
     .command("open", "Open a specific item", (yargs) => {

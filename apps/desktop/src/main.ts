@@ -41,6 +41,7 @@ import { Messages, setI18nGlobal } from "@notesnook/intl";
 import { i18n } from "@lingui/core";
 import { PATHS } from "./constants";
 import { normalizePathString } from "./utils/resolve-path";
+import { taskReminderScheduler } from "./utils/task-reminder-scheduler";
 
 const locale =
   process.env.NODE_ENV === "development"
@@ -52,7 +53,10 @@ locale.then(({ default: locale }) => {
   });
   i18n.activate("en");
 });
-setI18nGlobal(i18n);
+// Desktop and intl can resolve separate copies of the same Lingui version.
+// Their private class fields make TypeScript treat the identical runtime API
+// as nominally different, so bridge that package boundary explicitly.
+setI18nGlobal(i18n as unknown as Parameters<typeof setI18nGlobal>[0]);
 
 const appHostnames = isDevelopment()
   ? ["localhost", "127.0.0.1"]
@@ -60,6 +64,54 @@ const appHostnames = isDevelopment()
 // Pending nn:// link to open once the window is ready (used on Windows/Linux
 // when the app is launched via the nn:// protocol for the first time).
 let pendingNNLink: string | undefined = findNNLink(process.argv);
+let pendingTaskId: string | undefined;
+let taskRendererReady = false;
+let creatingWindow: Promise<void> | undefined;
+
+taskReminderScheduler.setActivationHandler((id) => {
+  pendingTaskId = id;
+  void openPendingTask();
+});
+taskReminderScheduler.setSnapshotHandler(() => {
+  taskRendererReady = true;
+  void routePendingTask();
+});
+
+async function ensureWindow() {
+  if (globalThis.window) return;
+  if (!creatingWindow)
+    creatingWindow = createWindow().finally(() => {
+      creatingWindow = undefined;
+    });
+  await creatingWindow;
+}
+
+async function openPendingTask() {
+  try {
+    await ensureWindow();
+    bringToFront();
+    await routePendingTask();
+  } catch {
+    console.error("Failed to open Task notification");
+  }
+}
+
+async function routePendingTask() {
+  const taskId = pendingTaskId;
+  const window = globalThis.window;
+  if (!taskId || !window || !taskRendererReady) return;
+  bringToFront();
+  const destination = `/tasks#/tasks/${encodeURIComponent(taskId)}/edit`;
+  const script = `window.history.replaceState(null, "", ${JSON.stringify(
+    destination
+  )}); window.dispatchEvent(new PopStateEvent("popstate")); window.dispatchEvent(new HashChangeEvent("hashchange"));`;
+  try {
+    await window.webContents.executeJavaScript(script);
+    if (pendingTaskId === taskId) pendingTaskId = undefined;
+  } catch {
+    console.error("Failed to route Task notification");
+  }
+}
 
 // only run a single instance
 if (!MAC_APP_STORE && !app.requestSingleInstanceLock()) {
@@ -89,6 +141,7 @@ process.on("unhandledRejection", (reason) => {
 app.commandLine.appendSwitch("lang", "en-US");
 
 async function createWindow() {
+  taskRendererReady = false;
   const cliOptions = await parseArguments(process.argv);
   setTheme(getTheme());
 
@@ -191,6 +244,7 @@ async function createWindow() {
   );
   mainWindow.once("closed", () => {
     globalThis.window = null;
+    taskRendererReady = false;
   });
 
   setupMenu();
@@ -248,7 +302,7 @@ app.once("ready", async () => {
   if (!MAC_APP_STORE) app.setAsDefaultProtocolClient("nn");
 
   if (!isDevelopment()) registerProtocol();
-  await createWindow();
+  await ensureWindow();
   await migrateBackupDirectory();
   await configureAutoUpdater();
 });
@@ -271,6 +325,7 @@ app.on("second-instance", async (_ev, argv) => {
   if (cliOptions.note) bridge.onCreateItem("note");
   if (cliOptions.notebook) bridge.onCreateItem("notebook");
   if (cliOptions.reminder) bridge.onCreateItem("reminder");
+  if (cliOptions.task) bridge.onCreateItem("task");
   bringToFront();
 });
 
@@ -289,7 +344,7 @@ app.on("open-url", (event, url) => {
 
 app.on("activate", () => {
   if (globalThis.window === null) {
-    createWindow();
+    void ensureWindow();
   }
 });
 
@@ -303,7 +358,8 @@ function createURL(options: CLIOptions, path = "/") {
   url.pathname = path;
   if (options.note === true) url.hash = "/notes/create/1";
   else if (options.notebook === true) url.hash = "/notebooks/create";
-  else if (options.reminder === true) url.hash = "/reminders/create";
+  else if (options.reminder === true || options.task)
+    url.hash = "/tasks/create";
   else if (typeof options.note === "string")
     url.hash = `/notes/${options.note}/edit`;
   else if (typeof options.notebook === "string")

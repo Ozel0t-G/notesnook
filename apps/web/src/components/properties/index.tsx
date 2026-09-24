@@ -280,7 +280,7 @@ function EditorProperties(props: EditorPropertiesProps) {
                   <>
                     <InternalLinks noteId={session.note.id} />
                     <Notebooks noteId={session.note.id} />
-                    <Reminders noteId={session.note.id} />
+                    {!IS_DESKTOP_APP ? <Reminders noteId={session.note.id} /> : null}
                     <Attachments noteId={session.note.id} />
                     <SessionHistory noteId={session.note.id} />
                   </>

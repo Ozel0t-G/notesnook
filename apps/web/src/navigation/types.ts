@@ -26,6 +26,7 @@ export type RouteResult = {
     | "notebook"
     | "notebooks"
     | "reminders"
+    | "tasks"
     | "trash"
     | "tags"
     | "notFound";

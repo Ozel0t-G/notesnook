@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { hashNavigate } from ".";
+import { hashNavigate, navigate } from ".";
 import { defineHashRoutes } from "./types";
 import {
   AddNotebookDialog,
@@ -34,6 +34,11 @@ import { FeatureDialog } from "../dialogs/feature-dialog";
 import { CreateTagDialog } from "../dialogs/item-dialog";
 import { OnboardingDialog } from "../dialogs/onboarding-dialog";
 import { isSectionKey, SectionKeys } from "../dialogs/settings/types";
+import { TaskDialog } from "../dialogs/task-dialog";
+import { taskDomain } from "../common/task-domain";
+import { showToast } from "../utils/toast";
+import { logger } from "../utils/logger";
+import { strings } from "@notesnook/intl";
 
 const hashroutes = defineHashRoutes({
   "/": () => {},
@@ -47,10 +52,33 @@ const hashroutes = defineHashRoutes({
     EditNotebookDialog.show({ notebookId })?.then(afterAction);
   },
   "/reminders/create": () => {
-    AddReminderDialog.show({}).then(afterAction);
+    if (IS_DESKTOP_APP) void showTaskCreate();
+    else AddReminderDialog.show({}).then(afterAction);
   },
   "/reminders/:reminderId/edit": ({ reminderId }) => {
-    EditReminderDialog.show({ reminderId }).then(afterAction);
+    if (IS_DESKTOP_APP) void showMigratedTask(reminderId);
+    else EditReminderDialog.show({ reminderId }).then(afterAction);
+  },
+  "/tasks/create": () => {
+    void showTaskCreate();
+  },
+  "/tasks/:taskId/edit": ({ taskId }) => {
+    void (async () => {
+      try {
+        navigate("/tasks", { replace: true, notify: true });
+        const [task, lists] = await Promise.all([
+          taskDomain.tasks.get(taskId),
+          taskDomain.taskLists.list()
+        ]);
+        if (task) await TaskDialog.show({ task, lists });
+        else showToast("error", strings.noResultsFound());
+      } catch (error) {
+        logger.error(error);
+        showToast("error", strings.tasksCouldNotLoad());
+      } finally {
+        afterTaskAction();
+      }
+    })();
   },
   "/tags/create": () => {
     CreateTagDialog.show().then(afterAction);
@@ -83,4 +111,40 @@ export type HashRoute = keyof typeof hashroutes;
 function afterAction() {
   hashNavigate("/", { replace: true, notify: false });
   if (!history.state.replace) history.back();
+}
+
+function afterTaskAction() {
+  hashNavigate("/", { replace: true, notify: false });
+  navigate("/tasks", { replace: true, notify: true });
+}
+
+async function showTaskCreate() {
+  try {
+    navigate("/tasks", { replace: true, notify: true });
+    const lists = await taskDomain.taskLists.list();
+    await TaskDialog.show({ lists });
+  } catch (error) {
+    logger.error(error);
+    showToast("error", strings.tasksCouldNotLoad());
+  } finally {
+    afterTaskAction();
+  }
+}
+
+async function showMigratedTask(reminderId: string) {
+  try {
+    navigate("/tasks", { replace: true, notify: true });
+    const [tasks, lists] = await Promise.all([
+      taskDomain.tasks.list(),
+      taskDomain.taskLists.list()
+    ]);
+    const task = tasks.find((item) => item.legacyReminderId === reminderId);
+    if (task) await TaskDialog.show({ task, lists });
+    else showToast("error", strings.noResultsFound());
+  } catch (error) {
+    logger.error(error);
+    showToast("error", strings.tasksCouldNotLoad());
+  } finally {
+    afterTaskAction();
+  }
 }

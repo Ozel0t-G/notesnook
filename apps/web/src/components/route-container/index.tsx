@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { PropsWithChildren, useEffect, useRef } from "react";
-import { Box } from "@theme-ui/components";
+import { Box, Button, Flex, Text } from "@theme-ui/components";
 import { Close, AddReminder, Menu } from "../icons";
 import { useStore as useSearchStore } from "../../stores/search-store";
 import useMobile from "../../hooks/use-mobile";
@@ -28,6 +28,7 @@ import { strings } from "@notesnook/intl";
 import { RouteResult } from "../../navigation/types";
 import { CREATE_BUTTON_MAP } from "../../common";
 import { AppEventManager, AppEvents } from "../../common/app-events";
+import { hashNavigate } from "../../navigation";
 
 export type RouteContainerButtons = {
   search?: {
@@ -76,6 +77,26 @@ function Header(props: RouteContainerProps) {
   useEffect(() => {
     if (isSearching) inputRef.current?.focus();
   }, [isSearching]);
+
+  if (type === "tasks") {
+    return (
+      <Flex
+        className="route-container-header"
+        sx={{ alignItems: "center", justifyContent: "space-between", p: 3 }}
+      >
+        <Text sx={{ fontSize: "subheading", fontWeight: "bold" }}>
+          {strings.tasksTitle()}
+        </Text>
+        <Button
+          variant="primary"
+          data-test-id="create-task-button"
+          onClick={() => hashNavigate("/tasks/create")}
+        >
+          {strings.tasksAddTask()}
+        </Button>
+      </Flex>
+    );
+  }
 
   return (
     <Box

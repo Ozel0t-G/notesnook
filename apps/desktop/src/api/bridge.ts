@@ -23,7 +23,7 @@ import { EventEmitter } from "events";
 import TypedEventEmitter from "typed-emitter";
 
 export type AppEvents = {
-  onCreateItem(name: "note" | "notebook" | "reminder"): void;
+  onCreateItem(name: "note" | "notebook" | "reminder" | "task"): void;
   onOpenLink(url: string): void;
   bridgeReady(): void;
 };

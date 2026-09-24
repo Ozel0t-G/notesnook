@@ -248,7 +248,8 @@ async function onCreateItem(itemType: string) {
       hashNavigate("/notebooks/create", { replace: true });
       break;
     case "reminder":
-      hashNavigate("/reminders/create", { replace: true });
+    case "task":
+      hashNavigate("/tasks/create", { replace: true });
       break;
   }
 }

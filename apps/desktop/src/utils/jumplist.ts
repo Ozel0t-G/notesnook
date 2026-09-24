@@ -21,6 +21,7 @@ import { app, Menu } from "electron";
 import { AssetManager } from "./asset-manager";
 import { bringToFront } from "./bring-to-front";
 import { bridge } from "../api/bridge";
+import { strings } from "@notesnook/intl";
 
 export function setupJumplist() {
   if (process.platform === "win32") {
@@ -87,13 +88,13 @@ function setDockMenuOnMacOs() {
       }
     },
     {
-      label: "New reminder",
+      label: strings.tasksAddTask(),
       type: "normal",
       click: () => {
         bringToFront();
-        bridge.onCreateItem("reminder");
+        bridge.onCreateItem("task");
       }
     }
   ]);
-  app.dock.setMenu(contextMenu);
+  app.dock?.setMenu(contextMenu);
 }

@@ -26,6 +26,7 @@ import { store as tagStore } from "./tag-store";
 import { store as attachmentStore } from "./attachment-store";
 import { store as monographStore } from "./monograph-store";
 import { store as reminderStore } from "./reminder-store";
+import { TaskNotificationStore } from "./task-notification-store";
 import { store as settingStore } from "./setting-store";
 import BaseStore from "./index";
 import { showToast } from "../utils/toast";
@@ -86,6 +87,7 @@ class AppStore extends BaseStore<AppStore> {
   navigationTab: NavigationTabItem["id"] = settingStore.get().defaultSidebarTab;
 
   init = () => {
+    TaskNotificationStore.start();
     this.refresh();
     this.set({
       hiddenColors: db.settings.getSideBarHiddenItems("colors"),
@@ -179,6 +181,7 @@ class AppStore extends BaseStore<AppStore> {
     await noteStore.refresh();
     await notebookStore.refresh();
     await reminderStore.refresh();
+    await TaskNotificationStore.refresh();
     await trashStore.refresh();
     await tagStore.refresh();
     await attachmentStore.refresh();

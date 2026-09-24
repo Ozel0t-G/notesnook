@@ -24,6 +24,7 @@ import { NotebookHeader } from "../components/notebook-header";
 import Trash from "../views/trash";
 import { useStore as useNoteStore } from "../stores/note-store";
 import Reminders from "../views/reminders";
+import Tasks from "../views/tasks";
 import { RouteResult, defineRoutes } from "./types";
 import { CREATE_BUTTON_MAP } from "../common";
 import { strings } from "@notesnook/intl";
@@ -85,6 +86,13 @@ const routes = defineRoutes({
   },
   "/reminders": () => {
     useNoteStore.getState().setContext();
+    if (IS_DESKTOP_APP)
+      return defineRoute({
+        key: "tasks",
+        title: strings.tasksTitle(),
+        type: "tasks",
+        component: Tasks
+      });
     return defineRoute({
       key: "reminders",
       title: strings.routes.Reminders(),
@@ -93,6 +101,15 @@ const routes = defineRoutes({
       buttons: {
         create: CREATE_BUTTON_MAP.reminders
       }
+    });
+  },
+  "/tasks": () => {
+    useNoteStore.getState().setContext();
+    return defineRoute({
+      key: "tasks",
+      title: strings.tasksTitle(),
+      type: "tasks",
+      component: Tasks
     });
   },
   "/trash": () => {

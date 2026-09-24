@@ -140,6 +140,10 @@ function queueRefresh() {
 function start() {
   if (started) return;
   started = true;
+  if (taskTitlesArePrivate())
+    updateQueue = updateQueue
+      .then(redactDesktopSchedule)
+      .catch((error) => logger.error(error));
   db.eventManager.subscribe(
     EVENTS.databaseUpdated,
     (event: DatabaseUpdatedEvent) => {

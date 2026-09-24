@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const mocks = vi.hoisted(() => {
   const state = { isLocked: false, credentials: [] as { active: boolean }[] };
@@ -67,11 +67,18 @@ vi.mock("../src/utils/task-scheduler", () => ({
 }));
 
 beforeEach(() => {
+  vi.resetModules();
   vi.stubGlobal("IS_DESKTOP_APP", true);
   vi.useFakeTimers();
   mocks.replace.mockClear();
+  mocks.keyListener = undefined;
   mocks.state.isLocked = false;
   mocks.state.credentials = [];
+});
+
+afterEach(() => {
+  vi.clearAllTimers();
+  vi.useRealTimers();
 });
 
 test("App Lock redacts Electron Task payload and restores titles when disabled", async () => {
@@ -108,5 +115,16 @@ test("App Lock redacts Electron Task payload and restores titles when disabled",
   expect(JSON.stringify(mocks.replace.mock.lastCall?.[0])).toContain(
     "Secret Task title"
   );
-  vi.useRealTimers();
+});
+
+test("starting while already locked clears a prior desktop schedule immediately", async () => {
+  mocks.state.isLocked = true;
+  const { TaskNotificationStore } = await import(
+    "../src/stores/task-notification-store"
+  );
+  TaskNotificationStore.start();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(mocks.replace).toHaveBeenCalledTimes(1);
+  expect(mocks.replace.mock.calls[0][0]).toEqual([]);
 });

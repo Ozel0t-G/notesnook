@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import {
+  NATIVE_TASK_COMPLETION_MAX_AGE_MS,
   canReplayTaskWidgetCompletion,
   isNativeTaskCompletionAction,
   isValidTaskWidgetId,
@@ -45,14 +46,28 @@ function memoryStorage() {
 }
 
 describe("Task widget completion intents", () => {
-  test("rotates the opaque widget scope when the account changes", () => {
+  test("keeps distinct account scopes for a later sign-in to the original account", () => {
     const { storage } = memoryStorage();
     const first = taskWidgetAccountScope(storage, "account-a");
     expect(first).toMatch(/^[0-9a-f]{32}$/);
     expect(taskWidgetAccountScope(storage, "account-a")).toBe(first);
     const second = taskWidgetAccountScope(storage, "account-b");
     expect(second).not.toBe(first);
-    expect(taskWidgetAccountScope(storage, "account-a")).not.toBe(first);
+    expect(taskWidgetAccountScope(storage, "account-a")).toBe(first);
+    expect(taskWidgetAccountScope(storage, null)).not.toBe(first);
+    expect(taskWidgetAccountScope(storage, "account-b")).toBe(second);
+  });
+
+  test("preserves an existing account scope when upgrading the storage format", () => {
+    const { values, storage } = memoryStorage();
+    const token = "a".repeat(32);
+    values.set(
+      "taskWidgetAccountScope:v1",
+      JSON.stringify({ accountId: "account-a", token })
+    );
+    expect(taskWidgetAccountScope(storage, "account-a")).toBe(token);
+    taskWidgetAccountScope(storage, "account-b");
+    expect(taskWidgetAccountScope(storage, "account-a")).toBe(token);
   });
 
   test("rejects malformed App Group completion actions", () => {
@@ -96,6 +111,22 @@ describe("Task widget completion intents", () => {
         completed: true,
         updatedAt: valid.updatedAt
       })
+    ).toBe(false);
+    expect(
+      mayCommitNativeTaskCompletion(
+        valid,
+        valid.scope,
+        { completed: false, updatedAt: valid.updatedAt },
+        valid.enqueuedAt + 24 * 60 * 60 * 1000
+      )
+    ).toBe(true);
+    expect(
+      mayCommitNativeTaskCompletion(
+        valid,
+        valid.scope,
+        { completed: false, updatedAt: valid.updatedAt },
+        valid.enqueuedAt + NATIVE_TASK_COMPLETION_MAX_AGE_MS + 1
+      )
     ).toBe(false);
   });
 

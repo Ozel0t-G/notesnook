@@ -684,6 +684,10 @@ msgstr "A to Z"
 msgid "A vault stores your notes in an encrypted storage."
 msgstr "A vault stores your notes in an encrypted storage."
 
+#: src/strings.ts:1019
+msgid "A Widget completion was not saved. Tap the Task again to retry."
+msgstr "A Widget completion was not saved. Tap the Task again to retry."
+
 #: src/strings.ts:662
 msgid "Abc"
 msgstr "Abc"

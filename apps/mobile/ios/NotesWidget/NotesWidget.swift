@@ -36,7 +36,9 @@ private struct WidgetCompletionAction: Codable {
 private enum WidgetCompletionQueue {
   static let folder = "task-widget-actions-v1"
   static let maximumPending = 50
-  static let maximumAge = 24 * 60 * 60 * 1000
+  static let maximumAge = 7 * 24 * 60 * 60 * 1000
+
+  enum Status { case none, pending, expired }
 
   static func directory() throws -> URL {
     guard let group = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
@@ -52,16 +54,17 @@ private enum WidgetCompletionQueue {
     return SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined() + ".json"
   }
 
-  static func isPending(id: String, scope: String, updatedAt: Int) -> Bool {
+  static func status(id: String, scope: String, updatedAt: Int) -> Status {
     guard let directory = try? directory(),
           let data = try? Data(contentsOf: directory.appendingPathComponent(
             filename(id: id, scope: scope, updatedAt: updatedAt))),
           let action = try? JSONDecoder().decode(WidgetCompletionAction.self, from: data) else {
-      return false
+      return .none
     }
     let age = Int(Date().timeIntervalSince1970 * 1000) - action.enqueuedAt
-    return action.id == id && action.scope == scope && action.updatedAt == updatedAt &&
-      age >= 0 && age <= maximumAge
+    guard action.id == id && action.scope == scope &&
+      action.updatedAt == updatedAt && age >= 0 else { return .none }
+    return age <= maximumAge ? .pending : .expired
   }
 
   static func enqueue(id: String, scope: String, updatedAt: Int) throws {
@@ -70,9 +73,11 @@ private enum WidgetCompletionQueue {
     try manager.createDirectory(at: directory, withIntermediateDirectories: true)
     let name = filename(id: id, scope: scope, updatedAt: updatedAt)
     let url = directory.appendingPathComponent(name)
-    if isPending(id: id, scope: scope, updatedAt: updatedAt) { return }
+    if status(id: id, scope: scope, updatedAt: updatedAt) == .pending { return }
     let pending = try manager.contentsOfDirectory(at: directory,
-      includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
+      includingPropertiesForKeys: nil).filter {
+        $0.pathExtension == "json" && $0.lastPathComponent != name
+      }
     guard pending.count < maximumPending else { throw CocoaError(.fileWriteOutOfSpace) }
     let action = WidgetCompletionAction(id: id, scope: scope,
       updatedAt: updatedAt, enqueuedAt: Int(Date().timeIntervalSince1970 * 1000))
@@ -450,11 +455,15 @@ private struct ReminderRow: View {
     TaskWidgetClock.isOverdue(reminder, at: max(referenceDate, Date()))
   }
 
-  private var isPending: Bool {
-    guard let accountScope, let updatedAt = reminder.updatedAt else { return false }
-    return WidgetCompletionQueue.isPending(
+  private var completionStatus: WidgetCompletionQueue.Status {
+    guard let accountScope, let updatedAt = reminder.updatedAt else { return .none }
+    return WidgetCompletionQueue.status(
       id: reminder.id, scope: accountScope, updatedAt: Int(updatedAt))
   }
+
+  private var isPending: Bool { completionStatus == .pending }
+
+  private var isExpired: Bool { completionStatus == .expired }
 
   var body: some View {
     HStack(spacing: compact ? 6 : 9) {
@@ -470,7 +479,8 @@ private struct ReminderRow: View {
           completionImage
         }
       }
-      .accessibilityLabel(Text(isPending ? "Completion pending" : "Complete \(reminder.title)"))
+      .accessibilityLabel(Text(isPending ? "Completion pending" :
+        isExpired ? "Retry completion for \(reminder.title)" : "Complete \(reminder.title)"))
 
       Link(destination: WidgetURLs.reminder(id: reminder.id)) {
       VStack(alignment: .leading, spacing: compact ? 1 : 2) {
@@ -490,10 +500,11 @@ private struct ReminderRow: View {
             .truncationMode(.tail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        Text(isPending ? String(localized: "Completion pending") : secondaryText)
+        Text(isPending ? String(localized: "Completion pending") :
+          isExpired ? String(localized: "Completion not saved · Tap to retry") : secondaryText)
           .font(.system(size: compact ? 9.5 : 11))
           .foregroundStyle(
-            isOverdue && !isPending ? Color(UIColor.systemRed) : Color.secondary
+            (isExpired || (isOverdue && !isPending)) ? Color(UIColor.systemRed) : Color.secondary
           )
           .lineLimit(1)
       }
@@ -514,7 +525,7 @@ private struct ReminderRow: View {
   }
 
   private var completionImage: some View {
-    Image(systemName: isPending ? "clock.badge.checkmark" : "circle")
+    Image(systemName: isPending ? "clock" : isExpired ? "arrow.clockwise.circle" : "circle")
       .font(.system(size: compact ? 18 : 21))
       .foregroundStyle(accent)
       .frame(width: compact ? 24 : 30, height: compact ? 28 : 34)

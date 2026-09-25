@@ -1015,6 +1015,8 @@ $day$: Current day (eg. Monday)`,
   tasksUrgentUntilStopped: () => t`Alarm until explicitly stopped`,
   tasksUrgentRespectsSilent: () =>
     t`Time Sensitive reminder. Sound follows Silent Mode and notification settings.`,
+  tasksWidgetCompletionRetry: () =>
+    t`A Widget completion was not saved. Tap the Task again to retry.`,
   tasksUrgentRepeatLimit: () =>
     t`Urgent reminders are prepared for the next five repeats. Open VeyraN regularly to schedule more.`,
   tasksLegacyMigrationNotice: () =>

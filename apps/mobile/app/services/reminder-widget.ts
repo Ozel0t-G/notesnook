@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { DatabaseUpdatedEvent, EVENTS } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
 import { AppState, NativeModules, Platform } from "react-native";
 import {
   beginBackgroundTask,
@@ -26,7 +27,9 @@ import {
 } from "react-native-begin-background-task";
 import { db, DatabaseLogger } from "../common/database";
 import { MMKV } from "../common/database/mmkv";
+import { ToastManager } from "./event-manager";
 import {
+  NATIVE_TASK_COMPLETION_MAX_AGE_MS,
   isNativeTaskCompletionAction,
   mayCommitNativeTaskCompletion,
   taskWidgetAccountScope,
@@ -63,6 +66,7 @@ async function drainPendingCompletions() {
   if (useUserStore.getState().appLocked || useUserStore.getState().isLoggingOut)
     return;
   drainingCompletions = true;
+  let needsRetryNotice = false;
   try {
     const accountId = (await db.user.getUser())?.id || null;
     const scope = taskWidgetAccountScope(MMKV, accountId);
@@ -77,14 +81,17 @@ async function drainPendingCompletions() {
           await Native.acknowledgeCompletion(filename);
         continue;
       }
-      if (
-        raw.scope !== scope ||
+      const expired =
         raw.enqueuedAt > Date.now() + 5 * 60 * 1000 ||
-        Date.now() - raw.enqueuedAt > 24 * 60 * 60 * 1000
-      ) {
+        Date.now() - raw.enqueuedAt > NATIVE_TASK_COMPLETION_MAX_AGE_MS;
+      if (expired) {
+        if (raw.scope === scope) needsRetryNotice = true;
         await Native.acknowledgeCompletion(raw.filename);
         continue;
       }
+      // A different signed-in account must never consume this action. Keep it
+      // for a later sign-in to the original account within the retry window.
+      if (raw.scope !== scope) continue;
       const task = await db.tasks.get(raw.id);
       if (
         useUserStore.getState().appLocked ||
@@ -98,6 +105,7 @@ async function drainPendingCompletions() {
         continue;
       }
       if (!mayCommitNativeTaskCompletion(raw, scope, task)) {
+        needsRetryNotice = true;
         await Native.acknowledgeCompletion(raw.filename);
         continue;
       }
@@ -107,6 +115,11 @@ async function drainPendingCompletions() {
       await flushUpdateForCompletion();
       await Native.acknowledgeCompletion(raw.filename);
     }
+    if (needsRetryNotice && AppState.currentState === "active")
+      ToastManager.show({
+        type: "info",
+        message: strings.tasksWidgetCompletionRetry()
+      });
   } catch (error) {
     // Keep the durable action for a later foreground/unlock retry.
     DatabaseLogger.error(error as Error, "ReminderWidget.complete");

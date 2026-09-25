@@ -26,33 +26,52 @@ export function isValidTaskWidgetId(value: unknown): value is string {
 }
 
 const SCOPE_KEY = "taskWidgetAccountScope:v1";
+export const NATIVE_TASK_COMPLETION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 type ScopeStorage = Pick<
   TaskCompletionIntentStorage,
   "getString" | "setString"
 >;
 
-/** A random, account-bound generation shared with the widget, never a credential. */
+/** A random account scope shared with the widget, never a credential.
+ * Keep recent scopes so a queued action can finish if its owner signs back in.
+ */
 export function taskWidgetAccountScope(
   storage: ScopeStorage,
   accountId: string | null
 ): string {
+  let entries: { accountId: string | null; token: string }[] = [];
   try {
     const saved = JSON.parse(storage.getString(SCOPE_KEY) || "null");
-    if (
-      saved?.accountId === accountId &&
-      typeof saved.token === "string" &&
-      /^[0-9a-f]{32}$/.test(saved.token)
-    )
-      return saved.token;
+    const candidates = Array.isArray(saved?.entries)
+      ? saved.entries
+      : saved?.accountId !== undefined
+        ? [saved]
+        : [];
+    entries = candidates.filter(
+      (item: unknown): item is { accountId: string | null; token: string } => {
+        if (!item || typeof item !== "object") return false;
+        const value = item as Record<string, unknown>;
+        return (
+          (value.accountId === null || typeof value.accountId === "string") &&
+          typeof value.token === "string" &&
+          /^[0-9a-f]{32}$/.test(value.token)
+        );
+      }
+    );
+    const current = entries.find((entry) => entry.accountId === accountId);
+    if (current) return current.token;
   } catch {
-    // Replace damaged scope data. Old widget actions will no longer match.
+    // Replace damaged scope data. Invalid actions cannot match a new token.
   }
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
   const token = Array.from(bytes, (byte) =>
     byte.toString(16).padStart(2, "0")
   ).join("");
-  storage.setString(SCOPE_KEY, JSON.stringify({ accountId, token }));
+  storage.setString(
+    SCOPE_KEY,
+    JSON.stringify({ entries: [...entries, { accountId, token }].slice(-8) })
+  );
   return token;
 }
 
@@ -93,7 +112,7 @@ export function mayCommitNativeTaskCompletion(
   return (
     action.scope === scope &&
     action.enqueuedAt <= now + 5 * 60 * 1000 &&
-    now - action.enqueuedAt <= 24 * 60 * 60 * 1000 &&
+    now - action.enqueuedAt <= NATIVE_TASK_COMPLETION_MAX_AGE_MS &&
     !!task &&
     !task.completed &&
     task.updatedAt === action.updatedAt

@@ -19,28 +19,32 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { EVENTS, type Task } from "@notesnook/core";
 
-const nativeWrite = jest.fn(async (_snapshot: string) => {});
-const nativeClear = jest.fn(async () => {});
-const callbacks = new Map<string, (event?: unknown) => void>();
-let appStateChanged: ((state: string) => void) | undefined;
-let tasks: Task[] = [];
-let appLockEnabled = false;
-let appLocked = false;
-let settingsChanged: ((state: unknown, previous: unknown) => void) | undefined;
-let userChanged: ((state: unknown, previous: unknown) => void) | undefined;
+const mockNativeWrite = jest.fn(async (_snapshot: string) => {});
+const mockNativeClear = jest.fn(async () => {});
+const mockCallbacks = new Map<string, (event?: unknown) => void>();
+let mockAppStateChanged: ((state: string) => void) | undefined;
+let mockTasks: Task[] = [];
+let mockAppLockEnabled = false;
+let mockAppLocked = false;
+let mockSettingsChanged:
+  | ((state: unknown, previous: unknown) => void)
+  | undefined;
+let mockUserChanged: ((state: unknown, previous: unknown) => void) | undefined;
 
 jest.mock("react-native", () => ({
   Platform: { OS: "ios" },
   NativeModules: {
     ReminderWidgetModule: {
-      writeSnapshot: (snapshot: string) => nativeWrite(snapshot),
-      clearSnapshot: () => nativeClear()
+      writeSnapshot: (snapshot: string) => mockNativeWrite(snapshot),
+      clearSnapshot: () => mockNativeClear(),
+      listPendingCompletions: async () => [],
+      acknowledgeCompletion: async () => {}
     }
   },
   AppState: {
     currentState: "active",
     addEventListener: (_name: string, callback: (state: string) => void) => {
-      appStateChanged = callback;
+      mockAppStateChanged = callback;
       return { remove: jest.fn() };
     }
   }
@@ -52,30 +56,37 @@ jest.mock("react-native-begin-background-task", () => ({
 jest.mock("../common/database", () => ({
   db: {
     isInitialized: true,
-    tasks: { list: () => Promise.resolve(tasks) },
+    tasks: { list: () => Promise.resolve(mockTasks) },
+    user: { getUser: async () => ({ id: "account" }) },
     eventManager: {
       subscribe: (name: string, callback: (event?: unknown) => void) => {
-        callbacks.set(name, callback);
+        mockCallbacks.set(name, callback);
         return { unsubscribe: jest.fn() };
       }
     }
   },
   DatabaseLogger: { error: jest.fn() }
 }));
+jest.mock("../common/database/mmkv", () => ({
+  MMKV: { getString: () => null, setString: () => {} }
+}));
+jest.mock("./event-manager", () => ({
+  ToastManager: { show: jest.fn() }
+}));
 jest.mock("../stores/use-setting-store", () => ({
   useSettingStore: {
-    getState: () => ({ settings: { appLockEnabled } }),
+    getState: () => ({ settings: { appLockEnabled: mockAppLockEnabled } }),
     subscribe: (callback: (state: unknown, previous: unknown) => void) => {
-      settingsChanged = callback;
+      mockSettingsChanged = callback;
       return jest.fn();
     }
   }
 }));
 jest.mock("../stores/use-user-store", () => ({
   useUserStore: {
-    getState: () => ({ appLocked, user: { id: "account" } }),
+    getState: () => ({ appLocked: mockAppLocked, user: { id: "account" } }),
     subscribe: (callback: (state: unknown, previous: unknown) => void) => {
-      userChanged = callback;
+      mockUserChanged = callback;
       return jest.fn();
     }
   }
@@ -104,7 +115,7 @@ describe("Task snapshot writer lifecycle", () => {
   test("Task mutation and immediate background write current bytes and reload via native bridge", async () => {
     const stop = ReminderWidget.start();
     await ReminderWidget.waitForUpdate();
-    nativeWrite.mockClear();
+    mockNativeWrite.mockClear();
 
     const now = new Date();
     const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
@@ -125,74 +136,82 @@ describe("Task snapshot writer lifecycle", () => {
       updatedAt: Date.now(),
       schemaVersion: 1
     } as Task;
-    tasks = [item];
-    callbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
-    appStateChanged?.("background");
+    mockTasks = [item];
+    mockCallbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
+    mockAppStateChanged?.("background");
     await ReminderWidget.waitForUpdate();
-    expect(nativeWrite).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(nativeWrite.mock.calls[0][0]).tasks[0]).toMatchObject({
-      id: item.id,
-      title: item.title,
-      dueDate: today,
-      dueTime: "14:00"
-    });
+    expect(mockNativeWrite).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(mockNativeWrite.mock.calls[0][0]).tasks[0]).toMatchObject(
+      {
+        id: item.id,
+        title: item.title,
+        dueDate: today,
+        dueTime: "14:00"
+      }
+    );
 
-    tasks = [{ ...item, title: "Edited Task", listId: "another-list" }];
-    callbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
-    appStateChanged?.("background");
+    mockTasks = [{ ...item, title: "Edited Task", listId: "another-list" }];
+    mockCallbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
+    mockAppStateChanged?.("background");
     await ReminderWidget.waitForUpdate();
-    expect(JSON.parse(nativeWrite.mock.calls[1][0]).tasks[0].title).toBe(
+    expect(JSON.parse(mockNativeWrite.mock.calls[1][0]).tasks[0].title).toBe(
       "Edited Task"
     );
 
-    tasks = [{ ...item, completed: true }];
-    callbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
-    appStateChanged?.("background");
+    mockTasks = [{ ...item, completed: true }];
+    mockCallbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
+    mockAppStateChanged?.("background");
     await ReminderWidget.waitForUpdate();
-    expect(JSON.parse(nativeWrite.mock.calls[2][0]).tasks).toEqual([]);
+    expect(JSON.parse(mockNativeWrite.mock.calls[2][0]).tasks).toEqual([]);
 
-    tasks = [item];
-    callbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
-    appStateChanged?.("background");
+    mockTasks = [item];
+    mockCallbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
+    mockAppStateChanged?.("background");
     await ReminderWidget.waitForUpdate();
-    expect(JSON.parse(nativeWrite.mock.calls[3][0]).tasks[0].id).toBe(item.id);
+    expect(JSON.parse(mockNativeWrite.mock.calls[3][0]).tasks[0].id).toBe(
+      item.id
+    );
 
-    tasks = [];
-    callbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
-    appStateChanged?.("background");
+    mockTasks = [];
+    mockCallbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
+    mockAppStateChanged?.("background");
     await ReminderWidget.waitForUpdate();
-    expect(JSON.parse(nativeWrite.mock.calls[4][0]).tasks).toEqual([]);
-    nativeWrite.mockClear();
-    appStateChanged?.("background");
+    expect(JSON.parse(mockNativeWrite.mock.calls[4][0]).tasks).toEqual([]);
+    mockNativeWrite.mockClear();
+    mockAppStateChanged?.("background");
     await ReminderWidget.waitForUpdate();
-    expect(nativeWrite).not.toHaveBeenCalled();
+    expect(mockNativeWrite).not.toHaveBeenCalled();
     await ReminderWidget.clear();
     await ReminderWidget.waitForUpdate();
-    expect(nativeWrite).not.toHaveBeenCalled();
+    expect(mockNativeWrite).not.toHaveBeenCalled();
 
-    tasks = [item];
-    appLockEnabled = true;
-    settingsChanged?.(
+    mockTasks = [item];
+    mockAppLockEnabled = true;
+    mockSettingsChanged?.(
       { settings: { appLockEnabled: true } },
       { settings: { appLockEnabled: false } }
     );
     await ReminderWidget.waitForUpdate();
-    expect(nativeClear).toHaveBeenCalled();
-    const privateBytes = nativeWrite.mock.calls[nativeWrite.mock.calls.length - 1]?.[0] || "";
+    expect(mockNativeClear).toHaveBeenCalled();
+    const privateBytes =
+      mockNativeWrite.mock.calls[mockNativeWrite.mock.calls.length - 1]?.[0] ||
+      "";
     expect(JSON.parse(privateBytes)).toMatchObject({
       privacyHidden: true,
       tasks: []
     });
     expect(privateBytes).not.toContain(item.title);
 
-    appLocked = true;
-    userChanged?.(
+    mockAppLocked = true;
+    mockUserChanged?.(
       { appLocked: true, user: { id: "account" } },
       { appLocked: false, user: { id: "account" } }
     );
-    appStateChanged?.("background");
+    mockAppStateChanged?.("background");
     await ReminderWidget.waitForUpdate();
-    const lockedBytes = nativeWrite.mock.calls[nativeWrite.mock.calls.length - 1]?.[0] || "";
+    const lockedBytes =
+      mockNativeWrite.mock.calls[mockNativeWrite.mock.calls.length - 1]?.[0] ||
+      "";
     expect(lockedBytes).not.toContain(item.title);
     stop();
   });

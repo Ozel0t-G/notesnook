@@ -548,6 +548,32 @@ private struct ReminderWidget: Widget {
   }
 }
 
+@available(iOSApplicationExtension 18.0, *)
+private struct NewTaskControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.ozel0t.veyran.control.newTask") {
+      ControlWidgetButton(action: VeyraNOpenCaptureIntent(target: .task)) {
+        Label("New Task", systemImage: "plus.circle")
+      }
+    }
+    .displayName("New Task")
+    .description("Open VeyraN to create a Task.")
+  }
+}
+
+@available(iOSApplicationExtension 18.0, *)
+private struct NewNoteControl: ControlWidget {
+  var body: some ControlWidgetConfiguration {
+    StaticControlConfiguration(kind: "com.ozel0t.veyran.control.newNote") {
+      ControlWidgetButton(action: VeyraNOpenCaptureIntent(target: .note)) {
+        Label("New Note", systemImage: "square.and.pencil")
+      }
+    }
+    .displayName("New Note")
+    .description("Open VeyraN to create a Note.")
+  }
+}
+
 // MARK: - Shared styling
 
 private struct WidgetSurface: View {
@@ -602,6 +628,10 @@ struct NotesWidgetBundle: WidgetBundle {
   var body: some Widget {
     QuickNoteWidget()
     ReminderWidget()
+    if #available(iOSApplicationExtension 18.0, *) {
+      NewTaskControl()
+      NewNoteControl()
+    }
   }
 }
 

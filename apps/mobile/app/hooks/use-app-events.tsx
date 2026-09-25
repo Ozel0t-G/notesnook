@@ -83,6 +83,7 @@ import Notifications from "../services/notifications";
 import PremiumService from "../services/premium";
 import { ReminderWidget } from "../services/reminder-widget";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
+import { startAppIntentBridge } from "../services/app-intent-bridge";
 import { claimTaskNotificationPress } from "../services/task-notifications";
 import {
   canReplayTaskWidgetCompletion,
@@ -630,6 +631,18 @@ export const useAppEvents = () => {
     state.syncing
   ]);
   useFeatureManager();
+  useEffect(
+    () =>
+      startAppIntentBridge(!isAppLoading, !appLocked, (target) => {
+        if (target === "task") {
+          Navigation.navigate("Tasks");
+          setTimeout(() => Navigation.push("TaskDetail", {}), 0);
+        } else {
+          void onAppOpenedFromURL({ url: "veyran://quick-add" });
+        }
+      }),
+    [isAppLoading, appLocked]
+  );
   const syncedOnLaunch = useRef(false);
   const refValues = useRef<
     Partial<{

@@ -8,6 +8,8 @@
 import SwiftUI
 import UIKit
 import WidgetKit
+import AppIntents
+import CryptoKit
 
 private enum WidgetURLs {
   static let quickNote = URL(string: "ShareMedia://QuickNoteWidget")!
@@ -22,12 +24,108 @@ private enum WidgetURLs {
     return components.url ?? reminders
   }
 
-  static func complete(id: String) -> URL {
-    var components = URLComponents()
-    components.scheme = "ShareMedia"
-    components.host = "CompleteTaskWidget"
-    components.queryItems = [URLQueryItem(name: "id", value: id)]
-    return components.url ?? reminders
+}
+
+private struct WidgetCompletionAction: Codable {
+  let id: String
+  let scope: String
+  let updatedAt: Int
+  let enqueuedAt: Int
+}
+
+private enum WidgetCompletionQueue {
+  static let folder = "task-widget-actions-v1"
+  static let maximumPending = 50
+  static let maximumAge = 24 * 60 * 60 * 1000
+
+  static func directory() throws -> URL {
+    guard let group = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
+          let container = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: group) else {
+      throw CocoaError(.fileNoSuchFile)
+    }
+    return container.appendingPathComponent(folder, isDirectory: true)
+  }
+
+  static func filename(id: String, scope: String, updatedAt: Int) -> String {
+    let input = Data("\(scope):\(id):\(updatedAt)".utf8)
+    return SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined() + ".json"
+  }
+
+  static func isPending(id: String, scope: String, updatedAt: Int) -> Bool {
+    guard let directory = try? directory(),
+          let data = try? Data(contentsOf: directory.appendingPathComponent(
+            filename(id: id, scope: scope, updatedAt: updatedAt))),
+          let action = try? JSONDecoder().decode(WidgetCompletionAction.self, from: data) else {
+      return false
+    }
+    let age = Int(Date().timeIntervalSince1970 * 1000) - action.enqueuedAt
+    return action.id == id && action.scope == scope && action.updatedAt == updatedAt &&
+      age >= 0 && age <= maximumAge
+  }
+
+  static func enqueue(id: String, scope: String, updatedAt: Int) throws {
+    let directory = try directory()
+    let manager = FileManager.default
+    try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+    let name = filename(id: id, scope: scope, updatedAt: updatedAt)
+    let url = directory.appendingPathComponent(name)
+    if isPending(id: id, scope: scope, updatedAt: updatedAt) { return }
+    let pending = try manager.contentsOfDirectory(at: directory,
+      includingPropertiesForKeys: nil).filter { $0.pathExtension == "json" }
+    guard pending.count < maximumPending else { throw CocoaError(.fileWriteOutOfSpace) }
+    let action = WidgetCompletionAction(id: id, scope: scope,
+      updatedAt: updatedAt, enqueuedAt: Int(Date().timeIntervalSince1970 * 1000))
+    let data = try JSONEncoder().encode(action)
+    do {
+      try data.write(to: url, options: .atomic)
+      try manager.setAttributes(
+        [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+        ofItemAtPath: url.path)
+      var resourceValues = URLResourceValues()
+      resourceValues.isExcludedFromBackup = true
+      var mutableURL = url
+      try mutableURL.setResourceValues(resourceValues)
+    } catch {
+      try? manager.removeItem(at: url)
+      throw error
+    }
+  }
+}
+
+@available(iOS 17.0, iOSApplicationExtension 17.0, *)
+struct CompleteTaskWidgetIntent: AppIntent {
+  static var title: LocalizedStringResource = "Complete Task"
+  static var openAppWhenRun: Bool { false }
+
+  @Parameter(title: "Task") var id: String
+  @Parameter(title: "Account Scope") var scope: String
+  @Parameter(title: "Task Revision") var updatedAt: Int
+
+  init() {}
+  init(id: String, scope: String, updatedAt: Int) {
+    self.id = id
+    self.scope = scope
+    self.updatedAt = updatedAt
+  }
+
+  func perform() async throws -> some IntentResult {
+    let now = Date()
+    guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
+                   options: .regularExpression) != nil,
+          scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil,
+          updatedAt > 0,
+          case let .available(snapshot) = ReminderSnapshotStore.load(at: now),
+          snapshot.privacyHidden != true,
+          snapshot.accountScope == scope,
+          TaskWidgetClock.visibleTasks(snapshot, at: now).contains(where: {
+            $0.id == id && $0.updatedAt.map(Int.init) == updatedAt
+          }) else {
+      throw CocoaError(.fileReadUnknown)
+    }
+    try WidgetCompletionQueue.enqueue(id: id, scope: scope, updatedAt: updatedAt)
+    WidgetCenter.shared.reloadTimelines(ofKind: "ReminderWidget")
+    return .result()
   }
 }
 
@@ -152,6 +250,7 @@ private struct ReminderProvider: TimelineProvider {
       tasks.append(
         ReminderSnapshotItem(
           id: id,
+          updatedAt: nil,
           title: title,
           dueDate: dueDate,
           dueTime: nil,
@@ -164,6 +263,7 @@ private struct ReminderProvider: TimelineProvider {
     let snapshot = ReminderSnapshot(
       schemaVersion: 3,
       privacyHidden: false,
+      accountScope: nil,
       updatedAt: now.timeIntervalSince1970 * 1000,
       generatedForDate: today,
       generatedForTimeZone: TimeZone.autoupdatingCurrent.identifier,
@@ -325,6 +425,7 @@ private struct ReminderWidgetEntryView: View {
       ForEach(Array(reminders.enumerated()), id: \.element.id) { index, reminder in
         ReminderRow(
           reminder: reminder,
+          accountScope: snapshot?.accountScope,
           referenceDate: max(entry.date, Date()),
           accent: accent,
           compact: family == .systemSmall,
@@ -339,6 +440,7 @@ private struct ReminderWidgetEntryView: View {
 
 private struct ReminderRow: View {
   let reminder: ReminderSnapshotItem
+  let accountScope: String?
   let referenceDate: Date
   let accent: Color
   let compact: Bool
@@ -348,16 +450,27 @@ private struct ReminderRow: View {
     TaskWidgetClock.isOverdue(reminder, at: max(referenceDate, Date()))
   }
 
+  private var isPending: Bool {
+    guard let accountScope, let updatedAt = reminder.updatedAt else { return false }
+    return WidgetCompletionQueue.isPending(
+      id: reminder.id, scope: accountScope, updatedAt: Int(updatedAt))
+  }
+
   var body: some View {
     HStack(spacing: compact ? 6 : 9) {
-      Link(destination: WidgetURLs.complete(id: reminder.id)) {
-        Image(systemName: "circle")
-          .font(.system(size: compact ? 18 : 21))
-          .foregroundStyle(accent)
-          .frame(width: compact ? 24 : 30, height: compact ? 28 : 34)
-          .contentShape(Rectangle())
+      Group {
+        if #available(iOSApplicationExtension 17.0, *),
+           let accountScope, let updatedAt = reminder.updatedAt {
+          Button(intent: CompleteTaskWidgetIntent(
+            id: reminder.id, scope: accountScope, updatedAt: Int(updatedAt))) {
+            completionImage
+          }
+          .disabled(isPending)
+        } else {
+          completionImage
+        }
       }
-      .accessibilityLabel(Text("Complete \(reminder.title)"))
+      .accessibilityLabel(Text(isPending ? "Completion pending" : "Complete \(reminder.title)"))
 
       Link(destination: WidgetURLs.reminder(id: reminder.id)) {
       VStack(alignment: .leading, spacing: compact ? 1 : 2) {
@@ -377,10 +490,10 @@ private struct ReminderRow: View {
             .truncationMode(.tail)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        Text(secondaryText)
+        Text(isPending ? String(localized: "Completion pending") : secondaryText)
           .font(.system(size: compact ? 9.5 : 11))
           .foregroundStyle(
-            isOverdue ? Color(UIColor.systemRed) : Color.secondary
+            isOverdue && !isPending ? Color(UIColor.systemRed) : Color.secondary
           )
           .lineLimit(1)
       }
@@ -398,6 +511,14 @@ private struct ReminderRow: View {
       .accessibilityLabel(accessibilityLabel)
     }
     .buttonStyle(.plain)
+  }
+
+  private var completionImage: some View {
+    Image(systemName: isPending ? "clock.badge.checkmark" : "circle")
+      .font(.system(size: compact ? 18 : 21))
+      .foregroundStyle(accent)
+      .frame(width: compact ? 24 : 30, height: compact ? 28 : 34)
+      .contentShape(Rectangle())
   }
 
   private var accessibilityLabel: String {

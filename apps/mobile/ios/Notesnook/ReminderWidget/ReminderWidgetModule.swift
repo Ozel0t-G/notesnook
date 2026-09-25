@@ -20,12 +20,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import Foundation
 import React
 import WidgetKit
+import CryptoKit
 
 @objc(ReminderWidgetModule)
 final class ReminderWidgetModule: NSObject {
   private static let snapshotFilename = "reminder-widget-snapshot.json"
   private static let widgetKind = "ReminderWidget"
   private static let maximumSnapshotSize = 256 * 1024
+  private static let actionFolder = "task-widget-actions-v1"
 
   @objc static func requiresMainQueueSetup() -> Bool { false }
 
@@ -79,6 +81,78 @@ final class ReminderWidgetModule: NSObject {
     }
   }
 
+  @objc(listPendingCompletions:rejecter:)
+  func listPendingCompletions(
+    _ resolve: RCTPromiseResolveBlock,
+    rejecter reject: RCTPromiseRejectBlock
+  ) {
+    do {
+      let directory = try Self.actionDirectory()
+      guard FileManager.default.fileExists(atPath: directory.path) else {
+        resolve([])
+        return
+      }
+      let files = try FileManager.default.contentsOfDirectory(
+        at: directory, includingPropertiesForKeys: [.fileSizeKey])
+        .filter { Self.validActionFilename($0.lastPathComponent) }
+        .sorted { $0.lastPathComponent < $1.lastPathComponent }
+      var actions = [[String: Any]]()
+      for file in files.prefix(50) {
+        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size <= 1024,
+              let data = try? Data(contentsOf: file),
+              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = value["id"] as? String,
+              let scope = value["scope"] as? String,
+              let updatedAt = value["updatedAt"] as? Int,
+              Self.actionFilename(id: id, scope: scope, updatedAt: updatedAt)
+                == file.lastPathComponent
+        else {
+          // Atomic writes mean a malformed action is not an in-progress write.
+          try? FileManager.default.removeItem(at: file)
+          continue
+        }
+        actions.append(value.merging(["filename": file.lastPathComponent]) { _, new in new })
+      }
+      resolve(actions)
+    } catch {
+      reject("reminder_widget_actions_read_failed", error.localizedDescription, error)
+    }
+  }
+
+  @objc(acknowledgeCompletion:resolver:rejecter:)
+  func acknowledgeCompletion(
+    _ filename: String,
+    resolver resolve: RCTPromiseResolveBlock,
+    rejecter reject: RCTPromiseRejectBlock
+  ) {
+    do {
+      guard Self.validActionFilename(filename) else { throw SnapshotError.invalidAction }
+      let url = try Self.actionDirectory().appendingPathComponent(filename)
+      if FileManager.default.fileExists(atPath: url.path) {
+        try FileManager.default.removeItem(at: url)
+      }
+      WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+      resolve(nil)
+    } catch {
+      reject("reminder_widget_action_ack_failed", error.localizedDescription, error)
+    }
+  }
+
+  private static func actionDirectory() throws -> URL {
+    try snapshotURL().deletingLastPathComponent()
+      .appendingPathComponent(actionFolder, isDirectory: true)
+  }
+
+  private static func validActionFilename(_ name: String) -> Bool {
+    name.range(of: "^[0-9a-f]{64}\\.json$", options: .regularExpression) != nil
+  }
+
+  private static func actionFilename(id: String, scope: String, updatedAt: Int) -> String {
+    let input = Data("\(scope):\(id):\(updatedAt)".utf8)
+    return SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined() + ".json"
+  }
+
   private static func snapshotURL() throws -> URL {
     guard
       let appGroup = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
@@ -96,12 +170,14 @@ final class ReminderWidgetModule: NSObject {
     case invalidUTF8
     case snapshotTooLarge
     case appGroupUnavailable
+    case invalidAction
 
     var errorDescription: String? {
       switch self {
       case .invalidUTF8: return "The reminder widget snapshot is not valid UTF-8."
       case .snapshotTooLarge: return "The reminder widget snapshot is too large."
       case .appGroupUnavailable: return "The reminder widget App Group is unavailable."
+      case .invalidAction: return "The Task widget action is invalid."
       }
     }
   }

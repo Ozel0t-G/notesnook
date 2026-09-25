@@ -28,4 +28,11 @@ RCT_EXTERN_METHOD(writeSnapshot:(NSString *)snapshot
 RCT_EXTERN_METHOD(clearSnapshot:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(listPendingCompletions:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(acknowledgeCompletion:(NSString *)filename
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

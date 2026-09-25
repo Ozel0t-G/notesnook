@@ -236,14 +236,8 @@ const onAppOpenedFromURL = async (event: {
     } else if (reminderWidgetLink) {
       if (reminderWidgetLink.action === "complete") {
         if (!isValidTaskWidgetId(reminderWidgetLink.id)) return;
-        const accountId = db.isInitialized
-          ? await currentAccountId()
-          : useUserStore.getState().user?.id || null;
-        if (useUserStore.getState().isLoggingOut) return;
-        pendingTaskCompletions.enqueue(reminderWidgetLink.id, accountId);
-        if (canReplayPendingTaskCompletions()) {
-          void replayPendingTaskCompletions();
-        }
+        // Old installed widgets still emit this URL. A URL can be invoked by
+        // another app, so open detail and require an explicit in-app action.
       } else if (
         reminderWidgetLink.action === "task" &&
         !isValidTaskWidgetId(reminderWidgetLink.id)
@@ -251,7 +245,10 @@ const onAppOpenedFromURL = async (event: {
         return;
       }
       Navigation.navigate("Tasks");
-      if (reminderWidgetLink.action === "task") {
+      if (
+        reminderWidgetLink.action === "task" ||
+        reminderWidgetLink.action === "complete"
+      ) {
         setTimeout(
           () =>
             Navigation.push("TaskDetail", { taskId: reminderWidgetLink.id }),
@@ -688,7 +685,10 @@ export const useAppEvents = () => {
   }, [initialUrl, isAppLoading]);
 
   useEffect(() => {
-    if (!appLocked && !isAppLoading) void replayPendingTaskCompletions();
+    if (!appLocked && !isAppLoading) {
+      void replayPendingTaskCompletions();
+      void ReminderWidget.drainPendingCompletions();
+    }
   }, [appLocked, isAppLoading]);
 
   useEffect(

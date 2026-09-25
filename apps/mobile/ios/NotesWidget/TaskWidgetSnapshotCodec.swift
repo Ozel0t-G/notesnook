@@ -25,6 +25,7 @@ struct ReminderSnapshot: Codable {
   // Additive v3 fields must stay optional for snapshots written by older apps.
   let schemaVersion: Int
   let privacyHidden: Bool?
+  let accountScope: String?
   let updatedAt: Double
   let generatedForDate: String
   let generatedForTimeZone: String
@@ -39,6 +40,7 @@ struct ReminderSnapshot: Codable {
 
 struct ReminderSnapshotItem: Codable, Identifiable {
   let id: String
+  let updatedAt: Double?
   let title: String
   let dueDate: String?
   let dueTime: String?

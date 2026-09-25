@@ -25,6 +25,13 @@ import {
   // @ts-ignore The package does not ship TypeScript declarations.
 } from "react-native-begin-background-task";
 import { db, DatabaseLogger } from "../common/database";
+import { MMKV } from "../common/database/mmkv";
+import {
+  isNativeTaskCompletionAction,
+  mayCommitNativeTaskCompletion,
+  taskWidgetAccountScope,
+  type NativeTaskCompletionAction
+} from "../hooks/task-widget-completion-intents";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useThemeStore } from "../stores/use-theme-store";
 import { useUserStore } from "../stores/use-user-store";
@@ -37,6 +44,8 @@ import {
 type NativeReminderWidget = {
   writeSnapshot(snapshot: string): Promise<void>;
   clearSnapshot(): Promise<void>;
+  listPendingCompletions(): Promise<unknown[]>;
+  acknowledgeCompletion(filename: string): Promise<void>;
 };
 
 const Native: NativeReminderWidget | undefined =
@@ -45,6 +54,66 @@ const Native: NativeReminderWidget | undefined =
 let updateTimer: NodeJS.Timeout | undefined;
 let writeQueue = Promise.resolve();
 let snapshotGeneration = 0;
+let drainingCompletions = false;
+
+// The widget extension cannot open the encrypted React Native Task domain.
+// Its action remains visibly pending until this host path commits and projects it.
+async function drainPendingCompletions() {
+  if (!Native || drainingCompletions || !db.isInitialized) return;
+  if (useUserStore.getState().appLocked || useUserStore.getState().isLoggingOut)
+    return;
+  drainingCompletions = true;
+  try {
+    const accountId = (await db.user.getUser())?.id || null;
+    const scope = taskWidgetAccountScope(MMKV, accountId);
+    const actions = await Native.listPendingCompletions();
+    for (const raw of actions) {
+      const filename = (raw as NativeTaskCompletionAction | null)?.filename;
+      if (!isNativeTaskCompletionAction(raw)) {
+        if (
+          typeof filename === "string" &&
+          /^[0-9a-f]{64}\.json$/.test(filename)
+        )
+          await Native.acknowledgeCompletion(filename);
+        continue;
+      }
+      if (
+        raw.scope !== scope ||
+        raw.enqueuedAt > Date.now() + 5 * 60 * 1000 ||
+        Date.now() - raw.enqueuedAt > 24 * 60 * 60 * 1000
+      ) {
+        await Native.acknowledgeCompletion(raw.filename);
+        continue;
+      }
+      const task = await db.tasks.get(raw.id);
+      if (
+        useUserStore.getState().appLocked ||
+        useUserStore.getState().isLoggingOut ||
+        ((await db.user.getUser())?.id || null) !== accountId
+      )
+        break;
+      if (task?.completed) {
+        await flushUpdateForCompletion();
+        await Native.acknowledgeCompletion(raw.filename);
+        continue;
+      }
+      if (!mayCommitNativeTaskCompletion(raw, scope, task)) {
+        await Native.acknowledgeCompletion(raw.filename);
+        continue;
+      }
+      // This is the same encrypted-domain operation as in the Tasks screen.
+      // A retry after a crash is idempotent and creates the next occurrence.
+      await db.tasks.complete(raw.id);
+      await flushUpdateForCompletion();
+      await Native.acknowledgeCompletion(raw.filename);
+    }
+  } catch (error) {
+    // Keep the durable action for a later foreground/unlock retry.
+    DatabaseLogger.error(error as Error, "ReminderWidget.complete");
+  } finally {
+    drainingCompletions = false;
+  }
+}
 
 function mayExposeTaskTitles() {
   return (
@@ -91,7 +160,12 @@ async function writeCurrentSnapshot() {
   }
   const tasks = await db.tasks.list();
   if (generation !== snapshotGeneration || !mayExposeTaskTitles()) return;
-  const snapshot = buildTaskWidgetSnapshot(tasks, options);
+  const accountId = (await db.user.getUser())?.id || null;
+  if (generation !== snapshotGeneration || !mayExposeTaskTitles()) return;
+  const snapshot = buildTaskWidgetSnapshot(tasks, {
+    ...options,
+    accountScope: taskWidgetAccountScope(MMKV, accountId)
+  });
   await Native.writeSnapshot(JSON.stringify(snapshot));
 }
 
@@ -103,6 +177,18 @@ function flushUpdate() {
     DatabaseLogger.error(error as Error, "ReminderWidget.update");
   });
   return writeQueue;
+}
+
+/** Keep the action pending when a committed Task cannot yet be projected. */
+function flushUpdateForCompletion() {
+  if (!Native) return Promise.resolve();
+  clearTimeout(updateTimer);
+  updateTimer = undefined;
+  const write = writeQueue.then(writeCurrentSnapshot);
+  writeQueue = write.catch((error) => {
+    DatabaseLogger.error(error as Error, "ReminderWidget.completeSnapshot");
+  });
+  return write;
 }
 
 async function protectBackgroundWrite(
@@ -146,6 +232,7 @@ function start() {
   }
 
   update();
+  void drainPendingCompletions();
   const databaseSubscription = db.eventManager.subscribe(
     EVENTS.databaseUpdated,
     (event: DatabaseUpdatedEvent) => {
@@ -165,7 +252,10 @@ function start() {
         updateTimer ? flushUpdate() : writeQueue,
         backgroundTask
       );
-    } else update();
+    } else {
+      update();
+      void drainPendingCompletions();
+    }
   });
   const logoutSubscription = db.eventManager.subscribe(
     EVENTS.userLoggedOut,
@@ -197,7 +287,10 @@ function start() {
       if (state.appLocked) {
         void clearSnapshot();
         flushUpdate();
-      } else update();
+      } else {
+        update();
+        void drainPendingCompletions();
+      }
     }
   });
 
@@ -217,6 +310,7 @@ function start() {
 export const ReminderWidget = {
   start,
   update,
+  drainPendingCompletions,
   waitForUpdate: () => {
     if (updateTimer) flushUpdate();
     return writeQueue;

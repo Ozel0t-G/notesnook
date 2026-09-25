@@ -25,6 +25,81 @@ export function isValidTaskWidgetId(value: unknown): value is string {
   );
 }
 
+const SCOPE_KEY = "taskWidgetAccountScope:v1";
+type ScopeStorage = Pick<
+  TaskCompletionIntentStorage,
+  "getString" | "setString"
+>;
+
+/** A random, account-bound generation shared with the widget, never a credential. */
+export function taskWidgetAccountScope(
+  storage: ScopeStorage,
+  accountId: string | null
+): string {
+  try {
+    const saved = JSON.parse(storage.getString(SCOPE_KEY) || "null");
+    if (
+      saved?.accountId === accountId &&
+      typeof saved.token === "string" &&
+      /^[0-9a-f]{32}$/.test(saved.token)
+    )
+      return saved.token;
+  } catch {
+    // Replace damaged scope data. Old widget actions will no longer match.
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  const token = Array.from(bytes, (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+  storage.setString(SCOPE_KEY, JSON.stringify({ accountId, token }));
+  return token;
+}
+
+export type NativeTaskCompletionAction = {
+  filename: string;
+  id: string;
+  scope: string;
+  updatedAt: number;
+  enqueuedAt: number;
+};
+
+export function isNativeTaskCompletionAction(
+  value: unknown
+): value is NativeTaskCompletionAction {
+  if (!value || typeof value !== "object") return false;
+  const action = value as Record<string, unknown>;
+  return (
+    typeof action.filename === "string" &&
+    /^[0-9a-f]{64}\.json$/.test(action.filename) &&
+    isValidTaskWidgetId(action.id) &&
+    typeof action.scope === "string" &&
+    /^[0-9a-f]{32}$/.test(action.scope) &&
+    typeof action.updatedAt === "number" &&
+    Number.isSafeInteger(action.updatedAt) &&
+    action.updatedAt > 0 &&
+    typeof action.enqueuedAt === "number" &&
+    Number.isSafeInteger(action.enqueuedAt) &&
+    action.enqueuedAt > 0
+  );
+}
+
+export function mayCommitNativeTaskCompletion(
+  action: NativeTaskCompletionAction,
+  scope: string,
+  task: { completed: boolean; updatedAt: number } | undefined,
+  now = Date.now()
+): boolean {
+  return (
+    action.scope === scope &&
+    action.enqueuedAt <= now + 5 * 60 * 1000 &&
+    now - action.enqueuedAt <= 24 * 60 * 60 * 1000 &&
+    !!task &&
+    !task.completed &&
+    task.updatedAt === action.updatedAt
+  );
+}
+
 export function canReplayTaskWidgetCompletion(state: {
   databaseReady: boolean;
   appLoading: boolean;
@@ -147,8 +222,7 @@ export class PendingTaskCompletions {
 
   peekNext(accountId: string | null, now = Date.now()): string | undefined {
     const expired = [...this.pending].filter(
-      ([, entry]) =>
-        now - entry.enqueuedAt > MAX_INTENT_AGE_MS
+      ([, entry]) => now - entry.enqueuedAt > MAX_INTENT_AGE_MS
     );
     if (expired.length) {
       for (const [id] of expired) this.pending.delete(id);

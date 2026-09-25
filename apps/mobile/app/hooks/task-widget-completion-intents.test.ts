@@ -19,9 +19,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import {
   canReplayTaskWidgetCompletion,
+  isNativeTaskCompletionAction,
   isValidTaskWidgetId,
+  mayCommitNativeTaskCompletion,
   PendingTaskCompletions,
-  TaskCompletionIntentStorage
+  TaskCompletionIntentStorage,
+  taskWidgetAccountScope
 } from "./task-widget-completion-intents";
 
 const taskId = "0123456789abcdef01234567";
@@ -42,6 +45,60 @@ function memoryStorage() {
 }
 
 describe("Task widget completion intents", () => {
+  test("rotates the opaque widget scope when the account changes", () => {
+    const { storage } = memoryStorage();
+    const first = taskWidgetAccountScope(storage, "account-a");
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(taskWidgetAccountScope(storage, "account-a")).toBe(first);
+    const second = taskWidgetAccountScope(storage, "account-b");
+    expect(second).not.toBe(first);
+    expect(taskWidgetAccountScope(storage, "account-a")).not.toBe(first);
+  });
+
+  test("rejects malformed App Group completion actions", () => {
+    const valid = {
+      filename: `${"a".repeat(64)}.json`,
+      id: taskId,
+      scope: "b".repeat(32),
+      updatedAt: Date.now(),
+      enqueuedAt: Date.now()
+    };
+    expect(isNativeTaskCompletionAction(valid)).toBe(true);
+    expect(isNativeTaskCompletionAction({ ...valid, id: "../secret" })).toBe(
+      false
+    );
+    expect(
+      isNativeTaskCompletionAction({ ...valid, filename: "../task.json" })
+    ).toBe(false);
+    expect(isNativeTaskCompletionAction({ ...valid, scope: "account-a" })).toBe(
+      false
+    );
+    expect(
+      mayCommitNativeTaskCompletion(valid, valid.scope, {
+        completed: false,
+        updatedAt: valid.updatedAt
+      })
+    ).toBe(true);
+    expect(
+      mayCommitNativeTaskCompletion(valid, "c".repeat(32), {
+        completed: false,
+        updatedAt: valid.updatedAt
+      })
+    ).toBe(false);
+    expect(
+      mayCommitNativeTaskCompletion(valid, valid.scope, {
+        completed: false,
+        updatedAt: valid.updatedAt + 1
+      })
+    ).toBe(false);
+    expect(
+      mayCommitNativeTaskCompletion(valid, valid.scope, {
+        completed: true,
+        updatedAt: valid.updatedAt
+      })
+    ).toBe(false);
+  });
+
   test("accepts only Task ID shapes", () => {
     expect(isValidTaskWidgetId(taskId)).toBe(true);
     expect(isValidTaskWidgetId(recurringId)).toBe(true);
@@ -127,7 +184,9 @@ describe("Task widget completion intents", () => {
     );
     const pending = new PendingTaskCompletions(storage);
     expect(pending.peekNext("account-a", now)).toBe(taskId);
-    expect(JSON.parse([...values.values()][0])[0].enqueuedAt).toBeLessThanOrEqual(Date.now());
+    expect(
+      JSON.parse([...values.values()][0])[0].enqueuedAt
+    ).toBeLessThanOrEqual(Date.now());
   });
 
   test("drops pending completions if the account changes or logs out", () => {

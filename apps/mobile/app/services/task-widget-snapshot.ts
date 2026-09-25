@@ -21,6 +21,7 @@ import { taskReminderSchedule, type Task } from "@notesnook/core";
 
 export type TaskWidgetItem = {
   id: string;
+  updatedAt?: number;
   title: string;
   dueDate?: string;
   dueTime?: string;
@@ -32,6 +33,7 @@ export type TaskWidgetSnapshot = {
   // v3 additions must remain optional to old readers; breaking changes need v4.
   schemaVersion: 3;
   privacyHidden?: boolean;
+  accountScope?: string;
   updatedAt: number;
   generatedForDate: string;
   generatedForTimeZone: string;
@@ -75,6 +77,7 @@ export function buildTaskWidgetSnapshot(
     appearance: "system" | "light" | "dark";
     accentLight: string;
     accentDark: string;
+    accountScope?: string;
   }
 ): TaskWidgetSnapshot {
   const now = options.now ?? Date.now();
@@ -114,6 +117,7 @@ export function buildTaskWidgetSnapshot(
 
   return {
     schemaVersion: 3,
+    accountScope: options.accountScope,
     updatedAt: now,
     generatedForDate: today,
     generatedForTimeZone: currentTimeZone(),
@@ -127,6 +131,7 @@ export function buildTaskWidgetSnapshot(
       const schedule = taskReminderSchedule(task);
       return {
         id: task.id,
+        updatedAt: task.updatedAt,
         title: task.title
           // eslint-disable-next-line no-control-regex
           .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ")
@@ -147,6 +152,7 @@ export function buildPrivateTaskWidgetSnapshot(
 ): TaskWidgetSnapshot {
   return {
     ...buildTaskWidgetSnapshot([], options),
+    accountScope: undefined,
     privacyHidden: true
   };
 }

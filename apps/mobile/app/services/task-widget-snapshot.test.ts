@@ -83,9 +83,25 @@ describe("task widget", () => {
       accentDark: "#456DEF"
     });
     expect(snapshot.privacyHidden).toBe(true);
+    expect(snapshot.accountScope).toBeUndefined();
     expect(snapshot.count).toBe(0);
     expect(snapshot.tasks).toEqual([]);
     expect(JSON.stringify(snapshot)).not.toContain("Task ");
+  });
+  test("includes only an opaque scope and Task revision for an interactive row", () => {
+    const snapshot = buildTaskWidgetSnapshot(
+      [task("0123456789abcdef01234567", "2026-09-24")],
+      {
+        now: NOW,
+        appearance: "system",
+        accentLight: "#123ABC",
+        accentDark: "#456DEF",
+        accountScope: "a".repeat(32)
+      }
+    );
+    expect(snapshot.accountScope).toBe("a".repeat(32));
+    expect(snapshot.tasks[0].updatedAt).toBe(NOW);
+    expect(JSON.stringify(snapshot)).not.toContain("account-a");
   });
   test("shows overdue and today tasks, including date-only values", () => {
     const snapshot = buildTaskWidgetSnapshot(
@@ -233,7 +249,9 @@ describe("task widget", () => {
     const nextDay = Date.parse("2026-09-25T12:00:00Z");
 
     beforeAll(() => {
-      buildDirectory = mkdtempSync(path.join(tmpdir(), "task-widget-contract-"));
+      buildDirectory = mkdtempSync(
+        path.join(tmpdir(), "task-widget-contract-")
+      );
       binary = path.join(buildDirectory, "snapshot-contract");
       execFileSync("xcrun", [
         "swiftc",
@@ -263,8 +281,39 @@ describe("task widget", () => {
         privacyHidden?: boolean;
         count?: number;
         ids?: string[];
+        accountScope?: string | null;
+        revisions?: Record<string, number>;
       };
     }
+
+    test("Swift decoder preserves account scope and Task revision", () => {
+      const id = "0123456789abcdef01234567";
+      const snapshot = buildTaskWidgetSnapshot([task(id, "2026-09-24")], {
+        now: writtenAt,
+        appearance: "system",
+        accentLight: "#123ABC",
+        accentDark: "#456DEF",
+        accountScope: "a".repeat(32)
+      });
+      const decoded = decode(
+        snapshot,
+        writtenAt,
+        snapshot.generatedForTimeZone
+      );
+      expect(decoded.accountScope).toBe("a".repeat(32));
+      expect(decoded.revisions?.[id]).toBe(snapshot.tasks[0].updatedAt);
+      const privateSnapshot = buildPrivateTaskWidgetSnapshot({
+        now: writtenAt,
+        appearance: "system",
+        accentLight: "#123ABC",
+        accentDark: "#456DEF",
+        accountScope: "a".repeat(32)
+      });
+      expect(
+        decode(privateSnapshot, writtenAt, snapshot.generatedForTimeZone)
+          .accountScope
+      ).toBeNull();
+    });
 
     test("date-only, timed, overdue, recurring, urgent, and migrated Tasks survive midnight", () => {
       const snapshot = snapshotInTimezone("UTC", writtenAt, [

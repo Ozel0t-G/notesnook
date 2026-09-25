@@ -33,8 +33,13 @@ struct TaskWidgetSnapshotContract {
       result = [
         "available": true,
         "privacyHidden": snapshot.privacyHidden == true,
+        "accountScope": snapshot.accountScope as Any? ?? NSNull(),
         "count": TaskWidgetClock.visibleCount(snapshot, at: now),
-        "ids": TaskWidgetClock.visibleTasks(snapshot, at: now).map(\.id)
+        "ids": TaskWidgetClock.visibleTasks(snapshot, at: now).map(\.id),
+        "revisions": Dictionary(uniqueKeysWithValues:
+          TaskWidgetClock.visibleTasks(snapshot, at: now).compactMap { item in
+            item.updatedAt.map { (item.id, Int($0)) }
+          })
       ]
     }
     let output = try JSONSerialization.data(withJSONObject: result)

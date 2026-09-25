@@ -33,12 +33,7 @@ import {
   planTaskNotifications,
   taskNotificationId
 } from "./task-notification-plan";
-import {
-  cancelAllTaskAlarms,
-  reconcileTaskAlarms,
-  requestUrgentPermission,
-  urgentStatus
-} from "./task-alarms";
+import { cancelAllTaskAlarms } from "./task-alarms";
 import { taskAlertTitle } from "./task-alarm-plan";
 
 // Keep four slots free under iOS's 64 pending local notification limit.
@@ -49,7 +44,6 @@ let started = false;
 let lastPress: { id: string; at: number } | undefined;
 let stopSubscriptions: (() => void) | undefined;
 let lastTruncation = "";
-let lastAlarmDelivery: Awaited<ReturnType<typeof reconcileTaskAlarms>> | undefined;
 
 export function claimTaskNotificationPress(id: string) {
   const now = Date.now();
@@ -86,19 +80,15 @@ async function reconcileNow() {
   const privacyHidden = Boolean(
     useSettingStore.getState().settings.appLockEnabled
   );
-  let alarms: Awaited<ReturnType<typeof reconcileTaskAlarms>>;
+  // AlarmKit overrides Silent Mode. Remove alarms from older builds before
+  // scheduling system notifications so there is only one audible delivery path.
+  let oldAlarmsCleared = true;
   try {
-    alarms = await reconcileTaskAlarms(all, privacyHidden);
+    await cancelAllTaskAlarms();
   } catch (error) {
-    DatabaseLogger.error(error as Error, "Task alarms");
-    alarms = { status: "unsupported", failedTaskIds: [] };
+    oldAlarmsCleared = false;
+    DatabaseLogger.error(error as Error, "Cancel legacy Task alarms");
   }
-  lastAlarmDelivery = alarms;
-  if (alarms.failedTaskIds.length)
-    DatabaseLogger.warn("Urgent Task alarms could not be scheduled", {
-      status: alarms.status,
-      count: alarms.failedTaskIds.length
-    });
   const availableSlots = availableTaskNotificationSlots(
     existing.map((entry) => entry.notification.id || ""),
     MAX_TOTAL_PENDING
@@ -120,7 +110,7 @@ async function reconcileNow() {
     now,
     availableSlots,
     privacyHidden,
-    alarms.status !== "authorized" ? true : new Set(alarms.failedTaskIds)
+    oldAlarmsCleared
   );
   const eligibleCount = plan.eligibleCount;
   const truncation =
@@ -152,16 +142,8 @@ async function reconcileNow() {
     await notifee.createTriggerNotification(
       {
         id,
-        title: privacyHidden
-          ? strings.tasksTitle()
-          : task.urgentFallback
-          ? `${strings.tasksUrgentStandardAlert()}: ${taskAlertTitle(
-              task.title
-            )}`
-          : taskAlertTitle(task.title),
-        body: task.urgentFallback
-          ? strings.tasksUrgentFallbackBody()
-          : undefined,
+        title: privacyHidden ? strings.tasksTitle() : taskAlertTitle(task.title),
+        body: task.urgent ? strings.tasksUrgent() : undefined,
         data: {
           type: "task",
           taskId: task.id,
@@ -174,7 +156,7 @@ async function reconcileNow() {
           smallIcon: "ic_stat_name",
           pressAction: { id: "default", mainComponent: "notesnook" }
         },
-        ios: { interruptionLevel: "active" }
+        ios: { interruptionLevel: task.urgent ? "timeSensitive" : "active" }
       },
       {
         type: TriggerType.TIMESTAMP,
@@ -228,6 +210,7 @@ function start() {
       .then(async () => {
         await cancelAllTaskTriggers();
         await cancelAllTaskAlarms();
+        lastTruncation = "";
       })
       .catch((error) =>
         DatabaseLogger.error(
@@ -244,6 +227,7 @@ function start() {
         .then(async () => {
           await cancelAllTaskTriggers();
           await cancelAllTaskAlarms();
+          lastTruncation = "";
         })
         .catch((error) =>
           DatabaseLogger.error(
@@ -286,11 +270,11 @@ export const TaskNotifications = {
   permissionStatus: taskNotificationPermission,
   requestPermission,
   notificationId: taskNotificationId,
-  urgentStatus,
-  requestUrgentPermission,
-  urgentFallback: (taskId: string) =>
-    lastAlarmDelivery
-      ? lastAlarmDelivery.status !== "authorized" ||
-        lastAlarmDelivery.failedTaskIds.includes(taskId)
-      : false
+  urgentStatus: async () => {
+    const status = (await notifee.getNotificationSettings()).authorizationStatus;
+    if (status === AuthorizationStatus.NOT_DETERMINED) return "notDetermined" as const;
+    return (await taskNotificationPermission()) ? "authorized" as const : "denied" as const;
+  },
+  requestUrgentPermission: async () =>
+    (await requestPermission()) ? "authorized" as const : "denied" as const
 };

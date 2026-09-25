@@ -49,15 +49,10 @@ export function planTaskNotifications(
   now: number,
   limit: number,
   privacyHidden = false,
-  urgentFallback: boolean | ReadonlySet<string> = false
+  canScheduleUrgent = true
 ) {
-  const shouldFallback = (task: Task) =>
-    Boolean(task.urgent) &&
-    (!taskReminderSchedule(task).time ||
-      urgentFallback === true ||
-      (urgentFallback !== false && urgentFallback.has(task.id)));
   const eligible = tasks
-    .filter((task) => !task.completed && (!task.urgent || shouldFallback(task)))
+    .filter((task) => !task.completed && (!task.urgent || canScheduleUrgent))
     .flatMap((task) =>
       taskReminderOccurrences(task, now)
         .filter((occurrence) => occurrence.timestamp > now)
@@ -68,7 +63,7 @@ export function planTaskNotifications(
             task.recurrenceRule ? occurrence.key : undefined
           ),
           timestamp: occurrence.timestamp,
-          urgentFallback: shouldFallback(task)
+          urgentFallback: false
         }))
     );
   const wanted = eligible

@@ -83,7 +83,7 @@ describe("Task notification reconciliation", () => {
     expect(plan.schedule.map((item) => item.id)).toEqual(["private"]);
   });
 
-  test("falls back only for urgent alarms that failed to schedule", () => {
+  test("schedules Urgent through one notification path", () => {
     const plan = planTaskNotifications(
       [
         { ...task("urgent-failed", NOW + 1000), urgent: true },
@@ -93,13 +93,16 @@ describe("Task notification reconciliation", () => {
       NOW,
       50,
       false,
-      new Set(["urgent-failed"])
+      true
     );
-    expect(plan.schedule.map((item) => item.id)).toEqual(["urgent-failed"]);
-    expect(plan.schedule[0].urgentFallback).toBe(true);
+    expect(plan.schedule.map((item) => item.id)).toEqual([
+      "urgent-failed",
+      "urgent-ok"
+    ]);
+    expect(plan.schedule.every((item) => !item.urgentFallback)).toBe(true);
   });
 
-  test("uses a labeled standard alert for a date-only urgent record", () => {
+  test("does not schedule Urgent while legacy alarms cannot be cleared", () => {
     const plan = planTaskNotifications(
       [
         {
@@ -114,9 +117,8 @@ describe("Task notification reconciliation", () => {
       Date.parse("2026-09-23T12:00:00"),
       50,
       false,
-      new Set()
+      false
     );
-    expect(plan.schedule).toHaveLength(1);
-    expect(plan.schedule[0].urgentFallback).toBe(true);
+    expect(plan.schedule).toHaveLength(0);
   });
 });

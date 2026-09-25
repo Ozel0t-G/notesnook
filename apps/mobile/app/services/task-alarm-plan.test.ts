@@ -62,30 +62,30 @@ describe("Urgent Task alarm planning", () => {
     ).toEqual([]);
   });
 
-  test("Urgent Tasks never get duplicate normal notifications", () => {
+  test("Urgent notifications wait until legacy alarms are cleared", () => {
     const item = task("urgent");
     const plan = planTaskNotifications([item], [], Date.now(), 60);
-    expect(plan.schedule).toEqual([]);
+    expect(plan.schedule).toHaveLength(1);
+    expect(plan.schedule[0].urgentFallback).toBe(false);
     expect(desiredTaskAlarms([item], false)).toHaveLength(1);
 
-    const fallback = planTaskNotifications(
+    const unsafe = planTaskNotifications(
       [item],
       [],
       Date.now(),
       60,
       false,
-      true
+      false
     );
-    expect(fallback.schedule).toHaveLength(1);
-    expect(fallback.schedule[0].urgentFallback).toBe(true);
+    expect(unsafe.schedule).toHaveLength(0);
 
     expect(
       planTaskNotifications(
         [item],
         [
           {
-            id: fallback.schedule[0].notificationId,
-            timestamp: fallback.schedule[0].timestamp,
+            id: plan.schedule[0].notificationId,
+            timestamp: plan.schedule[0].timestamp,
             updatedAt: "42",
             urgentFallback: true
           }
@@ -93,7 +93,7 @@ describe("Urgent Task alarm planning", () => {
         Date.now(),
         60
       ).cancelIds
-    ).toEqual([fallback.schedule[0].notificationId]);
+    ).toEqual([plan.schedule[0].notificationId]);
   });
 
   test("prearms recurring alarms without requiring completion", () => {

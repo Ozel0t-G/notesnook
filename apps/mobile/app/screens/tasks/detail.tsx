@@ -188,7 +188,6 @@ export default function TaskDetail({
   const [notFound, setNotFound] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [notificationsDenied, setNotificationsDenied] = React.useState(false);
-  const [urgentFallback, setUrgentFallback] = React.useState(false);
   const repeatRow = React.useRef<View>(null);
   const priorityRow = React.useRef<View>(null);
 
@@ -273,22 +272,6 @@ export default function TaskDetail({
       active = false;
     };
   }, [taskId, legacyReminderId, route.params?.listId]);
-
-  React.useEffect(() => {
-    if (!task?.urgent) return;
-    let active = true;
-    TaskNotifications.reconcile()
-      .then(() => {
-        if (active)
-          setUrgentFallback(TaskNotifications.urgentFallback(task.id));
-      })
-      .catch(() => {
-        if (active) setUrgentFallback(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, [task?.id, task?.urgent]);
 
   const save = async () => {
     if (!title.trim() || saving || notFound) return;
@@ -848,14 +831,10 @@ export default function TaskDetail({
               value: urgent,
               onValueChange: setUrgentEnabled,
               disabled: !reminderTime || urgentStatus === "unsupported",
-              accessibilityLabel: strings.tasksUrgentAlarmLabel(),
-              subtitle: urgentFallback
-                ? strings.tasksUrgentFallbackBody()
-                : urgentStatus === "unsupported"
-                ? strings.tasksUrgentAlarmUnavailable()
-                : !reminderTime
+              accessibilityLabel: strings.tasksUrgent(),
+              subtitle: !reminderTime
                 ? strings.tasksUrgentTimeRequired()
-                : strings.tasksUrgentUntilStopped()
+                : strings.tasksUrgentRespectsSilent()
             })}
             {urgent && !!rule && (
               <Text
@@ -871,7 +850,7 @@ export default function TaskDetail({
             )}
           </>
         )}
-        {reminderDate && notificationsDenied && (!urgent || urgentFallback) && (
+        {reminderDate && notificationsDenied && (
           <Pressable
             onPress={() => notifee.openNotificationSettings()}
             accessibilityRole="button"

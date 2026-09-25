@@ -54,6 +54,7 @@ type SelectionWrapperProps = PropsWithChildren<{
   isSheet?: boolean;
   color?: string;
   index?: number;
+  homeNote?: boolean;
 }>;
 
 const SelectionWrapper = ({
@@ -63,6 +64,7 @@ const SelectionWrapper = ({
   isSheet,
   children,
   color,
+  homeNote = false,
   index: _index = 0
 }: SelectionWrapperProps) => {
   const itemId = useRef(item.id);
@@ -124,12 +126,20 @@ const SelectionWrapper = ({
         alignSelf: "center",
         overflow: "hidden",
         paddingHorizontal: visual.rowInset,
-        paddingVertical: compactMode ? (visual.ios ? 8 : 6) : visual.rowPadding,
+        paddingVertical: compactMode
+          ? visual.ios
+            ? 8
+            : 6
+          : homeNote
+          ? 15
+          : visual.rowPadding,
         borderRadius:
           visual.ios && isTabletPane && !isSheet
             ? 0
             : visual.ios && !isSheet
-            ? 10
+            ? homeNote
+              ? 17
+              : 10
             : visual.cardRadius,
         marginHorizontal: isSheet ? 0 : visual.listInset,
         marginBottom: isSheet
@@ -137,6 +147,8 @@ const SelectionWrapper = ({
           : visual.ios
           ? isTabletPane
             ? 0
+            : homeNote
+            ? 7
             : 2
           : visual.rowSpacing,
         borderWidth: isSheet || visual.ios ? 0 : 0.5,

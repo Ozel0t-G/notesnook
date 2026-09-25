@@ -19,11 +19,31 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { db } from "../common/database";
 import createDBCollectionStore from "./create-db-collection-store";
+import { Platform } from "react-native";
+import { homeNoteDateGroup } from "../utils/home-note-presentation";
+import type { GroupOptions, Note } from "@notesnook/core";
 
 const { useStore: useNoteStore, useCollection: useNotes } =
   createDBCollectionStore({
-    getCollection: () =>
-      db.notes.all.grouped(db.settings.getGroupOptions("home")),
+    getCollection: () => {
+      const options = db.settings.getGroupOptions("home");
+      const useDateGroups =
+        Platform.OS === "ios" &&
+        options.groupBy === "default" &&
+        (options.sortBy === "dateEdited" || options.sortBy === "dateCreated");
+      const notesSelector = db.notes.all;
+      const grouped = notesSelector.grouped as unknown as (
+        options: GroupOptions,
+        groupKeySelector?: (note: Note) => string
+      ) => ReturnType<typeof notesSelector.grouped>;
+      return grouped.call(
+        notesSelector,
+        options,
+        useDateGroups
+          ? (note: Note) => homeNoteDateGroup(note, options)
+          : undefined
+      );
+    },
     eagerlyFetchFirstBatch: true
   });
 

@@ -18,7 +18,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { strings } from "@notesnook/intl";
+import { useThemeColors } from "@notesnook/theme";
 import React from "react";
+import { Platform, Pressable, View } from "react-native";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+import { notesnook } from "../../../e2e/test.ids";
 import { FloatingButton } from "../../components/container/floating-button";
 import DelayLayout from "../../components/delay-layout";
 import { Header } from "../../components/header";
@@ -29,11 +33,33 @@ import Navigation, { NavigationProps } from "../../services/navigation";
 import SettingsService from "../../services/settings";
 import useNavigationStore from "../../stores/use-navigation-store";
 import { useNotes } from "../../stores/use-notes-store";
+import { useSelectionStore } from "../../stores/use-selection-store";
 import { openEditor } from "../notes/common";
 import { db } from "../../common/database";
+import { presentSheet } from "../../services/event-manager";
+import { useIsCompactModeEnabled } from "../../hooks/use-is-compact-mode-enabled";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { IconButton } from "../../components/ui/icon-button";
+import Heading from "../../components/ui/typography/heading";
+import Paragraph from "../../components/ui/typography/paragraph";
+import Sort from "../../components/sheets/sort";
 
 export const Home = ({ navigation, route }: NavigationProps<"Notes">) => {
   const [notes, loading] = useNotes();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const compactMode = useIsCompactModeEnabled("note");
+  const selectionMode = useSelectionStore((state) => state.selectionMode);
+
+  const openSearch = () => {
+    Navigation.push("Search", {
+      placeholder: strings.searchInRoute(route.name),
+      type: "note",
+      title: route.name,
+      route: route.name,
+      items: db.notes.all
+    });
+  };
 
   const isFocused = useNavigationFocus(navigation, {
     onFocus: (prev) => {
@@ -50,23 +76,76 @@ export const Home = ({ navigation, route }: NavigationProps<"Notes">) => {
 
   return (
     <>
-      <Header
-        renderedInRoute={route.name}
-        title={strings.routes[route.name]()}
-        canGoBack={false}
-        hasSearch={true}
-        onSearch={() => {
-          Navigation.push("Search", {
-            placeholder: strings.searchInRoute(route.name),
-            type: "note",
-            title: route.name,
-            route: route.name,
-            items: db.notes.all
-          });
-        }}
-        id={route.name}
-        onPressDefaultRightButton={openEditor}
-      />
+      {Platform.OS === "ios" ? (
+        <View
+          style={{
+            backgroundColor: visual.screenBackground,
+            paddingHorizontal: visual.pagePadding,
+            paddingTop: 16,
+            paddingBottom: 14,
+            flexDirection: "row",
+            alignItems: "flex-end",
+            justifyContent: "space-between"
+          }}
+        >
+          <View style={{ flexShrink: 1 }}>
+            <Heading
+              size={36}
+              style={{ fontWeight: "700", letterSpacing: 0.2 }}
+              numberOfLines={1}
+            >
+              {strings.routes[route.name]()}
+            </Heading>
+            <Paragraph color={visual.secondaryText} style={{ marginTop: 2 }}>
+              {strings.notes(notes?.length || 0)}
+            </Paragraph>
+          </View>
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <IconButton
+              name="sort"
+              size={23}
+              color={visual.secondaryText}
+              accessibilityLabel={strings.sortBy()}
+              onPress={() =>
+                presentSheet({
+                  component: (
+                    <Sort screen="Notes" dataType="note" group="home" />
+                  )
+                })
+              }
+            />
+            <IconButton
+              name={compactMode ? "view-list" : "view-list-outline"}
+              size={22}
+              color={visual.secondaryText}
+              accessibilityLabel="Toggle compact note list"
+              onPress={() =>
+                SettingsService.set({
+                  notesListMode: compactMode ? "normal" : "compact"
+                })
+              }
+            />
+            <IconButton
+              name="magnify"
+              size={24}
+              color={visual.secondaryText}
+              accessibilityLabel={strings.searchInRoute(route.name)}
+              testID="search-header"
+              onPress={openSearch}
+            />
+          </View>
+        </View>
+      ) : (
+        <Header
+          renderedInRoute={route.name}
+          title={strings.routes[route.name]()}
+          canGoBack={false}
+          hasSearch={true}
+          onSearch={openSearch}
+          id={route.name}
+          onPressDefaultRightButton={openEditor}
+        />
+      )}
 
       <DelayLayout wait={loading}>
         <List
@@ -84,7 +163,49 @@ export const Home = ({ navigation, route }: NavigationProps<"Notes">) => {
             loading: strings.loadingNotes()
           }}
         />
-        {!notes || !notes.placeholders?.length ? null : (
+        {!notes ||
+        !notes.placeholders?.length ||
+        selectionMode ? null : Platform.OS === "ios" ? (
+          <View
+            style={{
+              backgroundColor: visual.screenBackground,
+              paddingHorizontal: visual.pagePadding,
+              paddingTop: 10,
+              paddingBottom: 12
+            }}
+          >
+            <Pressable
+              testID={notesnook.buttons.add}
+              accessibilityRole="button"
+              accessibilityLabel={strings.createNewNote()}
+              onPress={openEditor}
+              style={{
+                minHeight: 54,
+                borderRadius: visual.buttonRadius,
+                borderColor: visual.separator,
+                borderWidth: 1,
+                backgroundColor: visual.elevatedSurface,
+                paddingHorizontal: 16,
+                flexDirection: "row",
+                alignItems: "center"
+              }}
+            >
+              <Icon name="plus" size={24} color={colors.primary.accent} />
+              <Paragraph
+                color={visual.secondaryText}
+                size={15}
+                style={{ marginLeft: 12, flex: 1 }}
+              >
+                {strings.newNote()}
+              </Paragraph>
+              <Icon
+                name="pencil-outline"
+                size={21}
+                color={visual.tertiaryText}
+              />
+            </Pressable>
+          </View>
+        ) : (
           <FloatingButton onPress={openEditor} alwaysVisible />
         )}
       </DelayLayout>

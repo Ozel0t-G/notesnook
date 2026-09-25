@@ -119,17 +119,27 @@ export const SectionHeader = React.memo<
             }}
           >
             <Heading
-              size={AppFontSize.xxs}
+              size={
+                visual.ios && screen === "Notes"
+                  ? AppFontSize.lg
+                  : AppFontSize.xxs
+              }
               style={{
                 alignSelf: "center",
                 textAlignVertical: "center"
               }}
-              color={color || colors.primary.accent}
+              color={
+                visual.ios && screen === "Notes"
+                  ? visual.primaryText
+                  : color || colors.primary.accent
+              }
             >
               {!item.title || item.title === ""
                 ? screen === "Search"
                   ? strings.results(itemCount || 0)
                   : strings.pinned().toUpperCase()
+                : visual.ios && screen === "Notes"
+                ? item.title
                 : item.title.toUpperCase()}
             </Heading>
           </Pressable>
@@ -141,7 +151,7 @@ export const SectionHeader = React.memo<
               gap: DefaultAppStyles.GAP_SMALL
             }}
           >
-            {index === 0 ? (
+            {index === 0 && !(visual.ios && screen === "Notes") ? (
               <>
                 <IconButton
                   name={

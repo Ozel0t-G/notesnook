@@ -42,6 +42,7 @@ export const Header = React.memo(
   }: ListHeaderProps) => {
     const { colors } = useThemeColors();
     const announcements = useMessageStore((state) => state.announcements);
+    const messageId = useMessageStore((state) => state.message.id);
 
     return (
       <>
@@ -49,7 +50,8 @@ export const Header = React.memo(
           <Announcement />
         ) : (screen as any) === "Search" ? null : !shouldShow ? (
           <>
-            {messageCard ? (
+            {messageCard &&
+            !(screen === "Notes" && messageId === "rate-app") ? (
               <Card color={color || colors.primary.accent} />
             ) : null}
           </>

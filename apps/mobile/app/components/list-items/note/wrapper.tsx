@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { BaseTrashItem, Color, Note, Reminder } from "@notesnook/core";
 import React from "react";
+import { Platform } from "react-native";
 import NoteItem from ".";
 import { notesnook } from "../../../../e2e/test.ids";
 import { db } from "../../../common/database";
@@ -115,6 +116,9 @@ export const NoteWrapper = React.memo<
         item={item}
         index={index}
         color={restProps.color?.colorCode}
+        homeNote={
+          Platform.OS === "ios" && restProps.renderedInRoute === "Notes"
+        }
       >
         <NoteItem {...restProps} item={item} index={index} isTrash={isTrash} />
       </SelectionWrapper>

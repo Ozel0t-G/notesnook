@@ -492,7 +492,7 @@ export class FilteredSelector<T extends Item> {
     }
   }
 
-  async grouped(options: GroupOptions) {
+  async grouped(options: GroupOptions, groupKeySelector?: (item: T) => string) {
     sanitizeSortOptions(this.type, options);
     const count = await this.count();
     return new VirtualizedGrouping<T>(
@@ -511,12 +511,17 @@ export class FilteredSelector<T extends Item> {
           items
         };
       },
-      (items) => groupArray(items as any, createKeySelector(options)),
-      () => this.groups(options)
+      (items) =>
+        groupArray(
+          items,
+          groupKeySelector ||
+            (createKeySelector(options) as (item: T) => string)
+        ),
+      () => this.groups(options, groupKeySelector)
     );
   }
 
-  async groups(options: GroupOptions) {
+  async groups(options: GroupOptions, groupKeySelector?: (item: T) => string) {
     sanitizeSortOptions(this.type, options);
 
     const fields: Array<
@@ -546,11 +551,11 @@ export class FilteredSelector<T extends Item> {
 
     return Array.from(
       groupArray(
-        await this.filter
+        (await this.filter
           .select(fields)
           .$call(this.buildSortExpression(options, true))
-          .execute(),
-        createKeySelector(options)
+          .execute()) as unknown as T[],
+        groupKeySelector || (createKeySelector(options) as (item: T) => string)
       ).values()
     );
   }

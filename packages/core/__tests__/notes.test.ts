@@ -485,6 +485,29 @@ test("grouping items where item.title is empty or undefined shouldn't throw", ()
   ).toBeTruthy();
 });
 
+test("custom date groups match virtualized rows and jump groups", async () => {
+  const db = await databaseTest();
+  const older = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const newer = Date.now();
+  await db.notes.add({ title: "Older note", dateCreated: older });
+  await db.notes.add({ title: "Newer note", dateCreated: newer });
+
+  const grouping = await db.notes.all.grouped(
+    { groupBy: "default", sortBy: "dateCreated", sortDirection: "desc" },
+    (note) => (note.dateCreated < newer - 1000 ? "Older" : "Recent")
+  );
+  const rowGroups: string[] = [];
+  for (let index = 0; index < grouping.length; index++) {
+    const row = await grouping.item(index);
+    if (row.group) rowGroups.push(row.group.title);
+  }
+
+  expect(rowGroups).toEqual(["Recent", "Older"]);
+  expect(
+    (await grouping.groups?.())?.map((entry) => entry.group.title)
+  ).toEqual(rowGroups);
+});
+
 test("note content should not contain image base64 data after save", () =>
   noteTest().then(async ({ db, id }) => {
     await loginFakeUser(db);

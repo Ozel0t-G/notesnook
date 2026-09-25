@@ -56,6 +56,10 @@ import Heading from "../../ui/typography/heading";
 import Paragraph from "../../ui/typography/paragraph";
 import dayjs from "dayjs";
 import { ExpiryDate } from "../../ui/expiry-date";
+import {
+  homeNoteDisplaySnippet,
+  homeNoteDisplayTitle
+} from "../../../utils/home-note-presentation";
 
 type NoteItemProps = {
   item: Note | BaseTrashItem<Note>;
@@ -91,6 +95,14 @@ const NoteItem = ({
   );
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
+  const isHomeIOS = visual.ios && renderedInRoute === "Notes";
+  const displayTitle = isHomeIOS
+    ? homeNoteDisplayTitle(item as Note)
+    : item.title;
+  const displayHeadline = item.headline
+    ? decode(item.headline, { level: EntityLevel.HTML })
+    : "";
+  const homeSnippet = isHomeIOS ? homeNoteDisplaySnippet(item as Note) : "";
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
   );
@@ -130,22 +142,22 @@ const NoteItem = ({
               paddingRight: 10
             }}
           >
-            {item.title}
+            {displayTitle}
           </Paragraph>
         ) : (
           <Heading
             numberOfLines={1}
             color={color?.colorCode || primaryColors.heading}
-            size={AppFontSize.sm}
+            size={isHomeIOS ? AppFontSize.md : AppFontSize.sm}
             style={{
               paddingRight: 10
             }}
           >
-            {item.title}
+            {displayTitle}
           </Heading>
         )}
 
-        {item.headline && !compactMode ? (
+        {item.headline && !compactMode && !isHomeIOS ? (
           <Paragraph
             style={{
               flexWrap: "wrap",
@@ -155,18 +167,17 @@ const NoteItem = ({
             color={visual.secondaryText}
             numberOfLines={2}
           >
-            {decode(item.headline, {
-              level: EntityLevel.HTML
-            })}
+            {displayHeadline}
           </Paragraph>
         ) : null}
 
         {compactMode || !visual.ios ? null : (
           <Paragraph
+            numberOfLines={isHomeIOS ? 1 : undefined}
             style={{
-              fontSize: AppFontSize.xxxs,
-              color: visual.tertiaryText,
-              marginTop: visual.ios ? 7 : 0
+              fontSize: isHomeIOS ? AppFontSize.xs : AppFontSize.xxxs,
+              color: isHomeIOS ? visual.secondaryText : visual.tertiaryText,
+              marginTop: isHomeIOS ? 5 : 7
             }}
           >
             {getFormattedDate(
@@ -175,6 +186,7 @@ const NoteItem = ({
                 ? "date"
                 : "time"
             )}
+            {isHomeIOS && homeSnippet ? `  ·  ${homeSnippet}` : null}
           </Paragraph>
         )}
 
@@ -283,41 +295,42 @@ const NoteItem = ({
                   />
                 ) : null}
 
-                {notebooks?.items
-                  ?.filter(
-                    (item) =>
-                      renderedInRoute !== "Notebook" ||
-                      item.id !== useNavigationStore.getState().focusedRouteId
-                  )
-                  .map((item) => (
-                    <View
-                      key={item.id}
-                      style={{
-                        borderRadius: visual.buttonRadius,
-                        backgroundColor: visual.elevatedSurface,
-                        paddingHorizontal: DefaultAppStyles.GAP_SMALL / 2,
-                        borderWidth: 0,
-                        paddingVertical: 3,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: DefaultAppStyles.GAP_SMALL / 2
-                      }}
-                    >
-                      <AppIcon
-                        name="book-outline"
-                        size={AppFontSize.xxxs}
-                        color={colors.secondary.icon}
-                      />
-                      <Paragraph
-                        size={AppFontSize.xxxs}
-                        color={colors.secondary.paragraph}
+                {!isHomeIOS &&
+                  notebooks?.items
+                    ?.filter(
+                      (item) =>
+                        renderedInRoute !== "Notebook" ||
+                        item.id !== useNavigationStore.getState().focusedRouteId
+                    )
+                    .map((item) => (
+                      <View
+                        key={item.id}
+                        style={{
+                          borderRadius: visual.buttonRadius,
+                          backgroundColor: visual.elevatedSurface,
+                          paddingHorizontal: DefaultAppStyles.GAP_SMALL / 2,
+                          borderWidth: 0,
+                          paddingVertical: 3,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: DefaultAppStyles.GAP_SMALL / 2
+                        }}
                       >
-                        {item.title}
-                      </Paragraph>
-                    </View>
-                  ))}
+                        <AppIcon
+                          name="book-outline"
+                          size={AppFontSize.xxxs}
+                          color={colors.secondary.icon}
+                        />
+                        <Paragraph
+                          size={AppFontSize.xxxs}
+                          color={colors.secondary.paragraph}
+                        >
+                          {item.title}
+                        </Paragraph>
+                      </View>
+                    ))}
 
-                {!isTrash && !compactMode && tags
+                {!isHomeIOS && !isTrash && !compactMode && tags
                   ? tags.items?.map((item) =>
                       item.id ? (
                         <View

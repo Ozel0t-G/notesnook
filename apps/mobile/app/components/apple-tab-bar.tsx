@@ -20,7 +20,7 @@ type NativeTabBarProps = {
 
 const NativeTabBar =
   Platform.OS === "ios"
-    ? requireNativeComponent<NativeTabBarProps>("VeyraNTabBar")
+    ? requireNativeComponent<NativeTabBarProps>("VeyraNTabBarView")
     : undefined;
 
 export function AppleTabBar({

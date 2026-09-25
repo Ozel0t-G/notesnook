@@ -279,7 +279,8 @@ export default function TaskDetail({
     let active = true;
     TaskNotifications.reconcile()
       .then(() => {
-        if (active) setUrgentFallback(TaskNotifications.urgentFallback(task.id));
+        if (active)
+          setUrgentFallback(TaskNotifications.urgentFallback(task.id));
       })
       .catch(() => {
         if (active) setUrgentFallback(true);
@@ -538,6 +539,81 @@ export default function TaskDetail({
       <Icon name="chevron-right" size={20} color={visual.tertiaryText} />
     </Pressable>
   );
+  const toggleRow = ({
+    icon,
+    label,
+    value,
+    onValueChange,
+    onPress,
+    subtitle,
+    subtitleColor,
+    accessibilityLabel,
+    disabled
+  }: {
+    icon: string;
+    label: string;
+    value: boolean;
+    onValueChange: (value: boolean) => void;
+    onPress?: () => void;
+    subtitle?: string;
+    subtitleColor?: string;
+    accessibilityLabel?: string;
+    disabled?: boolean;
+  }) => (
+    <View style={{ paddingVertical: 6 }}>
+      <View
+        style={{
+          minHeight: 44,
+          flexDirection: "row",
+          alignItems: "center"
+        }}
+      >
+        <View style={{ width: 22, minHeight: 44, justifyContent: "center" }}>
+          <Icon name={icon} size={22} color={visual.secondaryText} />
+        </View>
+        <Pressable
+          onPress={onPress || (() => onValueChange(!value))}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={accessibilityLabel || label}
+          style={{
+            flex: 1,
+            minHeight: 44,
+            justifyContent: "center",
+            marginLeft: 14
+          }}
+        >
+          <Text style={{ color: visual.primaryText, fontSize: 16 }}>
+            {label}
+          </Text>
+        </Pressable>
+        <Switch
+          value={value}
+          onValueChange={onValueChange}
+          disabled={disabled}
+          trackColor={{ true: colors.primary.accent }}
+          accessibilityLabel={label}
+        />
+      </View>
+      {subtitle ? (
+        <Pressable
+          onPress={onPress}
+          disabled={!onPress}
+          accessibilityRole={onPress ? "button" : undefined}
+          style={{ paddingLeft: 36, paddingBottom: 6 }}
+        >
+          <Text
+            style={{
+              color: subtitleColor || visual.secondaryText,
+              fontSize: 13
+            }}
+          >
+            {subtitle}
+          </Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
 
   if (loading)
     return (
@@ -690,64 +766,33 @@ export default function TaskDetail({
         {sectionTitle(strings.tasksReminder())}
         {group(
           <>
-            <View
-              style={{
-                minHeight: 68,
-                flexDirection: "row",
-                alignItems: "center"
-              }}
-            >
-              <Icon
-                name="calendar-month-outline"
-                size={22}
-                color={visual.secondaryText}
-              />
-              <Pressable
-                onPress={() => {
-                  if (!reminderDate) setDateEnabled(true);
-                  else
-                    setExpandedPicker(
-                      expandedPicker === "date" ? undefined : "date"
-                    );
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`${strings.date()}: ${
-                  reminderDate
-                    ? dateFromCalendar(reminderDate).toLocaleDateString()
-                    : strings.tasksNone()
-                }`}
-                style={{ flex: 1, paddingVertical: 11, marginLeft: 14 }}
-              >
-                <Text style={{ color: visual.primaryText, fontSize: 16 }}>
-                  {strings.date()}
-                </Text>
-                {reminderDate && (
-                  <Text
-                    style={{
-                      color: colors.primary.accent,
-                      fontSize: 13,
-                      marginTop: 2
-                    }}
-                  >
-                    {dateFromCalendar(reminderDate).toLocaleDateString(
-                      undefined,
-                      {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric"
-                      }
-                    )}
-                  </Text>
-                )}
-              </Pressable>
-              <Switch
-                value={!!reminderDate}
-                onValueChange={setDateEnabled}
-                trackColor={{ true: colors.primary.accent }}
-                accessibilityLabel={strings.date()}
-              />
-            </View>
+            {toggleRow({
+              icon: "calendar-month-outline",
+              label: strings.date(),
+              value: !!reminderDate,
+              onValueChange: setDateEnabled,
+              onPress: () => {
+                if (!reminderDate) setDateEnabled(true);
+                else
+                  setExpandedPicker(
+                    expandedPicker === "date" ? undefined : "date"
+                  );
+              },
+              accessibilityLabel: `${strings.date()}: ${
+                reminderDate
+                  ? dateFromCalendar(reminderDate).toLocaleDateString()
+                  : strings.tasksNone()
+              }`,
+              subtitle: reminderDate
+                ? dateFromCalendar(reminderDate).toLocaleDateString(undefined, {
+                    weekday: "short",
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric"
+                  })
+                : undefined,
+              subtitleColor: colors.primary.accent
+            })}
             {reminderDate && expandedPicker === "date" && (
               <DateTimePicker
                 value={dateFromCalendar(reminderDate)}
@@ -761,57 +806,29 @@ export default function TaskDetail({
               />
             )}
             {divider}
-            <View
-              style={{
-                minHeight: 68,
-                flexDirection: "row",
-                alignItems: "center"
-              }}
-            >
-              <Icon
-                name="clock-outline"
-                size={22}
-                color={visual.secondaryText}
-              />
-              <Pressable
-                onPress={() => {
-                  if (!reminderTime) setTimeEnabled(true);
-                  else
-                    setExpandedPicker(
-                      expandedPicker === "time" ? undefined : "time"
-                    );
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`${strings.time()}: ${
-                  reminderTime || strings.tasksNone()
-                }`}
-                style={{ flex: 1, paddingVertical: 11, marginLeft: 14 }}
-              >
-                <Text style={{ color: visual.primaryText, fontSize: 16 }}>
-                  {strings.time()}
-                </Text>
-                {reminderTime && (
-                  <Text
-                    style={{
-                      color: colors.primary.accent,
-                      fontSize: 13,
-                      marginTop: 2
-                    }}
-                  >
-                    {dateFromTime(reminderTime).toLocaleTimeString(undefined, {
-                      hour: "numeric",
-                      minute: "2-digit"
-                    })}
-                  </Text>
-                )}
-              </Pressable>
-              <Switch
-                value={!!reminderTime}
-                onValueChange={setTimeEnabled}
-                trackColor={{ true: colors.primary.accent }}
-                accessibilityLabel={strings.time()}
-              />
-            </View>
+            {toggleRow({
+              icon: "clock-outline",
+              label: strings.time(),
+              value: !!reminderTime,
+              onValueChange: setTimeEnabled,
+              onPress: () => {
+                if (!reminderTime) setTimeEnabled(true);
+                else
+                  setExpandedPicker(
+                    expandedPicker === "time" ? undefined : "time"
+                  );
+              },
+              accessibilityLabel: `${strings.time()}: ${
+                reminderTime || strings.tasksNone()
+              }`,
+              subtitle: reminderTime
+                ? dateFromTime(reminderTime).toLocaleTimeString(undefined, {
+                    hour: "numeric",
+                    minute: "2-digit"
+                  })
+                : undefined,
+              subtitleColor: colors.primary.accent
+            })}
             {reminderTime && expandedPicker === "time" && (
               <DateTimePicker
                 value={dateFromTime(reminderTime)}
@@ -825,46 +842,21 @@ export default function TaskDetail({
               />
             )}
             {divider}
-            <View
-              style={{
-                minHeight: 68,
-                flexDirection: "row",
-                alignItems: "center"
-              }}
-            >
-              <Icon
-                name="alarm-light-outline"
-                size={22}
-                color={visual.secondaryText}
-              />
-              <View style={{ flex: 1, marginLeft: 14, paddingVertical: 11 }}>
-                <Text style={{ color: visual.primaryText, fontSize: 16 }}>
-                  {strings.tasksUrgent()}
-                </Text>
-                <Text
-                  style={{
-                    color: visual.secondaryText,
-                    fontSize: 12,
-                    marginTop: 2
-                  }}
-                >
-                  {urgentFallback
-                    ? strings.tasksUrgentFallbackBody()
-                    : urgentStatus === "unsupported"
-                    ? strings.tasksUrgentAlarmUnavailable()
-                    : !reminderTime
-                    ? strings.tasksUrgentTimeRequired()
-                    : strings.tasksUrgentUntilStopped()}
-                </Text>
-              </View>
-              <Switch
-                value={urgent}
-                onValueChange={setUrgentEnabled}
-                disabled={!reminderTime || urgentStatus === "unsupported"}
-                trackColor={{ true: colors.primary.accent }}
-                accessibilityLabel={strings.tasksUrgentAlarmLabel()}
-              />
-            </View>
+            {toggleRow({
+              icon: "alarm-light-outline",
+              label: strings.tasksUrgent(),
+              value: urgent,
+              onValueChange: setUrgentEnabled,
+              disabled: !reminderTime || urgentStatus === "unsupported",
+              accessibilityLabel: strings.tasksUrgentAlarmLabel(),
+              subtitle: urgentFallback
+                ? strings.tasksUrgentFallbackBody()
+                : urgentStatus === "unsupported"
+                ? strings.tasksUrgentAlarmUnavailable()
+                : !reminderTime
+                ? strings.tasksUrgentTimeRequired()
+                : strings.tasksUrgentUntilStopped()
+            })}
             {urgent && !!rule && (
               <Text
                 style={{
@@ -1090,31 +1082,12 @@ export default function TaskDetail({
 
         {sectionTitle(strings.tasksFlag())}
         {group(
-          <View
-            style={{
-              minHeight: 57,
-              flexDirection: "row",
-              alignItems: "center"
-            }}
-          >
-            <Icon name="flag-outline" size={22} color={visual.secondaryText} />
-            <Text
-              style={{
-                flex: 1,
-                color: visual.primaryText,
-                fontSize: 16,
-                marginLeft: 14
-              }}
-            >
-              {strings.tasksFlag()}
-            </Text>
-            <Switch
-              value={flagged}
-              onValueChange={setFlagged}
-              trackColor={{ true: colors.primary.accent }}
-              accessibilityLabel={strings.tasksFlag()}
-            />
-          </View>
+          toggleRow({
+            icon: "flag-outline",
+            label: strings.tasksFlag(),
+            value: flagged,
+            onValueChange: setFlagged
+          })
         )}
 
         {task && (

@@ -17,7 +17,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { useThemeColors } from "@notesnook/theme";
-import { NavigationContainer } from "@react-navigation/native";
+import {
+  getFocusedRouteNameFromRoute,
+  NavigationContainer
+} from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as React from "react";
 import { Platform, View } from "react-native";
@@ -63,10 +66,31 @@ let TaggedNotes: any = null;
 let ColoredNotes: any = null;
 let Archive: any = null;
 let Library: any = null;
-const LegacyRemindersRedirect = () => {
+const LIBRARY_ROUTES = new Set([
+  "Library",
+  "Notebook",
+  "TaggedNotes",
+  "ColoredNotes",
+  "Favorites",
+  "Archive",
+  "Trash",
+  "Monographs"
+]);
+
+const LegacyRemindersRedirect = ({ navigation }: { navigation: any }) => {
   React.useEffect(() => {
-    rootNavigatorRef.current?.navigate("Tasks" as any);
-  }, []);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const redirect = () => {
+      if (!rootNavigatorRef.current?.isReady()) {
+        timer = setTimeout(redirect, 100);
+        return;
+      }
+      navigation.replace("Notes");
+      rootNavigatorRef.current.navigate("Tasks" as any);
+    };
+    redirect();
+    return () => clearTimeout(timer);
+  }, [navigation]);
   return null;
 };
 
@@ -197,6 +221,10 @@ const AppNavigation = React.memo(
       useNavigationStore
         .getState()
         .setFocusedRouteId(home?.params?.id || home?.name);
+      if (LIBRARY_ROUTES.has(home.name))
+        useAppleNavigationStore.getState().setSection("library");
+      else if (home.name === "Notes")
+        useAppleNavigationStore.getState().setSection("notes");
     }, [home]);
 
     return !home ? null : (
@@ -356,17 +384,19 @@ export const RootNavigation = () => {
         else if (focused.name === "GlobalSearch")
           useAppleNavigationStore.getState().setSection("search");
         else if (focused.name === "FluidPanelsView") {
-          const target = focused.params?.screen;
-          if (target === "Library" || target === "Notes") {
+          const target = getFocusedRouteNameFromRoute(focused);
+          if (target === "Notes" || (target && LIBRARY_ROUTES.has(target))) {
             useAppleNavigationStore
               .getState()
-              .setSection(target === "Library" ? "library" : "notes");
+              .setSection(target === "Notes" ? "notes" : "library");
           } else if (
             ["tasks", "search"].includes(
               useAppleNavigationStore.getState().section
             )
           ) {
-            useAppleNavigationStore.getState().setSection("notes");
+            useAppleNavigationStore
+              .getState()
+              .setSection(useAppleNavigationStore.getState().contentSection);
           }
         }
       }

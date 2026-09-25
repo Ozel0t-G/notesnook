@@ -50,7 +50,15 @@ async function drain(module: IntentModule) {
       drainAgain = false;
       const requests = await module.pendingRequests();
       for (const request of requests) {
-        if (!request?.id || !request?.action || !request?.payload) continue;
+        if (!request?.id || !request?.action || !request?.payload) {
+          DatabaseLogger.error(
+            new Error("Malformed native App Intent request"),
+            "AppIntent.drain"
+          );
+          if (request?.id)
+            await module.acknowledge(request.id, "invalid", "");
+          continue;
+        }
         const reply = await executeAppIntentRequest(request);
         await module.acknowledge(request.id, reply.status, reply.value);
       }
@@ -80,7 +88,10 @@ export function startAppIntentBridge(
     if (!appReady || !unlocked || consumingCapture || !active) return;
     if (!rootNavigatorRef.current?.isReady()) {
       setTimeout(() => {
-        if (active) void requestCapture();
+        if (active)
+          void requestCapture().catch((error) => {
+            DatabaseLogger.error(error as Error, "AppIntent.capture");
+          });
       }, 250);
       return;
     }

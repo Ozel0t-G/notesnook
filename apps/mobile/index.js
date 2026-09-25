@@ -8,12 +8,17 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { enableFreeze } from "react-native-screens";
 import { BackgroundSync } from "./app/services/background-sync";
 import Notifications from "./app/services/notifications";
+import { TaskWidgetCompletionHost } from "./app/services/task-widget-completion-host";
 import appJson from "./app.json";
 import "./globals.js";
 
 BackgroundSync.registerHeadlessTask();
 BackgroundSync.start();
 Notifications.init();
+// The Task widget's completion intent runs in this process in the background,
+// possibly on a cold start where no surface is ever mounted. It is answered
+// here, at the top level, rather than from the App component.
+TaskWidgetCompletionHost.start();
 
 enableFreeze(true);
 NetInfo.configure({

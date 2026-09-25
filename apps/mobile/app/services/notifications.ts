@@ -40,7 +40,7 @@ import NetInfo from "@react-native-community/netinfo";
 import dayjs, { Dayjs } from "dayjs";
 import { encodeNonAsciiHTML } from "entities";
 import { AppState, Platform } from "react-native";
-import { db, setupDatabase } from "../common/database";
+import { db, initializeDatabaseOnce } from "../common/database";
 import { MMKV } from "../common/database/mmkv";
 import { presentDialog } from "../components/dialog/functions";
 import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
@@ -106,10 +106,7 @@ function encodeLine(line: string) {
 }
 
 async function initDatabase() {
-  if (!db.isInitialized) {
-    await setupDatabase();
-    await db.init();
-  }
+  await initializeDatabaseOnce();
 }
 
 const onEvent = async ({ type, detail }: Event) => {

@@ -35,8 +35,20 @@ import { RNSqliteDriver } from "./sqlite.kysely";
 import { Storage } from "./storage";
 import SettingsService from "../../services/settings";
 
-export async function setupDatabase(password?: string) {
-  const key = await getDatabaseKey(password);
+export type DatabaseSetupOptions = {
+  /** Pass false from a headless path so an unreadable database key fails the
+   * work instead of silently replacing it. Defaults to the interactive
+   * behaviour, which creates the key on a first launch. */
+  createDatabaseKey?: boolean;
+};
+
+export async function setupDatabase(
+  password?: string,
+  options?: DatabaseSetupOptions
+) {
+  const key = await getDatabaseKey(password, {
+    createIfMissing: options?.createDatabaseKey
+  });
   if (!key) throw new Error(strings.databaseSetupFailed());
 
   // const base = `http://192.168.100.92`;
@@ -95,6 +107,64 @@ export async function setupDatabase(password?: string) {
 }
 
 export const db = database;
+
+type DatabaseAttempt = {
+  promise: Promise<void>;
+  createDatabaseKey?: boolean;
+};
+
+let attempt: DatabaseAttempt | undefined;
+
+function beginInitialization(
+  password?: string,
+  options?: DatabaseSetupOptions
+): Promise<void> {
+  const started: DatabaseAttempt = {
+    createDatabaseKey: options?.createDatabaseKey,
+    promise: (async () => {
+      await setupDatabase(password, options);
+      await db.init();
+    })()
+  };
+  attempt = started;
+  void started.promise.catch(() => {
+    // A failed attempt must not stand in for a later one, which may have
+    // credentials or permissions this one did not.
+    if (attempt === started) attempt = undefined;
+  });
+  return started.promise;
+}
+
+/**
+ * The mounted UI, background sync, notification handling and the Task widget
+ * completion can all reach for the database at the same time, and a cold start
+ * triggered by a widget tap is the case where two of them race by design.
+ * Opening the same encrypted database twice would set it up while the first
+ * attempt is still migrating, so callers share one attempt.
+ */
+export async function initializeDatabaseOnce(
+  password?: string,
+  options?: DatabaseSetupOptions
+): Promise<void> {
+  if (db.isInitialized) return;
+  const inFlight = attempt;
+  if (inFlight) {
+    if (
+      inFlight.createDatabaseKey !== false ||
+      options?.createDatabaseKey === false
+    )
+      return inFlight.promise;
+    // A stricter attempt is running: it refused to create a database key,
+    // which this caller is allowed to do. Waiting for it keeps the database
+    // from being opened twice, and its refusal must not become this caller's
+    // failure — a first launch has no key yet.
+    await inFlight.promise.catch(() => {});
+    if (db.isInitialized) return;
+    if (attempt && attempt !== inFlight) return attempt.promise;
+  }
+  return beginInitialization(password, options);
+}
+
 let DatabaseLogger = dbLogger.scope(Platform.OS);
 
 const setLogger = () => {

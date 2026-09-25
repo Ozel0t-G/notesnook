@@ -47,7 +47,7 @@ import {
 import { checkVersion } from "react-native-check-version";
 import Config from "react-native-config";
 import * as RNIap from "react-native-iap";
-import { DatabaseLogger, db, setupDatabase } from "../common/database";
+import { DatabaseLogger, db, initializeDatabaseOnce } from "../common/database";
 import { initializeLogger } from "../common/database/logger";
 import { MMKV } from "../common/database/mmkv";
 import { deleteDCacheFiles } from "../common/filesystem/io";
@@ -595,8 +595,7 @@ const initializeDatabase = async (password?: string) => {
   if (!db.isInitialized) {
     DatabaseLogger.info("Initializing database");
     try {
-      await setupDatabase(password);
-      await db.init();
+      await initializeDatabaseOnce(password);
       Sync.run();
     } catch (e) {
       DatabaseLogger.error(e as Error);

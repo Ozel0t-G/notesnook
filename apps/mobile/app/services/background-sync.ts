@@ -23,7 +23,7 @@ import {
   endBackgroundTask
   //@ts-ignore
 } from "react-native-begin-background-task";
-import { DatabaseLogger, db, setupDatabase } from "../common/database";
+import { DatabaseLogger, db, initializeDatabaseOnce } from "../common/database";
 import { deleteDCacheFiles } from "../common/filesystem/io";
 import { useUserStore } from "../stores/use-user-store";
 import { NotePreviewWidget } from "./note-preview-widget";
@@ -99,10 +99,7 @@ BackgroundFetch.registerHeadlessTask(task);
 
 async function onBackgroundSyncStarted() {
   try {
-    if (!db.isInitialized) {
-      await setupDatabase();
-      await db.init();
-    }
+    await initializeDatabaseOnce();
     const user = await db.user?.getUser();
     if (user && !useUserStore.getState().syncing) {
       useUserStore.getState().setSyncing(true);
@@ -135,10 +132,7 @@ const onBoot = async () => {
     }
 
     DatabaseLogger.info("BOOT TASK STARTED");
-    if (!db.isInitialized) {
-      await setupDatabase();
-      await db.init();
-    }
+    await initializeDatabaseOnce();
 
     await Notifications.setupReminders();
     if (SettingsService.get().notifNotes) {

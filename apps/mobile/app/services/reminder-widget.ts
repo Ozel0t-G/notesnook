@@ -57,15 +57,47 @@ const Native: NativeReminderWidget | undefined =
 let updateTimer: NodeJS.Timeout | undefined;
 let writeQueue = Promise.resolve();
 let snapshotGeneration = 0;
-let drainingCompletions = false;
+
+/**
+ * What became of one durable widget action. Only `completed` means the Task is
+ * persisted, the snapshot has been rewritten from it and the action has been
+ * acknowledged; `locked`, `accountMismatch`, `unavailable` and `failed` all
+ * leave the action queued for a later retry, and `stale` drops it.
+ */
+export type TaskWidgetCompletionOutcome =
+  | "completed"
+  | "locked"
+  | "accountMismatch"
+  | "stale"
+  | "unavailable"
+  | "failed";
+
+let drainChain: Promise<unknown> = Promise.resolve();
+let untargetedDrainQueued = false;
+
+/** One drain at a time, so a targeted commit cannot interleave with the
+ * lifecycle drains and read a queue another pass is already consuming. */
+function enqueueDrain<T>(run: () => Promise<T>): Promise<T> {
+  const next = drainChain.then(run, run);
+  drainChain = next.catch(() => {});
+  return next;
+}
 
 // The widget extension cannot open the encrypted React Native Task domain.
-// Its action remains visibly pending until this host path commits and projects it.
-async function drainPendingCompletions() {
-  if (!Native || drainingCompletions || !db.isInitialized) return;
+// Its action remains visibly pending until a host path commits and projects it.
+async function drainOnce(
+  target?: string
+): Promise<TaskWidgetCompletionOutcome | undefined> {
+  if (!Native || !db.isInitialized) return target ? "unavailable" : undefined;
   if (useUserStore.getState().appLocked || useUserStore.getState().isLoggingOut)
-    return;
-  drainingCompletions = true;
+    return target ? "locked" : undefined;
+  let outcome: TaskWidgetCompletionOutcome | undefined;
+  const record = (
+    filename: string,
+    value: TaskWidgetCompletionOutcome
+  ): void => {
+    if (filename === target) outcome = value;
+  };
   let needsRetryNotice = false;
   try {
     const accountId = (await db.user.getUser())?.id || null;
@@ -77,8 +109,10 @@ async function drainPendingCompletions() {
         if (
           typeof filename === "string" &&
           /^[0-9a-f]{64}\.json$/.test(filename)
-        )
+        ) {
           await Native.acknowledgeCompletion(filename);
+          record(filename, "stale");
+        }
         continue;
       }
       const expired =
@@ -87,26 +121,36 @@ async function drainPendingCompletions() {
       if (expired) {
         if (raw.scope === scope) needsRetryNotice = true;
         await Native.acknowledgeCompletion(raw.filename);
+        record(raw.filename, "stale");
         continue;
       }
       // A different signed-in account must never consume this action. Keep it
       // for a later sign-in to the original account within the retry window.
-      if (raw.scope !== scope) continue;
+      if (raw.scope !== scope) {
+        record(raw.filename, "accountMismatch");
+        continue;
+      }
       const task = await db.tasks.get(raw.id);
       if (
         useUserStore.getState().appLocked ||
         useUserStore.getState().isLoggingOut ||
         ((await db.user.getUser())?.id || null) !== accountId
-      )
+      ) {
+        if (target && !outcome) outcome = "locked";
         break;
+      }
       if (task?.completed) {
+        // A repeat tap, a retry and a resumed crash all land here. The Task is
+        // already persisted, so only the projection still has to catch up.
         await flushUpdateForCompletion();
         await Native.acknowledgeCompletion(raw.filename);
+        record(raw.filename, "completed");
         continue;
       }
       if (!mayCommitNativeTaskCompletion(raw, scope, task)) {
         needsRetryNotice = true;
         await Native.acknowledgeCompletion(raw.filename);
+        record(raw.filename, "stale");
         continue;
       }
       // This is the same encrypted-domain operation as in the Tasks screen.
@@ -114,6 +158,7 @@ async function drainPendingCompletions() {
       await db.tasks.complete(raw.id);
       await flushUpdateForCompletion();
       await Native.acknowledgeCompletion(raw.filename);
+      record(raw.filename, "completed");
     }
     if (needsRetryNotice && AppState.currentState === "active")
       ToastManager.show({
@@ -123,9 +168,46 @@ async function drainPendingCompletions() {
   } catch (error) {
     // Keep the durable action for a later foreground/unlock retry.
     DatabaseLogger.error(error as Error, "ReminderWidget.complete");
-  } finally {
-    drainingCompletions = false;
+    if (target && !outcome) outcome = "failed";
   }
+  return outcome;
+}
+
+/** Fire and forget, for the app lifecycle. Repeat requests while one is queued
+ * are coalesced, as a single pass already consumes the whole queue. */
+function drainPendingCompletions(): Promise<void> {
+  if (!Native) return Promise.resolve();
+  if (untargetedDrainQueued) return drainChain.then(() => {});
+  untargetedDrainQueued = true;
+  return enqueueDrain(async () => {
+    untargetedDrainQueued = false;
+    await drainOnce();
+  });
+}
+
+/**
+ * Commit one action and report what definitively happened to it, so a caller
+ * that has to answer the system (the widget completion App Intent) never
+ * reports a completion the encrypted database did not persist.
+ */
+function commitCompletion(action: {
+  filename: string;
+  id: string;
+}): Promise<TaskWidgetCompletionOutcome> {
+  if (!Native)
+    return Promise.resolve<TaskWidgetCompletionOutcome>("unavailable");
+  return enqueueDrain(async () => {
+    const outcome = await drainOnce(action.filename);
+    if (outcome) return outcome;
+    // The action was not in the queue, so an earlier pass already consumed it.
+    // The persisted Task is the only authority on what that pass did.
+    try {
+      return (await db.tasks.get(action.id))?.completed ? "completed" : "stale";
+    } catch (error) {
+      DatabaseLogger.error(error as Error, "ReminderWidget.completeResult");
+      return "failed";
+    }
+  });
 }
 
 function mayExposeTaskTitles() {
@@ -324,6 +406,7 @@ export const ReminderWidget = {
   start,
   update,
   drainPendingCompletions,
+  commitCompletion,
   waitForUpdate: () => {
     if (updateTimer) flushUpdate();
     return writeQueue;

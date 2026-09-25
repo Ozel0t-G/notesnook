@@ -173,7 +173,17 @@ export function clearDatabaseKey() {
   DatabaseLogger.info("Cleared database key");
 }
 
-export async function getDatabaseKey(appLockPassword?: string) {
+export type DatabaseKeyOptions = {
+  /** Background paths (the Task widget completion) must never mint a key: an
+   * unreadable Keychain has to fail the action instead of opening a new empty
+   * database on top of the user's existing encrypted one. */
+  createIfMissing?: boolean;
+};
+
+export async function getDatabaseKey(
+  appLockPassword?: string,
+  options?: DatabaseKeyOptions
+) {
   if (DB_KEY) return DB_KEY;
   if (appLockPassword) {
     const databaseKeyCipher: Cipher = CipherStorage.getMap(
@@ -199,6 +209,13 @@ export async function getDatabaseKey(appLockPassword?: string) {
       DatabaseLogger.info("Getting database key from Keychain");
       DB_KEY = (credentials as Keychain.UserCredentials).password;
     }
+  }
+
+  if (!DB_KEY && options?.createIfMissing === false) {
+    DatabaseLogger.info(
+      "Database key is unavailable and this path may not create one"
+    );
+    return undefined;
   }
 
   if (!DB_KEY) {

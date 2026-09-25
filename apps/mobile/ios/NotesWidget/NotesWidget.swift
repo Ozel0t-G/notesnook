@@ -9,7 +9,6 @@ import SwiftUI
 import UIKit
 import WidgetKit
 import AppIntents
-import CryptoKit
 
 private enum WidgetURLs {
   static let quickNote = URL(string: "ShareMedia://QuickNoteWidget")!
@@ -24,114 +23,6 @@ private enum WidgetURLs {
     return components.url ?? reminders
   }
 
-}
-
-private struct WidgetCompletionAction: Codable {
-  let id: String
-  let scope: String
-  let updatedAt: Int
-  let enqueuedAt: Int
-}
-
-private enum WidgetCompletionQueue {
-  static let folder = "task-widget-actions-v1"
-  static let maximumPending = 50
-  static let maximumAge = 7 * 24 * 60 * 60 * 1000
-
-  enum Status { case none, pending, expired }
-
-  static func directory() throws -> URL {
-    guard let group = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
-          let container = FileManager.default.containerURL(
-            forSecurityApplicationGroupIdentifier: group) else {
-      throw CocoaError(.fileNoSuchFile)
-    }
-    return container.appendingPathComponent(folder, isDirectory: true)
-  }
-
-  static func filename(id: String, scope: String, updatedAt: Int) -> String {
-    let input = Data("\(scope):\(id):\(updatedAt)".utf8)
-    return SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined() + ".json"
-  }
-
-  static func status(id: String, scope: String, updatedAt: Int) -> Status {
-    guard let directory = try? directory(),
-          let data = try? Data(contentsOf: directory.appendingPathComponent(
-            filename(id: id, scope: scope, updatedAt: updatedAt))),
-          let action = try? JSONDecoder().decode(WidgetCompletionAction.self, from: data) else {
-      return .none
-    }
-    let age = Int(Date().timeIntervalSince1970 * 1000) - action.enqueuedAt
-    guard action.id == id && action.scope == scope &&
-      action.updatedAt == updatedAt && age >= 0 else { return .none }
-    return age <= maximumAge ? .pending : .expired
-  }
-
-  static func enqueue(id: String, scope: String, updatedAt: Int) throws {
-    let directory = try directory()
-    let manager = FileManager.default
-    try manager.createDirectory(at: directory, withIntermediateDirectories: true)
-    let name = filename(id: id, scope: scope, updatedAt: updatedAt)
-    let url = directory.appendingPathComponent(name)
-    if status(id: id, scope: scope, updatedAt: updatedAt) == .pending { return }
-    let pending = try manager.contentsOfDirectory(at: directory,
-      includingPropertiesForKeys: nil).filter {
-        $0.pathExtension == "json" && $0.lastPathComponent != name
-      }
-    guard pending.count < maximumPending else { throw CocoaError(.fileWriteOutOfSpace) }
-    let action = WidgetCompletionAction(id: id, scope: scope,
-      updatedAt: updatedAt, enqueuedAt: Int(Date().timeIntervalSince1970 * 1000))
-    let data = try JSONEncoder().encode(action)
-    do {
-      try data.write(to: url, options: .atomic)
-      try manager.setAttributes(
-        [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-        ofItemAtPath: url.path)
-      var resourceValues = URLResourceValues()
-      resourceValues.isExcludedFromBackup = true
-      var mutableURL = url
-      try mutableURL.setResourceValues(resourceValues)
-    } catch {
-      try? manager.removeItem(at: url)
-      throw error
-    }
-  }
-}
-
-@available(iOS 17.0, iOSApplicationExtension 17.0, *)
-struct CompleteTaskWidgetIntent: AppIntent {
-  static var title: LocalizedStringResource = "Complete Task"
-  static var openAppWhenRun: Bool { false }
-
-  @Parameter(title: "Task") var id: String
-  @Parameter(title: "Account Scope") var scope: String
-  @Parameter(title: "Task Revision") var updatedAt: Int
-
-  init() {}
-  init(id: String, scope: String, updatedAt: Int) {
-    self.id = id
-    self.scope = scope
-    self.updatedAt = updatedAt
-  }
-
-  func perform() async throws -> some IntentResult {
-    let now = Date()
-    guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
-                   options: .regularExpression) != nil,
-          scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil,
-          updatedAt > 0,
-          case let .available(snapshot) = ReminderSnapshotStore.load(at: now),
-          snapshot.privacyHidden != true,
-          snapshot.accountScope == scope,
-          TaskWidgetClock.visibleTasks(snapshot, at: now).contains(where: {
-            $0.id == id && $0.updatedAt.map(Int.init) == updatedAt
-          }) else {
-      throw CocoaError(.fileReadUnknown)
-    }
-    try WidgetCompletionQueue.enqueue(id: id, scope: scope, updatedAt: updatedAt)
-    WidgetCenter.shared.reloadTimelines(ofKind: "ReminderWidget")
-    return .result()
-  }
 }
 
 // MARK: - Existing Quick Note widget

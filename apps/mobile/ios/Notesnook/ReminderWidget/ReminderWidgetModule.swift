@@ -139,9 +139,10 @@ final class ReminderWidgetModule: NSObject {
     }
   }
 
+  // The durable action queue is shared with the intent that writes it, so its
+  // location and its deterministic filename have exactly one implementation.
   private static func actionDirectory() throws -> URL {
-    try snapshotURL().deletingLastPathComponent()
-      .appendingPathComponent(actionFolder, isDirectory: true)
+    try WidgetCompletionQueue.directory()
   }
 
   private static func validActionFilename(_ name: String) -> Bool {
@@ -149,8 +150,7 @@ final class ReminderWidgetModule: NSObject {
   }
 
   private static func actionFilename(id: String, scope: String, updatedAt: Int) -> String {
-    let input = Data("\(scope):\(id):\(updatedAt)".utf8)
-    return SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined() + ".json"
+    WidgetCompletionQueue.filename(id: id, scope: scope, updatedAt: updatedAt)
   }
 
   private static func snapshotURL() throws -> URL {

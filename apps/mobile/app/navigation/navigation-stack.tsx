@@ -63,6 +63,13 @@ let TaggedNotes: any = null;
 let ColoredNotes: any = null;
 let Archive: any = null;
 let Library: any = null;
+const LegacyRemindersRedirect = () => {
+  React.useEffect(() => {
+    rootNavigatorRef.current?.navigate("Tasks" as any);
+  }, []);
+  return null;
+};
+
 const AppNavigation = React.memo(
   () => {
     const { colors } = useThemeColors();
@@ -269,7 +276,7 @@ const AppNavigation = React.memo(
 
         <AppStack.Screen
           name="Reminders"
-          getComponent={() => require("../screens/tasks").default}
+          component={LegacyRemindersRedirect}
         />
 
         <AppStack.Screen
@@ -348,6 +355,20 @@ export const RootNavigation = () => {
           useAppleNavigationStore.getState().setSection("tasks");
         else if (focused.name === "GlobalSearch")
           useAppleNavigationStore.getState().setSection("search");
+        else if (focused.name === "FluidPanelsView") {
+          const target = focused.params?.screen;
+          if (target === "Library" || target === "Notes") {
+            useAppleNavigationStore
+              .getState()
+              .setSection(target === "Library" ? "library" : "notes");
+          } else if (
+            ["tasks", "search"].includes(
+              useAppleNavigationStore.getState().section
+            )
+          ) {
+            useAppleNavigationStore.getState().setSection("notes");
+          }
+        }
       }
       if (useSelectionStore.getState().selectionMode) {
         clearSelection();

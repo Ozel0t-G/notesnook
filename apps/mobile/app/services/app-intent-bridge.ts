@@ -24,6 +24,7 @@ import {
   Platform
 } from "react-native";
 import { rootNavigatorRef } from "../utils/global-refs";
+import { DatabaseLogger } from "../common/database";
 import {
   AppIntentRequest,
   executeAppIntentRequest
@@ -68,7 +69,10 @@ export function startAppIntentBridge(
   const module = NativeModules.VeyraNIntentModule as IntentModule | undefined;
   if (!module) return () => {};
   const requestDrain = () => {
-    if (appReady) void drain(module).catch(() => {});
+    if (appReady)
+      void drain(module).catch((error) => {
+        DatabaseLogger.error(error as Error, "AppIntent.drain");
+      });
   };
   let active = true;
   let consumingCapture = false;
@@ -91,16 +95,22 @@ export function startAppIntentBridge(
   const emitter = new NativeEventEmitter(module as never);
   const pending = emitter.addListener("pendingIntent", requestDrain);
   const capture = emitter.addListener("pendingCapture", () => {
-    void requestCapture().catch(() => {});
+    void requestCapture().catch((error) => {
+      DatabaseLogger.error(error as Error, "AppIntent.capture");
+    });
   });
   const foreground = AppState.addEventListener("change", (state) => {
     if (state === "active") {
       requestDrain();
-      void requestCapture().catch(() => {});
+      void requestCapture().catch((error) => {
+        DatabaseLogger.error(error as Error, "AppIntent.capture");
+      });
     }
   });
   requestDrain();
-  void requestCapture().catch(() => {});
+  void requestCapture().catch((error) => {
+    DatabaseLogger.error(error as Error, "AppIntent.capture");
+  });
   return () => {
     active = false;
     pending.remove();

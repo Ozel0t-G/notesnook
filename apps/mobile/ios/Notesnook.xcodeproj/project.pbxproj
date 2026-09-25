@@ -59,6 +59,8 @@
 		D10000000000000000000007 /* TaskAlarmModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000007 /* TaskAlarmModule.m */; };
 		D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000008 /* TaskSymbolViewManager.swift */; };
 		D10000000000000000000009 /* TaskSymbolViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000009 /* TaskSymbolViewManager.m */; };
+		D10000000000000000000011 /* VeyraNTabBarViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000011 /* VeyraNTabBarViewManager.swift */; };
+		D10000000000000000000012 /* VeyraNTabBarViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000012 /* VeyraNTabBarViewManager.m */; };
 		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
 		D10000000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
 		D10000000000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* PrivacyInfo.xcprivacy */; };
@@ -185,6 +187,8 @@
 		D20000000000000000000007 /* TaskAlarmModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskAlarmModule.m; sourceTree = "<group>"; };
 		D20000000000000000000008 /* TaskSymbolViewManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskSymbolViewManager.swift; sourceTree = "<group>"; };
 		D20000000000000000000009 /* TaskSymbolViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskSymbolViewManager.m; sourceTree = "<group>"; };
+		D20000000000000000000011 /* VeyraNTabBarViewManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNTabBarViewManager.swift; sourceTree = "<group>"; };
+		D20000000000000000000012 /* VeyraNTabBarViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNTabBarViewManager.m; sourceTree = "<group>"; };
 		D20000000000000000000003 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = ../../../resources/icon.png; sourceTree = SOURCE_ROOT; };
 		D20000000000000000000004 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		D20000000000000000000005 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -283,6 +287,7 @@
 				5D6DE3F654DAAB9170CC0B2C /* Handwriting */,
 				D30000000000000000000001 /* ReminderWidget */,
 				D30000000000000000000006 /* TaskAlarm */,
+				D30000000000000000000011 /* VeyraNTabBar */,
 				A482053C4A6E06443DC525BD /* SceneDelegate.h */,
 				8630765778FA70C8BA4CA7AD /* SceneDelegate.m */,
 			);
@@ -414,6 +419,16 @@
 			);
 			name = TaskAlarm;
 			path = Notesnook/TaskAlarm;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000011 /* VeyraNTabBar */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000011 /* VeyraNTabBarViewManager.swift */,
+				D20000000000000000000012 /* VeyraNTabBarViewManager.m */,
+			);
+			name = VeyraNTabBar;
+			path = Notesnook/VeyraNTabBar;
 			sourceTree = "<group>";
 		};
 		DA84645424CFBF19A44D64B3 /* Pods */ = {
@@ -1000,6 +1015,8 @@
 				D10000000000000000000007 /* TaskAlarmModule.m in Sources */,
 				D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */,
 				D10000000000000000000009 /* TaskSymbolViewManager.m in Sources */,
+				D10000000000000000000011 /* VeyraNTabBarViewManager.swift in Sources */,
+				D10000000000000000000012 /* VeyraNTabBarViewManager.m in Sources */,
 				64F1C8C66C1A56ADE2A0CAA5 /* SceneDelegate.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

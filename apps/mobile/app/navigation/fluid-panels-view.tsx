@@ -67,6 +67,7 @@ import { AppNavigationStack } from "./navigation-stack";
 import type { PaneWidths } from "../screens/editor/wrapper";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { NavigationProps } from "../services/navigation";
+import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
 
 const MOBILE_SIDEBAR_SIZE = 0.85;
 
@@ -440,6 +441,7 @@ FluidPanelsView.displayName = "FluidPanelsView";
 export default FluidPanelsView;
 
 const onChangeTab = async (event: { i: number; from: number }) => {
+  useAppleNavigationStore.getState().setEditorVisible(event.i === 2);
   if (event.i === 2) {
     editorState().movedAway = false;
     editorState().isFocused = true;

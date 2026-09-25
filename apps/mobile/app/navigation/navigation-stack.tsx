@@ -20,6 +20,7 @@ import { useThemeColors } from "@notesnook/theme";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as React from "react";
+import { Platform, View } from "react-native";
 import { hideAllTooltips } from "../hooks/use-tooltip";
 import SettingsService from "../services/settings";
 import useNavigationStore, {
@@ -36,6 +37,11 @@ import { editorState } from "../screens/editor/tiptap/utils";
 import { eOnLoadNote } from "../utils/events";
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
+import { AppleTabBar } from "../components/apple-tab-bar";
+import {
+  AppleSection,
+  useAppleNavigationStore
+} from "../stores/use-apple-navigation-store";
 
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
@@ -56,6 +62,7 @@ let Monographs: any = null;
 let TaggedNotes: any = null;
 let ColoredNotes: any = null;
 let Archive: any = null;
+let Library: any = null;
 const AppNavigation = React.memo(
   () => {
     const { colors } = useThemeColors();
@@ -205,6 +212,14 @@ const AppNavigation = React.memo(
         />
 
         <AppStack.Screen
+          name="Library"
+          getComponent={() => {
+            Library = Library || require("../screens/library").default;
+            return Library;
+          }}
+        />
+
+        <AppStack.Screen
           name="Favorites"
           getComponent={() => {
             Favorites = Favorites || require("../screens/favorites").default;
@@ -303,6 +318,7 @@ let PayWall: any = null;
 let Wrapped: any = null;
 let Tasks: any = null;
 let TaskDetail: any = null;
+let GlobalSearch: any = null;
 export const RootNavigation = () => {
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
@@ -313,6 +329,11 @@ export const RootNavigation = () => {
   ).current;
 
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
+  const deviceMode = useSettingStore((state) => state.deviceMode);
+  const editorVisible = useAppleNavigationStore((state) => state.editorVisible);
+  const [rootRoute, setRootRoute] = React.useState<string>(
+    introCompleted ? "FluidPanelsView" : "Welcome"
+  );
   const pendingShortcut = useSettingStore((state) => state.pendingShortcut);
   const [navigationReady, setNavigationReady] = React.useState(false);
   const clearSelection = useSelectionStore((state) => state.clearSelection);
@@ -320,6 +341,14 @@ export const RootNavigation = () => {
 
   const onStateChange = React.useCallback(
     (state: any) => {
+      const focused = state?.routes?.[state.index];
+      if (focused?.name) {
+        setRootRoute(focused.name);
+        if (focused.name === "Tasks")
+          useAppleNavigationStore.getState().setSection("tasks");
+        else if (focused.name === "GlobalSearch")
+          useAppleNavigationStore.getState().setSection("search");
+      }
       if (useSelectionStore.getState().selectionMode) {
         clearSelection();
       }
@@ -373,7 +402,29 @@ export const RootNavigation = () => {
 
   const initialRouteName = !introCompleted ? "Welcome" : "FluidPanelsView";
 
+  const selectSection = React.useCallback((section: AppleSection) => {
+    useAppleNavigationStore.getState().setSection(section);
+    if (section === "tasks") {
+      rootNavigatorRef.current?.navigate("Tasks" as any);
+    } else if (section === "search") {
+      rootNavigatorRef.current?.navigate("GlobalSearch" as any);
+    } else {
+      fluidTabsRef.current?.goToPage("home", true);
+      rootNavigatorRef.current?.navigate("FluidPanelsView" as any, {
+        screen: section === "library" ? "Library" : "Notes"
+      } as any);
+    }
+  }, []);
+
+  const showTabBar =
+    Platform.OS === "ios" &&
+    introCompleted &&
+    !isAppLoading &&
+    ["FluidPanelsView", "Tasks", "GlobalSearch"].includes(rootRoute) &&
+    (deviceMode !== "mobile" || !editorVisible);
+
   return (
+    <View style={{ flex: 1 }}>
     <NavigationContainer
       onReady={() => setNavigationReady(true)}
       onStateChange={onStateChange}
@@ -479,6 +530,15 @@ export const RootNavigation = () => {
         />
 
         <RootStack.Screen
+          name="GlobalSearch"
+          getComponent={() => {
+            GlobalSearch =
+              GlobalSearch || require("../screens/global-search").default;
+            return GlobalSearch;
+          }}
+        />
+
+        <RootStack.Screen
           name="TaskDetail"
           getComponent={() => {
             TaskDetail =
@@ -512,6 +572,8 @@ export const RootNavigation = () => {
         />
       </RootStack.Navigator>
     </NavigationContainer>
+    {showTabBar && <AppleTabBar onSelect={selectSection} />}
+    </View>
   );
 };
 

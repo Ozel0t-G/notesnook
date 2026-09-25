@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
+import { Platform } from "react-native";
 import { notesnook } from "../../../e2e/test.ids";
 import Navigation from "../../services/navigation";
 import { useSettingStore } from "../../stores/use-setting-store";
@@ -50,7 +51,7 @@ export const LeftMenus = ({
     Navigation.goBack();
   };
 
-  return isTablet && !canGoBack ? null : (
+  return (isTablet || Platform.OS === "ios") && !canGoBack ? null : (
     <IconButton
       testID={notesnook.ids.default.header.buttons.left}
       left={40}

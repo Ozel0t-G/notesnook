@@ -1007,14 +1007,16 @@ $day$: Current day (eg. Monday)`,
   tasksUrgentChooseTime: () =>
     t`Choose a reminder time before enabling Urgent.`,
   tasksUrgentUnavailable: () =>
-    t`Alarm reminders are unavailable on this device. Standard reminders still work.`,
+    t`Urgent notifications are unavailable on this device. Standard reminders still work.`,
   tasksUrgentPermissionDenied: () =>
-    t`Allow alarms in Settings to use Urgent reminders.`,
+    t`Allow notifications in Settings to use Urgent reminders.`,
   tasksUrgentAlarmUnavailable: () => t`Alarms unavailable on this device`,
-  tasksUrgentTimeRequired: () => t`Choose a time to enable an alarm`,
+  tasksUrgentTimeRequired: () => t`Choose a time to enable an Urgent reminder`,
   tasksUrgentUntilStopped: () => t`Alarm until explicitly stopped`,
+  tasksUrgentRespectsSilent: () =>
+    t`Time Sensitive reminder. Sound follows Silent Mode and notification settings.`,
   tasksUrgentRepeatLimit: () =>
-    t`Urgent alarms are prepared for the next five repeats. Open VeyraN regularly to schedule more.`,
+    t`Urgent reminders are prepared for the next five repeats. Open VeyraN regularly to schedule more.`,
   tasksLegacyMigrationNotice: () =>
     t`This Task came from a Reminder. Changes made in older app versions will not update this Task.`,
   tasksUrgentAlarmLabel: () => t`Urgent alarm`,
@@ -1063,6 +1065,10 @@ $day$: Current day (eg. Monday)`,
   tasksNoTasks: () => t`No tasks here yet`,
   tasksShowMore: () => t`Show more tasks`,
   tasksOverdue: () => t`Overdue`,
+  tasksOpenCount: (count: number) =>
+    plural(count, { one: "# open", other: "# open" }),
+  tasksOverdueCount: (count: number) =>
+    plural(count, { one: "# overdue", other: "# overdue" }),
   tasksInvalidRecurrence: () => t`Choose a valid repeat schedule`,
   tasksRepeatNeedsDueDate: () =>
     t`Choose a reminder date before setting repeat`,
@@ -1623,6 +1629,7 @@ For example:
     query ? t`No results found for ${query}` : t`No results found`,
   routes: {
     Notes: () => t`Notes`,
+    Library: () => t`Library`,
     Notebooks: () => t`Notebooks`,
     Notebook: () => t`Notebook`,
     Favorites: () => t`Favorites`,

@@ -30,6 +30,7 @@ const mockTodayList = jest.fn(async () => [{ title: "Pay invoice" }]);
 const mockTaskLists = jest.fn(async () => [
   { id: "personal", name: "Personal" }
 ]);
+const mockRequestPermission = jest.fn(async () => true);
 
 jest.mock("../common/database", () => ({
   db: {
@@ -58,7 +59,7 @@ jest.mock("./task-notifications", () => ({
   TaskNotifications: {
     urgentStatus: async () => "authorized",
     requestUrgentPermission: async () => "authorized",
-    requestPermission: async () => true
+    requestPermission: () => mockRequestPermission()
   }
 }));
 jest.mock("./navigation", () => ({
@@ -158,5 +159,20 @@ describe("App Intent domain acknowledgements", () => {
       })
     ).resolves.toEqual({ status: "ambiguous", value: "" });
     expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  test("does not claim a scheduled Task was created when notification permission is denied", async () => {
+    mockRequestPermission.mockResolvedValueOnce(false);
+    await expect(
+      executeAppIntentRequest({
+        id: "5",
+        action: "createTask",
+        payload: {
+          title: "Collect parcel",
+          reminderTimestamp: String(new Date(2026, 9, 2, 14, 30).getTime())
+        }
+      })
+    ).resolves.toEqual({ status: "unavailable", value: "" });
+    expect(mockCreateTask).not.toHaveBeenCalled();
   });
 });

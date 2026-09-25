@@ -63,8 +63,8 @@ enum VeyraNIntentFailure: LocalizedError {
 }
 
 // Requests contain private user input, so they remain in the host process's
-// memory. Only React Native's initialized encrypted domain can acknowledge a
-// successful write. No extension or custom URL can write Tasks or Notes.
+// memory. The host React Native bridge acknowledges domain writes after they
+// finish. No extension or custom URL can write Tasks or Notes.
 final class VeyraNIntentMailbox {
   static let shared = VeyraNIntentMailbox()
   static let pendingNotification = Notification.Name("veyran.intent.pending")

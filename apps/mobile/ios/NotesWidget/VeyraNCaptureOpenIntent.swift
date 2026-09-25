@@ -33,14 +33,18 @@ enum VeyraNCaptureTarget: String, AppEnum {
 private enum VeyraNControlRoute {
   static let key = "veyran.control.captureTarget"
 
-  static func request(_ target: String) {
+  static func request(_ target: String) throws {
     guard let group = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
-          let defaults = UserDefaults(suiteName: group) else { return }
+          let defaults = UserDefaults(suiteName: group) else {
+      throw VeyraNCaptureFailure.unavailable
+    }
     // The shared value is only an action marker. User text and Task data never
     // pass through App Group defaults or the control extension.
     defaults.set(target, forKey: key)
     defaults.set(Date().timeIntervalSince1970, forKey: key + ".timestamp")
-    defaults.synchronize()
+    guard defaults.synchronize(), defaults.string(forKey: key) == target else {
+      throw VeyraNCaptureFailure.unavailable
+    }
     DispatchQueue.main.async {
       NotificationCenter.default.post(
         name: Notification.Name("veyran.control.pending"), object: nil
@@ -62,9 +66,19 @@ private enum VeyraNControlRoute {
   }
 }
 
+private enum VeyraNCaptureFailure: LocalizedError {
+  case unavailable
+
+  var errorDescription: String? {
+    "VeyraN could not open capture. Open the app and try again."
+  }
+}
+
 @available(iOS 18.0, *)
 struct VeyraNOpenCaptureIntent: OpenIntent {
   static let title: LocalizedStringResource = "Open VeyraN Capture"
+  @available(iOS 26.0, *)
+  static let supportedModes: IntentModes = .foreground(.immediate)
 
   @Parameter(title: "Capture") var target: VeyraNCaptureTarget
 
@@ -72,7 +86,7 @@ struct VeyraNOpenCaptureIntent: OpenIntent {
   init(target: VeyraNCaptureTarget) { self.target = target }
 
   func perform() async throws -> some IntentResult {
-    VeyraNControlRoute.request(target.rawValue)
+    try VeyraNControlRoute.request(target.rawValue)
     return .result()
   }
 }

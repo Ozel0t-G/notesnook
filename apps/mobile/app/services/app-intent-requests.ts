@@ -110,7 +110,10 @@ export async function executeAppIntentRequest(
               : await TaskNotifications.requestUrgentPermission();
           if (authorized !== "authorized") return failure("unavailable");
         } else if (reminder) {
-          await TaskNotifications.requestPermission().catch(() => false);
+          const authorized = await TaskNotifications.requestPermission().catch(
+            () => false
+          );
+          if (!authorized) return failure("unavailable");
         }
         const task = await db.tasks.create({
           title,

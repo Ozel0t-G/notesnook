@@ -85,119 +85,6 @@ private struct QuickNoteWidget: Widget {
 
 // MARK: - Reminder snapshot
 
-private struct ReminderSnapshot: Codable {
-  let schemaVersion: Int
-  let privacyHidden: Bool?
-  let updatedAt: Double
-  let generatedForDate: String
-  let generatedForTimeZone: String
-  let utcOffsetMinutes: Int
-  let count: Int
-  let appearance: String
-  let accentLight: String
-  let accentDark: String
-  let tasks: [ReminderSnapshotItem]
-}
-
-private struct ReminderSnapshotItem: Codable, Identifiable {
-  let id: String
-  let title: String
-  let dueDate: String?
-  let dueTime: String?
-  let flagged: Bool
-  let priority: String
-}
-
-private enum ReminderSnapshotState {
-  case unavailable
-  case available(ReminderSnapshot)
-}
-
-private enum TaskWidgetClock {
-  static var calendar: Calendar {
-    var value = Calendar(identifier: .gregorian)
-    value.timeZone = .autoupdatingCurrent
-    return value
-  }
-
-  static func localDate(_ date: Date) -> String {
-    let parts = calendar.dateComponents([.year, .month, .day], from: date)
-    return String(format: "%04d-%02d-%02d", parts.year ?? 0, parts.month ?? 0, parts.day ?? 0)
-  }
-
-  static func utcOffsetMinutes(_ date: Date) -> Int {
-    TimeZone.autoupdatingCurrent.secondsFromGMT(for: date) / 60
-  }
-
-  static func normalizedTimeZone(_ identifier: String) -> String {
-    switch identifier {
-    case "UTC", "Etc/UTC", "Etc/GMT", "GMT": return "UTC"
-    default: return identifier
-    }
-  }
-
-  static func isFresh(_ snapshot: ReminderSnapshot, at date: Date) -> Bool {
-    if snapshot.privacyHidden == true { return true }
-    return snapshot.generatedForDate == localDate(date)
-      && snapshot.utcOffsetMinutes == utcOffsetMinutes(date)
-      && (snapshot.generatedForTimeZone.isEmpty
-        || normalizedTimeZone(snapshot.generatedForTimeZone)
-          == normalizedTimeZone(TimeZone.autoupdatingCurrent.identifier))
-  }
-
-  static func nextMidnight(after date: Date) -> Date {
-    let nextDay = calendar.date(byAdding: .day, value: 1, to: date) ?? date.addingTimeInterval(86400)
-    return calendar.startOfDay(for: nextDay)
-  }
-
-  static func dueInstant(_ task: ReminderSnapshotItem) -> Date? {
-    guard let dueDate = task.dueDate, let dueTime = task.dueTime else { return nil }
-    let day = dueDate.split(separator: "-").compactMap { Int($0) }
-    let time = dueTime.split(separator: ":").compactMap { Int($0) }
-    guard day.count == 3, time.count == 2 else { return nil }
-    return calendar.date(from: DateComponents(
-      year: day[0], month: day[1], day: day[2], hour: time[0], minute: time[1]
-    ))
-  }
-
-  static func isOverdue(_ task: ReminderSnapshotItem, at date: Date) -> Bool {
-    guard let dueDate = task.dueDate else { return false }
-    let today = localDate(date)
-    if dueDate < today { return true }
-    if dueDate > today { return false }
-    guard let dueInstant = dueInstant(task) else { return false }
-    return dueInstant < date
-  }
-}
-
-private enum ReminderSnapshotStore {
-  private static let filename = "reminder-widget-snapshot.json"
-
-  static func load(at now: Date = Date()) -> ReminderSnapshotState {
-    guard
-      let appGroup = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
-      !appGroup.isEmpty,
-      let container = FileManager.default.containerURL(
-        forSecurityApplicationGroupIdentifier: appGroup
-      )
-    else {
-      return .unavailable
-    }
-
-    let url = container.appendingPathComponent(filename, isDirectory: false)
-    guard
-      let data = try? Data(contentsOf: url),
-      let snapshot = try? JSONDecoder().decode(ReminderSnapshot.self, from: data),
-      snapshot.schemaVersion == 3,
-      snapshot.count >= 0,
-      TaskWidgetClock.isFresh(snapshot, at: now)
-    else {
-      return .unavailable
-    }
-    return .available(snapshot)
-  }
-}
-
 private struct ReminderEntry: TimelineEntry {
   let date: Date
   let state: ReminderSnapshotState
@@ -235,14 +122,9 @@ private struct ReminderProvider: TimelineProvider {
         ReminderEntry(date: $0, state: state)
       })
     }
-    // This entry hides yesterday's Tasks even if WidgetKit delays a reload.
-    let midnightState: ReminderSnapshotState
-    if case let .available(snapshot) = state, snapshot.privacyHidden == true {
-      midnightState = state
-    } else {
-      midnightState = .unavailable
-    }
-    entries.append(ReminderEntry(date: nextMidnight, state: midnightState))
+    // Re-evaluate the cached local schedules at midnight, even when the host
+    // app remains closed. Incomplete overdue Tasks remain visible.
+    entries.append(ReminderEntry(date: nextMidnight, state: state))
     let periodicRefresh = now.addingTimeInterval(15 * 60)
     completion(
       Timeline(
@@ -290,6 +172,7 @@ private struct ReminderProvider: TimelineProvider {
       appearance: "system",
       accentLight: "#008837",
       accentDark: "#20A65A",
+      upcomingCounts: nil,
       tasks: tasks
     )
     return ReminderEntry(date: now, state: .available(snapshot))
@@ -319,6 +202,11 @@ private struct ReminderWidgetEntryView: View {
     case .systemLarge: return 8
     default: return 2
     }
+  }
+
+  private var scheduledTasks: [ReminderSnapshotItem] {
+    guard let snapshot else { return [] }
+    return TaskWidgetClock.visibleTasks(snapshot, at: max(entry.date, Date()))
   }
 
   private var accent: Color {
@@ -393,14 +281,14 @@ private struct ReminderWidgetEntryView: View {
         Spacer(minLength: 4)
 
         if let snapshot, snapshot.privacyHidden != true {
-          Text("\(snapshot.count)")
+          Text("\(TaskWidgetClock.visibleCount(snapshot, at: max(entry.date, Date())))")
             .font(.system(size: family == .systemSmall ? 11 : 12, weight: .semibold))
             .foregroundStyle(.primary)
             .padding(.horizontal, family == .systemSmall ? 8 : 10)
             .frame(height: family == .systemSmall ? 23 : 25)
             .background(accent.opacity(effectiveColorScheme == .dark ? 0.28 : 0.16))
             .clipShape(Capsule())
-            .accessibilityLabel(Text("\(snapshot.count) tasks today"))
+            .accessibilityLabel(Text("\(TaskWidgetClock.visibleCount(snapshot, at: max(entry.date, Date()))) tasks today"))
         }
       }
       .contentShape(Rectangle())
@@ -412,10 +300,10 @@ private struct ReminderWidgetEntryView: View {
     if let snapshot {
       if snapshot.privacyHidden == true {
         emptyState(title: "Tasks hidden by App Lock")
-      } else if snapshot.count == 0 {
+      } else if scheduledTasks.isEmpty {
         emptyState(title: "No tasks today")
       } else {
-        reminderLayout(Array(snapshot.tasks.prefix(visibleCount)))
+        reminderLayout(Array(scheduledTasks.prefix(visibleCount)))
       }
     } else {
       emptyState(title: "Open VeyraN to refresh tasks")

@@ -19,6 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import type { Task } from "@notesnook/core";
 import { execFileSync } from "child_process";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
 import path from "path";
 import {
   buildPrivateTaskWidgetSnapshot,
@@ -101,7 +103,11 @@ describe("task widget", () => {
       }
     );
     expect(snapshot.count).toBe(2);
-    expect(snapshot.tasks.map((item) => item.id)).toEqual(["overdue", "today"]);
+    expect(snapshot.tasks.map((item) => item.id)).toEqual([
+      "overdue",
+      "today",
+      "future"
+    ]);
     expect(snapshot.schemaVersion).toBe(3);
     expect(snapshot.generatedForDate).toBe("2026-09-24");
     expect(snapshot.generatedForTimeZone).toBe(
@@ -167,7 +173,10 @@ describe("task widget", () => {
     expect(snapshot.generatedForDate).toBe("2026-09-25");
     expect(snapshot.generatedForTimeZone).toBe("Pacific/Kiritimati");
     expect(snapshot.utcOffsetMinutes).toBe(14 * 60);
-    expect(snapshot.tasks.map((item) => item.id)).toEqual(["local-today"]);
+    expect(snapshot.tasks.map((item) => item.id)).toEqual([
+      "local-today",
+      "future"
+    ]);
   });
 
   test("records a changed UTC offset across DST even on the same day", () => {
@@ -213,3 +222,174 @@ describe("task widget", () => {
     ).toBeUndefined();
   });
 });
+
+(process.platform === "darwin" ? describe : describe.skip)(
+  "production Task writer to WidgetKit decoder contract",
+  () => {
+    const swiftDirectory = path.join(__dirname, "../../ios/NotesWidget");
+    let buildDirectory: string;
+    let binary: string;
+    const writtenAt = Date.parse("2026-09-24T12:00:00Z");
+    const nextDay = Date.parse("2026-09-25T12:00:00Z");
+
+    beforeAll(() => {
+      buildDirectory = mkdtempSync(path.join(tmpdir(), "task-widget-contract-"));
+      binary = path.join(buildDirectory, "snapshot-contract");
+      execFileSync("xcrun", [
+        "swiftc",
+        "-o",
+        binary,
+        path.join(swiftDirectory, "TaskWidgetSnapshotCodec.swift"),
+        path.join(swiftDirectory, "TaskWidgetSnapshotContract.swift")
+      ]);
+    });
+    afterAll(() => {
+      if (buildDirectory)
+        rmSync(buildDirectory, { recursive: true, force: true });
+    });
+
+    function decode(
+      snapshot: ReturnType<typeof buildTaskWidgetSnapshot>,
+      at: number,
+      timezone = "UTC"
+    ) {
+      return JSON.parse(
+        execFileSync(binary, [String(at / 1000)], {
+          input: JSON.stringify(snapshot),
+          env: { ...process.env, TZ: timezone }
+        }).toString()
+      ) as {
+        available: boolean;
+        privacyHidden?: boolean;
+        count?: number;
+        ids?: string[];
+      };
+    }
+
+    test("date-only, timed, overdue, recurring, urgent, and migrated Tasks survive midnight", () => {
+      const snapshot = snapshotInTimezone("UTC", writtenAt, [
+        task("date-only", "2026-09-24", {
+          reminderDate: "2026-09-24",
+          scheduleVersion: 2
+        }),
+        task("timed", "2026-09-24", {
+          reminderDate: "2026-09-24",
+          reminderTime: "14:00",
+          scheduleVersion: 2
+        }),
+        task("overdue", "2026-09-23"),
+        task("recurring", "2026-09-25", {
+          reminderDate: "2026-09-25",
+          scheduleVersion: 2,
+          recurrenceRule: "FREQ=DAILY",
+          seriesId: "series"
+        }),
+        task("urgent", "2026-09-25", {
+          reminderDate: "2026-09-25",
+          reminderTime: "15:00",
+          scheduleVersion: 2,
+          urgent: true,
+          priority: "high",
+          flagged: true,
+          listId: "custom-list"
+        }),
+        task("legacy", "2026-09-30", {
+          reminderAt: Date.parse("2026-09-23T09:00:00Z"),
+          legacyReminderId: "source-reminder"
+        }),
+        task("completed", "2026-09-24", { completed: true }),
+        task("unscheduled", "2026-09-24", {
+          reminderDate: undefined,
+          scheduleVersion: 2
+        }),
+        task("later", "2026-09-26")
+      ]);
+      expect(snapshot.count).toBe(4);
+      expect(decode(snapshot, writtenAt)).toMatchObject({
+        available: true,
+        count: 4,
+        ids: ["overdue", "legacy", "date-only", "timed"]
+      });
+      expect(decode(snapshot, nextDay)).toMatchObject({
+        available: true,
+        count: 6,
+        ids: ["overdue", "legacy", "date-only", "timed", "recurring", "urgent"]
+      });
+    });
+
+    test("App Lock bytes decode as redacted without Task IDs or titles", () => {
+      const snapshot = buildPrivateTaskWidgetSnapshot({
+        now: writtenAt,
+        appearance: "system",
+        accentLight: "#123ABC",
+        accentDark: "#456DEF"
+      });
+      expect(decode(snapshot, nextDay)).toMatchObject({
+        available: true,
+        privacyHidden: true,
+        count: 0,
+        ids: []
+      });
+    });
+
+    test("pre-fix v3 snapshots remain decodable after midnight", () => {
+      const snapshot = snapshotInTimezone("UTC", writtenAt, [
+        task("old-overdue", "2026-09-23"),
+        task("old-today", "2026-09-24")
+      ]);
+      delete (snapshot as Partial<typeof snapshot>).upcomingCounts;
+      expect(decode(snapshot, nextDay)).toMatchObject({
+        available: true,
+        ids: ["old-overdue", "old-today"],
+        count: 2
+      });
+    });
+
+    test("local dates remain valid across a daylight-saving offset change", () => {
+      const before = Date.parse("2026-03-28T12:00:00Z");
+      const after = Date.parse("2026-03-29T12:00:00Z");
+      const snapshot = snapshotInTimezone("Europe/Oslo", before, [
+        task("overdue", "2026-03-28"),
+        task("today", "2026-03-29")
+      ]);
+      expect(decode(snapshot, after, "Europe/Oslo")).toMatchObject({
+        available: true,
+        ids: ["overdue", "today"],
+        count: 2
+      });
+    });
+
+    test("equivalent timezone aliases decode, while a real offset change asks for refresh", () => {
+      const snapshot = snapshotInTimezone("America/Los_Angeles", writtenAt, [
+        task("today", "2026-09-24")
+      ]);
+      expect(decode(snapshot, writtenAt, "US/Pacific")).toMatchObject({
+        available: true,
+        ids: ["today"]
+      });
+      expect(decode(snapshot, writtenAt, "UTC")).toMatchObject({
+        available: false
+      });
+    });
+
+    test("the count stays accurate when cached rows are capped", () => {
+      const snapshot = snapshotInTimezone(
+        "UTC",
+        writtenAt,
+        Array.from({ length: 70 }, (_, index) =>
+          task(`future-${index}`, "2026-09-25")
+        )
+      );
+      expect(snapshot.tasks).toHaveLength(64);
+      expect(decode(snapshot, writtenAt)).toMatchObject({
+        available: true,
+        count: 0,
+        ids: []
+      });
+      expect(decode(snapshot, nextDay)).toMatchObject({
+        available: true,
+        count: 70
+      });
+    });
+  }
+);

@@ -18,7 +18,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { DatabaseUpdatedEvent, EVENTS } from "@notesnook/core";
-import { NativeModules, Platform } from "react-native";
+import { AppState, NativeModules, Platform } from "react-native";
+import {
+  beginBackgroundTask,
+  endBackgroundTask
+  // @ts-ignore The package does not ship TypeScript declarations.
+} from "react-native-begin-background-task";
 import { db, DatabaseLogger } from "../common/database";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useThemeStore } from "../stores/use-theme-store";
@@ -51,10 +56,15 @@ function mayExposeTaskTitles() {
 function clearSnapshot() {
   snapshotGeneration++;
   clearTimeout(updateTimer);
+  updateTimer = undefined;
   if (!Native) return Promise.resolve();
   writeQueue = writeQueue
     .then(() => Native.clearSnapshot())
-    .catch((error) => DatabaseLogger.error(error as Error, "ReminderWidget.clear"));
+    .catch((error) =>
+      DatabaseLogger.error(error as Error, "ReminderWidget.clear")
+    );
+  if (AppState.currentState !== "active")
+    void protectBackgroundWrite(writeQueue, beginBackgroundTask());
   return writeQueue;
 }
 
@@ -85,18 +95,55 @@ async function writeCurrentSnapshot() {
   await Native.writeSnapshot(JSON.stringify(snapshot));
 }
 
+function flushUpdate() {
+  if (!Native) return Promise.resolve();
+  clearTimeout(updateTimer);
+  updateTimer = undefined;
+  writeQueue = writeQueue.then(writeCurrentSnapshot).catch((error) => {
+    DatabaseLogger.error(error as Error, "ReminderWidget.update");
+  });
+  return writeQueue;
+}
+
+async function protectBackgroundWrite(
+  write: Promise<void>,
+  backgroundTask: Promise<number>
+) {
+  let backgroundTaskId: number | undefined;
+  try {
+    backgroundTaskId = await backgroundTask;
+    await write;
+  } catch (error) {
+    DatabaseLogger.error(error as Error, "ReminderWidget.background");
+    await write;
+  } finally {
+    if (backgroundTaskId !== undefined) {
+      try {
+        await endBackgroundTask(backgroundTaskId);
+      } catch (error) {
+        DatabaseLogger.error(error as Error, "ReminderWidget.backgroundEnd");
+      }
+    }
+  }
+}
+
 function update() {
   if (!Native) return;
   clearTimeout(updateTimer);
   updateTimer = setTimeout(() => {
-    writeQueue = writeQueue.then(writeCurrentSnapshot).catch((error) => {
-      DatabaseLogger.error(error as Error, "ReminderWidget.update");
-    });
+    flushUpdate();
   }, 250);
 }
 
 function start() {
-  if (!Native) return () => {};
+  if (!Native) {
+    if (Platform.OS === "ios")
+      DatabaseLogger.error(
+        new Error("Native Task widget bridge unavailable"),
+        "ReminderWidget.start"
+      );
+    return () => {};
+  }
 
   update();
   const databaseSubscription = db.eventManager.subscribe(
@@ -109,6 +156,17 @@ function start() {
   const syncSubscription = db.eventManager.subscribe(EVENTS.syncCompleted, () =>
     update()
   );
+  // iOS may suspend JavaScript before the debounce fires after the user saves
+  // a Task and immediately leaves the app. Flush the derived cache first.
+  const appStateSubscription = AppState.addEventListener("change", (state) => {
+    if (state !== "active") {
+      const backgroundTask = beginBackgroundTask();
+      void protectBackgroundWrite(
+        updateTimer ? flushUpdate() : writeQueue,
+        backgroundTask
+      );
+    } else update();
+  });
   const logoutSubscription = db.eventManager.subscribe(
     EVENTS.userLoggedOut,
     () => void clearSnapshot()
@@ -125,8 +183,10 @@ function start() {
   const unsubscribeSettings = useSettingStore.subscribe((state, previous) => {
     if (state.settings.appLockEnabled !== previous.settings.appLockEnabled) {
       void clearSnapshot();
-      update();
-    } else if (state.settings.useSystemTheme !== previous.settings.useSystemTheme) {
+      flushUpdate();
+    } else if (
+      state.settings.useSystemTheme !== previous.settings.useSystemTheme
+    ) {
       update();
     }
   });
@@ -134,8 +194,10 @@ function start() {
     if (state.user?.id !== previous.user?.id) {
       void clearSnapshot();
     } else if (state.appLocked !== previous.appLocked) {
-      if (state.appLocked) void clearSnapshot();
-      update();
+      if (state.appLocked) {
+        void clearSnapshot();
+        flushUpdate();
+      } else update();
     }
   });
 
@@ -143,16 +205,21 @@ function start() {
     databaseSubscription.unsubscribe();
     syncSubscription.unsubscribe();
     logoutSubscription.unsubscribe();
+    appStateSubscription.remove();
     unsubscribeTheme();
     unsubscribeSettings();
     unsubscribeUser();
     clearTimeout(updateTimer);
+    updateTimer = undefined;
   };
 }
 
 export const ReminderWidget = {
   start,
   update,
-  waitForUpdate: () => writeQueue,
+  waitForUpdate: () => {
+    if (updateTimer) flushUpdate();
+    return writeQueue;
+  },
   clear: clearSnapshot
 };

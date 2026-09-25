@@ -38,6 +38,7 @@
 		65AA857925E6DDEC00772A01 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 65AA857825E6DDEC00772A01 /* WidgetKit.framework */; };
 		65AA857B25E6DDEC00772A01 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 65AA857A25E6DDEC00772A01 /* SwiftUI.framework */; };
 		65AA857E25E6DDEC00772A01 /* NotesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65AA857D25E6DDEC00772A01 /* NotesWidget.swift */; };
+		D10000000000000000000010 /* TaskWidgetSnapshotCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */; };
 		65AA858025E6DDEE00772A01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 65AA857F25E6DDEE00772A01 /* Assets.xcassets */; };
 		65AA858425E6DDEE00772A01 /* NotesWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 65AA857725E6DDEC00772A01 /* NotesWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		65AD1F4A2F6289110033176F /* EvilIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65AD1F492F6289110033176F /* EvilIcons.ttf */; };
@@ -147,6 +148,7 @@
 		65AA857825E6DDEC00772A01 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		65AA857A25E6DDEC00772A01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		65AA857D25E6DDEC00772A01 /* NotesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesWidget.swift; sourceTree = "<group>"; };
+		D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskWidgetSnapshotCodec.swift; sourceTree = "<group>"; };
 		65AA857F25E6DDEE00772A01 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		65AA858125E6DDEE00772A01 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		65AD1F492F6289110033176F /* EvilIcons.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = EvilIcons.ttf; path = ../fonts/EvilIcons.ttf; sourceTree = SOURCE_ROOT; };
@@ -321,6 +323,7 @@
 			isa = PBXGroup;
 			children = (
 				65AA857D25E6DDEC00772A01 /* NotesWidget.swift */,
+				D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */,
 				D20000000000000000000004 /* Localizable.xcstrings */,
 				D20000000000000000000005 /* PrivacyInfo.xcprivacy */,
 				D20000000000000000000003 /* icon.png */,
@@ -1022,6 +1025,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				65AA857E25E6DDEC00772A01 /* NotesWidget.swift in Sources */,
+				D10000000000000000000010 /* TaskWidgetSnapshotCodec.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

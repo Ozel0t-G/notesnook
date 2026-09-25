@@ -29,20 +29,28 @@ export type TaskWidgetItem = {
 };
 
 export type TaskWidgetSnapshot = {
+  // v3 additions must remain optional to old readers; breaking changes need v4.
   schemaVersion: 3;
   privacyHidden?: boolean;
   updatedAt: number;
   generatedForDate: string;
   generatedForTimeZone: string;
+  // Retained for v3 wire compatibility; local wall-date filtering spans DST.
   utcOffsetMinutes: number;
   count: number;
   appearance: "system" | "light" | "dark";
   accentLight: string;
   accentDark: string;
+  upcomingCounts: Record<string, number>;
   tasks: TaskWidgetItem[];
 };
 
-const MAX_VISIBLE_TASKS = 10;
+// Keep a small cache of future schedules so WidgetKit can roll into the next
+// local day while the app is closed. The extension filters this cache at render.
+const MAX_CACHED_TASKS = 64;
+// Preserve exact badge counts for a year of day rollovers without allowing an
+// unbounded date histogram to exceed the native 256 KiB snapshot limit.
+const MAX_UPCOMING_COUNT_DATES = 366;
 
 function localDate(now: number) {
   const date = new Date(now);
@@ -71,10 +79,10 @@ export function buildTaskWidgetSnapshot(
 ): TaskWidgetSnapshot {
   const now = options.now ?? Date.now();
   const today = localDate(now);
-  const visible = tasks
+  const scheduled = tasks
     .filter((task) => {
       const date = taskReminderSchedule(task).date;
-      return !task.completed && !!date && date <= today;
+      return !task.completed && !!date;
     })
     .sort((a, b) => {
       const aSchedule = taskReminderSchedule(a);
@@ -88,6 +96,21 @@ export function buildTaskWidgetSnapshot(
         a.id.localeCompare(b.id)
       );
     });
+  const visibleCount = scheduled.filter(
+    (task) => taskReminderSchedule(task).date! <= today
+  ).length;
+  const upcomingCounts: Record<string, number> = {};
+  let countedDates = 0;
+  for (const task of scheduled) {
+    const date = taskReminderSchedule(task).date!;
+    if (date <= today) continue;
+    if (upcomingCounts[date] === undefined) {
+      if (countedDates >= MAX_UPCOMING_COUNT_DATES) break;
+      countedDates++;
+      upcomingCounts[date] = 0;
+    }
+    upcomingCounts[date]++;
+  }
 
   return {
     schemaVersion: 3,
@@ -95,11 +118,12 @@ export function buildTaskWidgetSnapshot(
     generatedForDate: today,
     generatedForTimeZone: currentTimeZone(),
     utcOffsetMinutes: -new Date(now).getTimezoneOffset(),
-    count: visible.length,
+    count: visibleCount,
     appearance: options.appearance,
     accentLight: normalizeHexColor(options.accentLight),
     accentDark: normalizeHexColor(options.accentDark),
-    tasks: visible.slice(0, MAX_VISIBLE_TASKS).map((task) => {
+    upcomingCounts,
+    tasks: scheduled.slice(0, MAX_CACHED_TASKS).map((task) => {
       const schedule = taskReminderSchedule(task);
       return {
         id: task.id,

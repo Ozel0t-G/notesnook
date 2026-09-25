@@ -149,6 +149,17 @@ export async function initializeDatabaseOnce(
   if (db.isInitialized) return;
   const inFlight = attempt;
   if (inFlight) {
+    // A headless caller must not inherit a concurrent path that is allowed
+    // to mint a new encryption key. The action remains queued and can retry
+    // after a safe initialization rather than opening an empty Task database.
+    if (
+      options?.createDatabaseKey === false &&
+      inFlight.createDatabaseKey !== false
+    ) {
+      throw new Error(
+        "Headless database initialization cannot share a key-creating attempt"
+      );
+    }
     if (
       inFlight.createDatabaseKey !== false ||
       options?.createDatabaseKey === false
@@ -160,7 +171,8 @@ export async function initializeDatabaseOnce(
     // failure — a first launch has no key yet.
     await inFlight.promise.catch(() => {});
     if (db.isInitialized) return;
-    if (attempt && attempt !== inFlight) return attempt.promise;
+    if (attempt === inFlight) attempt = undefined;
+    return initializeDatabaseOnce(password, options);
   }
   return beginInitialization(password, options);
 }

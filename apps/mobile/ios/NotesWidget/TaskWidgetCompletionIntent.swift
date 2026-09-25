@@ -41,8 +41,11 @@ enum WidgetCompletionQueue {
   static let folder = "task-widget-actions-v1"
   static let maximumPending = 50
   static let maximumAge = 7 * 24 * 60 * 60 * 1000
+  // The host waits at most 25 seconds. A failed or timed-out attempt must
+  // become tappable again even if the app never launches to drain the queue.
+  static let retryAfter = 40 * 1000
 
-  enum Status { case none, pending, expired }
+  enum Status { case none, pending, retry, expired }
 
   static func directory() throws -> URL {
     guard let group = Bundle.main.object(forInfoDictionaryKey: "appGroupId") as? String,
@@ -58,17 +61,69 @@ enum WidgetCompletionQueue {
     return SHA256.hash(data: input).map { String(format: "%02x", $0) }.joined() + ".json"
   }
 
-  static func status(id: String, scope: String, updatedAt: Int) -> Status {
+  private static func storedAction(
+    id: String, scope: String, updatedAt: Int
+  ) -> WidgetCompletionAction? {
     guard let directory = try? directory(),
           let data = try? Data(contentsOf: directory.appendingPathComponent(
             filename(id: id, scope: scope, updatedAt: updatedAt))),
           let action = try? JSONDecoder().decode(WidgetCompletionAction.self, from: data) else {
+      return nil
+    }
+    guard action.id == id && action.scope == scope &&
+      action.updatedAt == updatedAt else { return nil }
+    return action
+  }
+
+  static func status(
+    id: String, scope: String, updatedAt: Int, at date: Date = Date()
+  ) -> Status {
+    guard let action = storedAction(id: id, scope: scope, updatedAt: updatedAt) else {
       return .none
     }
-    let age = Int(Date().timeIntervalSince1970 * 1000) - action.enqueuedAt
-    guard action.id == id && action.scope == scope &&
-      action.updatedAt == updatedAt && age >= 0 else { return .none }
-    return age <= maximumAge ? .pending : .expired
+    let now = Int(date.timeIntervalSince1970 * 1000)
+    guard action.enqueuedAt <= now else { return .none }
+    if action.enqueuedAt < now - maximumAge { return .expired }
+    return action.enqueuedAt > now - retryAfter ? .pending : .retry
+  }
+
+  static func retryDate(id: String, scope: String, updatedAt: Int) -> Date? {
+    guard status(id: id, scope: scope, updatedAt: updatedAt) == .pending,
+          let action = storedAction(id: id, scope: scope, updatedAt: updatedAt) else {
+      return nil
+    }
+    return Date(timeIntervalSince1970: Double(action.enqueuedAt + retryAfter) / 1000)
+  }
+
+  // Keep valid actions for every account for their full retry window. Only
+  // malformed and expired records are removed before enforcing the queue cap.
+  private static func prune(_ directory: URL, now: Int) throws -> Int {
+    let manager = FileManager.default
+    let files = try manager.contentsOfDirectory(at: directory,
+      includingPropertiesForKeys: [.isRegularFileKey])
+    var validCount = 0
+    for file in files where file.pathExtension == "json" {
+      let isRegular = (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+      guard isRegular else { continue }
+      // A protected file can be temporarily unreadable before first unlock.
+      // Preserve it and count its slot; only inspect records we can read.
+      guard let data = try? Data(contentsOf: file) else {
+        validCount += 1
+        continue
+      }
+      let action = try? JSONDecoder().decode(WidgetCompletionAction.self, from: data)
+      let valid = action.map {
+        $0.id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$", options: .regularExpression) != nil &&
+        $0.scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil &&
+        $0.updatedAt > 0 &&
+        $0.enqueuedAt <= now && $0.enqueuedAt >= now - maximumAge &&
+        file.lastPathComponent == filename(id: $0.id, scope: $0.scope,
+          updatedAt: $0.updatedAt)
+      } ?? false
+      if valid { validCount += 1 }
+      else { try? manager.removeItem(at: file) }
+    }
+    return validCount
   }
 
   static func enqueue(id: String, scope: String, updatedAt: Int) throws {
@@ -77,12 +132,15 @@ enum WidgetCompletionQueue {
     try manager.createDirectory(at: directory, withIntermediateDirectories: true)
     let name = filename(id: id, scope: scope, updatedAt: updatedAt)
     let url = directory.appendingPathComponent(name)
-    if status(id: id, scope: scope, updatedAt: updatedAt) == .pending { return }
-    let pending = try manager.contentsOfDirectory(at: directory,
-      includingPropertiesForKeys: nil).filter {
-        $0.pathExtension == "json" && $0.lastPathComponent != name
-      }
-    guard pending.count < maximumPending else { throw CocoaError(.fileWriteOutOfSpace) }
+    let current = status(id: id, scope: scope, updatedAt: updatedAt)
+    if current == .pending { return }
+    let validCount = try prune(directory, now: Int(Date().timeIntervalSince1970 * 1000))
+    // A retry refreshes the same deterministic action file. It is a new tap,
+    // so the temporary pending indicator starts again without using another
+    // queue slot or changing the Task/occurrence identity.
+    guard validCount < maximumPending || current == .retry else {
+      throw CocoaError(.fileWriteOutOfSpace)
+    }
     let action = WidgetCompletionAction(id: id, scope: scope,
       updatedAt: updatedAt, enqueuedAt: Int(Date().timeIntervalSince1970 * 1000))
     let data = try JSONEncoder().encode(action)
@@ -164,11 +222,8 @@ struct CompleteTaskWidgetIntent: AppIntent {
   static var supportedModes: IntentModes { .background }
 
   // iOS 27 is the first release that can route an intent to the main app
-  // process. That process owns the encrypted Task domain, so this is what makes
-  // a tap commit instead of only queueing. On iOS 17 to 26 the intent still
-  // runs inside the widget extension, which cannot open that domain: the action
-  // is durably queued there and the row stays "Completion pending" until the
-  // app next runs. No UI is shown in either case.
+  // process. Older widgets show Tasks without a completion control because
+  // their extension cannot open the encrypted Task domain.
   @available(iOS 27.0, iOSApplicationExtension 27.0, *)
   static var allowedExecutionTargets: IntentExecutionTargets { .main }
 
@@ -184,6 +239,9 @@ struct CompleteTaskWidgetIntent: AppIntent {
   }
 
   func perform() async throws -> some IntentResult {
+    guard #available(iOS 27.0, iOSApplicationExtension 27.0, *) else {
+      throw TaskWidgetCompletionFailure.unavailable
+    }
     let now = Date()
     guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
                    options: .regularExpression) != nil,
@@ -193,7 +251,7 @@ struct CompleteTaskWidgetIntent: AppIntent {
           snapshot.privacyHidden != true,
           snapshot.accountScope == scope,
           TaskWidgetClock.visibleTasks(snapshot, at: now).contains(where: {
-            $0.id == id && $0.updatedAt.map(Int.init) == updatedAt
+            $0.id == id && $0.updatedAt.flatMap { Int(exactly: $0) } == updatedAt
           }) else {
       throw CocoaError(.fileReadUnknown)
     }
@@ -205,9 +263,9 @@ struct CompleteTaskWidgetIntent: AppIntent {
 
     guard let host = NSClassFromString("TaskWidgetCompletionBridge")
             as? TaskWidgetCompletionCommitting.Type else {
-      // The widget extension cannot reach the encrypted database. The queued
-      // action is the honest result there, and the row shows it as pending.
-      return .result()
+      // Routing unexpectedly stayed in the extension. Preserve the action for
+      // recovery, but never report that the Task was completed there.
+      throw TaskWidgetCompletionFailure.unavailable
     }
     let outcome = await host.commitWidgetCompletion(
       taskId: id,

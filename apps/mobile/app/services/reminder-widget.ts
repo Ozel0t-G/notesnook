@@ -89,7 +89,11 @@ async function drainOnce(
   target?: string
 ): Promise<TaskWidgetCompletionOutcome | undefined> {
   if (!Native || !db.isInitialized) return target ? "unavailable" : undefined;
-  if (useUserStore.getState().appLocked || useUserStore.getState().isLoggingOut)
+  if (
+    SettingsService.get().appLockEnabled ||
+    useUserStore.getState().appLocked ||
+    useUserStore.getState().isLoggingOut
+  )
     return target ? "locked" : undefined;
   let outcome: TaskWidgetCompletionOutcome | undefined;
   const record = (
@@ -102,7 +106,15 @@ async function drainOnce(
   try {
     const accountId = (await db.user.getUser())?.id || null;
     const scope = taskWidgetAccountScope(MMKV, accountId);
-    const actions = await Native.listPendingCompletions();
+    const queued = await Native.listPendingCompletions();
+    // An App Intent has a short execution budget. Commit the tapped action
+    // first and leave unrelated queued actions for the normal lifecycle drain.
+    const actions = target
+      ? queued.filter(
+          (raw) =>
+            (raw as NativeTaskCompletionAction | null)?.filename === target
+        )
+      : queued;
     for (const raw of actions) {
       const filename = (raw as NativeTaskCompletionAction | null)?.filename;
       if (!isNativeTaskCompletionAction(raw)) {
@@ -131,17 +143,21 @@ async function drainOnce(
         continue;
       }
       const task = await db.tasks.get(raw.id);
+      const accountStillMatches =
+        ((await db.user.getUser())?.id || null) === accountId;
       if (
+        SettingsService.get().appLockEnabled ||
         useUserStore.getState().appLocked ||
         useUserStore.getState().isLoggingOut ||
-        ((await db.user.getUser())?.id || null) !== accountId
+        !accountStillMatches
       ) {
         if (target && !outcome) outcome = "locked";
         break;
       }
       if (task?.completed) {
-        // A repeat tap, a retry and a resumed crash all land here. The Task is
-        // already persisted, so only the projection still has to catch up.
+        // Core complete is idempotent and also repairs a recurring Task whose
+        // completed occurrence persisted before its next occurrence did.
+        await db.tasks.complete(raw.id);
         await flushUpdateForCompletion();
         await Native.acknowledgeCompletion(raw.filename);
         record(raw.filename, "completed");
@@ -152,6 +168,12 @@ async function drainOnce(
         await Native.acknowledgeCompletion(raw.filename);
         record(raw.filename, "stale");
         continue;
+      }
+      // The persisted setting is authoritative in a headless process. Check
+      // again after the last await and immediately before mutating the Task.
+      if (SettingsService.get().appLockEnabled) {
+        record(raw.filename, "locked");
+        break;
       }
       // This is the same encrypted-domain operation as in the Tasks screen.
       // A retry after a crash is idempotent and creates the next occurrence.
@@ -202,7 +224,9 @@ function commitCompletion(action: {
     // The action was not in the queue, so an earlier pass already consumed it.
     // The persisted Task is the only authority on what that pass did.
     try {
-      return (await db.tasks.get(action.id))?.completed ? "completed" : "stale";
+      if (!(await db.tasks.get(action.id))?.completed) return "stale";
+      await flushUpdateForCompletion();
+      return "completed";
     } catch (error) {
       DatabaseLogger.error(error as Error, "ReminderWidget.completeResult");
       return "failed";
@@ -212,6 +236,7 @@ function commitCompletion(action: {
 
 function mayExposeTaskTitles() {
   return (
+    !SettingsService.get().appLockEnabled &&
     !useSettingStore.getState().settings.appLockEnabled &&
     !useUserStore.getState().appLocked
   );
@@ -233,7 +258,7 @@ function clearSnapshot() {
 }
 
 async function writeCurrentSnapshot() {
-  if (!Native || !db.isInitialized) return;
+  if (!Native || !db.isInitialized) return false;
   const generation = snapshotGeneration;
   const themeState = useThemeStore.getState();
   const appearance = SettingsService.getProperty("useSystemTheme")
@@ -245,30 +270,36 @@ async function writeCurrentSnapshot() {
     accentDark: themeState.darkTheme.scopes.base.primary.accent
   } as const;
   if (!mayExposeTaskTitles()) {
-    if (generation !== snapshotGeneration) return;
-    if (useSettingStore.getState().settings.appLockEnabled)
+    if (generation !== snapshotGeneration) return false;
+    if (
+      SettingsService.get().appLockEnabled ||
+      useSettingStore.getState().settings.appLockEnabled
+    )
       await Native.writeSnapshot(
         JSON.stringify(buildPrivateTaskWidgetSnapshot(options))
       );
     else await Native.clearSnapshot();
-    return;
+    return true;
   }
   const tasks = await db.tasks.list();
-  if (generation !== snapshotGeneration || !mayExposeTaskTitles()) return;
+  if (generation !== snapshotGeneration || !mayExposeTaskTitles()) return false;
   const accountId = (await db.user.getUser())?.id || null;
-  if (generation !== snapshotGeneration || !mayExposeTaskTitles()) return;
+  if (generation !== snapshotGeneration || !mayExposeTaskTitles()) return false;
   const snapshot = buildTaskWidgetSnapshot(tasks, {
     ...options,
     accountScope: taskWidgetAccountScope(MMKV, accountId)
   });
   await Native.writeSnapshot(JSON.stringify(snapshot));
+  return true;
 }
 
 function flushUpdate() {
   if (!Native) return Promise.resolve();
   clearTimeout(updateTimer);
   updateTimer = undefined;
-  writeQueue = writeQueue.then(writeCurrentSnapshot).catch((error) => {
+  writeQueue = writeQueue.then(async () => {
+    await writeCurrentSnapshot();
+  }).catch((error) => {
     DatabaseLogger.error(error as Error, "ReminderWidget.update");
   });
   return writeQueue;
@@ -279,7 +310,10 @@ function flushUpdateForCompletion() {
   if (!Native) return Promise.resolve();
   clearTimeout(updateTimer);
   updateTimer = undefined;
-  const write = writeQueue.then(writeCurrentSnapshot);
+  const write = writeQueue.then(async () => {
+    if (!(await writeCurrentSnapshot()))
+      throw new Error("Task Widget snapshot was not refreshed");
+  });
   writeQueue = write.catch((error) => {
     DatabaseLogger.error(error as Error, "ReminderWidget.completeSnapshot");
   });

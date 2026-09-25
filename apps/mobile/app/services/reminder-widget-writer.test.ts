@@ -103,7 +103,10 @@ jest.mock("../stores/use-theme-store", () => ({
 }));
 jest.mock("./settings", () => ({
   __esModule: true,
-  default: { getProperty: () => true }
+  default: {
+    get: () => ({ appLockEnabled: mockAppLockEnabled }),
+    getProperty: () => true
+  }
 }));
 
 import { ReminderWidget } from "./reminder-widget";

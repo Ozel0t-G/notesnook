@@ -106,7 +106,7 @@ function encodeLine(line: string) {
 }
 
 async function initDatabase() {
-  await initializeDatabaseOnce();
+  await initializeDatabaseOnce(undefined, { createDatabaseKey: false });
 }
 
 const onEvent = async ({ type, detail }: Event) => {

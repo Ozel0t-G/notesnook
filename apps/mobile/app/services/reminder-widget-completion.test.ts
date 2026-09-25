@@ -57,6 +57,9 @@ let mockActions: Action[] = [];
 let mockTasks: Task[] = [];
 let mockAccountId: string | null = ACCOUNT;
 let mockAppLocked = false;
+let mockPersistedAppLock = false;
+let mockLockOnAccountRecheck = false;
+let mockAccountReads = 0;
 let mockLoggingOut = false;
 let mockWriteFails = false;
 let mockAcknowledgeFails = false;
@@ -107,7 +110,12 @@ jest.mock("../common/database", () => ({
       }
     },
     user: {
-      getUser: async () => (mockAccountId ? { id: mockAccountId } : null)
+      getUser: async () => {
+        mockAccountReads++;
+        if (mockLockOnAccountRecheck && mockAccountReads === 2)
+          mockPersistedAppLock = true;
+        return mockAccountId ? { id: mockAccountId } : null;
+      }
     },
     eventManager: { subscribe: () => ({ unsubscribe: jest.fn() }) }
   },
@@ -149,7 +157,10 @@ jest.mock("../stores/use-theme-store", () => ({
 }));
 jest.mock("./settings", () => ({
   __esModule: true,
-  default: { getProperty: () => true }
+  default: {
+    get: () => ({ appLockEnabled: mockPersistedAppLock }),
+    getProperty: () => true
+  }
 }));
 
 import { ReminderWidget } from "./reminder-widget";
@@ -188,6 +199,9 @@ describe("Task widget completion commit contract", () => {
     mockActions = [];
     mockAccountId = ACCOUNT;
     mockAppLocked = false;
+    mockPersistedAppLock = false;
+    mockLockOnAccountRecheck = false;
+    mockAccountReads = 0;
     mockLoggingOut = false;
     mockWriteFails = false;
     mockAcknowledgeFails = false;
@@ -208,6 +222,24 @@ describe("Task widget completion commit contract", () => {
     expect(mockAcknowledged).toEqual([action.filename]);
   });
 
+  test("a targeted intent does not wait to commit unrelated queued actions", async () => {
+    const first = task();
+    const tapped = task({ id: "fedcba987654321001234567" });
+    const firstAction = actionFor(first);
+    const tappedAction = actionFor(tapped);
+    mockTasks = [first, tapped];
+    mockActions = [firstAction, tappedAction];
+
+    await expect(
+      ReminderWidget.commitCompletion({
+        filename: tappedAction.filename,
+        id: tappedAction.id
+      })
+    ).resolves.toBe("completed");
+    expect(mockCompleted).toEqual([tapped.id]);
+    expect(mockActions).toEqual([firstAction]);
+  });
+
   test("a repeat tap on a Task already completed by an earlier commit is completed, not failed", async () => {
     const action = actionFor(task());
     mockTasks = [task({ completed: true })];
@@ -218,8 +250,8 @@ describe("Task widget completion commit contract", () => {
         id: action.id
       })
     ).resolves.toBe("completed");
-    // The record is already there, so the encrypted domain is not written again.
-    expect(mockCompleted).toEqual([]);
+    // Core's idempotent path also repairs a missing next recurring occurrence.
+    expect(mockCompleted).toEqual([action.id]);
     expect(mockAcknowledged).toEqual([action.filename]);
   });
 
@@ -241,6 +273,18 @@ describe("Task widget completion commit contract", () => {
         id: action.id
       })
     ).resolves.toBe("stale");
+  });
+
+  test("an already consumed action still requires a refreshed snapshot", async () => {
+    const action = actionFor(task());
+    mockTasks = [task({ completed: true })];
+    mockWriteFails = true;
+    await expect(
+      ReminderWidget.commitCompletion({
+        filename: action.filename,
+        id: action.id
+      })
+    ).resolves.toBe("failed");
   });
 
   test("a failed snapshot write fails the action and leaves it queued", async () => {
@@ -289,6 +333,36 @@ describe("Task widget completion commit contract", () => {
       })
     ).resolves.toBe("locked");
     expect(mockCompleted).toEqual([]);
+    expect(mockActions).toEqual([action]);
+  });
+
+  test("persisted App Lock blocks a headless completion even when memory says unlocked", async () => {
+    const action = actionFor(task());
+    mockActions = [action];
+    mockPersistedAppLock = true;
+    await expect(
+      ReminderWidget.commitCompletion({
+        filename: action.filename,
+        id: action.id
+      })
+    ).resolves.toBe("locked");
+    expect(mockCompleted).toEqual([]);
+    expect(mockAcknowledged).toEqual([]);
+    expect(mockActions).toEqual([action]);
+  });
+
+  test("App Lock enabled during queue validation blocks the Task write", async () => {
+    const action = actionFor(task());
+    mockActions = [action];
+    mockLockOnAccountRecheck = true;
+    await expect(
+      ReminderWidget.commitCompletion({
+        filename: action.filename,
+        id: action.id
+      })
+    ).resolves.toBe("locked");
+    expect(mockCompleted).toEqual([]);
+    expect(mockAcknowledged).toEqual([]);
     expect(mockActions).toEqual([action]);
   });
 

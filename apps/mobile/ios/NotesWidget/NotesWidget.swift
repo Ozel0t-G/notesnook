@@ -109,9 +109,22 @@ private struct ReminderProvider: TimelineProvider {
     let nextMidnight = TaskWidgetClock.nextMidnight(after: now)
     var entries = [ReminderEntry(date: now, state: state)]
     if case let .available(snapshot) = state {
-      let dueChanges = Set(snapshot.tasks.compactMap(TaskWidgetClock.dueInstant).map {
+      var dueChanges = Set(snapshot.tasks.compactMap(TaskWidgetClock.dueInstant).map {
         $0.addingTimeInterval(1)
       }.filter { $0 > now && $0 < nextMidnight })
+      if let scope = snapshot.accountScope {
+        for item in TaskWidgetClock.visibleTasks(snapshot, at: now) {
+          guard let rawRevision = item.updatedAt,
+                let revision = Int(exactly: rawRevision),
+                let retryDate = WidgetCompletionQueue.retryDate(
+                  id: item.id, scope: scope, updatedAt: revision
+                ) else { continue }
+          let retryEntry = retryDate.addingTimeInterval(1)
+          if retryEntry > now && retryEntry < nextMidnight {
+            dueChanges.insert(retryEntry)
+          }
+        }
+      }
       entries.append(contentsOf: dueChanges.sorted().map {
         ReminderEntry(date: $0, state: state)
       })
@@ -347,31 +360,34 @@ private struct ReminderRow: View {
   }
 
   private var completionStatus: WidgetCompletionQueue.Status {
-    guard let accountScope, let updatedAt = reminder.updatedAt else { return .none }
+    guard let accountScope, let rawRevision = reminder.updatedAt,
+          let updatedAt = Int(exactly: rawRevision) else { return .none }
     return WidgetCompletionQueue.status(
-      id: reminder.id, scope: accountScope, updatedAt: Int(updatedAt))
+      id: reminder.id, scope: accountScope, updatedAt: updatedAt,
+      at: referenceDate)
   }
 
   private var isPending: Bool { completionStatus == .pending }
 
-  private var isExpired: Bool { completionStatus == .expired }
+  private var needsRetry: Bool {
+    completionStatus == .retry || completionStatus == .expired
+  }
 
   var body: some View {
     HStack(spacing: compact ? 6 : 9) {
       Group {
-        if #available(iOSApplicationExtension 17.0, *),
-           let accountScope, let updatedAt = reminder.updatedAt {
+        if #available(iOSApplicationExtension 27.0, *),
+           let accountScope, let rawRevision = reminder.updatedAt,
+           let updatedAt = Int(exactly: rawRevision) {
           Button(intent: CompleteTaskWidgetIntent(
-            id: reminder.id, scope: accountScope, updatedAt: Int(updatedAt))) {
+            id: reminder.id, scope: accountScope, updatedAt: updatedAt)) {
             completionImage
           }
           .disabled(isPending)
-        } else {
-          completionImage
         }
       }
       .accessibilityLabel(Text(isPending ? "Completion pending" :
-        isExpired ? "Retry completion for \(reminder.title)" : "Complete \(reminder.title)"))
+        needsRetry ? "Retry completion for \(reminder.title)" : "Complete \(reminder.title)"))
 
       Link(destination: WidgetURLs.reminder(id: reminder.id)) {
       VStack(alignment: .leading, spacing: compact ? 1 : 2) {
@@ -392,10 +408,10 @@ private struct ReminderRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         Text(isPending ? String(localized: "Completion pending") :
-          isExpired ? String(localized: "Completion not saved · Tap to retry") : secondaryText)
+          needsRetry ? String(localized: "Completion not saved · Tap to retry") : secondaryText)
           .font(.system(size: compact ? 9.5 : 11))
           .foregroundStyle(
-            (isExpired || (isOverdue && !isPending)) ? Color(UIColor.systemRed) : Color.secondary
+            (needsRetry || (isOverdue && !isPending)) ? Color(UIColor.systemRed) : Color.secondary
           )
           .lineLimit(1)
       }
@@ -416,7 +432,7 @@ private struct ReminderRow: View {
   }
 
   private var completionImage: some View {
-    Image(systemName: isPending ? "clock" : isExpired ? "arrow.clockwise.circle" : "circle")
+    Image(systemName: isPending ? "clock" : needsRetry ? "arrow.clockwise.circle" : "circle")
       .font(.system(size: compact ? 18 : 21))
       .foregroundStyle(accent)
       .frame(width: compact ? 24 : 30, height: compact ? 28 : 34)
@@ -445,7 +461,7 @@ private struct ReminderWidget: Widget {
       ReminderWidgetEntryView(entry: entry)
     }
     .configurationDisplayName("Tasks")
-    .description("See today's tasks, complete tasks, and create a task.")
+    .description("See today's tasks and create a task. Complete tasks here on iOS 27.")
     .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
   }
 }

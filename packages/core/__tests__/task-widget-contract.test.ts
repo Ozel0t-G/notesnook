@@ -22,7 +22,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { databaseTest } from "./utils/index.js";
 import { buildTaskWidgetSnapshot } from "../../../apps/mobile/app/services/task-widget-snapshot.js";
 
@@ -148,6 +148,21 @@ describe("persisted Task to iOS Widget decoder", () => {
         const visible = await read(now);
         expect(visible.ids).toEqual([task.id]);
         expect(visible.revisions[task.id]).toBe(task.updatedAt);
+
+        // Simulate termination after the completed occurrence is persisted,
+        // before Core can create the next one. Replaying the widget action
+        // must run Core's idempotent completion path again to repair it.
+        const interruptedCreate = vi
+          .spyOn(db.tasks, "create")
+          .mockRejectedValueOnce(new Error("next occurrence not saved"));
+        await expect(db.tasks.complete(task.id)).rejects.toThrow(
+          "next occurrence not saved"
+        );
+        interruptedCreate.mockRestore();
+        expect((await db.tasks.get(task.id))?.completed).toBe(true);
+        expect(
+          (await db.tasks.list()).filter((item) => !item.completed)
+        ).toHaveLength(0);
 
         await db.tasks.complete(task.id);
         const active = (await db.tasks.list()).filter(

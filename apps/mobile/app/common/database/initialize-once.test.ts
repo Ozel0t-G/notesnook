@@ -144,6 +144,18 @@ describe("shared encrypted database initialization", () => {
     expect(mockState.initCalls).toBe(1);
   });
 
+  test("headless work refuses an in-flight initializer that may create a key", async () => {
+    mockState.keyExists = false;
+    const ui = subject.initializeDatabaseOnce();
+    await expect(
+      subject.initializeDatabaseOnce(undefined, { createDatabaseKey: false })
+    ).rejects.toThrow("cannot share a key-creating attempt");
+    mockState.openDatabase();
+    await expect(ui).resolves.toBeUndefined();
+    expect(mockState.keyRequests).toEqual([undefined]);
+    expect(mockState.initCalls).toBe(1);
+  });
+
   test("an already open database is not opened again", async () => {
     mockState.isInitialized = true;
     await expect(subject.initializeDatabaseOnce()).resolves.toBeUndefined();

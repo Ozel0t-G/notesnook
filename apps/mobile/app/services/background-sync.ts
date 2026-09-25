@@ -99,7 +99,7 @@ BackgroundFetch.registerHeadlessTask(task);
 
 async function onBackgroundSyncStarted() {
   try {
-    await initializeDatabaseOnce();
+    await initializeDatabaseOnce(undefined, { createDatabaseKey: false });
     const user = await db.user?.getUser();
     if (user && !useUserStore.getState().syncing) {
       useUserStore.getState().setSyncing(true);
@@ -132,7 +132,7 @@ const onBoot = async () => {
     }
 
     DatabaseLogger.info("BOOT TASK STARTED");
-    await initializeDatabaseOnce();
+    await initializeDatabaseOnce(undefined, { createDatabaseKey: false });
 
     await Notifications.setupReminders();
     if (SettingsService.get().notifNotes) {

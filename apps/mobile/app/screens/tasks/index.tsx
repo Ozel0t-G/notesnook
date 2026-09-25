@@ -33,7 +33,8 @@ import {
   Alert,
   AppState,
   FlatList,
-  KeyboardAvoidingView,
+  Keyboard,
+  KeyboardEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -42,7 +43,10 @@ import {
   useWindowDimensions,
   View
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets
+} from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
 import Navigation, { NavigationProps } from "../../services/navigation";
@@ -54,6 +58,7 @@ import {
   taskListColor,
   taskListSymbol
 } from "./list-customization";
+import { keyboardDockInset } from "./keyboard-dock";
 
 type SmartList = "today" | "scheduled" | "all" | "flagged" | "completed";
 type Selection =
@@ -120,6 +125,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const { width } = useWindowDimensions();
+  const safeAreaInsets = useSafeAreaInsets();
   const isTablet = width >= 700;
   const [selection, setSelection] = React.useState<Selection>(
     route.params?.listId
@@ -150,6 +156,47 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const [quickTitle, setQuickTitle] = React.useState("");
   const [quickBusy, setQuickBusy] = React.useState(false);
   const refreshGeneration = React.useRef(0);
+  const screenRef = React.useRef<View>(null);
+  const keyboardFrame = React.useRef<KeyboardEvent["endCoordinates"] | null>(
+    null
+  );
+  const [keyboardInset, setKeyboardInset] = React.useState(0);
+
+  const updateKeyboardInset = React.useCallback(() => {
+    const frame = keyboardFrame.current;
+    if (!frame) {
+      setKeyboardInset(0);
+      return;
+    }
+    screenRef.current?.measureInWindow((x, y, width, height) => {
+      setKeyboardInset(
+        keyboardDockInset(frame, { x, y, width, height }, safeAreaInsets.bottom)
+      );
+    });
+  }, [safeAreaInsets.bottom]);
+
+  React.useEffect(() => {
+    const change = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow",
+      (event) => {
+        keyboardFrame.current = event.endCoordinates;
+        if (Platform.OS === "ios") Keyboard.scheduleLayoutAnimation(event);
+        updateKeyboardInset();
+      }
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      (event) => {
+        keyboardFrame.current = null;
+        if (Platform.OS === "ios") Keyboard.scheduleLayoutAnimation(event);
+        setKeyboardInset(0);
+      }
+    );
+    return () => {
+      change.remove();
+      hide.remove();
+    };
+  }, [updateKeyboardInset]);
 
   React.useEffect(() => {
     if (route.params?.listId) {
@@ -635,10 +682,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   );
 
   const list = (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={{ flex: 1 }}
-    >
+    <View style={{ flex: 1, paddingBottom: keyboardInset }}>
       <View
         style={{
           flexDirection: "row",
@@ -915,11 +959,13 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
           </Pressable>
         </View>
       )}
-    </KeyboardAvoidingView>
+    </View>
   );
 
   return (
     <SafeAreaView
+      ref={screenRef}
+      onLayout={updateKeyboardInset}
       style={{
         flex: 1,
         backgroundColor: visual.screenBackground,

@@ -104,20 +104,34 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
         borderTopLeftRadius: index === 0 ? visual.controlRadius : 0,
         borderTopRightRadius: index === 0 ? visual.controlRadius : 0,
         borderBottomLeftRadius: index === length - 1 ? visual.controlRadius : 0,
-        borderBottomRightRadius: index === length - 1 ? visual.controlRadius : 0,
+        borderBottomRightRadius:
+          index === length - 1 ? visual.controlRadius : 0,
         borderBottomWidth: index === length - 1 ? 0 : 0.5,
         borderBottomColor: visual.separator,
         backgroundColor: visual.contentSurface
       }}
     >
-      <TaskSymbolView name={item.symbol} size={21} color={colors.primary.accent} />
+      <TaskSymbolView
+        name={item.symbol}
+        size={21}
+        color={colors.primary.accent}
+      />
       <Text
         numberOfLines={1}
-        style={{ flex: 1, color: visual.primaryText, fontSize: 16, marginLeft: 14 }}
+        style={{
+          flex: 1,
+          color: visual.primaryText,
+          fontSize: 16,
+          marginLeft: 14
+        }}
       >
         {item.label}
       </Text>
-      <TaskSymbolView name="chevron.right" size={14} color={visual.tertiaryText} />
+      <TaskSymbolView
+        name="chevron.right"
+        size={14}
+        color={visual.tertiaryText}
+      />
     </Pressable>
   );
 
@@ -125,7 +139,8 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
     key: `notebook:${item.id}`,
     label: item.title,
     symbol: "book.closed",
-    onPress: () => navigation.navigate("Notebook", { id: item.id, canGoBack: true })
+    onPress: () =>
+      navigation.navigate("Notebook", { id: item.id, canGoBack: true })
   }));
   const tagRows: LibraryDestination[] = tags.map((item) => ({
     key: `tag:${item.id}`,
@@ -151,7 +166,12 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
           }}
         >
           <Text
-            style={{ flex: 1, color: visual.primaryText, fontSize: 34, fontWeight: "700" }}
+            style={{
+              flex: 1,
+              color: visual.primaryText,
+              fontSize: 34,
+              fontWeight: "700"
+            }}
           >
             {strings.routes.Library()}
           </Text>
@@ -159,14 +179,27 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
             onPress={() => Navigation.push("Settings", {})}
             accessibilityRole="button"
             accessibilityLabel={strings.routes.Settings()}
-            style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}
+            style={{
+              width: 44,
+              height: 44,
+              alignItems: "center",
+              justifyContent: "center"
+            }}
           >
-            <TaskSymbolView name="gearshape" size={23} color={visual.primaryText} />
+            <TaskSymbolView
+              name="gearshape"
+              size={23}
+              color={visual.primaryText}
+            />
           </Pressable>
         </View>
-        {destinations.map((item, index) => row(item, index, destinations.length))}
+        {destinations.map((item, index) =>
+          row(item, index, destinations.length)
+        )}
         {sectionTitle(strings.routes.Notebooks())}
-        {notebookRows.map((item, index) => row(item, index, notebookRows.length))}
+        {notebookRows.map((item, index) =>
+          row(item, index, notebookRows.length)
+        )}
         {sectionTitle(strings.routes.Tags())}
         {tagRows.map((item, index) => row(item, index, tagRows.length))}
       </ScrollView>

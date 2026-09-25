@@ -217,14 +217,14 @@ export default function TaskDetail({
           taskId
             ? db.tasks.get(taskId)
             : legacyReminderId
-            ? db.tasks
-                .list()
-                .then((tasks) =>
-                  tasks.find(
-                    (item) => item.legacyReminderId === legacyReminderId
+              ? db.tasks
+                  .list()
+                  .then((tasks) =>
+                    tasks.find(
+                      (item) => item.legacyReminderId === legacyReminderId
+                    )
                   )
-                )
-            : Promise.resolve(undefined)
+              : Promise.resolve(undefined)
         ]);
         if (!active) return;
         setLists(allLists);
@@ -964,10 +964,10 @@ export default function TaskDetail({
                         {freq === "DAILY"
                           ? strings.tasksDays()
                           : freq === "WEEKLY"
-                          ? strings.tasksWeeks()
-                          : freq === "MONTHLY"
-                          ? strings.tasksMonths()
-                          : strings.tasksYears()}
+                            ? strings.tasksWeeks()
+                            : freq === "MONTHLY"
+                              ? strings.tasksMonths()
+                              : strings.tasksYears()}
                       </Text>
                     </Pressable>
                   )

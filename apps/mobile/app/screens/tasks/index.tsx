@@ -67,7 +67,11 @@ type Selection =
 
 const SMART_LISTS: { id: SmartList; icon: string; label: () => string }[] = [
   { id: "today", icon: "calendar", label: strings.tasksToday },
-  { id: "scheduled", icon: "calendar.badge.clock", label: strings.tasksScheduled },
+  {
+    id: "scheduled",
+    icon: "calendar.badge.clock",
+    label: strings.tasksScheduled
+  },
   { id: "all", icon: "tray.full", label: strings.tasksAll },
   { id: "flagged", icon: "flag", label: strings.tasksFlagged },
   {
@@ -468,18 +472,20 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       contentContainerStyle={{ paddingBottom: 24 }}
     >
       <View style={{ padding: 20, flexDirection: "row", alignItems: "center" }}>
-        {Platform.OS !== "ios" && <Pressable
-          onPress={() =>
-            navigation.canGoBack()
-              ? navigation.goBack()
-              : Navigation.navigate("FluidPanelsView")
-          }
-          accessibilityRole="button"
-          accessibilityLabel={strings.back()}
-          style={{ width: 44, height: 44, justifyContent: "center" }}
-        >
-          <Icon name="arrow-left" size={25} color={visual.primaryText} />
-        </Pressable>}
+        {Platform.OS !== "ios" && (
+          <Pressable
+            onPress={() =>
+              navigation.canGoBack()
+                ? navigation.goBack()
+                : Navigation.navigate("FluidPanelsView")
+            }
+            accessibilityRole="button"
+            accessibilityLabel={strings.back()}
+            style={{ width: 44, height: 44, justifyContent: "center" }}
+          >
+            <Icon name="arrow-left" size={25} color={visual.primaryText} />
+          </Pressable>
+        )}
         <Text
           style={{
             color: visual.primaryText,
@@ -728,7 +734,11 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
           {selection.kind === "list" && !loading && (
             <Text
               accessibilityLabel={listSummary}
-              style={{ color: visual.secondaryText, fontSize: 14, marginTop: 2 }}
+              style={{
+                color: visual.secondaryText,
+                fontSize: 14,
+                marginTop: 2
+              }}
             >
               {listSummary}
             </Text>
@@ -833,7 +843,11 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                     }}
                   >
                     {item.completed && (
-                      <TaskSymbolView name="checkmark" size={15} color={visual.contentSurface} />
+                      <TaskSymbolView
+                        name="checkmark"
+                        size={15}
+                        color={visual.contentSurface}
+                      />
                     )}
                   </View>
                 </Pressable>
@@ -867,9 +881,19 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                     }}
                   >
                     {taskReminderSchedule(item).date && (
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 4
+                        }}
+                      >
                         {isTaskOverdue(item) && (
-                          <TaskSymbolView name="clock" size={13} color={colors.error.paragraph} />
+                          <TaskSymbolView
+                            name="clock"
+                            size={13}
+                            color={colors.error.paragraph}
+                          />
                         )}
                         <Text
                           style={{
@@ -912,8 +936,8 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                         {item.priority === "high"
                           ? "!!!"
                           : item.priority === "medium"
-                          ? "!!"
-                          : "!"}
+                            ? "!!"
+                            : "!"}
                       </Text>
                     )}
                   </View>

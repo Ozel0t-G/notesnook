@@ -142,7 +142,9 @@ async function reconcileNow() {
     await notifee.createTriggerNotification(
       {
         id,
-        title: privacyHidden ? strings.tasksTitle() : taskAlertTitle(task.title),
+        title: privacyHidden
+          ? strings.tasksTitle()
+          : taskAlertTitle(task.title),
         body: task.urgent ? strings.tasksUrgent() : undefined,
         data: {
           type: "task",
@@ -271,10 +273,14 @@ export const TaskNotifications = {
   requestPermission,
   notificationId: taskNotificationId,
   urgentStatus: async () => {
-    const status = (await notifee.getNotificationSettings()).authorizationStatus;
-    if (status === AuthorizationStatus.NOT_DETERMINED) return "notDetermined" as const;
-    return (await taskNotificationPermission()) ? "authorized" as const : "denied" as const;
+    const status = (await notifee.getNotificationSettings())
+      .authorizationStatus;
+    if (status === AuthorizationStatus.NOT_DETERMINED)
+      return "notDetermined" as const;
+    return (await taskNotificationPermission())
+      ? ("authorized" as const)
+      : ("denied" as const);
   },
   requestUrgentPermission: async () =>
-    (await requestPermission()) ? "authorized" as const : "denied" as const
+    (await requestPermission()) ? ("authorized" as const) : ("denied" as const)
 };

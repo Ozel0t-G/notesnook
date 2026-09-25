@@ -410,9 +410,12 @@ export const RootNavigation = () => {
       rootNavigatorRef.current?.navigate("GlobalSearch" as any);
     } else {
       fluidTabsRef.current?.goToPage("home", true);
-      rootNavigatorRef.current?.navigate("FluidPanelsView" as any, {
-        screen: section === "library" ? "Library" : "Notes"
-      } as any);
+      rootNavigatorRef.current?.navigate(
+        "FluidPanelsView" as any,
+        {
+          screen: section === "library" ? "Library" : "Notes"
+        } as any
+      );
     }
   }, []);
 
@@ -425,154 +428,154 @@ export const RootNavigation = () => {
 
   return (
     <View style={{ flex: 1 }}>
-    <NavigationContainer
-      onReady={() => setNavigationReady(true)}
-      onStateChange={onStateChange}
-      ref={rootNavigatorRef}
-    >
-      <RootStack.Navigator
-        screenOptions={{
-          headerShown: false
-        }}
-        initialRouteName={initialRouteName}
+      <NavigationContainer
+        onReady={() => setNavigationReady(true)}
+        onStateChange={onStateChange}
+        ref={rootNavigatorRef}
       >
-        <RootStack.Screen
-          name="Welcome"
-          getComponent={() => {
-            Intro = Intro || require("../components/intro").default;
-            return Intro;
+        <RootStack.Navigator
+          screenOptions={{
+            headerShown: false
           }}
-        />
-        <RootStack.Screen
-          name="Auth"
-          getComponent={() => {
-            Auth = Auth || require("../components/auth").default;
-            return Auth;
-          }}
-        />
+          initialRouteName={initialRouteName}
+        >
+          <RootStack.Screen
+            name="Welcome"
+            getComponent={() => {
+              Intro = Intro || require("../components/intro").default;
+              return Intro;
+            }}
+          />
+          <RootStack.Screen
+            name="Auth"
+            getComponent={() => {
+              Auth = Auth || require("../components/auth").default;
+              return Auth;
+            }}
+          />
 
-        <RootStack.Screen
-          name="FluidPanelsView"
-          getComponent={() => {
-            FluidPanelsView =
-              FluidPanelsView ||
-              require("../navigation/fluid-panels-view").default;
-            return FluidPanelsView;
-          }}
-          initialParams={{
-            initialPage:
-              initialShortcut?.type === "notesnook.action.newnote"
-                ? "editor"
-                : undefined
-          }}
-        />
+          <RootStack.Screen
+            name="FluidPanelsView"
+            getComponent={() => {
+              FluidPanelsView =
+                FluidPanelsView ||
+                require("../navigation/fluid-panels-view").default;
+              return FluidPanelsView;
+            }}
+            initialParams={{
+              initialPage:
+                initialShortcut?.type === "notesnook.action.newnote"
+                  ? "editor"
+                  : undefined
+            }}
+          />
 
-        <RootStack.Screen
-          name="LinkNotebooks"
-          getComponent={() => {
-            LinkNotebooks =
-              LinkNotebooks || require("../screens/link-notebooks").default;
-            return LinkNotebooks;
-          }}
-        />
+          <RootStack.Screen
+            name="LinkNotebooks"
+            getComponent={() => {
+              LinkNotebooks =
+                LinkNotebooks || require("../screens/link-notebooks").default;
+              return LinkNotebooks;
+            }}
+          />
 
-        <RootStack.Screen
-          name="MoveNotebook"
-          getComponent={() => {
-            MoveNotebook =
-              MoveNotebook || require("../screens/move-notebook").default;
-            return MoveNotebook;
-          }}
-        />
+          <RootStack.Screen
+            name="MoveNotebook"
+            getComponent={() => {
+              MoveNotebook =
+                MoveNotebook || require("../screens/move-notebook").default;
+              return MoveNotebook;
+            }}
+          />
 
-        <RootStack.Screen
-          name="MoveNotes"
-          getComponent={() => {
-            MoveNotes = MoveNotes || require("../screens/move-notes").default;
-            return MoveNotes;
-          }}
-        />
+          <RootStack.Screen
+            name="MoveNotes"
+            getComponent={() => {
+              MoveNotes = MoveNotes || require("../screens/move-notes").default;
+              return MoveNotes;
+            }}
+          />
 
-        <RootStack.Screen
-          name="Settings"
-          getComponent={() => {
-            Settings = Settings || require("../screens/settings").default;
-            return Settings;
-          }}
-        />
+          <RootStack.Screen
+            name="Settings"
+            getComponent={() => {
+              Settings = Settings || require("../screens/settings").default;
+              return Settings;
+            }}
+          />
 
-        <RootStack.Screen
-          name="ManageTags"
-          getComponent={() => {
-            ManageTags =
-              ManageTags || require("../screens/manage-tags").default;
-            return ManageTags;
-          }}
-        />
+          <RootStack.Screen
+            name="ManageTags"
+            getComponent={() => {
+              ManageTags =
+                ManageTags || require("../screens/manage-tags").default;
+              return ManageTags;
+            }}
+          />
 
-        <RootStack.Screen
-          name="AddReminder"
-          getComponent={() => {
-            // Legacy editor entry points navigate here. Present the standalone
-            // Task editor without changing the Notes editor bridge.
-            AddReminder =
-              AddReminder || require("../screens/tasks/detail").default;
-            return AddReminder;
-          }}
-        />
+          <RootStack.Screen
+            name="AddReminder"
+            getComponent={() => {
+              // Legacy editor entry points navigate here. Present the standalone
+              // Task editor without changing the Notes editor bridge.
+              AddReminder =
+                AddReminder || require("../screens/tasks/detail").default;
+              return AddReminder;
+            }}
+          />
 
-        <RootStack.Screen
-          name="Tasks"
-          getComponent={() => {
-            Tasks = Tasks || require("../screens/tasks").default;
-            return Tasks;
-          }}
-        />
+          <RootStack.Screen
+            name="Tasks"
+            getComponent={() => {
+              Tasks = Tasks || require("../screens/tasks").default;
+              return Tasks;
+            }}
+          />
 
-        <RootStack.Screen
-          name="GlobalSearch"
-          getComponent={() => {
-            GlobalSearch =
-              GlobalSearch || require("../screens/global-search").default;
-            return GlobalSearch;
-          }}
-        />
+          <RootStack.Screen
+            name="GlobalSearch"
+            getComponent={() => {
+              GlobalSearch =
+                GlobalSearch || require("../screens/global-search").default;
+              return GlobalSearch;
+            }}
+          />
 
-        <RootStack.Screen
-          name="TaskDetail"
-          getComponent={() => {
-            TaskDetail =
-              TaskDetail || require("../screens/tasks/detail").default;
-            return TaskDetail;
-          }}
-        />
+          <RootStack.Screen
+            name="TaskDetail"
+            getComponent={() => {
+              TaskDetail =
+                TaskDetail || require("../screens/tasks/detail").default;
+              return TaskDetail;
+            }}
+          />
 
-        <RootStack.Screen
-          name="RelationsList"
-          getComponent={() => {
-            RelationsList =
-              RelationsList || require("../screens/relations-list").default;
-            return RelationsList;
-          }}
-        />
-        <RootStack.Screen
-          name="PayWall"
-          getComponent={() => {
-            PayWall = PayWall || require("../components/paywall").default;
-            return PayWall;
-          }}
-        />
+          <RootStack.Screen
+            name="RelationsList"
+            getComponent={() => {
+              RelationsList =
+                RelationsList || require("../screens/relations-list").default;
+              return RelationsList;
+            }}
+          />
+          <RootStack.Screen
+            name="PayWall"
+            getComponent={() => {
+              PayWall = PayWall || require("../components/paywall").default;
+              return PayWall;
+            }}
+          />
 
-        <RootStack.Screen
-          name="Wrapped"
-          getComponent={() => {
-            Wrapped = Wrapped || require("../screens/wrapped").default;
-            return Wrapped;
-          }}
-        />
-      </RootStack.Navigator>
-    </NavigationContainer>
-    {showTabBar && <AppleTabBar onSelect={selectSection} />}
+          <RootStack.Screen
+            name="Wrapped"
+            getComponent={() => {
+              Wrapped = Wrapped || require("../screens/wrapped").default;
+              return Wrapped;
+            }}
+          />
+        </RootStack.Navigator>
+      </NavigationContainer>
+      {showTabBar && <AppleTabBar onSelect={selectSection} />}
     </View>
   );
 };

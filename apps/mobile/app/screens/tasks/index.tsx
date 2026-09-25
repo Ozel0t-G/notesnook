@@ -66,13 +66,13 @@ type Selection =
   | { kind: "list"; id: string };
 
 const SMART_LISTS: { id: SmartList; icon: string; label: () => string }[] = [
-  { id: "today", icon: "calendar-today", label: strings.tasksToday },
-  { id: "scheduled", icon: "calendar-clock", label: strings.tasksScheduled },
-  { id: "all", icon: "tray-full", label: strings.tasksAll },
-  { id: "flagged", icon: "flag-outline", label: strings.tasksFlagged },
+  { id: "today", icon: "calendar", label: strings.tasksToday },
+  { id: "scheduled", icon: "calendar.badge.clock", label: strings.tasksScheduled },
+  { id: "all", icon: "tray.full", label: strings.tasksAll },
+  { id: "flagged", icon: "flag", label: strings.tasksFlagged },
   {
     id: "completed",
-    icon: "check-circle-outline",
+    icon: "checkmark.circle",
     label: strings.tasksCompleted
   }
 ];
@@ -303,6 +303,16 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         strings.tasksTitle()
       : lists.find((list) => list.id === selection.id)?.name ||
         strings.tasksList();
+  const selectedList =
+    selection.kind === "list"
+      ? lists.find((list) => list.id === selection.id)
+      : undefined;
+  const openCount = tasks.filter((task) => !task.completed).length;
+  const overdueCount = tasks.filter((task) => isTaskOverdue(task)).length;
+  const listSummary = [
+    strings.tasksOpenCount(openCount),
+    ...(overdueCount ? [strings.tasksOverdueCount(overdueCount)] : [])
+  ].join(", ");
 
   const openDetail = (task?: Task, initialTitle?: string) => {
     Navigation.push("TaskDetail", {
@@ -458,7 +468,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       contentContainerStyle={{ paddingBottom: 24 }}
     >
       <View style={{ padding: 20, flexDirection: "row", alignItems: "center" }}>
-        <Pressable
+        {Platform.OS !== "ios" && <Pressable
           onPress={() =>
             navigation.canGoBack()
               ? navigation.goBack()
@@ -469,11 +479,11 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
           style={{ width: 44, height: 44, justifyContent: "center" }}
         >
           <Icon name="arrow-left" size={25} color={visual.primaryText} />
-        </Pressable>
+        </Pressable>}
         <Text
           style={{
             color: visual.primaryText,
-            fontSize: 28,
+            fontSize: 34,
             fontWeight: "700",
             flex: 1
           }}
@@ -567,7 +577,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
               }}
             >
               {smart ? (
-                <Icon
+                <TaskSymbolView
                   name={smart.icon}
                   size={23}
                   color={colors.primary.accent}
@@ -702,27 +712,28 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
             <Icon name="arrow-left" size={25} color={visual.primaryText} />
           </Pressable>
         )}
-        <Text
-          numberOfLines={1}
-          style={{
-            color: visual.primaryText,
-            flex: 1,
-            fontSize: 27,
-            fontWeight: "700"
-          }}
-        >
-          {selectedLabel}
-        </Text>
-        {(selection.kind === "list" || selection.id !== "completed") && (
-          <Pressable
-            onPress={() => openDetail()}
-            accessibilityRole="button"
-            accessibilityLabel={strings.tasksAddTask()}
-            style={{ padding: 8 }}
+        <View style={{ flex: 1 }}>
+          <Text
+            numberOfLines={1}
+            style={{
+              color: selectedList
+                ? taskListColor(selectedList.color)
+                : visual.primaryText,
+              fontSize: 32,
+              fontWeight: "700"
+            }}
           >
-            <Icon name="plus-circle" size={28} color={colors.primary.accent} />
-          </Pressable>
-        )}
+            {selectedLabel}
+          </Text>
+          {selection.kind === "list" && !loading && (
+            <Text
+              accessibilityLabel={listSummary}
+              style={{ color: visual.secondaryText, fontSize: 14, marginTop: 2 }}
+            >
+              {listSummary}
+            </Text>
+          )}
+        </View>
       </View>
       {loading ? (
         <ActivityIndicator
@@ -798,17 +809,33 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                       ? strings.tasksUncomplete()
                       : strings.tasksComplete()
                   }: ${item.title}`}
-                  style={{ width: 48, height: 50, justifyContent: "center" }}
+                  style={({ pressed }) => ({
+                    width: 48,
+                    height: 50,
+                    justifyContent: "center",
+                    opacity: pressed ? 0.55 : 1
+                  })}
                 >
-                  <Icon
-                    name={item.completed ? "check-circle" : "circle-outline"}
-                    size={25}
-                    color={
-                      item.completed
+                  <View
+                    style={{
+                      width: 27,
+                      height: 27,
+                      borderRadius: 14,
+                      borderWidth: 2,
+                      borderColor: item.completed
                         ? colors.primary.accent
-                        : visual.tertiaryText
-                    }
-                  />
+                        : visual.secondaryText,
+                      backgroundColor: item.completed
+                        ? colors.primary.accent
+                        : "transparent",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                  >
+                    {item.completed && (
+                      <TaskSymbolView name="checkmark" size={15} color={visual.contentSurface} />
+                    )}
+                  </View>
                 </Pressable>
                 <Pressable
                   onPress={() => openDetail(item)}
@@ -835,38 +862,44 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                       flexDirection: "row",
                       gap: 8,
                       marginTop: 4,
-                      alignItems: "center"
+                      alignItems: "center",
+                      flexWrap: "wrap"
                     }}
                   >
                     {taskReminderSchedule(item).date && (
-                      <Text
-                        style={{
-                          color: isTaskOverdue(item)
-                            ? colors.error.paragraph
-                            : visual.secondaryText,
-                          fontSize: 12
-                        }}
-                      >
-                        {isTaskOverdue(item)
-                          ? `${strings.tasksOverdue()} · `
-                          : ""}
-                        {dateLabel(taskReminderSchedule(item).date!)}
-                        {taskReminderSchedule(item).time
-                          ? ` ${taskReminderSchedule(item).time}`
-                          : ""}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        {isTaskOverdue(item) && (
+                          <TaskSymbolView name="clock" size={13} color={colors.error.paragraph} />
+                        )}
+                        <Text
+                          style={{
+                            color: isTaskOverdue(item)
+                              ? colors.error.paragraph
+                              : visual.secondaryText,
+                            fontSize: 12
+                          }}
+                        >
+                          {isTaskOverdue(item)
+                            ? `${strings.tasksOverdue()} · `
+                            : ""}
+                          {dateLabel(taskReminderSchedule(item).date!)}
+                          {taskReminderSchedule(item).time
+                            ? ` ${taskReminderSchedule(item).time}`
+                            : ""}
+                        </Text>
+                      </View>
                     )}
                     {item.urgent && (
-                      <Icon
-                        name="alarm-light"
+                      <TaskSymbolView
+                        name="bell"
                         size={14}
                         color={colors.primary.accent}
                         accessibilityLabel="Urgent"
                       />
                     )}
                     {item.flagged && (
-                      <Icon
-                        name="flag"
+                      <TaskSymbolView
+                        name="flag.fill"
                         size={13}
                         color={colors.primary.accent}
                         accessibilityLabel={strings.tasksFlag()}
@@ -876,7 +909,11 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                       <Text
                         style={{ color: visual.secondaryText, fontSize: 12 }}
                       >
-                        ! {priorityLabel(item)}
+                        {item.priority === "high"
+                          ? "!!!"
+                          : item.priority === "medium"
+                          ? "!!"
+                          : "!"}
                       </Text>
                     )}
                   </View>

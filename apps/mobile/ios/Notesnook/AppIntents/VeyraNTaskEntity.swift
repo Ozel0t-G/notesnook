@@ -91,7 +91,9 @@ struct VeyraNTaskEntityQuery: EntityStringQuery {
       throw VeyraNIntentFailure.invalidInput
     }
     do {
+      let requestedIDs = Set(requested.map { $0.lowercased() })
       return try await candidates(action: "resolveTasks", payload: ["ids": ids])
+        .filter { requestedIDs.contains($0.id.lowercased()) }
     } catch VeyraNIntentFailure.locked {
       // App Lock withholds titles from everything outside the app. Returning a
       // redacted stand-in keeps a saved Shortcut intact and selectable rather

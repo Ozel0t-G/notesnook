@@ -193,6 +193,17 @@ describe("App Intent domain acknowledgements", () => {
     await expect(reply).resolves.toEqual({ status: "ok", value: "saved-task" });
   });
 
+  test("rejects a blank reminder timestamp before creating a Task", async () => {
+    await expect(
+      executeAppIntentRequest({
+        id: "blank-reminder",
+        action: "createTask",
+        payload: { title: "Call Alex", reminderTimestamp: "   " }
+      })
+    ).resolves.toEqual({ status: "invalid", value: "" });
+    expect(mockCreateTask).not.toHaveBeenCalled();
+  });
+
   test("blocks locked writes and private Today output", async () => {
     mockAppLocked = true;
     await expect(

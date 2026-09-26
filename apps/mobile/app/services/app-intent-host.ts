@@ -150,7 +150,14 @@ async function drain(native: NativeIntentBridge) {
           // a Task was completed that the encrypted domain did not persist.
           DatabaseLogger.error(error as Error, "AppIntentHost.run");
         }
-        await native.acknowledge(raw.id, reply.status, reply.value);
+        try {
+          await native.acknowledge(raw.id, reply.status, reply.value);
+        } catch (error) {
+          // The native request remains pending and its App Intent will time out
+          // honestly. Continue this batch so one bridge failure cannot strand
+          // unrelated Shortcuts requests behind it.
+          DatabaseLogger.error(error as Error, "AppIntentHost.acknowledge");
+        }
       }
     } while (drainAgain);
   } finally {

@@ -210,8 +210,11 @@ export async function executeAppIntentRequest(
           return failure("invalid");
         const repeatMode = payload.repeatMode || "never";
         if (!(repeatMode in repeatRules)) return failure("invalid");
-        const reminderTimestamp = payload.reminderTimestamp
-          ? Number(payload.reminderTimestamp)
+        const reminderInput = payload.reminderTimestamp?.trim();
+        if (payload.reminderTimestamp !== undefined && !reminderInput)
+          return failure("invalid");
+        const reminderTimestamp = reminderInput
+          ? Number(reminderInput)
           : undefined;
         if (
           reminderTimestamp !== undefined &&

@@ -8,6 +8,20 @@
 
 **Validation and explicit gap.** The 17 relevant mobile suites passed 187 tests, mobile TypeScript passed, and the last full Core run passed 39 files/590 tests with one existing todo. Signed ARM64 iPhone and iPad Simulator builds passed and launched; iPad showed the redesigned navigation, while the iPhone remained at onboarding. Claude's independent cold Widget security and integrated AppIntent diff reviews were completed; an additional narrow Sonnet final release review found no demonstrated code blocker. Its App Lock concern was ruled out because `SettingsService.get()` reads the same settings store as the Widget title gate; its recurring completion concern is covered by the Core mutation mutex and duplicate-completion test. A broad Opus final review exhausted its turn limit. **NOT TESTED on a physical device by explicit waiver:** cold/warm/recurring Widget completion and App Lock, Silent Mode/Focus Urgent and dismissal, Quick Add keyboard, advanced editor alignment, all six Shortcuts actions, Action Button, Control Center, New Note save/reopen, iPad and Pencil. `Mobile-Salami-2` was still `unavailable` to `devicectl`. These are TestFlight validation tasks, not passes. Keep the release heartbeat active until App Store Connect processing, beta notes, tester assignment and TestFlight QA are resolved.
 
+**Pending build-specific What to Test text (save after App Store Connect sign-in):**
+
+```text
+VeyraN iOS/iPadOS Update
+• Native VeyraN navigation redesign
+• Redesigned Notes, Tasks and Library
+• Improved Quick Add and Task editing
+• Updated Urgent reminder behavior
+• Interactive Widget Task completion
+• New VeyraN Shortcuts and App Intents
+• Action Button and Control Center integrations
+• Accessibility and Widget improvements
+```
+
 ## September 26 release continuation — Shortcuts integrated, physical gates open
 
 This section supersedes the earlier unbuilt Shortcuts candidate note below. Branch remains `test`; no `main` merge, device archive, new IPA, TestFlight upload, or App Store review submission occurred. The source version is still **3.4.16 (16)**. Build 16 is occupied by an older TestFlight binary without this redesign, and the existing QA IPA must not be uploaded. Verify the highest App Store Connect build and assign a fresh build number only after every release gate passes.

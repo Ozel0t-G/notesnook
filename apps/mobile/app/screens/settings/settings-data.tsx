@@ -29,7 +29,7 @@ import notifee from "@notifee/react-native";
 import Clipboard from "@react-native-clipboard/clipboard";
 import dayjs from "dayjs";
 import React from "react";
-import { Appearance, Linking, Platform } from "react-native";
+import { Alert, Appearance, Linking, Platform } from "react-native";
 import { getVersion } from "react-native-device-info";
 import { TextInput } from "react-native-gesture-handler";
 import * as RNIap from "react-native-iap";
@@ -1076,7 +1076,8 @@ export const settingsGroups: SettingSection[] = [
         id: "servers",
         type: "screen",
         name: strings.servers(),
-        description: strings.serversConfigurationDesc(),
+        description:
+          Platform.OS === "ios" ? undefined : strings.serversConfigurationDesc(),
         icon: "server",
         component: "server-config"
       }
@@ -1588,10 +1589,10 @@ export const settingsGroups: SettingSection[] = [
           try {
             await openAppNotificationSettings();
           } catch (e) {
-            ToastManager.error(
-              e as Error,
-              strings.tasksNotificationsSettingsError(),
-              "local"
+            DatabaseLogger.error(e as Error, "openAppNotificationSettings");
+            Alert.alert(
+              strings.tasksTitle(),
+              strings.tasksNotificationsSettingsError()
             );
           }
         }
@@ -1857,6 +1858,7 @@ export const settingsGroups: SettingSection[] = [
         name: strings.checkForUpdates(),
         icon: "cellphone-arrow-down",
         description: strings.checkForUpdatesDesc(),
+        hidden: () => Platform.OS === "ios",
         modifer: async () => {
           presentSheet({
             //@ts-ignore // Migrate to ts

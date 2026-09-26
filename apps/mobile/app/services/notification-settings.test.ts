@@ -30,6 +30,7 @@ const mockOpenNotificationSettings = jest.fn(
 const mockNotifeeOpenNotificationSettings = jest.fn(
   async (_channelId?: string) => {}
 );
+const mockOpenSettings = jest.fn(async () => {});
 
 jest.mock("react-native", () => ({
   Platform: {
@@ -43,7 +44,8 @@ jest.mock("react-native", () => ({
         ? { openNotificationSettings: mockOpenNotificationSettings }
         : undefined;
     }
-  }
+  },
+  Linking: { openSettings: () => mockOpenSettings() }
 }));
 
 jest.mock(
@@ -69,6 +71,8 @@ describe("openAppNotificationSettings", () => {
       async () => "notifications"
     );
     mockNotifeeOpenNotificationSettings.mockClear();
+    mockOpenSettings.mockClear();
+    mockOpenSettings.mockImplementation(async () => {});
   });
 
   it("on iOS calls the native UIKit bridge and returns its destination", async () => {
@@ -84,21 +88,27 @@ describe("openAppNotificationSettings", () => {
     expect(destination).toBe("settings");
   });
 
-  it("on iOS throws instead of silently succeeding when the bridge is unavailable", async () => {
+  it("on iOS opens app Settings when the bridge is unavailable", async () => {
     // Simulates the native module failing to link (e.g. a stale build).
     mockNativeModuleAvailable = false;
-    await expect(openAppNotificationSettings()).rejects.toThrow(
-      "NotificationSettingsModule is unavailable."
-    );
+    await expect(openAppNotificationSettings()).resolves.toBe("settings");
+    expect(mockOpenSettings).toHaveBeenCalledTimes(1);
     expect(mockNotifeeOpenNotificationSettings).not.toHaveBeenCalled();
   });
 
-  it("on iOS propagates a native rejection instead of swallowing it", async () => {
+  it("on iOS falls back after a native rejection", async () => {
     mockOpenNotificationSettings.mockImplementation(async () => {
       throw new Error("The system declined to open Settings.");
     });
+    await expect(openAppNotificationSettings()).resolves.toBe("settings");
+    expect(mockOpenSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("on iOS rejects when both public Settings paths fail", async () => {
+    mockOpenNotificationSettings.mockRejectedValue(new Error("Native failed"));
+    mockOpenSettings.mockRejectedValue(new Error("System Settings unavailable"));
     await expect(openAppNotificationSettings()).rejects.toThrow(
-      "The system declined to open Settings."
+      "System Settings unavailable"
     );
   });
 

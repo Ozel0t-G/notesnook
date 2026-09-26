@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import notifee from "@notifee/react-native";
-import { NativeModules, Platform } from "react-native";
+import { Linking, NativeModules, Platform } from "react-native";
 
 /**
  * Where the user actually landed after requesting notification settings.
@@ -51,8 +51,26 @@ export async function openAppNotificationSettings(
     const native = NativeModules.NotificationSettingsModule as
       | NotificationSettingsNative
       | undefined;
-    if (!native) throw new Error("NotificationSettingsModule is unavailable.");
-    return native.openNotificationSettings();
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      if (!native) throw new Error("NotificationSettingsModule is unavailable.");
+      return await Promise.race([
+        native.openNotificationSettings(),
+        new Promise<never>((_, reject) =>
+          (timeout = setTimeout(
+            () => reject(new Error("Opening iOS Settings timed out.")),
+            3000
+          ))
+        )
+      ]);
+    } catch {
+      // Use React Native's public app Settings API if the native notification
+      // destination rejects or its completion handler never returns.
+      await Linking.openSettings();
+      return "settings";
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
   await notifee.openNotificationSettings(channelId);
   return "android";

@@ -142,6 +142,7 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
 
   return isHidden ? null : (
     <Pressable
+      testID={item.id}
       disabled={item.type === "component"}
       style={{
         width: "100%",

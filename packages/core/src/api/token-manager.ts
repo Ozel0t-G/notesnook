@@ -56,9 +56,17 @@ class TokenManager {
     new Error("Timed out while refreshing access token.")
   );
 
+  /**
+   * @param guard optional preflight invoked before any request that carries or
+   * mints session credentials. It throws when the configured identity server is
+   * not the one this profile's session belongs to, so a refresh token is never
+   * presented to a foreign backend. Optional so the class stays usable in
+   * contexts that have no database.
+   */
   constructor(
     private readonly storage: KVStorageAccessor,
-    private readonly eventManager: EventManager
+    private readonly eventManager: EventManager,
+    private readonly guard?: (operation: string) => Promise<unknown>
   ) {}
 
   async getToken(renew = true, forceRenew = false): Promise<Token | undefined> {
@@ -110,6 +118,10 @@ class TokenManager {
 
   async _refreshToken(forceRenew = false) {
     await this.REFRESH_TOKEN_MUTEX.runExclusive(async () => {
+      // Presenting a refresh token to an identity server that did not mint it
+      // leaks the credential and provokes an invalid_grant, which historically
+      // led to a destructive logout.
+      if (this.guard) await this.guard("Refreshing your session");
       this.logger.info("Refreshing access token");
 
       const token = await this.getToken(false, false);
@@ -140,6 +152,7 @@ class TokenManager {
   }
 
   async revokeToken() {
+    if (this.guard) await this.guard("Signing out of the server");
     const token = await this.getToken();
     if (!token) return;
     const { access_token } = token;

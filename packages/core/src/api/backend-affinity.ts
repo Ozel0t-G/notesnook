@@ -17,58 +17,204 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import constants from "../utils/constants.js";
+import constants, { getPersistedHostOverrides } from "../utils/constants.js";
 import { logger } from "../logger.js";
 import Database from "./index.js";
 
 /**
- * The backend a profile's local data originated from, before this client could
- * be pointed at a self-hosted deployment. Any profile that has a user but no
- * recorded affinity predates affinity tracking, so it can only have come from
- * here.
+ * Which backend a profile's local data belongs to.
+ *
+ * Both the sync host and the identity host are recorded. The identity host is
+ * the trust boundary for the session: a token minted by one identity server is
+ * meaningless to another, and presenting it can trigger a destructive logout.
+ * Recording only the sync host would let an API/auth pair be recombined without
+ * detection.
  */
-export const LEGACY_BACKEND_ID = "api.notesnook.com";
+export type BackendIdentity = {
+  /** Normalized API_HOST, including scheme and any base path. */
+  api: string;
+  /** Normalized AUTH_HOST, including scheme and any base path. */
+  auth: string;
+};
+
+export type StoredAffinity = BackendIdentity & {
+  /** Record format version, so a future change can migrate rather than guess. */
+  v: 1;
+  recordedAt: number;
+};
 
 export type BackendAffinityStatus =
-  /** No user is logged in, so there is nothing to protect. */
+  /** No account on this profile. Nothing server-derived to protect. */
   | "no-user"
-  /** Stored affinity matches the configured sync host. Safe to proceed. */
+  /** Recorded identity matches the configured one. Safe to proceed. */
   | "match"
+  /** Recorded identity differs. Must not sync, must not be logged out. */
+  | "mismatch"
   /**
-   * Stored (or inferred legacy) affinity does not match the configured sync
-   * host. The session belongs to a different backend: sync must not run and
-   * local data must not be destroyed.
+   * An account exists but we cannot establish which backend its data came
+   * from, and there is no reliable persisted endpoint configuration to settle
+   * it. Treated exactly as conservatively as a mismatch: local data stays
+   * readable, but nothing may leave this device and nothing may be destroyed.
    */
-  | "mismatch";
+  | "unknown";
 
 export type BackendAffinityResult = {
   status: BackendAffinityStatus;
-  /** Affinity recorded for this profile, or the inferred legacy value. */
-  stored?: string;
-  /** Affinity implied by the currently configured API_HOST. */
-  configured: string;
-  /** True when `stored` was inferred rather than read back from storage. */
-  inferred: boolean;
+  /** Recorded (or evidence-derived) identity, when one could be established. */
+  stored?: BackendIdentity;
+  /** Identity implied by the current host configuration. */
+  configured: BackendIdentity;
+  /** Which field(s) disagree, for diagnostics and for UI messaging. */
+  mismatched?: ("api" | "auth")[];
+  /**
+   * How `stored` was established. "record" is a first-class recorded value;
+   * "persisted-config" is derived from the user's own saved server URLs;
+   * "none" means it could not be established at all.
+   */
+  evidence: "record" | "persisted-config" | "none";
 };
 
+/** A configuration problem that makes the host set untrustworthy. */
+export type EndpointValidationError = {
+  host: string;
+  value: string;
+  reason: string;
+};
+
+function isLoopbackOrPrivate(hostname: string) {
+  if (
+    hostname === "localhost" ||
+    hostname === "::1" ||
+    hostname.endsWith(".localhost") ||
+    hostname.endsWith(".local")
+  )
+    return true;
+  // IPv4 loopback and RFC1918 ranges, used by the existing LAN dev overrides.
+  if (/^127\./.test(hostname)) return true;
+  if (/^10\./.test(hostname)) return true;
+  if (/^192\.168\./.test(hostname)) return true;
+  if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)) return true;
+  return false;
+}
+
 /**
- * Reduce a host URL to a stable identity. Comparison must not be defeated by a
- * trailing slash, a case difference, or an explicit default port, otherwise a
- * cosmetic difference would read as a backend change and lock the user out of
- * their own data.
+ * Reduce an endpoint URL to a stable identity.
+ *
+ * Scheme is significant: `http://host` and `https://host` are different trust
+ * levels, and treating them as one identity would let a downgrade pass as a
+ * match. A base path is significant too, because a deployment may be mounted
+ * under a prefix. A trailing slash, letter case, and an explicit default port
+ * are not significant.
+ *
+ * Returns an empty string for input that is not a usable absolute URL, which
+ * callers must treat as unusable rather than as a wildcard match.
  */
-export function normalizeBackendId(host: string): string {
-  if (!host) return "";
+export function normalizeEndpoint(url: string): string {
+  if (!url || typeof url !== "string") return "";
+  const trimmed = url.trim();
+  if (!trimmed) return "";
+  let parsed: URL;
   try {
-    const url = new URL(host.includes("//") ? host : `https://${host}`);
-    const isDefaultPort =
-      (url.protocol === "https:" && url.port === "443") ||
-      (url.protocol === "http:" && url.port === "80");
-    return `${url.hostname}${
-      url.port && !isDefaultPort ? `:${url.port}` : ""
-    }`.toLowerCase();
+    parsed = new URL(trimmed);
   } catch {
-    return host.trim().replace(/\/+$/, "").toLowerCase();
+    return "";
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return "";
+  if (!parsed.hostname) return "";
+
+  const isDefaultPort =
+    (parsed.protocol === "https:" && parsed.port === "443") ||
+    (parsed.protocol === "http:" && parsed.port === "80");
+  const port = parsed.port && !isDefaultPort ? `:${parsed.port}` : "";
+  const path = parsed.pathname.replace(/\/+$/, "");
+  return `${parsed.protocol}//${parsed.hostname.toLowerCase()}${port}${path}`;
+}
+
+/**
+ * Validate a single endpoint. Plaintext HTTP is rejected except on loopback or
+ * private addresses, which is what the existing local and LAN development
+ * overrides use.
+ */
+export function validateEndpoint(
+  host: string,
+  value: string
+): EndpointValidationError | undefined {
+  if (!value || !value.trim())
+    return { host, value, reason: "must not be empty" };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    return { host, value, reason: "is not an absolute URL" };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:")
+    return {
+      host,
+      value,
+      reason: `uses unsupported scheme ${parsed.protocol}`
+    };
+  if (!parsed.hostname) return { host, value, reason: "has no hostname" };
+  if (parsed.username || parsed.password)
+    return { host, value, reason: "must not embed credentials" };
+  if (parsed.search || parsed.hash)
+    return { host, value, reason: "must not include a query or fragment" };
+  if (parsed.protocol === "http:" && !isLoopbackOrPrivate(parsed.hostname))
+    return {
+      host,
+      value,
+      reason: "must use https outside loopback and private addresses"
+    };
+  return undefined;
+}
+
+/**
+ * Validate the endpoints that carry account data and session credentials. Only
+ * these three are checked: the remaining hosts are ancillary (billing, issue
+ * reporting, marketing) and are not part of the data trust boundary.
+ */
+export function validateBackendConfiguration(hosts: {
+  API_HOST: string;
+  AUTH_HOST: string;
+  SSE_HOST: string;
+}): EndpointValidationError[] {
+  return (["API_HOST", "AUTH_HOST", "SSE_HOST"] as const)
+    .map((key) => validateEndpoint(key, hosts[key]))
+    .filter((e): e is EndpointValidationError => !!e);
+}
+
+export function currentBackendIdentity(): BackendIdentity {
+  return {
+    api: normalizeEndpoint(constants.API_HOST),
+    auth: normalizeEndpoint(constants.AUTH_HOST)
+  };
+}
+
+function identityIsUsable(identity: BackendIdentity) {
+  return !!identity.api && !!identity.auth;
+}
+
+function diff(a: BackendIdentity, b: BackendIdentity): ("api" | "auth")[] {
+  const fields: ("api" | "auth")[] = [];
+  if (a.api !== b.api) fields.push("api");
+  if (a.auth !== b.auth) fields.push("auth");
+  return fields;
+}
+
+/**
+ * Raised when an operation would cross a backend boundary. Callers must treat
+ * this as "stop": never as a reason to reset, log out, or clear local data.
+ */
+export class BackendMismatchError extends Error {
+  readonly result: BackendAffinityResult;
+  constructor(result: BackendAffinityResult, operation: string) {
+    super(
+      result.status === "unknown"
+        ? `${operation} is blocked because this profile's data cannot be attributed to a backend. Log in again to confirm which server this account belongs to. Local notes remain available.`
+        : `${operation} is blocked because this profile's data belongs to a different server (api ${result.stored?.api}, auth ${result.stored?.auth}) than the one configured (api ${result.configured.api}, auth ${result.configured.auth}). Local notes remain available.`
+    );
+    this.name = "BackendMismatchError";
+    this.result = result;
   }
 }
 
@@ -77,66 +223,219 @@ export class BackendAffinity {
 
   constructor(private readonly db: Database) {}
 
-  /** Affinity implied by the host the client is currently configured against. */
   current() {
-    return normalizeBackendId(constants.API_HOST);
-  }
-
-  async get() {
-    return await this.db.kv().read("backendAffinity");
+    return currentBackendIdentity();
   }
 
   /**
-   * Bind this profile to the configured backend. Called on signup and on a
-   * successful login, at which point the local data provably belongs to
-   * whichever backend just authenticated us.
+   * Read the stored record. A value written by an earlier build of this branch
+   * was a bare hostname string with no scheme and no identity host; it carries
+   * too little information to authorise anything, so it is reported as absent
+   * rather than upgraded by guesswork.
    */
-  async record() {
-    const id = this.current();
-    this.logger.info("Recording backend affinity", { backend: id });
-    await this.db.kv().write("backendAffinity", id);
-    return id;
+  async get(): Promise<StoredAffinity | undefined> {
+    const raw = await this.db.kv().read("backendAffinity");
+    if (!raw) return undefined;
+    if (typeof raw === "string") {
+      this.logger.warn(
+        "Discarding pre-release affinity record: too little information to trust.",
+        { raw }
+      );
+      return undefined;
+    }
+    if (typeof raw !== "object" || (raw as StoredAffinity).v !== 1)
+      return undefined;
+    const record = raw as StoredAffinity;
+    if (!record.api || !record.auth) return undefined;
+    return record;
+  }
+
+  /**
+   * Bind this profile to the configured backend.
+   *
+   * Refuses to overwrite a record that names a different backend: relabelling
+   * existing data is what would let it be uploaded somewhere it does not
+   * belong. Changing backends is a migration, not a side effect of logging in,
+   * so it must go through `adoptCurrentBackend`.
+   */
+  async record(): Promise<
+    | { ok: true; identity: BackendIdentity; changed: boolean }
+    | { ok: false; conflict: BackendAffinityResult }
+  > {
+    const configured = this.current();
+    if (!identityIsUsable(configured))
+      throw new Error(
+        "Cannot record backend affinity: the configured hosts are not valid absolute URLs."
+      );
+
+    const existing = await this.get();
+    if (existing) {
+      const fields = diff(existing, configured);
+      if (fields.length === 0)
+        return { ok: true, identity: configured, changed: false };
+      return {
+        ok: false,
+        conflict: {
+          status: "mismatch",
+          stored: { api: existing.api, auth: existing.auth },
+          configured,
+          mismatched: fields,
+          evidence: "record"
+        }
+      };
+    }
+
+    await this.write(configured);
+    return { ok: true, identity: configured, changed: true };
+  }
+
+  private async write(identity: BackendIdentity) {
+    this.logger.info("Recording backend affinity", identity);
+    await this.db.kv().write("backendAffinity", {
+      v: 1,
+      api: identity.api,
+      auth: identity.auth,
+      recordedAt: Date.now()
+    });
   }
 
   async clear() {
     await this.db.kv().delete("backendAffinity");
   }
 
+  /**
+   * Derive an identity from the user's own persisted server configuration.
+   *
+   * A profile that predates affinity tracking has no record, but if the user
+   * had explicitly saved server URLs then that saved configuration is reliable
+   * evidence of which backend the data came from. Absent that, we do not guess:
+   * an unrecorded profile could have synced against either the shipped default
+   * of whatever build it ran, or a custom one, and assuming either direction
+   * risks moving data across a boundary.
+   */
+  private persistedIdentity(): BackendIdentity | undefined {
+    const overrides = getPersistedHostOverrides();
+    if (!overrides) return undefined;
+    const api = normalizeEndpoint(overrides.API_HOST || "");
+    const auth = normalizeEndpoint(overrides.AUTH_HOST || "");
+    // Both must be explicitly configured for this to settle the question. A
+    // half-configured override leaves the other half at a default we cannot
+    // reconstruct after the fact.
+    if (!api || !auth) return undefined;
+    return { api, auth };
+  }
+
   async check(): Promise<BackendAffinityResult> {
     const configured = this.current();
 
-    // No account means no server-derived key material and nothing to push, so
-    // there is nothing for affinity to protect.
     const user = await this.db.user.getUser();
-    if (!user) return { status: "no-user", configured, inferred: false };
+    if (!user) return { status: "no-user", configured, evidence: "none" };
 
     const stored = await this.get();
-    if (!stored) {
-      // A logged-in profile with no recorded affinity predates this tracking.
-      // Such data can only have come from Notesnook cloud.
-      const inferredId = LEGACY_BACKEND_ID;
+    if (stored) {
+      const identity = { api: stored.api, auth: stored.auth };
+      const fields = diff(identity, configured);
       return {
-        status: inferredId === configured ? "match" : "mismatch",
-        stored: inferredId,
+        status: fields.length === 0 ? "match" : "mismatch",
+        stored: identity,
         configured,
-        inferred: true
+        mismatched: fields.length ? fields : undefined,
+        evidence: "record"
       };
     }
 
-    return {
-      status: stored === configured ? "match" : "mismatch",
-      stored,
-      configured,
-      inferred: false
-    };
+    const persisted = this.persistedIdentity();
+    if (persisted) {
+      const fields = diff(persisted, configured);
+      return {
+        status: fields.length === 0 ? "match" : "mismatch",
+        stored: persisted,
+        configured,
+        mismatched: fields.length ? fields : undefined,
+        evidence: "persisted-config"
+      };
+    }
+
+    // An account with no record and no persisted configuration. Fail safe.
+    return { status: "unknown", configured, evidence: "none" };
+  }
+
+  /** True when an operation must not be allowed to reach the network. */
+  async isBlocked() {
+    const { status } = await this.check();
+    return status === "mismatch" || status === "unknown";
   }
 
   /**
-   * True when the logged-in session belongs to a different backend than the one
-   * configured. Callers must treat this as "stop", never as "reset".
+   * Throw unless the configured backend is the one this profile's data belongs
+   * to. Used as a preflight by every account-scoped network call, so a request
+   * cannot reach a foreign backend before the boundary is noticed.
    */
-  async isMismatched() {
-    const { status } = await this.check();
-    return status === "mismatch";
+  async assertAllowed(operation: string) {
+    const result = await this.check();
+    if (result.status === "mismatch" || result.status === "unknown") {
+      this.logger.error(
+        new BackendMismatchError(result, operation),
+        `${operation} blocked by backend affinity`,
+        { ...result, stored: result.stored, configured: result.configured }
+      );
+      throw new BackendMismatchError(result, operation);
+    }
+    return result;
+  }
+
+  /**
+   * Record affinity after the configured backend has positively identified the
+   * account. `verified` must come from a fresh authenticated response, never
+   * from a cached user: a cached user proves only that this device once had an
+   * account somewhere, which is exactly the case we must not relabel.
+   */
+  async recordVerified(verified: boolean) {
+    if (!verified) {
+      this.logger.warn(
+        "Not recording backend affinity: the account was not freshly verified against the configured backend."
+      );
+      return undefined;
+    }
+    return await this.record();
+  }
+
+  /**
+   * Explicitly adopt the configured backend for a profile whose data could not
+   * be attributed (`unknown`).
+   *
+   * Deliberately narrow. It refuses when a record already names a different
+   * backend, because that is a data migration and cannot be settled by a
+   * checkbox. It also cannot prove that the local data is *rightfully* this
+   * account's data on this server; no such proof is available to the client.
+   * What it does require is that the caller pass explicit user confirmation and
+   * that the configured backend has just authenticated this account.
+   */
+  async adoptCurrentBackend(options: {
+    confirmedByUser: boolean;
+    verifiedAgainstBackend: boolean;
+  }) {
+    if (!options.confirmedByUser)
+      throw new Error(
+        "Adopting a backend requires explicit user confirmation."
+      );
+    if (!options.verifiedAgainstBackend)
+      throw new Error(
+        "Adopting a backend requires a verified response from the configured backend."
+      );
+
+    const result = await this.check();
+    if (result.status === "match") return result;
+    if (result.status === "mismatch" && result.evidence === "record")
+      throw new Error(
+        "This profile is already bound to a different backend. Migrating its data between backends is not supported here."
+      );
+
+    await this.write(this.current());
+    this.logger.info("Backend adopted after explicit user confirmation", {
+      previous: result.stored,
+      adopted: this.current()
+    });
+    return await this.check();
   }
 }

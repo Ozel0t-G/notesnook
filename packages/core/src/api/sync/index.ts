@@ -30,6 +30,7 @@ import Collector from "./collector.js";
 import { type HubConnection } from "@microsoft/signalr";
 import Merger, { handleInboxItems } from "./merger.js";
 import { AutoSync } from "./auto-sync.js";
+import { BackendMismatchError } from "../backend-affinity.js";
 import { logger } from "../../logger.js";
 import { Mutex } from "async-mutex";
 import Database from "../index.js";
@@ -173,6 +174,12 @@ export class Sync {
   }
 
   async start(options: SyncOptions) {
+    // Preflight before any connection is opened. Never move data between
+    // backends implicitly: syncing would either upload this profile's data to a
+    // backend it does not belong to, or merge that backend's data over it. Local
+    // data stays readable; only sync is refused.
+    await this.assertBackendAllowed();
+
     await this.createConnection(options);
     if (!this.connection) return;
 
@@ -181,25 +188,6 @@ export class Sync {
       return;
     }
     if (!(await this.db.user.getUser())) return;
-
-    // Never move data between backends implicitly. If this profile's data
-    // originated on a different server, syncing would either upload it to a
-    // backend it does not belong to, or merge that backend's data over it.
-    // Local data stays readable; only sync is refused.
-    const affinity = await this.db.user.backendAffinity.check();
-    if (affinity.status === "mismatch") {
-      this.logger.error(
-        new Error("Sync blocked: profile belongs to a different backend."),
-        "Sync blocked: profile belongs to a different backend.",
-        { ...affinity }
-      );
-      await this.connection.stop();
-      this.autoSync.stop();
-      this.db.eventManager.publish(EVENTS.syncAborted);
-      throw new Error(
-        `Sync is disabled because this profile's data belongs to a different server (${affinity.stored}) than the one currently configured (${affinity.configured}). Log in again to sync with the configured server.`
-      );
-    }
 
     this.logger.info("Starting sync", options);
 
@@ -231,6 +219,20 @@ export class Sync {
       await this.connection.stop();
       this.autoSync.stop();
     }
+  }
+
+  /**
+   * Refuse to sync across a backend boundary. Runs before any socket is opened,
+   * and stops auto-sync so it does not retry in a loop.
+   */
+  private async assertBackendAllowed() {
+    if (!(await this.db.user.getUser())) return;
+    const affinity = await this.db.user.backendAffinity.check();
+    if (affinity.status !== "mismatch" && affinity.status !== "unknown") return;
+
+    this.autoSync.stop();
+    this.db.eventManager.publish(EVENTS.syncAborted);
+    throw new BackendMismatchError(affinity, "Sync");
   }
 
   async init(isForceSync?: boolean) {
@@ -505,7 +507,11 @@ export class Sync {
     const { HubConnectionBuilder, HttpTransportType, JsonHubProtocol } =
       await import("@microsoft/signalr");
 
-    const tokenManager = new TokenManager(this.db.kv, this.db.eventManager);
+    const tokenManager = new TokenManager(
+      this.db.kv,
+      this.db.eventManager,
+      (op) => this.db.user.backendAffinity.assertAllowed(op)
+    );
     this.connection = new HubConnectionBuilder()
       .withUrl(`${Constants.API_HOST}/hubs/sync/v2`, {
         accessTokenFactory: async () => {

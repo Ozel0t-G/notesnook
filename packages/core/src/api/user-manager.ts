@@ -54,22 +54,25 @@ class UserManager {
   readonly backendAffinity: BackendAffinity;
   constructor(private readonly db: Database) {
     this.keyManager = new KeyManager(db);
-    this.tokenManager = new TokenManager(db.kv, db.eventManager);
     this.backendAffinity = new BackendAffinity(db);
+    this.tokenManager = new TokenManager(db.kv, db.eventManager, (op) =>
+      this.backendAffinity.assertAllowed(op)
+    );
 
     EV.subscribe(EVENTS.userUnauthorized, async (url: string) => {
       if (url.includes("/connect/token") || !(await HealthCheck.auth())) return;
 
-      // A session issued by a different backend will always be rejected by the
-      // configured one. Refreshing it would fail with invalid_grant and take us
-      // into logout(), which calls db.reset() and destroys the local database.
-      // The data is not the server's to delete: stop, and ask for a re-login
-      // instead, which leaves local notes readable.
+      // A session issued by a different identity server will always be
+      // rejected by the configured one. Refreshing it would fail with
+      // invalid_grant and take us into logout(), which calls db.reset() and
+      // destroys the local database. The data is not the server's to delete:
+      // stop, and ask for a re-login instead, which leaves local notes
+      // readable. The same applies when we cannot attribute the profile at all.
       const affinity = await this.backendAffinity.check();
-      if (affinity.status === "mismatch") {
+      if (affinity.status === "mismatch" || affinity.status === "unknown") {
         logger.warn(
-          "Refusing to refresh or revoke a session from another backend.",
-          affinity
+          "Refusing to refresh or revoke a session across a backend boundary.",
+          { ...affinity }
         );
         this.db.eventManager.publish(EVENTS.userSessionExpired);
         return;
@@ -82,9 +85,13 @@ class UserManager {
           e instanceof Error &&
           (e.message === "invalid_grant" || e.message === "invalid_client")
         ) {
+          // Not user-initiated, so this must not be allowed to wipe local data
+          // if the boundary changed underneath us between the check above and
+          // here.
           await this.logout(
             false,
-            `Your token has been revoked. Error: ${e.message}.`
+            `Your token has been revoked. Error: ${e.message}.`,
+            { userInitiated: false }
           );
         }
       }
@@ -108,10 +115,14 @@ class UserManager {
       })
     );
 
-    const user = await this.fetchUser();
+    const { user, fresh } = await this.fetchUserInternal();
     if (!user) throw new Error("Failed to fetch user after signup.");
+    if (!fresh)
+      throw new Error(
+        "Could not confirm the new account against the configured server. Signup is incomplete; please try again."
+      );
 
-    await this.backendAffinity.record();
+    await this.bindProfileToConfiguredBackend();
     await this.db.setLastSynced(0);
     await this.db.syncer.devices.register();
 
@@ -229,12 +240,14 @@ class UserManager {
           })
       );
 
-      const user = await this.fetchUser();
+      const { user, fresh } = await this.fetchUserInternal();
       if (!user) throw new Error("Failed to fetch user.");
 
-      // This backend just authenticated us, so the session (and any data we go
-      // on to sync) provably belongs to it.
-      await this.backendAffinity.record();
+      // Only a fresh response proves which backend this account lives on. A
+      // cached user here would mean the account lookup failed, and recording
+      // affinity from it would relabel existing data as belonging to a server
+      // that never confirmed it.
+      await this.bindProfileToConfiguredBackend(fresh);
 
       if (!sessionExpired) {
         await this.db.setLastSynced(0);
@@ -287,7 +300,28 @@ class UserManager {
     return true;
   }
 
-  async logout(revoke = true, reason?: string) {
+  /**
+   * @param options.userInitiated defaults to true, preserving the behaviour of
+   * every existing caller: an explicit logout clears local data. Automatic,
+   * server-triggered logouts must pass false, which makes this refuse to reset
+   * a profile whose data belongs to a different backend. A foreign server
+   * rejecting our token is not authority to delete the user's notes.
+   */
+  async logout(
+    revoke = true,
+    reason?: string,
+    options?: { userInitiated?: boolean }
+  ) {
+    const userInitiated = options?.userInitiated ?? true;
+    if (!userInitiated && (await this.backendAffinity.isBlocked())) {
+      logger.warn(
+        "Refusing an automatic logout that would reset a profile bound to another backend.",
+        { reason }
+      );
+      this.db.eventManager.publish(EVENTS.userSessionExpired);
+      return;
+    }
+
     try {
       await this.db.syncer.devices.unregister();
       if (revoke) await this.tokenManager.revokeToken();
@@ -299,6 +333,32 @@ class UserManager {
       this.db.eventManager.publish(EVENTS.userLoggedOut, reason);
       this.db.eventManager.publish(EVENTS.appRefreshRequested);
     }
+  }
+
+  /**
+   * Bind this profile to the configured backend after it has positively
+   * identified the account.
+   *
+   * Refuses to relabel a profile that is already bound elsewhere. Logging in to
+   * a different server does not transfer ownership of data that was synced from
+   * another one, so this throws rather than overwriting, and the caller rolls
+   * the session back. Resolving it is an explicit migration decision, exposed
+   * separately via `backendAffinity.adoptCurrentBackend`.
+   */
+  private async bindProfileToConfiguredBackend(verified = true) {
+    const outcome = await this.backendAffinity.recordVerified(verified);
+    if (!outcome) {
+      throw new Error(
+        "Could not confirm your account against the configured server, so this device was not bound to it. Your local notes are unchanged. Please check your connection and try again."
+      );
+    }
+    if (!outcome.ok) {
+      const { stored, configured } = outcome.conflict;
+      throw new Error(
+        `This profile's data belongs to a different server (api ${stored?.api}, auth ${stored?.auth}) than the one you signed in to (api ${configured.api}, auth ${configured.auth}). Your local notes are unchanged and were not uploaded. Sign in to the original server, or start a new profile.`
+      );
+    }
+    return outcome;
   }
 
   setUser(user: User) {
@@ -359,13 +419,37 @@ class UserManager {
     return true;
   }
 
+  /**
+   * Fetch the account from the configured backend.
+   *
+   * Blocked when this profile's data belongs to a different backend, so a
+   * background refresh cannot reach a foreign server. The login and signup
+   * flows pass `skipAffinityGuard`, because they are the operations that
+   * establish affinity in the first place and would otherwise deadlock a
+   * profile that predates it. That is safe: they talk to the configured API
+   * with a token minted by the configured identity server, and send no local
+   * note data.
+   */
   async fetchUser(): Promise<User | undefined> {
+    await this.backendAffinity.assertAllowed("Fetching your account");
+    return (await this.fetchUserInternal()).user;
+  }
+
+  /**
+   * @returns `fresh` is true only when `user` came from a successful response
+   * from the configured backend. A cached user is returned with `fresh: false`,
+   * and must never be treated as proof of which backend the data belongs to.
+   */
+  private async fetchUserInternal(): Promise<{
+    user?: User;
+    fresh: boolean;
+  }> {
     this.keyManager.clearCache();
 
     const oldUser = await this.getUser();
     try {
       const token = await this.tokenManager.getAccessToken();
-      if (!token) return;
+      if (!token) return { user: undefined, fresh: false };
       const user = await http.get(
         `${constants.API_HOST}${ENDPOINTS.user}`,
         token
@@ -387,13 +471,15 @@ class UserManager {
         if (oldUser && !oldUser.isEmailConfirmed && user.isEmailConfirmed)
           this.db.eventManager.publish(EVENTS.userEmailConfirmed);
         this.db.eventManager.publish(EVENTS.userFetched, user);
-        return user;
+        return { user, fresh: true };
       } else {
-        return oldUser;
+        // The server answered but gave us nothing usable. This is not proof of
+        // anything, so the cached user is returned unverified.
+        return { user: oldUser, fresh: false };
       }
     } catch (e) {
       logger.error(e, "Error fetching user");
-      return oldUser;
+      return { user: oldUser, fresh: false };
     }
   }
 

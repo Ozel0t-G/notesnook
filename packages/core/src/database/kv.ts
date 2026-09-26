@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { LazyDatabaseAccessor, RawDatabaseSchema } from "./index.js";
 import { Token } from "../api/token-manager.js";
 import { User } from "../types.js";
+import type { StoredAffinity } from "../api/backend-affinity.js";
 
 interface KV {
   v: number;
@@ -33,9 +34,10 @@ interface KV {
   /**
    * Identity of the backend this profile's data belongs to. See
    * `api/backend-affinity.ts`. Absent on profiles created before affinity
-   * tracking existed.
+   * tracking existed. The bare-string form is a discarded pre-release format
+   * and is typed only so it can be recognised and ignored on read.
    */
-  backendAffinity: string;
+  backendAffinity: StoredAffinity | string;
 }
 
 export const KEYS: (keyof KV)[] = [

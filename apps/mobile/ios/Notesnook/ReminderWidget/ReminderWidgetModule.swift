@@ -98,10 +98,17 @@ final class ReminderWidgetModule: NSObject {
         .sorted { $0.lastPathComponent < $1.lastPathComponent }
       var actions = [[String: Any]]()
       for file in files.prefix(50) {
-        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
-              size <= 1024,
-              let data = try? Data(contentsOf: file),
-              let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        // Before the first device unlock, a valid protected action can be
+        // temporarily unreadable. Keep it queued for the next safe drain.
+        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+          continue
+        }
+        guard size <= 1024 else {
+          try? FileManager.default.removeItem(at: file)
+          continue
+        }
+        guard let data = try? Data(contentsOf: file) else { continue }
+        guard let value = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let id = value["id"] as? String,
               let scope = value["scope"] as? String,
               let updatedAt = value["updatedAt"] as? Int,

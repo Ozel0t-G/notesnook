@@ -21,6 +21,8 @@ import { createContext, useContext, useMemo } from "react";
 import { create } from "zustand";
 import _ThemeDark from "./themes/default-dark.json";
 import _ThemeLight from "./themes/default-light.json";
+import _ThemeVeyranLight from "./veyran/veyran-light.json";
+import _ThemeVeyranDark from "./veyran/veyran-dark.json";
 import {
   ThemeCompatibilityVersion,
   ThemeDefinition,
@@ -31,6 +33,18 @@ import { buildVariants } from "./utils.js";
 
 const ThemeLight = _ThemeLight as ThemeDefinition;
 const ThemeDark = _ThemeDark as ThemeDefinition;
+/**
+ * The first-class VeyraN Light/Dark themes. These are plain `ThemeDefinition`s
+ * like any other installable theme -- they are not wired as the engine's
+ * fallback (see `ThemeLight` above, still used by `useThemeEngineStore`'s
+ * initial state and by `buildVariants()`'s scope-merge fallback) so that
+ * embedding contexts which don't go through an app-level theme store are
+ * unaffected. Each app's theme store is responsible for choosing these as
+ * the default for new installs / migrated old-default users while leaving
+ * any explicit or custom theme selection untouched.
+ */
+const ThemeVeyranLight = _ThemeVeyranLight as ThemeDefinition;
+const ThemeVeyranDark = _ThemeVeyranDark as ThemeDefinition;
 
 type ThemeScope = {
   colors: VariantsWithStaticColors<true>;
@@ -85,6 +99,13 @@ export function getThemeScope(
 export const useCurrentThemeScope = () => useContext(ThemeScopeContext);
 export const ScopedThemeProvider = ThemeScopeContext.Provider;
 export const THEME_COMPATIBILITY_VERSION: ThemeCompatibilityVersion = 1;
-export { ThemeLight, ThemeDark, useThemeEngineStore, type ThemeEngineState };
+export {
+  ThemeLight,
+  ThemeDark,
+  ThemeVeyranLight,
+  ThemeVeyranDark,
+  useThemeEngineStore,
+  type ThemeEngineState
+};
 export { getPreviewColors, themeToCSS } from "./utils.js";
 export { validateTheme } from "./validator.js";

@@ -19,18 +19,25 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import hosts from "../src/utils/constants.ts";
 import { Offers } from "../src/api/offers.ts";
+import { BillingUnavailableError } from "../src/api/veyran-billing-policy.ts";
 import { test, expect } from "vitest";
 
-test("get offer code", async () => {
+// VeyraN does not operate Notesnook's promo/offer billing backend (see
+// artifacts/veyran-brand-entitlement-audit.md on agent/claude-brand-entitlements).
+// `Offers.getCode` now fails closed before it ever reaches
+// `hosts.SUBSCRIPTIONS_HOST`, so these upstream live-network cases no longer
+// apply; this test instead proves the fail-closed contract holds even when
+// pointed at the real host.
+test("get offer code is unavailable in VeyraN", async () => {
   hosts.SUBSCRIPTIONS_HOST = "https://subscriptions.streetwriters.co";
-  expect(await Offers.getCode("TESTOFFER", "android")).toMatchSnapshot(
-    "offer-code"
+  await expect(Offers.getCode("TESTOFFER", "android")).rejects.toBeInstanceOf(
+    BillingUnavailableError
   );
 });
 
-test("get invalid offer code", async () => {
+test("get invalid offer code is unavailable in VeyraN", async () => {
   hosts.SUBSCRIPTIONS_HOST = "https://subscriptions.streetwriters.co";
-  await expect(Offers.getCode("INVALIDOFFER", "android")).rejects.toThrow(
-    /Request failed with status code: 404./i
-  );
+  await expect(
+    Offers.getCode("INVALIDOFFER", "android")
+  ).rejects.toBeInstanceOf(BillingUnavailableError);
 });

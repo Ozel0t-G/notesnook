@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { SubscriptionPlan, SubscriptionPlanId } from "../types.js";
 import hosts from "../utils/constants.js";
 import http from "../utils/http.js";
+import { assertBillingEnabled } from "./veyran-billing-policy.js";
 
 export type SKUResponse = {
   country: string;
@@ -59,17 +60,19 @@ export interface Plan {
 }
 
 export class Pricing {
-  static sku(
+  static async sku(
     platform: "google" | "apple" | "paddle" | "paddleNoTrial",
     period: Period,
     plan: SubscriptionPlanId
   ): Promise<SKUResponse> {
+    assertBillingEnabled("Fetching pricing SKUs");
     return http.get(
       `${hosts.NOTESNOOK_HOST}/api/v2/prices/skus?platform=${platform}&period=${period}&plan=${plan}`
     );
   }
 
-  static products(trialsAvailed?: SubscriptionPlan[]): Promise<Plan[]> {
+  static async products(trialsAvailed?: SubscriptionPlan[]): Promise<Plan[]> {
+    assertBillingEnabled("Fetching plan pricing");
     const url = new URL(`${hosts.NOTESNOOK_HOST}/api/v2/prices/products`);
     if (trialsAvailed)
       url.searchParams.set("trialsAvailed", trialsAvailed.join(","));

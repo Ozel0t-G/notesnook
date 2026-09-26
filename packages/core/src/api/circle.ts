@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import hosts from "../utils/constants.js";
 import http from "../utils/http.js";
 import Database from "./index.js";
+import { assertBillingEnabled } from "./veyran-billing-policy.js";
 
 export type CirclePartner = {
   id: string;
@@ -34,11 +35,13 @@ export type CirclePartner = {
 export class Circle {
   constructor(private readonly db: Database) {}
 
-  partners(): Promise<CirclePartner[] | undefined> {
+  async partners(): Promise<CirclePartner[] | undefined> {
+    assertBillingEnabled("Fetching Notesnook Circle partners");
     return http.get(`${hosts.SUBSCRIPTIONS_HOST}/circle/partners`);
   }
 
   async redeem(partnerId: string): Promise<{ code?: string } | undefined> {
+    assertBillingEnabled("Redeeming a Notesnook Circle offer");
     const token = await this.db.tokenManager.getAccessToken();
     return http.get(
       `${hosts.SUBSCRIPTIONS_HOST}/circle/redeem?partnerId=${partnerId}`,

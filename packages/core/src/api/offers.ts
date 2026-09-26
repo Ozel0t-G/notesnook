@@ -20,9 +20,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { CLIENT_ID } from "../common.js";
 import hosts from "../utils/constants.js";
 import http from "../utils/http.js";
+import { assertBillingEnabled } from "./veyran-billing-policy.js";
 
 export class Offers {
   static async getCode(promo: string, platform: "ios" | "android" | "web") {
+    assertBillingEnabled("Fetching a promo offer code");
     const result = await http.get(
       `${hosts.SUBSCRIPTIONS_HOST}/offers?promoCode=${promo}&clientId=${CLIENT_ID}&platformId=${platform}`
     );

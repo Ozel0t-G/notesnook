@@ -27,6 +27,7 @@ import hosts from "../utils/constants.js";
 import http from "../utils/http.js";
 import Database from "./index.js";
 import { Period } from "./pricing.js";
+import { assertBillingEnabled } from "./veyran-billing-policy.js";
 
 export type TransactionStatus =
   | "completed"
@@ -93,6 +94,7 @@ export default class Subscriptions {
   constructor(private readonly db: Database) {}
 
   async cancel() {
+    assertBillingEnabled("Canceling a subscription");
     const token = await this.db.tokenManager.getAccessToken();
     const user = await this.db.user.getUser();
     if (!token || !user) return;
@@ -103,6 +105,7 @@ export default class Subscriptions {
   }
 
   async pause() {
+    assertBillingEnabled("Pausing a subscription");
     const token = await this.db.tokenManager.getAccessToken();
     const user = await this.db.user.getUser();
     if (!token || !user) return;
@@ -116,6 +119,7 @@ export default class Subscriptions {
   }
 
   async resume() {
+    assertBillingEnabled("Resuming a subscription");
     const token = await this.db.tokenManager.getAccessToken();
     const user = await this.db.user.getUser();
     if (!token || !user) return;
@@ -126,6 +130,7 @@ export default class Subscriptions {
   }
 
   async refund(reason?: string) {
+    assertBillingEnabled("Requesting a refund");
     const token = await this.db.tokenManager.getAccessToken();
     const user = await this.db.user.getUser();
     if (!token || !user) return;
@@ -144,6 +149,7 @@ export default class Subscriptions {
     | { type: "v1"; transactions: TransactionV1[] }
     | undefined
   > {
+    assertBillingEnabled("Fetching transactions");
     const token = await this.db.tokenManager.getAccessToken();
     const user = await this.db.user.getUser();
     if (!token || !user) return;
@@ -167,6 +173,7 @@ export default class Subscriptions {
   }
 
   async invoice(transactionId: string): Promise<string | undefined> {
+    assertBillingEnabled("Fetching an invoice");
     const token = await this.db.tokenManager.getAccessToken();
     if (!token) return;
     const response = await http.get(
@@ -177,6 +184,7 @@ export default class Subscriptions {
   }
 
   async updateUrl(): Promise<string | undefined> {
+    assertBillingEnabled("Updating billing details");
     const token = await this.db.tokenManager.getAccessToken();
     if (!token) return;
     const user = await this.db.user.getUser();
@@ -196,6 +204,7 @@ export default class Subscriptions {
   }
 
   async redeemCode(code: string) {
+    assertBillingEnabled("Redeeming a code");
     const token = await this.db.tokenManager.getAccessToken();
     if (!token) return;
     return http.post.json(
@@ -208,6 +217,7 @@ export default class Subscriptions {
   }
 
   async checkoutUrl(plan: SubscriptionPlan, period: Period) {
+    assertBillingEnabled("Building a checkout URL");
     const user = await this.db.user.getUser();
     if (!user) return;
     return `${hosts.NOTESNOOK_HOST}/api/v2/checkout?userId=${user.id}&email=${
@@ -216,6 +226,7 @@ export default class Subscriptions {
   }
 
   async preview(productId: string) {
+    assertBillingEnabled("Previewing a plan change");
     const token = await this.db.tokenManager.getAccessToken();
     if (!token) return;
     return http.post(
@@ -228,6 +239,7 @@ export default class Subscriptions {
   }
 
   async change(productId: string) {
+    assertBillingEnabled("Changing a plan");
     const token = await this.db.tokenManager.getAccessToken();
     if (!token) return;
     return http.post(

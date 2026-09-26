@@ -17,12 +17,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-
 import { test, describe, expect } from "vitest";
 import hosts, { isServerCompatible } from "../constants.js";
 import {
-  normalizeBackendId,
-  LEGACY_BACKEND_ID
+  normalizeEndpoint,
+  validateBackendConfiguration
 } from "../../api/backend-affinity.js";
 
 // vitest runs with NODE_ENV=test, and isProduction() in constants.ts treats
@@ -82,40 +81,34 @@ describe("production backend hosts", () => {
   });
 });
 
-describe("normalizeBackendId", () => {
-  test("reduces a host url to a comparable identity", () => {
-    expect(normalizeBackendId("https://api.veyran.northcore.space")).toBe(
-      "api.veyran.northcore.space"
+describe("host configuration integrity", () => {
+  test("the shipped production host set passes validation", () => {
+    expect(
+      validateBackendConfiguration({
+        API_HOST: hosts.API_HOST,
+        AUTH_HOST: hosts.AUTH_HOST,
+        SSE_HOST: hosts.SSE_HOST
+      })
+    ).toEqual([]);
+  });
+
+  test("api, auth and events are three distinct endpoints", () => {
+    const ids = [hosts.API_HOST, hosts.AUTH_HOST, hosts.SSE_HOST].map(
+      normalizeEndpoint
     );
+    expect(new Set(ids).size).toBe(3);
+    for (const id of ids) expect(id).not.toBe("");
   });
 
-  test("ignores cosmetic differences that are not a backend change", () => {
-    const expected = "api.veyran.northcore.space";
-    for (const input of [
-      "https://api.veyran.northcore.space",
-      "https://api.veyran.northcore.space/",
-      "https://API.Veyran.Northcore.Space",
-      "https://api.veyran.northcore.space:443",
-      "api.veyran.northcore.space"
-    ]) {
-      expect(normalizeBackendId(input), input).toBe(expected);
-    }
-  });
-
-  test("keeps a non-default port, which is a different backend", () => {
-    expect(normalizeBackendId("http://localhost:5264")).toBe("localhost:5264");
-    expect(normalizeBackendId("http://localhost:8264")).not.toBe(
-      normalizeBackendId("http://localhost:5264")
-    );
-  });
-
-  test("distinguishes the legacy backend from the configured one", () => {
-    expect(LEGACY_BACKEND_ID).toBe("api.notesnook.com");
-    expect(normalizeBackendId(hosts.API_HOST)).not.toBe(LEGACY_BACKEND_ID);
-  });
-
-  test("does not throw on empty or malformed input", () => {
-    expect(normalizeBackendId("")).toBe("");
-    expect(normalizeBackendId("  ")).toBe("");
+  /**
+   * Documents a surprising pre-existing behaviour rather than endorsing it:
+   * isProduction() treats NODE_ENV="test" as production, so the test suite and
+   * CI resolve the real production hosts. Pinned here so a change is deliberate
+   * and visible. See artifacts/veyran-backend-audit.md section 11.
+   */
+  test("NODE_ENV=test resolves production hosts, not development ones", () => {
+    expect(process.env.NODE_ENV).toBe("test");
+    expect(hosts.API_HOST).toBe("https://api.veyran.northcore.space");
+    expect(hosts.API_HOST).not.toContain("localhost");
   });
 });

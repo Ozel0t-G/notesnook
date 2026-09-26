@@ -70,6 +70,33 @@ export const hosts = {
 
 export default hosts;
 
+export type HostId = keyof typeof hosts;
+
+/**
+ * The subset of hosts the user (or an integrator) explicitly persisted, as
+ * opposed to the values this build shipped as defaults.
+ *
+ * This matters for profiles that predate backend-affinity tracking: a saved
+ * server configuration is reliable evidence of which backend such a profile's
+ * data came from, whereas a default cannot be reconstructed after the fact
+ * because it varies per build. Set by `Database.host()`; never populated from a
+ * network response.
+ */
+let persistedHostOverrides: Partial<Record<HostId, string>> | undefined;
+
+export function setPersistedHostOverrides(
+  overrides?: Partial<Record<HostId, string>>
+) {
+  persistedHostOverrides =
+    overrides && Object.keys(overrides).length > 0
+      ? { ...overrides }
+      : undefined;
+}
+
+export function getPersistedHostOverrides() {
+  return persistedHostOverrides;
+}
+
 const HOSTNAMES = {
   [extractHostname(hosts.API_HOST)]: "Notesnook Sync Server",
   [extractHostname(hosts.AUTH_HOST)]: "Authentication Server",

@@ -29,7 +29,11 @@ import Vault from "./vault.js";
 import Lookup from "./lookup.js";
 import { Content } from "../collections/content.js";
 import Backup from "../database/backup.js";
-import Hosts from "../utils/constants.js";
+import Hosts, {
+  HostId,
+  setPersistedHostOverrides
+} from "../utils/constants.js";
+import { validateBackendConfiguration } from "./backend-affinity.js";
 import { EVENTS } from "../common.js";
 import { LegacySettings } from "../collections/legacy-settings.js";
 import Migrations from "./migrations.js";
@@ -198,7 +202,9 @@ class Database {
   options!: Options;
   eventSource?: EventSource | null;
 
-  tokenManager = new TokenManager(this.kv, this.eventManager);
+  tokenManager = new TokenManager(this.kv, this.eventManager, (op) =>
+    this.user.backendAffinity.assertAllowed(op)
+  );
   mfa = new MFAManager(this.tokenManager);
   subscriptions = new Subscriptions(this);
   circle = new Circle(this);
@@ -410,6 +416,15 @@ class Database {
         return;
       this.disconnectSSE();
 
+      // The events stream carries the access token. Refuse to open it against a
+      // backend this profile's session does not belong to.
+      try {
+        await this.user.backendAffinity.assertAllowed("Connecting to events");
+      } catch {
+        logger.warn("SSE: not connecting across a backend boundary.");
+        return;
+      }
+
       const token = await this.tokenManager.getAccessToken();
       if (!token) return;
 
@@ -486,15 +501,47 @@ class Database {
     return this.syncer.sync.collector.hasUnsyncedChanges();
   }
 
-  host(hosts: typeof Hosts) {
-    Hosts.AUTH_HOST = hosts.AUTH_HOST || Hosts.AUTH_HOST;
-    Hosts.API_HOST = hosts.API_HOST || Hosts.API_HOST;
-    Hosts.SSE_HOST = hosts.SSE_HOST || Hosts.SSE_HOST;
+  /**
+   * Configure backend hosts.
+   *
+   * `options.persistedOverrides` should carry only the hosts the user
+   * explicitly saved (e.g. the advanced server-configuration screen), not the
+   * build's defaults. It is used as evidence when attributing a profile that
+   * predates backend-affinity tracking. It must never be populated from a
+   * network response.
+   *
+   * The account-carrying hosts are validated before being applied, so a
+   * malformed or plaintext-HTTP value cannot silently become the backend that
+   * session tokens and note content are sent to.
+   */
+  host(
+    hosts: Partial<typeof Hosts>,
+    options?: { persistedOverrides?: Partial<Record<HostId, string>> }
+  ) {
+    const candidate = {
+      API_HOST: hosts.API_HOST || Hosts.API_HOST,
+      AUTH_HOST: hosts.AUTH_HOST || Hosts.AUTH_HOST,
+      SSE_HOST: hosts.SSE_HOST || Hosts.SSE_HOST
+    };
+    const errors = validateBackendConfiguration(candidate);
+    if (errors.length > 0) {
+      throw new Error(
+        `Invalid backend host configuration: ${errors
+          .map((e) => `${e.host} (${e.value}) ${e.reason}`)
+          .join("; ")}`
+      );
+    }
+
+    Hosts.AUTH_HOST = candidate.AUTH_HOST;
+    Hosts.API_HOST = candidate.API_HOST;
+    Hosts.SSE_HOST = candidate.SSE_HOST;
     Hosts.SUBSCRIPTIONS_HOST =
       hosts.SUBSCRIPTIONS_HOST || Hosts.SUBSCRIPTIONS_HOST;
     Hosts.ISSUES_HOST = hosts.ISSUES_HOST || Hosts.ISSUES_HOST;
     Hosts.MONOGRAPH_HOST = hosts.MONOGRAPH_HOST || Hosts.MONOGRAPH_HOST;
     Hosts.NOTESNOOK_HOST = hosts.NOTESNOOK_HOST || Hosts.NOTESNOOK_HOST;
+
+    setPersistedHostOverrides(options?.persistedOverrides);
   }
 
   version() {

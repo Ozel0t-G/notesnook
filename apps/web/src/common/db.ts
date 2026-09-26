@@ -46,19 +46,28 @@ async function initializeDatabase(persistence: DatabasePersistence) {
 
   // Defaults are sourced from @notesnook/core rather than repeated here, so
   // core and web can never disagree about which backend is production.
-  db.host({
-    API_HOST: getHostUrl("API_HOST", hosts.API_HOST),
-    AUTH_HOST: getHostUrl("AUTH_HOST", hosts.AUTH_HOST),
-    SSE_HOST: getHostUrl("SSE_HOST", hosts.SSE_HOST),
-    ISSUES_HOST: getHostUrl("ISSUES_HOST", hosts.ISSUES_HOST),
-    SUBSCRIPTIONS_HOST: getHostUrl(
-      "SUBSCRIPTIONS_HOST",
-      hosts.SUBSCRIPTIONS_HOST
-    ),
-    MONOGRAPH_HOST: getHostUrl("MONOGRAPH_HOST", hosts.MONOGRAPH_HOST),
-    NOTESNOOK_HOST: getHostUrl("NOTESNOOK_HOST", hosts.NOTESNOOK_HOST),
-    ...Config.get("serverUrls", {})
-  });
+  const serverUrls = Config.get<Partial<Record<string, string>>>(
+    "serverUrls",
+    {}
+  );
+  db.host(
+    {
+      API_HOST: getHostUrl("API_HOST", hosts.API_HOST),
+      AUTH_HOST: getHostUrl("AUTH_HOST", hosts.AUTH_HOST),
+      SSE_HOST: getHostUrl("SSE_HOST", hosts.SSE_HOST),
+      ISSUES_HOST: getHostUrl("ISSUES_HOST", hosts.ISSUES_HOST),
+      SUBSCRIPTIONS_HOST: getHostUrl(
+        "SUBSCRIPTIONS_HOST",
+        hosts.SUBSCRIPTIONS_HOST
+      ),
+      MONOGRAPH_HOST: getHostUrl("MONOGRAPH_HOST", hosts.MONOGRAPH_HOST),
+      NOTESNOOK_HOST: getHostUrl("NOTESNOOK_HOST", hosts.NOTESNOOK_HOST),
+      ...serverUrls
+    },
+    // Only the URLs the user explicitly saved. Used to attribute profiles that
+    // predate backend-affinity tracking; never sourced from a network response.
+    { persistedOverrides: serverUrls }
+  );
 
   const storage = new NNStorage(
     "Notesnook",

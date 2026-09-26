@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-
 import { test, describe, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
@@ -59,12 +58,7 @@ describe("web backend host configuration", () => {
 
   test("db bootstrap takes its defaults from core", () => {
     const db = source("src/common/db.ts");
-    for (const key of [
-      "API_HOST",
-      "AUTH_HOST",
-      "SSE_HOST",
-      "MONOGRAPH_HOST"
-    ]) {
+    for (const key of ["API_HOST", "AUTH_HOST", "SSE_HOST", "MONOGRAPH_HOST"]) {
       expect(db, `${key} default must come from core`).toContain(
         `getHostUrl("${key}", hosts.${key})`
       );
@@ -75,7 +69,20 @@ describe("web backend host configuration", () => {
     // The advanced/self-host override must keep winning over build-time env and
     // compiled defaults, otherwise development against a local server breaks.
     const db = source("src/common/db.ts");
-    expect(db).toContain('...Config.get("serverUrls", {})');
+    expect(db).toContain(
+      'Config.get<Partial<Record<string, string>>>(\n    "serverUrls"'
+    );
+    const spreadAt = db.indexOf("...serverUrls");
+    const lastDefaultAt = db.lastIndexOf("getHostUrl(");
+    expect(spreadAt).toBeGreaterThan(-1);
+    expect(spreadAt).toBeGreaterThan(lastDefaultAt);
+  });
+
+  test("only explicitly saved urls are offered as affinity evidence", () => {
+    // Passing the build's defaults here would let a default masquerade as the
+    // user's own saved configuration when attributing a legacy profile.
+    const db = source("src/common/db.ts");
+    expect(db).toContain("persistedOverrides: serverUrls");
   });
 
   test("the connectivity probe does not hardcode a backend", () => {

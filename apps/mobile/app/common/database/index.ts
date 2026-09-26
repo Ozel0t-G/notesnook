@@ -65,16 +65,22 @@ export async function setupDatabase(
 
   // Defaults are sourced from @notesnook/core rather than repeated here, so
   // core and mobile can never disagree about which backend is production.
-  database.host({
-    API_HOST: hosts.API_HOST,
-    AUTH_HOST: hosts.AUTH_HOST,
-    SSE_HOST: hosts.SSE_HOST,
-    SUBSCRIPTIONS_HOST: hosts.SUBSCRIPTIONS_HOST,
-    ISSUES_HOST: hosts.ISSUES_HOST,
-    MONOGRAPH_HOST: hosts.MONOGRAPH_HOST,
-    NOTESNOOK_HOST: hosts.NOTESNOOK_HOST,
-    ...(SettingsService.getProperty("serverUrls") || {})
-  });
+  const serverUrls = SettingsService.getProperty("serverUrls") || {};
+  database.host(
+    {
+      API_HOST: hosts.API_HOST,
+      AUTH_HOST: hosts.AUTH_HOST,
+      SSE_HOST: hosts.SSE_HOST,
+      SUBSCRIPTIONS_HOST: hosts.SUBSCRIPTIONS_HOST,
+      ISSUES_HOST: hosts.ISSUES_HOST,
+      MONOGRAPH_HOST: hosts.MONOGRAPH_HOST,
+      NOTESNOOK_HOST: hosts.NOTESNOOK_HOST,
+      ...serverUrls
+    },
+    // Only the URLs the user explicitly saved. Used to attribute profiles that
+    // predate backend-affinity tracking; never sourced from a network response.
+    { persistedOverrides: serverUrls }
+  );
 
   database.setup({
     storage: Storage,
@@ -86,7 +92,7 @@ export async function setupDatabase(
       ({
         compress: Gzip.deflate,
         decompress: Gzip.inflate
-      }) as ICompressor,
+      } as ICompressor),
     batchSize: 50,
     sqliteOptions: {
       dialect: (name) => ({

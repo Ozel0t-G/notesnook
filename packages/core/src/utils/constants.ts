@@ -31,15 +31,28 @@ function isProduction() {
   );
 }
 
+/**
+ * VeyraN-owned backends. Verified 2026-09-26 by read-only probe: the auth host
+ * serves an IdentityServer4 discovery document advertising exactly the scopes
+ * and custom grant types this client uses, and the sync and events hosts report
+ * `version: 1`, which is what `isServerCompatible` requires.
+ *
+ * There is deliberately no files host: attachment traffic is presigned through
+ * `API_HOST/s3` and the object store is never addressed directly by the client.
+ *
+ * Subscriptions, issue reporting and the marketing/pricing host below have no
+ * VeyraN equivalent and are intentionally left pointing upstream. See
+ * artifacts/veyran-backend-audit.md §8.1.
+ */
 export const hosts = {
   API_HOST: isProduction()
-    ? "https://api.notesnook.com"
+    ? "https://api.veyran.northcore.space"
     : "http://localhost:5264",
   AUTH_HOST: isProduction()
-    ? "https://auth.streetwriters.co"
+    ? "https://auth.veyran.northcore.space"
     : "http://localhost:8264",
   SSE_HOST: isProduction()
-    ? "https://events.streetwriters.co"
+    ? "https://events.veyran.northcore.space"
     : "http://localhost:7264",
   SUBSCRIPTIONS_HOST: isProduction()
     ? "https://subscriptions.streetwriters.co"
@@ -48,7 +61,7 @@ export const hosts = {
     ? "https://issues.streetwriters.co"
     : "http://localhost:2624",
   MONOGRAPH_HOST: isProduction()
-    ? "https://monogr.ph"
+    ? "https://share.veyran.northcore.space"
     : "http://localhost:6264",
   NOTESNOOK_HOST: isProduction()
     ? "https://notesnook.com"

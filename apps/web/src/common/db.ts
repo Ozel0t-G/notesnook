@@ -44,17 +44,19 @@ async function initializeDatabase(persistence: DatabasePersistence) {
     await useKeyStore.getState().setValue("databaseKey", databaseKey);
   }
 
+  // Defaults are sourced from @notesnook/core rather than repeated here, so
+  // core and web can never disagree about which backend is production.
   db.host({
-    API_HOST: getHostUrl("API_HOST", "https://api.notesnook.com"),
-    AUTH_HOST: getHostUrl("AUTH_HOST", "https://auth.streetwriters.co"),
-    SSE_HOST: getHostUrl("SSE_HOST", "https://events.streetwriters.co"),
-    ISSUES_HOST: getHostUrl("ISSUES_HOST", "https://issues.streetwriters.co"),
+    API_HOST: getHostUrl("API_HOST", hosts.API_HOST),
+    AUTH_HOST: getHostUrl("AUTH_HOST", hosts.AUTH_HOST),
+    SSE_HOST: getHostUrl("SSE_HOST", hosts.SSE_HOST),
+    ISSUES_HOST: getHostUrl("ISSUES_HOST", hosts.ISSUES_HOST),
     SUBSCRIPTIONS_HOST: getHostUrl(
       "SUBSCRIPTIONS_HOST",
-      "https://subscriptions.streetwriters.co"
+      hosts.SUBSCRIPTIONS_HOST
     ),
-    MONOGRAPH_HOST: getHostUrl("MONOGRAPH_HOST", "https://monogr.ph"),
-    NOTESNOOK_HOST: getHostUrl("NOTESNOOK_HOST", "https://notesnook.com"),
+    MONOGRAPH_HOST: getHostUrl("MONOGRAPH_HOST", hosts.MONOGRAPH_HOST),
+    NOTESNOOK_HOST: getHostUrl("NOTESNOOK_HOST", hosts.NOTESNOOK_HOST),
     ...Config.get("serverUrls", {})
   });
 

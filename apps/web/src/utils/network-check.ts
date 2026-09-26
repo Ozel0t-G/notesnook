@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import NetworkCheckWorker from "./network-check.worker.ts?worker";
 import type { NetworkCheck as NetworkWorker } from "./network-check.worker";
 import { wrap, Remote } from "comlink";
+import { hosts } from "@notesnook/core";
 
 export class NetworkCheck {
   private worker!: globalThis.Worker;
@@ -31,6 +32,8 @@ export class NetworkCheck {
   }
 
   waitForInternet() {
-    return this.network.waitForInternet();
+    // Probe the sync host we are actually configured against. Resolved here on
+    // the main thread, where db.host() overrides have already been applied.
+    return this.network.waitForInternet(`${hosts.API_HOST}/health`);
   }
 }

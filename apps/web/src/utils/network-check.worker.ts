@@ -19,11 +19,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { expose } from "comlink";
 
 const module = {
-  async waitForInternet() {
+  /**
+   * @param healthUrl health endpoint of the configured sync host. Passed in by
+   * the caller instead of hardcoded, so a connectivity probe never reaches a
+   * backend the user is not otherwise talking to.
+   */
+  async waitForInternet(healthUrl: string) {
     let retries = 3;
     while (retries-- > 0) {
       try {
-        const response = await fetch("https://api.notesnook.com/health");
+        const response = await fetch(healthUrl);
         if (response.ok) return true;
       } catch {
         // ignore

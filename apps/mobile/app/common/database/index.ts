@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { database, getFeature, getFeatureLimit } from "@notesnook/common";
-import { logger as dbLogger, ICompressor } from "@notesnook/core";
+import { hosts, logger as dbLogger, ICompressor } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import {
   SqliteAdapter,
@@ -63,14 +63,16 @@ export async function setupDatabase(
   //   NOTESNOOK_HOST: `${base}:8788`
   // });
 
+  // Defaults are sourced from @notesnook/core rather than repeated here, so
+  // core and mobile can never disagree about which backend is production.
   database.host({
-    API_HOST: "https://api.notesnook.com",
-    AUTH_HOST: "https://auth.streetwriters.co",
-    SSE_HOST: "https://events.streetwriters.co",
-    SUBSCRIPTIONS_HOST: "https://subscriptions.streetwriters.co",
-    ISSUES_HOST: "https://issues.streetwriters.co",
-    MONOGRAPH_HOST: "https://monogr.ph",
-    NOTESNOOK_HOST: "https://notesnook.com",
+    API_HOST: hosts.API_HOST,
+    AUTH_HOST: hosts.AUTH_HOST,
+    SSE_HOST: hosts.SSE_HOST,
+    SUBSCRIPTIONS_HOST: hosts.SUBSCRIPTIONS_HOST,
+    ISSUES_HOST: hosts.ISSUES_HOST,
+    MONOGRAPH_HOST: hosts.MONOGRAPH_HOST,
+    NOTESNOOK_HOST: hosts.NOTESNOOK_HOST,
     ...(SettingsService.getProperty("serverUrls") || {})
   });
 

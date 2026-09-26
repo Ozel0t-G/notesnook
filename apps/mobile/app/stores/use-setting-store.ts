@@ -23,7 +23,11 @@ import { Sound } from "react-native-notification-sounds";
 import { initialWindowMetrics } from "react-native-safe-area-context";
 import { FileType } from "react-native-scoped-storage";
 import { create } from "zustand";
-import { ThemeDark, ThemeLight, ThemeDefinition } from "@notesnook/theme";
+import {
+  ThemeVeyranDark,
+  ThemeVeyranLight,
+  ThemeDefinition
+} from "@notesnook/theme";
 import { DayFormat, WeekFormat, Reminder } from "@notesnook/core";
 import { db } from "../common/database";
 import { EDITOR_LINE_HEIGHT } from "../utils/constants";
@@ -204,8 +208,8 @@ export const defaultSettings: SettingStore["settings"] = {
   defaultFontFamily: "sans-serif",
   defaultFontSize: 16,
   colorScheme: "light",
-  lighTheme: ThemeLight,
-  darkTheme: ThemeDark,
+  lighTheme: ThemeVeyranLight,
+  darkTheme: ThemeVeyranDark,
   markdownShortcuts: false,
   biometricsAuthEnabled: false,
   appLockHasPasswordSecurity: false,

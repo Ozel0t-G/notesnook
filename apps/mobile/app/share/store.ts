@@ -18,9 +18,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import {
-  ThemeDark,
   ThemeDefinition,
-  ThemeLight,
+  ThemeVeyranDark,
+  ThemeVeyranLight,
   useThemeEngineStore
 } from "@notesnook/theme";
 import { Appearance } from "react-native";
@@ -28,6 +28,7 @@ import { create } from "zustand";
 import { db, setupDatabase } from "../common/database";
 import { MMKV } from "../common/database/mmkv";
 import { SettingStore } from "../stores/use-setting-store";
+import { migrateLegacyDefaultTheme } from "../utils/veyran-theme-migration";
 
 export async function initDatabase() {
   if (!db.isInitialized) {
@@ -56,11 +57,19 @@ const currentColorScheme = useSystemTheme ? systemColorScheme : appColorScheme;
 
 const theme =
   currentColorScheme === "dark"
-    ? appSettings?.darkTheme
-    : appSettings?.lighTheme;
+    ? migrateLegacyDefaultTheme(
+        appSettings?.darkTheme,
+        "default-dark",
+        ThemeVeyranDark
+      )
+    : migrateLegacyDefaultTheme(
+        appSettings?.lighTheme,
+        "default-light",
+        ThemeVeyranLight
+      );
 
 const currentTheme =
-  theme || (currentColorScheme === "dark" ? ThemeDark : ThemeLight);
+  theme || (currentColorScheme === "dark" ? ThemeVeyranDark : ThemeVeyranLight);
 
 useThemeEngineStore.getState().setTheme(currentTheme);
 

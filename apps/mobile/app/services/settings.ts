@@ -26,6 +26,7 @@ import {
 } from "../stores/use-setting-store";
 import { NotesnookModule } from "../utils/notesnook-module";
 import { scale, updateSize } from "../utils/size";
+import { migrateLegacyDefaultThemes } from "../utils/veyran-theme-migration";
 import { useUserStore } from "../stores/use-user-store";
 import ScreenGuardModule from "react-native-screenguard";
 
@@ -108,6 +109,11 @@ function migrateSettings(settings: SettingStore["settings"]) {
       ? true
       : settings.privacyScreen;
     setPrivacyScreen(settings.privacyScreen);
+    MMKV.setString("appSettings", JSON.stringify(settings));
+  }
+  if (version === 1) {
+    settings.settingsVersion = 2;
+    Object.assign(settings, migrateLegacyDefaultThemes(settings));
     MMKV.setString("appSettings", JSON.stringify(settings));
   }
 }

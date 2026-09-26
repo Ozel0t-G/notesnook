@@ -92,12 +92,16 @@ export const setOnFirstSave = (
  * usual default tag still applies.
  */
 export function setOnFirstSaveUnassigned() {
-  editorState().onNoteCreated = (noteId) => {
-    const defaultTag = db.settings.getDefaultTag();
-    if (defaultTag) {
-      void onNoteCreated(noteId, { type: "tag", id: defaultTag });
-    }
-  };
+  // Match the deferred first-save registration used by Notebook creation, so
+  // this assignment survives the transition back into the editor pane.
+  setTimeout(() => {
+    editorState().onNoteCreated = (noteId) => {
+      const defaultTag = db.settings.getDefaultTag();
+      if (defaultTag) {
+        void onNoteCreated(noteId, { type: "tag", id: defaultTag });
+      }
+    };
+  }, 0);
 }
 
 export async function onNoteCreated(noteId: string, data: FirstSaveData) {

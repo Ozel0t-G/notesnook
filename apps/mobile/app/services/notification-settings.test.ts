@@ -24,6 +24,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 let mockPlatformOS: "ios" | "android" = "ios";
 let mockAppStateCurrentState: "active" | "background" = "background";
+let mockAppStateListener:
+  | ((state: "active" | "background") => void)
+  | undefined;
 let mockNativeModuleAvailable = true;
 const mockOpenNotificationSettings = jest.fn(
   async (): Promise<"notifications" | "settings"> => "notifications"
@@ -43,7 +46,13 @@ jest.mock("react-native", () => ({
     get currentState() {
       return mockAppStateCurrentState;
     },
-    addEventListener: () => ({ remove: jest.fn() })
+    addEventListener: (
+      _event: string,
+      listener: typeof mockAppStateListener
+    ) => {
+      mockAppStateListener = listener;
+      return { remove: () => (mockAppStateListener = undefined) };
+    }
   },
   NativeModules: {
     get NotificationSettingsModule() {
@@ -73,6 +82,7 @@ describe("openAppNotificationSettings", () => {
   beforeEach(() => {
     mockPlatformOS = "ios";
     mockAppStateCurrentState = "background";
+    mockAppStateListener = undefined;
     mockNativeModuleAvailable = true;
     mockOpenNotificationSettings.mockClear();
     mockOpenNotificationSettings.mockImplementation(
@@ -131,9 +141,28 @@ describe("openAppNotificationSettings", () => {
       const assertion = expect(result).rejects.toThrow(
         "The Settings app did not open."
       );
-      await jest.advanceTimersByTimeAsync(3000);
+      await jest.advanceTimersByTimeAsync(7000);
       await assertion;
       expect(mockOpenSettings).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("accepts a slow but successful app Settings launch", async () => {
+    mockAppStateCurrentState = "active";
+    mockNativeModuleAvailable = false;
+    jest.useFakeTimers();
+    try {
+      mockOpenSettings.mockImplementation(async () => {
+        setTimeout(() => {
+          mockAppStateCurrentState = "background";
+          mockAppStateListener?.("background");
+        }, 2500);
+      });
+      const result = openAppNotificationSettings();
+      await jest.advanceTimersByTimeAsync(3000);
+      await expect(result).resolves.toBe("settings");
     } finally {
       jest.useRealTimers();
     }

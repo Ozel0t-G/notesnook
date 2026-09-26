@@ -60,7 +60,7 @@ final class NotificationSettingsModule: NSObject {
           } else {
             // Some simulator builds report an accepted URL without displaying
             // Settings. Verify that our app actually left the foreground.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6.0) {
               finish(didBackground || UIApplication.shared.applicationState == .background)
             }
           }

@@ -35,6 +35,11 @@ type NotificationSettingsNative = {
   openNotificationSettings(): Promise<"notifications" | "settings">;
 };
 
+// A cold Settings launch can take several seconds on a simulator or older
+// device. Keep the native bridge's two verified URL attempts inside this cap.
+const SETTINGS_BACKGROUND_TIMEOUT_MS = 6000;
+const NATIVE_SETTINGS_TIMEOUT_MS = 15000;
+
 /** A successful URL completion alone does not prove Settings became visible. */
 function waitForSettingsToOpen(): Promise<void> {
   if (AppState.currentState === "background") return Promise.resolve();
@@ -49,7 +54,7 @@ function waitForSettingsToOpen(): Promise<void> {
     timer = setTimeout(() => {
       subscription.remove();
       reject(new Error("The Settings app did not open."));
-    }, 1500);
+    }, SETTINGS_BACKGROUND_TIMEOUT_MS);
   });
 }
 
@@ -73,13 +78,15 @@ export async function openAppNotificationSettings(
     try {
       if (!native)
         throw new Error("NotificationSettingsModule is unavailable.");
+      // The native module resolves only after UIApplication actually enters
+      // the background, so this result has already been verified there.
       return await Promise.race([
         native.openNotificationSettings(),
         new Promise<never>(
           (_, reject) =>
             (timeout = setTimeout(
               () => reject(new Error("Opening iOS Settings timed out.")),
-              5000
+              NATIVE_SETTINGS_TIMEOUT_MS
             ))
         )
       ]);

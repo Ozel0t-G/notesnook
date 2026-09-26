@@ -2,7 +2,7 @@
 
 **Branch:** `agent/claude-backend-auth` · **Worktree:** `agents/claude-backend-auth`
 **Date opened:** 2026-09-26
-**Status:** Audit complete; implementation landed; live E2E unverified (see §10)
+**Status:** Audit complete; implementation revised after review round 2; live E2E unverified (§10); two architectural findings open (§11.6, §11.7). NOT integration-complete.
 
 > **Evidence convention used throughout this document**
 >
@@ -757,3 +757,110 @@ be verified here. Desktop Electron profile behaviour is likewise unverified.
 this branch.** What is verified is that the servers exist, speak the right protocols on the routes
 that could be safely probed, and satisfy the client's version gate. Everything requiring
 authentication is unverified.
+
+---
+
+## 11. Review round 2 — defects found in the first implementation
+
+An independent review of commit `2c07e8953` found integration-blocking defects in my own first
+attempt. All were real. Recorded here because the failure mode matters more than the fix.
+
+### 11.1 Affinity was recorded from an unverified account (CRITICAL — fixed)
+
+`fetchUser()` falls back to the **cached** user both on exception and on a falsy response body
+(`user-manager.ts`, now `fetchUserInternal`). The first implementation called `record()` immediately
+after it, so a login where the account lookup _failed_ would still bind the profile: existing
+Notesnook notes got relabelled as VeyraN and became eligible to sync. The login attempt itself was
+treated as proof.
+
+Fixed: `fetchUserInternal()` now reports `fresh`, true only for a successful response from the
+configured API. Affinity is recorded via `recordVerified(fresh)` and a cached user records nothing.
+
+### 11.2 Assuming unrecorded profiles were Notesnook created the inverse leak (CRITICAL — fixed)
+
+The first version inferred `LEGACY_BACKEND_ID` for any unrecorded profile. That is wrong in both
+directions, and worse than the review stated: a pre-affinity **VeyraN** profile running a
+Notesnook-configured client returned `match`, so its notes would have been uploaded to Notesnook.
+
+Fixed: there is now an explicit `unknown` status that blocks in **both** directions. Where the user
+had explicitly saved server URLs, that persisted configuration is used as real evidence
+(`evidence: "persisted-config"`); a half-configured override settles nothing. Absent evidence we do
+not guess.
+
+### 11.3 Affinity ignored the identity-server trust boundary (fixed)
+
+Affinity keyed on API hostname only, dropping scheme, path, and `AUTH_HOST` entirely. A token is
+minted by the identity server, so that is the boundary that decides whether presenting it is safe.
+
+Fixed: the record is now `{v, api, auth}` with `normalizeEndpoint` preserving **scheme** (an
+http/https downgrade is not the same backend), **base path**, and **non-default ports**, while still
+ignoring case, trailing slashes, and explicit default ports. The old bare-string record carries too
+little information to authorise anything and is discarded on read rather than upgraded by guesswork.
+
+### 11.4 Guards ran too late and only on sync (fixed)
+
+The sync check ran _after_ `createConnection()` had already negotiated with the sync host, and
+nothing guarded token refresh, SSE, or `fetchUser`.
+
+Fixed, each with a test asserting no network call is attempted:
+
+| Path                                         | Guard                                                                                                                                                                                                                                                                         |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Sync.start`                                 | `assertBackendAllowed()` preflight before any connection is opened; stops auto-sync so it cannot retry in a loop                                                                                                                                                              |
+| `TokenManager._refreshToken` / `revokeToken` | optional `guard` callback, injected at all three construction sites                                                                                                                                                                                                           |
+| `Database.connectSSE`                        | preflight before the `EventSource` is created                                                                                                                                                                                                                                 |
+| `UserManager.fetchUser`                      | preflight; login and signup use the unguarded internal path, since they are what _establishes_ affinity and would otherwise deadlock an unattributable profile. Safe: they talk to the configured API with a token from the configured identity server and send no note data. |
+
+### 11.5 Destructive logout was still reachable (fixed)
+
+`logout()` defaults to `userInitiated: true`, preserving every existing caller's behaviour. The
+automatic, server-triggered path passes `false`, which refuses to `db.reset()` a profile whose data
+belongs to another backend and publishes `userSessionExpired` instead. A foreign server rejecting our
+token is not authority to delete the user's notes.
+
+### 11.6 `Database.host()` had no URL validation (fixed, with a caveat)
+
+`host()` now validates the three account-carrying hosts before applying them and throws on malformed
+URLs, non-http(s) schemes, embedded credentials, query/fragment, and **plaintext HTTP to a public
+host**. Loopback and RFC1918 addresses still accept HTTP, so the established local and LAN
+development overrides keep working (asserted by test).
+
+**Caveat, not fixed:** `host()` still mutates a module-level singleton, so there is one host table
+per process and no per-profile scoping. Validating the input does not change that. A correct fix is
+to make host configuration instance state on `Database` and thread it through every consumer of
+`utils/constants.js` — a broad refactor touching sync, fs, monographs, subscriptions and both apps.
+**Out of scope for this branch; it needs its own change.** Until then, multi-profile hosts in one
+process remain unsafe.
+
+### 11.7 `NODE_ENV=test` resolves production hosts (NOT fixed — deliberate)
+
+`isProduction()` treats `NODE_ENV === "test"` as production, so the test suite and CI resolve real
+production hosts. Confirmed. I did **not** change it: flipping it would silently redirect
+`core.tests.yml`'s `test:e2e` job to localhost and change the expectations of existing tests
+(`healthcheck.test.ts` deliberately calls a live host). That is a CI-ownership decision, not a
+drive-by edit.
+
+Mitigation applied: a test now pins the surprising behaviour so it is visible and any change is
+deliberate. **This remains a live finding**, and combined with §7.5 it means CI e2e will exercise
+VeyraN with whatever credentials those secrets hold.
+
+### 11.8 What "explicit migration" does and does not prove
+
+`adoptCurrentBackend()` requires both explicit user confirmation and a verified response from the
+configured backend, and refuses outright when a record already names a different backend — moving
+data between two known backends is a migration, not a checkbox.
+
+Stated plainly: **the client cannot prove that local data is rightfully this account's data on this
+server.** No such proof is available to it. Adoption is therefore gated on informed user intent plus
+proof that the backend knows the account, and is deliberately restricted to the `unknown` case. A
+true Notesnook-to-VeyraN data migration is not implemented and is not attempted.
+
+### 11.9 Integration status
+
+The defects in §11.1-§11.6 are fixed with regression tests. §11.6's singleton caveat and §11.7
+remain open and are **not** blocking in themselves, but they are unfixed architectural findings.
+Live end-to-end auth and sync are still unverified (§10), so **this branch should not be treated as
+integration-complete until a human runs a real login and sync against VeyraN with a disposable
+account.**
+
+---

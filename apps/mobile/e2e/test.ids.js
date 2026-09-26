@@ -25,6 +25,17 @@ const notesnook = {
   buttons: {
     add: "buttons.add"
   },
+  // iOS bottom bar. The section entries are UITabBarItem accessibility
+  // labels, so they are matched with by.label, not by.id.
+  tabbar: {
+    id: "tabbar",
+    labels: {
+      library: "Library",
+      tasks: "Tasks",
+      search: "Search",
+      newNote: "New note"
+    }
+  },
   toast: {
     button: "toast.button"
   },

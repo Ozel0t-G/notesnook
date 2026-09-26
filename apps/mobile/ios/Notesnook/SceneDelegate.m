@@ -16,6 +16,10 @@
   AppDelegate *appDelegate = (AppDelegate *)[UIApplication sharedApplication].delegate;
 
   self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
+  // The floating tab bar leaves its safe-area inset translucent. Without an
+  // explicit window colour that strip renders black in both appearances;
+  // systemBackground follows light/dark automatically.
+  self.window.backgroundColor = [UIColor systemBackgroundColor];
   // Keep code that still reads the app delegate's window working.
   appDelegate.window = self.window;
 

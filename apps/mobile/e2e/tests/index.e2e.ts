@@ -28,9 +28,35 @@ describe("APP LAUNCH AND NAVIGATION", () => {
     await TestBuilder.create()
       .prepare()
       .navigate("Favorites")
-      .navigate("Reminders")
       .navigate("Monographs")
       .navigate("Trash")
+      // Reminders is a redirect stub now; Tasks is its own top-level section.
+      .openTasks()
+      .isVisibleById("task-smart-all")
+      .run();
+  });
+
+  it("Bottom bar sections should work", async () => {
+    if (device.getPlatform() !== "ios") return;
+    await TestBuilder.create()
+      .prepare()
+      // Library is the root of every content route, including All Notes.
+      .waitAndTapByLabel("Library")
+      .isVisibleByText("Library")
+      .waitAndTapByLabel("Search")
+      .isVisibleById("global-search-input")
+      .waitAndTapByLabel("Tasks")
+      .isVisibleById("task-smart-all")
+      .waitAndTapByLabel("Library")
+      .isVisibleByText("Library")
+      .run();
+  });
+
+  it("Side menu navigation should work", async () => {
+    // The drawer is Android-only now; iOS covers the same ground above.
+    if (device.getPlatform() === "ios") return;
+    await TestBuilder.create()
+      .prepare()
       .openSideMenu()
       .waitAndTapById("sidemenu-settings-icon")
       .wait(500)

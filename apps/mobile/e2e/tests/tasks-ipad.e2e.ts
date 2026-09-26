@@ -7,19 +7,25 @@ This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
 the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { expect as detoxExpect } from "detox";
-import { notesnook } from "../test.ids";
-import { TestBuilder } from "./utils";
+import { TestBuilder, Tests } from "./utils";
 
 describe("IPAD TASKS", () => {
   it("keeps Task navigation and list side by side", async () => {
     const title = `iPad task smoke ${Date.now()}`;
     await TestBuilder.create().prepare().run();
-    await element(by.id(notesnook.ids.default.header.buttons.left)).tap();
-    await waitFor(element(by.id("Tasks"))).toBeVisible().withTimeout(5000);
-    await element(by.id("Tasks")).tap();
+    // Tasks is a bottom bar section on iOS and a drawer entry on Android.
+    await Tests.openTasks();
     await waitFor(element(by.id("task-smart-all"))).toBeVisible().withTimeout(10000);
     await new Promise((resolve) => setTimeout(resolve, 750));
     await element(by.id("task-smart-all")).tap();

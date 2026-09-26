@@ -32,9 +32,11 @@ const testvars = {
 
 class Element {
   element: Detox.NativeElement;
-  constructor(public type: "id" | "text", public value: string) {
+  constructor(public type: "id" | "text" | "label", public value: string) {
     if (type == "id") {
       this.element = element(by.id(value)).atIndex(0);
+    } else if (type == "label") {
+      this.element = element(by.label(value)).atIndex(0);
     } else {
       this.element = element(by.text(value)).atIndex(0);
     }
@@ -69,17 +71,31 @@ class Element {
   static fromText(text: string) {
     return new Element("text", text);
   }
+  static fromLabel(label: string) {
+    return new Element("label", label);
+  }
 }
+
+/**
+ * iOS navigates with the native bottom bar; the drawer and the in-list
+ * "New note" bar only exist on Android now.
+ */
+const isIOS = () => device.getPlatform() === "ios";
+
+/** The element that proves the app finished launching into a usable session. */
+const readyElement = () =>
+  isIOS()
+    ? element(by.id(notesnook.tabbar.id))
+    : element(by.id(notesnook.buttons.add));
 
 const Tests = {
   awaitLaunch: async () => {
     await device.disableSynchronization();
-    const addNote = element(by.id(notesnook.buttons.add));
     try {
-      await waitFor(addNote).toBeVisible().withTimeout(10000);
+      await waitFor(readyElement()).toBeVisible().withTimeout(10000);
       return;
     } catch {
-      // Fresh installs show onboarding before the Notes screen is available.
+      // Fresh installs show onboarding before the app session is available.
     }
     const splash = element(by.id("notesnook.splashscreen"));
     try {
@@ -97,7 +113,7 @@ const Tests = {
       .toBeVisible()
       .withTimeout(10000);
     await element(by.text("I understand")).tap();
-    await waitFor(addNote).toBeVisible().withTimeout(30000);
+    await waitFor(readyElement()).toBeVisible().withTimeout(30000);
   },
   sleep: (duration: number) => {
     return new Promise((resolve) =>
@@ -108,6 +124,7 @@ const Tests = {
   },
   fromId: Element.fromId,
   fromText: Element.fromText,
+  fromLabel: Element.fromLabel,
   async exitEditor() {
     if (device.getPlatform() === "ios") {
       await web()
@@ -133,7 +150,7 @@ const Tests = {
     let body =
       _body ||
       "Test note description that is very long and should not fit in text.";
-    await Tests.fromId(notesnook.buttons.add).tap();
+    await Tests.tapNewNote();
     await Tests.sleep(1500);
     if (title) {
       await web().element(by.web.id("editor-title")).focus();
@@ -146,12 +163,64 @@ const Tests = {
     await Tests.fromText(body).isVisible(10000);
     return { title, body };
   },
+  /**
+   * Starts a new note. On iOS this is the bottom bar's New Note action; on
+   * Android it is still the floating / inline add button.
+   */
+  async tapNewNote() {
+    if (isIOS()) {
+      await Tests.tapTab(notesnook.tabbar.labels.newNote);
+      return;
+    }
+    await Tests.fromId(notesnook.buttons.add).tap();
+  },
+  /**
+   * Selects a top-level section. iOS only; Android has no bottom bar.
+   * The label is scoped to the bar so it cannot collide with screen content
+   * that happens to carry the same label (e.g. a "Search" field).
+   */
+  async tapTab(label: string) {
+    const tab = element(
+      by.label(label).withAncestor(by.id(notesnook.tabbar.id))
+    );
+    await waitFor(tab).toBeVisible().withTimeout(10000);
+    await tab.tap();
+  },
+  /** Opens Tasks: the bottom bar on iOS, the drawer entry on Android. */
+  async openTasks() {
+    if (isIOS()) {
+      await Tests.tapTab(notesnook.tabbar.labels.tasks);
+      return;
+    }
+    await Tests.openSideMenu();
+    await Tests.fromId("Tasks").waitAndTap();
+  },
+  /**
+   * Reaches a content route. iOS goes through the Library tab, which is the
+   * root of every content route now; Android still goes through the drawer.
+   *
+   * Note: the All Notes entry inside Library is owned by the Library screen,
+   * so `navigate("Notes")` depends on that row existing.
+   */
   async navigate(screen: RouteName | ({} & string)) {
+    if (isIOS()) {
+      await Tests.tapTab(notesnook.tabbar.labels.library);
+      await Tests.fromText(screen as string).waitAndTap();
+      return;
+    }
     let menu = Tests.fromId(notesnook.ids.default.header.buttons.left);
     await menu.waitAndTap();
     await Tests.fromText(screen as string).waitAndTap();
   },
+  /**
+   * The drawer is Android-only now. On iOS the Library tab is the equivalent
+   * navigation root.
+   */
   async openSideMenu() {
+    if (isIOS()) {
+      await Tests.tapTab(notesnook.tabbar.labels.library);
+      return;
+    }
     await Tests.fromId(notesnook.ids.default.header.buttons.left).waitAndTap();
   },
   async prepare() {
@@ -232,6 +301,13 @@ class TestBuilder {
     });
   }
 
+  /** Taps a bottom bar item by its accessibility label. iOS only. */
+  waitAndTapByLabel(label: string) {
+    return this.addStep(async () => {
+      await Tests.tapTab(label);
+    });
+  }
+
   exitEditor() {
     return this.addStep(async () => {
       await Tests.exitEditor();
@@ -253,6 +329,12 @@ class TestBuilder {
   openSideMenu() {
     return this.addStep(async () => {
       await Tests.openSideMenu();
+    });
+  }
+
+  openTasks() {
+    return this.addStep(async () => {
+      await Tests.openTasks();
     });
   }
 

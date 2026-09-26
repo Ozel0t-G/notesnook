@@ -199,6 +199,7 @@ export default function GlobalSearch() {
         />
         <TextInput
           autoFocus
+          testID="global-search-input"
           value={query}
           onChangeText={setQuery}
           placeholder={strings.search()}

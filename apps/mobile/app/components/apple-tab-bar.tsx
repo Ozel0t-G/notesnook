@@ -30,6 +30,7 @@ import {
   AppleTabBarSelection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
+import { notesnook } from "../../e2e/test.ids";
 
 type NativeTabBarProps = {
   selectedSection: AppleTabBarSelection;
@@ -57,6 +58,7 @@ export function AppleTabBar({
   if (!NativeTabBar) return null;
   return (
     <View
+      testID={notesnook.tabbar.id}
       style={[
         styles.container,
         {

@@ -154,16 +154,10 @@ async function drainOnce(
         if (target && !outcome) outcome = "locked";
         break;
       }
-      if (task?.completed) {
-        // Core complete is idempotent and also repairs a recurring Task whose
-        // completed occurrence persisted before its next occurrence did.
-        await db.tasks.complete(raw.id);
-        await flushUpdateForCompletion();
-        await Native.acknowledgeCompletion(raw.filename);
-        record(raw.filename, "completed");
-        continue;
-      }
-      if (!mayCommitNativeTaskCompletion(raw, scope, task)) {
+      if (
+        !task?.completed &&
+        !mayCommitNativeTaskCompletion(raw, scope, task)
+      ) {
         needsRetryNotice = true;
         await Native.acknowledgeCompletion(raw.filename);
         record(raw.filename, "stale");
@@ -175,9 +169,18 @@ async function drainOnce(
         record(raw.filename, "locked");
         break;
       }
-      // This is the same encrypted-domain operation as in the Tasks screen.
-      // A retry after a crash is idempotent and creates the next occurrence.
-      await db.tasks.complete(raw.id);
+      // The revision check and write share Core's Task mutation lock. A
+      // completed occurrence also repairs a missing next occurrence on retry.
+      const completed = await db.tasks.completeIfUnchanged(
+        raw.id,
+        raw.updatedAt
+      );
+      if (!completed) {
+        needsRetryNotice = true;
+        await Native.acknowledgeCompletion(raw.filename);
+        record(raw.filename, "stale");
+        continue;
+      }
       await flushUpdateForCompletion();
       await Native.acknowledgeCompletion(raw.filename);
       record(raw.filename, "completed");

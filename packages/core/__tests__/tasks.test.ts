@@ -135,6 +135,25 @@ describe("standalone Tasks", () => {
     expect(await db.tasks.get(task.id)).toBeUndefined();
   });
 
+  test("guarded completion rejects an edit queued first, even in the same millisecond", async () => {
+    const db = await databaseTest();
+    const task = await db.tasks.create({ title: "Original" });
+    const [edited, completed] = await atTime(task.updatedAt, () =>
+      Promise.all([
+        db.tasks.update(task.id, { title: "Edited" }),
+        db.tasks.completeIfUnchanged(task.id, task.updatedAt)
+      ])
+    );
+    expect(edited.updatedAt).toBeGreaterThan(task.updatedAt);
+    expect(completed).toBeUndefined();
+    expect(await db.tasks.get(task.id)).toMatchObject({
+      title: "Edited",
+      completed: false
+    });
+    await db.tasks.complete(task.id);
+    expect((await db.tasks.get(task.id))?.completed).toBe(true);
+  });
+
   test("date-only and independent reminder survive storage", async () => {
     const db = await databaseTest();
     const reminderAt = new Date(2026, 9, 24, 9).getTime();
@@ -990,6 +1009,36 @@ describe("standalone Tasks", () => {
     expect((await db.tasks.get(task.id))?.completed).toBe(true);
     await db.tasks.reconcileRecurrence();
     await db.tasks.reconcileRecurrence();
+    expect(
+      (await db.tasks.smartList("all")).map((item) => item.dueDate)
+    ).toEqual(["2026-03-08"]);
+  });
+
+  test("guarded recurring retry repairs an interrupted next occurrence", async () => {
+    const db = await databaseTest();
+    const task = await db.tasks.create({
+      title: "Daily widget",
+      dueDate: "2026-03-07",
+      recurrenceRule: "FREQ=DAILY"
+    });
+    const original = db.settings.collection.upsert.bind(db.settings.collection);
+    let writes = 0;
+    const upsert = vi
+      .spyOn(db.settings.collection, "upsert")
+      .mockImplementation(async (item) => {
+        if (++writes === 2) throw new Error("interrupted");
+        return original(item);
+      });
+    await expect(
+      atTime(new Date(2026, 2, 7, 12).getTime(), () =>
+        db.tasks.completeIfUnchanged(task.id, task.updatedAt)
+      )
+    ).rejects.toThrow("interrupted");
+    upsert.mockRestore();
+    expect((await db.tasks.get(task.id))?.completed).toBe(true);
+    await atTime(new Date(2026, 2, 7, 12).getTime(), () =>
+      db.tasks.completeIfUnchanged(task.id, task.updatedAt)
+    );
     expect(
       (await db.tasks.smartList("all")).map((item) => item.dueDate)
     ).toEqual(["2026-03-08"]);

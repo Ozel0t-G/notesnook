@@ -620,6 +620,8 @@ export class TaskLists extends TaskRecordStore {
 export class Tasks extends TaskRecordStore {
   private readonly maintenanceMutex = new Mutex();
   private readonly createMutex = new Mutex();
+  /** Serializes local writes to a Task with guarded widget completions. */
+  private readonly mutationMutex = new Mutex();
   /** Includes completed history. */
   async list(): Promise<Task[]> {
     return this.listSync();
@@ -716,6 +718,13 @@ export class Tasks extends TaskRecordStore {
   }
 
   async update(id: string, patch: Partial<TaskInput>): Promise<Task> {
+    return this.mutationMutex.runExclusive(() => this.updateUnsafe(id, patch));
+  }
+
+  private async updateUnsafe(
+    id: string,
+    patch: Partial<TaskInput>
+  ): Promise<Task> {
     const old = await this.get(id);
     if (!old) throw new Error("Task not found.");
     if (patch.listId && !this.db.taskLists.getSync(patch.listId))
@@ -726,7 +735,7 @@ export class Tasks extends TaskRecordStore {
       id,
       schemaVersion: VERSION,
       createdAt: old.createdAt,
-      updatedAt: Date.now()
+      updatedAt: Math.max(Date.now(), old.updatedAt + 1)
     };
     const calendarWrite =
       hasOwn(patch, "reminderDate") || hasOwn(patch, "reminderTime");
@@ -805,13 +814,34 @@ export class Tasks extends TaskRecordStore {
   }
 
   async complete(id: string): Promise<Task> {
+    return this.mutationMutex.runExclusive(() => this.completeUnsafe(id));
+  }
+
+  /** Complete only the occurrence and revision displayed by a widget snapshot.
+   * An already completed occurrence remains a successful, repairable retry. */
+  async completeIfUnchanged(
+    id: string,
+    expectedUpdatedAt: number
+  ): Promise<Task | undefined> {
+    return this.mutationMutex.runExclusive(async () => {
+      const current = await this.get(id);
+      if (
+        !current ||
+        (!current.completed && current.updatedAt !== expectedUpdatedAt)
+      )
+        return;
+      return this.completeUnsafe(id);
+    });
+  }
+
+  private async completeUnsafe(id: string): Promise<Task> {
     const old = await this.get(id);
     if (!old) throw new Error("Task not found.");
     const completedAt = Date.now();
     const wallTime = new Date(completedAt);
     const completed = old.completed
       ? old
-      : await this.update(id, {
+      : await this.updateUnsafe(id, {
           completed: true,
           completedAt,
           completedWallDate: calendarDate(wallTime),
@@ -893,6 +923,10 @@ export class Tasks extends TaskRecordStore {
   }
 
   async uncomplete(id: string): Promise<Task> {
+    return this.mutationMutex.runExclusive(() => this.uncompleteUnsafe(id));
+  }
+
+  private async uncompleteUnsafe(id: string): Promise<Task> {
     const old = await this.get(id);
     if (!old) throw new Error("Task not found.");
     if (!old.completed) return old;
@@ -909,12 +943,14 @@ export class Tasks extends TaskRecordStore {
           );
       }
     }
-    return this.update(id, { completed: false, completedAt: undefined });
+    return this.updateUnsafe(id, { completed: false, completedAt: undefined });
   }
 
   async remove(id: string): Promise<void> {
-    if (!this.getRecord<Task>("task", id)) return;
-    await this.delete("task", id);
+    await this.mutationMutex.runExclusive(async () => {
+      if (!this.getRecord<Task>("task", id)) return;
+      await this.delete("task", id);
+    });
   }
 
   async smartList(kind: TaskSmartList, date = new Date()): Promise<Task[]> {

@@ -63,6 +63,7 @@ let mockAccountReads = 0;
 let mockLoggingOut = false;
 let mockWriteFails = false;
 let mockAcknowledgeFails = false;
+let mockEditBeforeGuard = false;
 const mockAcknowledged: string[] = [];
 const mockCompleted: string[] = [];
 
@@ -102,11 +103,22 @@ jest.mock("../common/database", () => ({
       get: async (id: string) => mockTasks.find((task) => task.id === id),
       // The core operation is idempotent and creates the next occurrence even
       // when the record was already completed; this only records the call.
-      complete: async (id: string) => {
+      completeIfUnchanged: async (id: string, expectedUpdatedAt: number) => {
+        if (mockEditBeforeGuard)
+          mockTasks = mockTasks.map((task) =>
+            task.id === id ? { ...task, updatedAt: task.updatedAt + 1 } : task
+          );
+        const current = mockTasks.find((task) => task.id === id);
+        if (
+          !current ||
+          (!current.completed && current.updatedAt !== expectedUpdatedAt)
+        )
+          return;
         mockCompleted.push(id);
         mockTasks = mockTasks.map((task) =>
           task.id === id ? { ...task, completed: true } : task
         );
+        return mockTasks.find((task) => task.id === id);
       }
     },
     user: {
@@ -205,6 +217,7 @@ describe("Task widget completion commit contract", () => {
     mockLoggingOut = false;
     mockWriteFails = false;
     mockAcknowledgeFails = false;
+    mockEditBeforeGuard = false;
     mockAcknowledged.length = 0;
     mockCompleted.length = 0;
   });
@@ -382,6 +395,20 @@ describe("Task widget completion commit contract", () => {
   test("a stale revision is dropped instead of completing a Task the user has since edited", async () => {
     const action = actionFor(task(), { updatedAt: 1758700000000 });
     mockActions = [action];
+    await expect(
+      ReminderWidget.commitCompletion({
+        filename: action.filename,
+        id: action.id
+      })
+    ).resolves.toBe("stale");
+    expect(mockCompleted).toEqual([]);
+    expect(mockAcknowledged).toEqual([action.filename]);
+  });
+
+  test("an edit after queue validation is rejected by Core's guarded commit", async () => {
+    const action = actionFor(task());
+    mockActions = [action];
+    mockEditBeforeGuard = true;
     await expect(
       ReminderWidget.commitCompletion({
         filename: action.filename,

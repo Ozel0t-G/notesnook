@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import notifee from "@notifee/react-native";
-import { Linking, NativeModules, Platform } from "react-native";
+import { AppState, Linking, NativeModules, Platform } from "react-native";
 
 /**
  * Where the user actually landed after requesting notification settings.
@@ -34,6 +34,24 @@ export type NotificationSettingsDestination =
 type NotificationSettingsNative = {
   openNotificationSettings(): Promise<"notifications" | "settings">;
 };
+
+/** A successful URL completion alone does not prove Settings became visible. */
+function waitForSettingsToOpen(): Promise<void> {
+  if (AppState.currentState === "background") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "background") return;
+      subscription.remove();
+      if (timer) clearTimeout(timer);
+      resolve();
+    });
+    timer = setTimeout(() => {
+      subscription.remove();
+      reject(new Error("The Settings app did not open."));
+    }, 1500);
+  });
+}
 
 /**
  * Opens the platform's notification settings for this app.
@@ -53,20 +71,27 @@ export async function openAppNotificationSettings(
       | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      if (!native) throw new Error("NotificationSettingsModule is unavailable.");
+      if (!native)
+        throw new Error("NotificationSettingsModule is unavailable.");
       return await Promise.race([
         native.openNotificationSettings(),
-        new Promise<never>((_, reject) =>
-          (timeout = setTimeout(
-            () => reject(new Error("Opening iOS Settings timed out.")),
-            3000
-          ))
+        new Promise<never>(
+          (_, reject) =>
+            (timeout = setTimeout(
+              () => reject(new Error("Opening iOS Settings timed out.")),
+              5000
+            ))
         )
       ]);
-    } catch {
+    } catch (error) {
+      // The native bridge has already tried both public Settings URLs. When
+      // neither actually backgrounds the app, report failure to the caller.
+      if ((error as { code?: string })?.code === "notification_settings_failed")
+        throw error;
       // Use React Native's public app Settings API if the native notification
       // destination rejects or its completion handler never returns.
       await Linking.openSettings();
+      await waitForSettingsToOpen();
       return "settings";
     } finally {
       if (timeout) clearTimeout(timeout);

@@ -199,7 +199,7 @@ export default function NoteCollection({
           </View>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <IconButton
-              name="sort"
+              name="sort-ascending"
               size={23}
               color={visual.secondaryText}
               accessibilityLabel={strings.sortBy()}

@@ -25,10 +25,16 @@ const notesnook = {
   buttons: {
     add: "buttons.add"
   },
-  // iOS bottom bar. The section entries are UITabBarItem accessibility
-  // labels, so they are matched with by.label, not by.id.
+  // iOS bottom bar. UITabBarItem accessibility identifiers provide stable
+  // targets for the floating iPad bar as well as the iPhone bar.
   tabbar: {
     id: "tabbar",
+    itemIds: {
+      library: "veyran-tab-library",
+      tasks: "veyran-tab-tasks",
+      search: "veyran-tab-search",
+      newNote: "veyran-tab-compose"
+    },
     labels: {
       library: "Library",
       tasks: "Tasks",

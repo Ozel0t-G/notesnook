@@ -50,6 +50,10 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
       image: UIImage(systemName: "square.and.pencil"),
       tag: 3
     )
+    libraryItem.accessibilityIdentifier = "veyran-tab-library"
+    tasksItem.accessibilityIdentifier = "veyran-tab-tasks"
+    searchItem.accessibilityIdentifier = "veyran-tab-search"
+    composeItem.accessibilityIdentifier = "veyran-tab-compose"
     composeItem.accessibilityLabel = NSLocalizedString(
       "New Note",
       comment: "Accessibility label for the new note action"

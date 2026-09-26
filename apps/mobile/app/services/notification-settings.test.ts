@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // silently succeed when nothing was actually opened.
 
 let mockPlatformOS: "ios" | "android" = "ios";
+let mockAppStateCurrentState: "active" | "background" = "background";
 let mockNativeModuleAvailable = true;
 const mockOpenNotificationSettings = jest.fn(
   async (): Promise<"notifications" | "settings"> => "notifications"
@@ -37,6 +38,12 @@ jest.mock("react-native", () => ({
     get OS() {
       return mockPlatformOS;
     }
+  },
+  AppState: {
+    get currentState() {
+      return mockAppStateCurrentState;
+    },
+    addEventListener: () => ({ remove: jest.fn() })
   },
   NativeModules: {
     get NotificationSettingsModule() {
@@ -65,6 +72,7 @@ import { openAppNotificationSettings } from "./notification-settings";
 describe("openAppNotificationSettings", () => {
   beforeEach(() => {
     mockPlatformOS = "ios";
+    mockAppStateCurrentState = "background";
     mockNativeModuleAvailable = true;
     mockOpenNotificationSettings.mockClear();
     mockOpenNotificationSettings.mockImplementation(
@@ -106,10 +114,40 @@ describe("openAppNotificationSettings", () => {
 
   it("on iOS rejects when both public Settings paths fail", async () => {
     mockOpenNotificationSettings.mockRejectedValue(new Error("Native failed"));
-    mockOpenSettings.mockRejectedValue(new Error("System Settings unavailable"));
+    mockOpenSettings.mockRejectedValue(
+      new Error("System Settings unavailable")
+    );
     await expect(openAppNotificationSettings()).rejects.toThrow(
       "System Settings unavailable"
     );
+  });
+
+  it("rejects a URL success that never leaves the app foreground", async () => {
+    mockAppStateCurrentState = "active";
+    mockNativeModuleAvailable = false;
+    jest.useFakeTimers();
+    try {
+      const result = openAppNotificationSettings();
+      const assertion = expect(result).rejects.toThrow(
+        "The Settings app did not open."
+      );
+      await jest.advanceTimersByTimeAsync(3000);
+      await assertion;
+      expect(mockOpenSettings).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("does not mask a verified native Settings failure with another URL attempt", async () => {
+    mockOpenNotificationSettings.mockRejectedValue({
+      code: "notification_settings_failed",
+      message: "Settings stayed closed"
+    });
+    await expect(openAppNotificationSettings()).rejects.toMatchObject({
+      code: "notification_settings_failed"
+    });
+    expect(mockOpenSettings).not.toHaveBeenCalled();
   });
 
   it("on Android delegates to notifee and reports the android destination", async () => {

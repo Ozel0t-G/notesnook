@@ -34,18 +34,49 @@ final class NotificationSettingsModule: NSObject {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     DispatchQueue.main.async {
+      func openVerified(_ url: URL, opened: @escaping () -> Void, failed: @escaping () -> Void) {
+        var didBackground = false
+        var settled = false
+        var observer: NSObjectProtocol?
+        func finish(_ success: Bool) {
+          guard !settled else { return }
+          settled = true
+          if let observer { NotificationCenter.default.removeObserver(observer) }
+          if success { opened() } else { failed() }
+        }
+        observer = NotificationCenter.default.addObserver(
+          forName: UIApplication.didEnterBackgroundNotification,
+          object: nil,
+          queue: .main
+        ) { _ in
+          didBackground = true
+          finish(true)
+        }
+        UIApplication.shared.open(url, options: [:]) { accepted in
+          if !accepted {
+            finish(false)
+          } else if didBackground || UIApplication.shared.applicationState == .background {
+            finish(true)
+          } else {
+            // Some simulator builds report an accepted URL without displaying
+            // Settings. Verify that our app actually left the foreground.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+              finish(didBackground || UIApplication.shared.applicationState == .background)
+            }
+          }
+        }
+      }
+
       func openAppSettings() {
         guard let url = URL(string: UIApplication.openSettingsURLString) else {
           reject("notification_settings_unavailable", "Could not construct the app Settings URL.", nil)
           return
         }
-        UIApplication.shared.open(url, options: [:]) { success in
-          if success {
-            resolve("settings")
-          } else {
+        openVerified(url, opened: {
+          resolve("settings")
+        }, failed: {
             reject("notification_settings_failed", "The system declined to open Settings.", nil)
-          }
-        }
+        })
       }
 
       // UIApplication.openNotificationSettingsURLString (Swift: iOS 16+) is the
@@ -57,13 +88,7 @@ final class NotificationSettingsModule: NSObject {
       if #available(iOS 16.0, *) {
         let notificationSettingsURLString = UIApplication.openNotificationSettingsURLString
         if let url = URL(string: notificationSettingsURLString) {
-          UIApplication.shared.open(url, options: [:]) { success in
-            if success {
-              resolve("notifications")
-            } else {
-              openAppSettings()
-            }
-          }
+          openVerified(url, opened: { resolve("notifications") }, failed: openAppSettings)
           return
         }
       }

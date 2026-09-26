@@ -134,9 +134,7 @@ describe("APP LAUNCH AND NAVIGATION", () => {
     await editor.typeText(body, true);
     await Tests.exitEditor();
     const savedRow = element(by.id("note-item-0"));
-    await waitFor(savedRow)
-      .toBeVisible()
-      .withTimeout(15000);
+    await waitFor(savedRow).toBeVisible().withTimeout(15000);
     await savedRow.tap();
     await Tests.waitForEditor();
     jestExpect(

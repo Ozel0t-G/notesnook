@@ -100,7 +100,7 @@ export const Home = ({ navigation, route }: NavigationProps<"Notes">) => {
           </View>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <IconButton
-              name="sort"
+              name="sort-ascending"
               size={23}
               color={visual.secondaryText}
               accessibilityLabel={strings.sortBy()}

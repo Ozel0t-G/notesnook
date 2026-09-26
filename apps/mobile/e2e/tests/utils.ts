@@ -32,7 +32,10 @@ const testvars = {
 
 class Element {
   element: Detox.NativeElement;
-  constructor(public type: "id" | "text" | "label", public value: string) {
+  constructor(
+    public type: "id" | "text" | "label",
+    public value: string
+  ) {
     if (type == "id") {
       this.element = element(by.id(value)).atIndex(0);
     } else if (type == "label") {
@@ -202,8 +205,13 @@ const Tests = {
    * an ancestor to Detox on iOS 27, so use the visible tab title directly.
    */
   async tapTab(label: string) {
-    // The floating iOS 27 tab bar exposes a decorative duplicate label first.
-    const tab = element(by.text(label)).atIndex(1);
+    const idByLabel: Record<string, string> = {
+      Library: notesnook.tabbar.itemIds.library,
+      Tasks: notesnook.tabbar.itemIds.tasks,
+      Search: notesnook.tabbar.itemIds.search,
+      "New Note": notesnook.tabbar.itemIds.newNote
+    };
+    const tab = element(by.id(idByLabel[label]));
     await waitFor(tab).toBeVisible().withTimeout(10000);
     await tab.tap();
   },

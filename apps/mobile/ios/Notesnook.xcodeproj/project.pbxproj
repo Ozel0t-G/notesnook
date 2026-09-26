@@ -63,6 +63,8 @@
 		D10000000000000000000002 /* ReminderWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* ReminderWidgetModule.m */; };
 		D10000000000000000000006 /* TaskAlarmModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000006 /* TaskAlarmModule.swift */; };
 		D10000000000000000000007 /* TaskAlarmModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000007 /* TaskAlarmModule.m */; };
+		D10000000000000000000040 /* NotificationSettingsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000040 /* NotificationSettingsModule.swift */; };
+		D10000000000000000000041 /* NotificationSettingsModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000041 /* NotificationSettingsModule.m */; };
 		D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000008 /* TaskSymbolViewManager.swift */; };
 		D10000000000000000000009 /* TaskSymbolViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000009 /* TaskSymbolViewManager.m */; };
 		D10000000000000000000011 /* VeyraNTabBarViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000011 /* VeyraNTabBarViewManager.swift */; };
@@ -202,6 +204,8 @@
 		D20000000000000000000002 /* ReminderWidgetModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ReminderWidgetModule.m; sourceTree = "<group>"; };
 		D20000000000000000000006 /* TaskAlarmModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskAlarmModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000007 /* TaskAlarmModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskAlarmModule.m; sourceTree = "<group>"; };
+		D20000000000000000000040 /* NotificationSettingsModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationSettingsModule.swift; sourceTree = "<group>"; };
+		D20000000000000000000041 /* NotificationSettingsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = NotificationSettingsModule.m; sourceTree = "<group>"; };
 		D20000000000000000000008 /* TaskSymbolViewManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskSymbolViewManager.swift; sourceTree = "<group>"; };
 		D20000000000000000000009 /* TaskSymbolViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskSymbolViewManager.m; sourceTree = "<group>"; };
 		D20000000000000000000011 /* VeyraNTabBarViewManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNTabBarViewManager.swift; sourceTree = "<group>"; };
@@ -309,6 +313,7 @@
 				5D6DE3F654DAAB9170CC0B2C /* Handwriting */,
 				D30000000000000000000001 /* ReminderWidget */,
 				D30000000000000000000006 /* TaskAlarm */,
+				D30000000000000000000040 /* NotificationSettings */,
 				D30000000000000000000011 /* VeyraNTabBar */,
 				D30000000000000000000020 /* AppIntents */,
 				A482053C4A6E06443DC525BD /* SceneDelegate.h */,
@@ -460,6 +465,16 @@
 			);
 			name = TaskAlarm;
 			path = Notesnook/TaskAlarm;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000040 /* NotificationSettings */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000040 /* NotificationSettingsModule.swift */,
+				D20000000000000000000041 /* NotificationSettingsModule.m */,
+			);
+			name = NotificationSettings;
+			path = Notesnook/NotificationSettings;
 			sourceTree = "<group>";
 		};
 		D30000000000000000000011 /* VeyraNTabBar */ = {
@@ -1059,6 +1074,8 @@
 				D10000000000000000000030 /* TaskWidgetCompletionIntent.swift in Sources */,
 				D10000000000000000000006 /* TaskAlarmModule.swift in Sources */,
 				D10000000000000000000007 /* TaskAlarmModule.m in Sources */,
+				D10000000000000000000040 /* NotificationSettingsModule.swift in Sources */,
+				D10000000000000000000041 /* NotificationSettingsModule.m in Sources */,
 				D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */,
 				D10000000000000000000009 /* TaskSymbolViewManager.m in Sources */,
 				D10000000000000000000011 /* VeyraNTabBarViewManager.swift in Sources */,

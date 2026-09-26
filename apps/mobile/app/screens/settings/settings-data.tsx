@@ -60,6 +60,7 @@ import {
   presentSheet
 } from "../../services/event-manager";
 import Navigation from "../../services/navigation";
+import { openAppNotificationSettings } from "../../services/notification-settings";
 import Notifications from "../../services/notifications";
 import PremiumService from "../../services/premium";
 import { ReminderWidget } from "../../services/reminder-widget";
@@ -1579,22 +1580,21 @@ export const settingsGroups: SettingSection[] = [
       },
       {
         id: "task-notifications-ios",
-        type: "screen",
         name: strings.tasksTitle(),
         icon: "format-list-checks",
         description: strings.tasksNotificationsSettingsDesc(),
         hidden: () => Platform.OS !== "ios",
-        sections: [
-          {
-            id: "task-notification-permission-ios",
-            name: strings.openSettings(),
-            description: strings.tasksNotificationsSettingsDesc(),
-            icon: "bell-outline",
-            modifer: async () => {
-              await notifee.openNotificationSettings();
-            }
+        modifer: async () => {
+          try {
+            await openAppNotificationSettings();
+          } catch (e) {
+            ToastManager.error(
+              e as Error,
+              strings.tasksNotificationsSettingsError(),
+              "local"
+            );
           }
-        ]
+        }
       },
       {
         id: "reminders",
@@ -1678,7 +1678,8 @@ export const settingsGroups: SettingSection[] = [
             component: <Issue />
           });
         },
-        description: strings.reportAnIssueDesc()
+        description: strings.reportAnIssueDesc(),
+        hidden: () => Platform.OS === "ios"
       },
       {
         id: "email-support",
@@ -1695,7 +1696,8 @@ export const settingsGroups: SettingSection[] = [
             Linking.openURL("mailto:support@streetwriters.co");
           }, 1000);
         },
-        description: strings.emailSupportDesc()
+        description: strings.emailSupportDesc(),
+        hidden: () => Platform.OS === "ios"
       },
       {
         id: "docs-link",
@@ -1704,7 +1706,8 @@ export const settingsGroups: SettingSection[] = [
           Linking.openURL("https://notesnook.com/help/");
         },
         description: strings.documentationDesc(),
-        icon: "file-document"
+        icon: "file-document",
+        hidden: () => Platform.OS === "ios"
       },
       {
         id: "debugging",
@@ -1727,6 +1730,7 @@ export const settingsGroups: SettingSection[] = [
   {
     id: "community",
     name: strings.community(),
+    hidden: () => Platform.OS === "ios",
     sections: [
       {
         id: "join-telegram",
@@ -1831,7 +1835,8 @@ export const settingsGroups: SettingSection[] = [
             console.error(e);
           }
         },
-        description: strings.downloadOnDesktopDesc()
+        description: strings.downloadOnDesktopDesc(),
+        hidden: () => Platform.OS === "ios"
       },
       {
         id: "roadmap",
@@ -1844,7 +1849,8 @@ export const settingsGroups: SettingSection[] = [
             console.error(e);
           }
         },
-        description: strings.roadmapDesc()
+        description: strings.roadmapDesc(),
+        hidden: () => Platform.OS === "ios"
       },
       {
         id: "check-for-updates",

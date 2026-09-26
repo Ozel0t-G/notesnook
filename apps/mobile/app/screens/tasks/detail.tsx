@@ -46,7 +46,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
+import { ToastManager } from "../../services/event-manager";
 import { NavigationProps } from "../../services/navigation";
+import { openAppNotificationSettings } from "../../services/notification-settings";
 import { TaskNotifications } from "../../services/task-notifications";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { TaskSymbolView } from "../../components/task-symbol-view";
@@ -852,7 +854,17 @@ export default function TaskDetail({
         )}
         {reminderDate && notificationsDenied && (
           <Pressable
-            onPress={() => notifee.openNotificationSettings()}
+            onPress={async () => {
+              try {
+                await openAppNotificationSettings();
+              } catch (e) {
+                ToastManager.error(
+                  e as Error,
+                  strings.tasksNotificationsSettingsError(),
+                  "local"
+                );
+              }
+            }}
             accessibilityRole="button"
             accessibilityLabel={strings.openSettings()}
             style={{ padding: 12 }}

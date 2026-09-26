@@ -21,7 +21,7 @@ import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import { useNetInfo } from "@react-native-community/netinfo";
 import React from "react";
-import { ActivityIndicator, Image, Linking, View } from "react-native";
+import { ActivityIndicator, Image, Linking, Platform, View } from "react-native";
 import { useSheetRef } from "react-native-actions-sheet";
 import useSyncProgress from "../../../hooks/use-sync-progress";
 import { presentSheet, ToastManager } from "../../../services/event-manager";
@@ -291,6 +291,7 @@ export const UserSheet = () => {
           {
             title: strings.emailSupport(),
             icon: "email",
+            hidden: Platform.OS === "ios",
             onPress: () => {
               Clipboard.setString("support@streetwriters.co");
               ToastManager.show({
@@ -305,6 +306,7 @@ export const UserSheet = () => {
           },
           {
             title: strings.documentation(),
+            hidden: Platform.OS === "ios",
             onPress: async () => {
               Linking.openURL("https://docs.notesnook.com");
             },

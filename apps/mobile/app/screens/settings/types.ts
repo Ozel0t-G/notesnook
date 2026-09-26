@@ -40,7 +40,8 @@ export type SettingSection = {
   property?: keyof Settings;
   sections?: SettingSection[];
   component?: string;
-  modifer?: (...args: unknown[]) => void;
+  modifer?: (...args: unknown[]) => void | Promise<void>;
+  showActionProgress?: boolean;
   getter?: (...args: unknown[]) => unknown;
   useHook?: (...args: unknown[]) => unknown;
   hidden?: (current: unknown) => boolean;

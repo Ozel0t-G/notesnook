@@ -1077,7 +1077,9 @@ export const settingsGroups: SettingSection[] = [
         type: "screen",
         name: strings.servers(),
         description:
-          Platform.OS === "ios" ? undefined : strings.serversConfigurationDesc(),
+          Platform.OS === "ios"
+            ? undefined
+            : strings.serversConfigurationDesc(),
         icon: "server",
         component: "server-config"
       }
@@ -1585,6 +1587,7 @@ export const settingsGroups: SettingSection[] = [
         icon: "format-list-checks",
         description: strings.tasksNotificationsSettingsDesc(),
         hidden: () => Platform.OS !== "ios",
+        showActionProgress: true,
         modifer: async () => {
           try {
             await openAppNotificationSettings();

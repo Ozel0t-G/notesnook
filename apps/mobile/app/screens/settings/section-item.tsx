@@ -158,6 +158,7 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
       onPress={async () => {
         if (!checkIsFeatureAvailable()) return;
         if (isDisabled) return;
+        if (loading) return;
         switch (item.type) {
           case "screen":
             {
@@ -174,7 +175,16 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
           default:
             {
               if (item.onVerify && !(await item.onVerify())) return;
-              item.modifer && item.modifer(current);
+              if (item.modifer && item.showActionProgress) {
+                setLoading(true);
+                try {
+                  await item.modifer(current);
+                } finally {
+                  setLoading(false);
+                }
+              } else {
+                item.modifer?.(current);
+              }
             }
             break;
         }

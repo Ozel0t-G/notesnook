@@ -66,7 +66,6 @@ import { TimeFormat } from "@notesnook/core";
 import { EDITOR_ZOOM } from "./common";
 import { ScrollContainer } from "@notesnook/ui";
 import { showFeatureNotAllowedToast } from "../../common/toasts";
-import { UpgradeDialog } from "../../dialogs/buy-dialog/upgrade-dialog";
 import { ConfirmDialog } from "../../dialogs/confirm";
 import { strings } from "@notesnook/intl";
 import { handleInternalLink } from "../../common";
@@ -212,7 +211,7 @@ function TipTap(props: TipTapProps) {
       exportTableAsCsv: !!features?.exportTableAsCsv?.isAllowed,
       importCsvToTable: !!features?.importCsvToTable?.isAllowed
     },
-    onPermissionDenied: (claim, silent) => {
+    onPermissionDenied: (claim, _silent) => {
       if (claim === "insertAttachment") {
         ConfirmDialog.show({
           title: strings.notLoggedIn(),
@@ -222,16 +221,12 @@ function TipTap(props: TipTapProps) {
         return;
       }
 
-      if (silent) {
-        console.log(features, features?.[claim]);
-        if (features?.[claim]) showFeatureNotAllowedToast(features[claim]);
-        return;
-      }
-
-      if (features)
-        UpgradeDialog.show({
-          feature: features[claim]
-        });
+      // VeyraN does not sell or manage a Notesnook subscription, so a
+      // denied editor claim is always reported honestly via a toast rather
+      // than an "Upgrade" dialog — every claim that can still be denied is
+      // backend-dependent (see @notesnook/common's veyran-feature-policy.ts).
+      // See artifacts/veyran-brand-entitlement-audit.md.
+      if (features?.[claim]) showFeatureNotAllowedToast(features[claim]);
     }
   });
 

@@ -36,7 +36,6 @@ import { createRoot, Root } from "react-dom/client";
 import { PopupPresenter } from "@notesnook/ui";
 import { BaseDialogProps, DialogManager } from "../../common/dialog-manager";
 import Dialog from "../../components/dialog";
-import { UpgradeDialog } from "../../dialogs/buy-dialog/upgrade-dialog";
 
 type PublishViewProps = {
   note: Note;
@@ -236,14 +235,13 @@ function PublishView(props: PublishViewProps) {
                 <Loading size={14} />
               )
             ) : monographAnalytics ? (
-              <Button
-                variant="anchor"
-                onClick={() =>
-                  UpgradeDialog.show({ feature: monographAnalytics })
-                }
-              >
-                {strings.upgrade()}
-              </Button>
+              // VeyraN does not operate monograph view analytics collection
+              // (see artifacts/veyran-brand-entitlement-audit.md), so this
+              // is stated honestly instead of offering an "Upgrade" action
+              // that would not enable it.
+              <Text variant="body" sx={{ color: "paragraph-secondary" }}>
+                {monographAnalytics.error}
+              </Text>
             ) : null}
           </Flex>
         ) : null}

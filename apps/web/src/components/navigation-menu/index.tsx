@@ -36,7 +36,6 @@ import {
   TableOfContents,
   Reminders,
   User,
-  Pro,
   Documentation,
   Logout,
   Reset,
@@ -114,13 +113,11 @@ import { CREATE_BUTTON_MAP } from "../../common";
 import { useStore as useNotebookStore } from "../../stores/notebook-store";
 import { useStore as useTagStore } from "../../stores/tag-store";
 import { showSortMenu } from "../group-header";
-import { BuyDialog } from "../../dialogs/buy-dialog";
 import {
   FeatureResult,
   isFeatureAvailable,
   useIsFeatureAvailable
 } from "@notesnook/common";
-import { isUserSubscribed } from "../../hooks/use-is-user-premium";
 import { shouldShowWrapped } from "../../utils/should-show-wrapped";
 import { writeToClipboard } from "../../utils/clipboard";
 
@@ -883,8 +880,6 @@ function NavigationDropdown() {
     (store) => store.setFollowSystemTheme
   );
 
-  const isSubscribed = useMemo(() => isUserSubscribed(user), [user]);
-
   const notLoggedIn = Boolean(!user || !user.id);
 
   return (
@@ -913,14 +908,11 @@ function NavigationDropdown() {
                 toggleNightMode();
               }
             },
-            {
-              type: "button",
-              title: strings.upgradeToPro(),
-              icon: Pro.path,
-              key: "upgrade",
-              onClick: () => BuyDialog.show({}),
-              isHidden: notLoggedIn || isSubscribed
-            },
+            // VeyraN does not sell or manage a Notesnook subscription
+            // (billing is disabled, see
+            // packages/core/src/api/veyran-billing-policy.ts), so the
+            // "Upgrade to Pro" menu entry is not shown here. See
+            // artifacts/veyran-brand-entitlement-audit.md.
             {
               type: "button",
               title: settings.title,

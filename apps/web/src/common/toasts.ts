@@ -19,19 +19,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { FeatureResult } from "@notesnook/common";
 import { showToast } from "../utils/toast";
-import { UpgradeDialog } from "../dialogs/buy-dialog/upgrade-dialog";
 
+// VeyraN does not sell or manage a Notesnook subscription (billing is
+// disabled, see packages/core/src/api/veyran-billing-policy.ts), so a
+// disallowed feature is never offered an "Upgrade" action here — every
+// feature id that can still fail this check is backend-dependent (see
+// @notesnook/common's veyran-feature-policy.ts) and would stay unavailable
+// no matter what the user paid. `result.error` is expected to already state
+// that honestly. See artifacts/veyran-brand-entitlement-audit.md.
 export function showFeatureNotAllowedToast(
   result: FeatureResult<any> | undefined
 ) {
   if (!result) return;
-  showToast("error", result.error, [
-    {
-      text: "Upgrade",
-      onClick: () =>
-        UpgradeDialog.show({
-          feature: result
-        })
-    }
-  ]);
+  showToast("error", result.error);
 }

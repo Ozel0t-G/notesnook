@@ -300,7 +300,10 @@ function LoginPassword(props: BaseAuthComponentProps<"login:password">) {
           Config.get("sessionExpired", false)
         );
         Config.set("sessionExpired", false);
-        openURL("/plans", { authenticated: true });
+        // VeyraN does not sell or manage a Notesnook subscription, so login
+        // goes straight into the app instead of Notesnook's plan-selection
+        // page. See artifacts/veyran-brand-entitlement-audit.md.
+        openURL("/", { authenticated: true });
       }}
     >
       {(form?: PasswordFormData) => (
@@ -358,7 +361,10 @@ function Signup(props: BaseAuthComponentProps<"signup">) {
         }
 
         await userstore.signup(form);
-        openURL("/plans", { authenticated: true });
+        // VeyraN does not sell or manage a Notesnook subscription, so signup
+        // goes straight into the app instead of Notesnook's plan-selection
+        // page. See artifacts/veyran-brand-entitlement-audit.md.
+        openURL("/", { authenticated: true });
       }}
     >
       {(form?: SignupFormData) => (

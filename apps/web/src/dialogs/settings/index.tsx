@@ -39,8 +39,7 @@ import {
   Servers,
   ShieldLock,
   Sync,
-  Inbox,
-  CircleEmpty
+  Inbox
 } from "../../components/icons";
 import NavigationItem from "../../components/navigation-menu/navigation-item";
 import { FlexScrollContainer } from "../../components/scroll-container";
@@ -73,7 +72,6 @@ import {
 } from "./other-settings";
 import { AppearanceSettings } from "./appearance-settings";
 import { debounce, useIsFeatureAvailable, usePromise } from "@notesnook/common";
-import { SubscriptionSettings } from "./subscription-settings";
 import { ScopedThemeProvider } from "../../components/theme-provider";
 import { AppLockSettings } from "./app-lock-settings";
 import { BaseDialogProps, DialogManager } from "../../common/dialog-manager";
@@ -82,7 +80,6 @@ import { strings } from "@notesnook/intl";
 import { mdToHtml } from "../../utils/md";
 import { InboxSettings } from "./inbox-settings";
 import { withFeatureCheck } from "../../common";
-import { NotesnookCircleSettings } from "./notesnook-circle-settings";
 import { hashNavigate } from "../../navigation";
 import { isMac } from "../../utils/platform";
 import "../../styles/veyran-mac-settings.css";
@@ -98,12 +95,6 @@ const sectionGroups: SectionGroup[] = [
     sections: [
       { key: "profile", title: strings.profile(), icon: Account },
       {
-        key: "subscription",
-        title: strings.subDetails(),
-        icon: Pro,
-        isHidden: () => !useUserStore.getState().isLoggedIn
-      },
-      {
         key: "auth",
         title: strings.authentication(),
         icon: PasswordAndAuth,
@@ -113,12 +104,6 @@ const sectionGroups: SectionGroup[] = [
         key: "sync",
         title: strings.sync(),
         icon: Sync,
-        isHidden: () => !useUserStore.getState().isLoggedIn
-      },
-      {
-        key: "circle",
-        title: "Notesnook Circle",
-        icon: CircleEmpty,
         isHidden: () => !useUserStore.getState().isLoggedIn
       },
       {
@@ -195,10 +180,13 @@ const SettingsGroups = [
   ...LegalSettings,
   ...SupportSettings,
   ...AboutSettings,
-  ...SubscriptionSettings,
+  // VeyraN does not sell or manage a Notesnook subscription (billing is
+  // disabled, see packages/core/src/api/veyran-billing-policy.ts) and does
+  // not operate Notesnook's Circle partner marketplace, so those settings
+  // sections (plan/billing management, Circle offers) are not registered
+  // here. See artifacts/veyran-brand-entitlement-audit.md.
   ...ServersSettings,
-  ...InboxSettings,
-  ...NotesnookCircleSettings
+  ...InboxSettings
 ];
 
 // Thoughts:

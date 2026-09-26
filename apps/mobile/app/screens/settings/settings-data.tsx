@@ -229,9 +229,12 @@ export const settingsGroups: SettingSection[] = [
         id: "redeem-gift-code",
         name: strings.redeemGiftCode(),
         description: strings.redeemGiftCodeDesc(),
-        hidden: (current) => {
-          return !current as boolean;
-        },
+        // VeyraN does not sell or manage a Notesnook subscription (billing is
+        // disabled, see packages/core/src/api/veyran-billing-policy.ts), so a
+        // gift code can never be redeemed here. Always hidden rather than
+        // left reachable to fail with a billing-unavailable error. See
+        // artifacts/veyran-brand-entitlement-audit.md.
+        hidden: () => true,
         useHook: () =>
           useUserStore(
             (state) => state.user?.subscription?.plan === SubscriptionPlan.FREE
@@ -728,14 +731,11 @@ export const settingsGroups: SettingSection[] = [
           }
         ]
       },
-      {
-        id: "notesnook-circle",
-        name: strings.notesnookCircle(),
-        icon: "circle-outline",
-        type: "screen",
-        description: strings.notesnookCircleDesc(),
-        component: "notesnook-circle"
-      },
+      // Notesnook Circle is Notesnook's own partner-offer marketplace,
+      // reached through the billing host VeyraN does not use (see
+      // packages/core/src/api/veyran-billing-policy.ts and
+      // artifacts/veyran-brand-entitlement-audit.md), so its settings entry
+      // is not registered here.
       {
         id: "inbox-api",
         name: strings.inboxAPI(),

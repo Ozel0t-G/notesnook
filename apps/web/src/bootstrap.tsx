@@ -53,18 +53,13 @@ export type Routes = keyof typeof routes;
 // | "default";
 
 const routes = {
-  "/plans": {
-    component: () => import("./views/plans")
-  },
+  // VeyraN does not sell or manage a Notesnook subscription (billing is
+  // disabled, see packages/core/src/api/veyran-billing-policy.ts), so the
+  // /plans, /checkout, and /payments routes — Notesnook's plan-selection,
+  // Paddle checkout, and payment-return pages — are not registered here.
+  // See artifacts/veyran-brand-entitlement-audit.md.
   "/wrapped": {
     component: () => import("./views/wrapped")
-  },
-  "/checkout": {
-    component: () => import("./views/checkout")
-  },
-  "/payments": {
-    component: () => import("./views/payments"),
-    props: {}
   },
   "/account/recovery": {
     component: () => import("./views/recovery"),
@@ -106,7 +101,6 @@ const routes = {
 } as const;
 
 const sessionExpiryExceptions: Routes[] = [
-  "/payments",
   "/recover",
   "/account/recovery",
   "/sessionexpired",

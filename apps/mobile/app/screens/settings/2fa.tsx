@@ -64,7 +64,6 @@ import { eCloseSheet } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
 import { sleep } from "../../utils/time";
 import { DefaultAppStyles } from "../../utils/styles";
-import PaywallSheet from "../../components/sheets/paywall";
 const mfaMethods: MFAMethod[] = [
   {
     id: "app",
@@ -133,14 +132,16 @@ export const MFAMethodsPickerStep = ({ recovery, onSuccess }: MFAStepProps) => {
               featureAvailable &&
               !featureAvailable?.isAllowed
             ) {
+              // VeyraN does not operate SMS delivery for two-factor
+              // authentication (see @notesnook/common's
+              // veyran-feature-policy.ts), so this is reported honestly
+              // instead of offering an "Upgrade" action that would not
+              // enable it. See
+              // artifacts/veyran-brand-entitlement-audit.md.
               ToastManager.show({
                 message: featureAvailable?.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  PaywallSheet.present(featureAvailable);
-                }
+                context: "local"
               });
               return;
             }

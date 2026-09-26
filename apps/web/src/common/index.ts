@@ -58,7 +58,6 @@ import { ConfirmDialog, showLogoutConfirmation } from "../dialogs/confirm";
 import { Home } from "../components/icons";
 import { MenuItem } from "@notesnook/ui";
 import { showFeatureNotAllowedToast } from "./toasts";
-import { UpgradeDialog } from "../dialogs/buy-dialog/upgrade-dialog";
 import { setToolbarPreset } from "./toolbar-config";
 import { useKeyStore } from "../interfaces/key-store";
 import { TaskScheduler } from "../utils/task-scheduler";
@@ -509,16 +508,20 @@ export function createSetDefaultHomepageMenuItem(
 
 export async function checkFeature<TId extends FeatureId>(
   idOrFeature: TId | FeatureResult<TId>,
-  { type = "dialog", value }: { value?: number; type?: "toast" | "dialog" } = {}
+  // `type` is kept for call-site compatibility but no longer changes the
+  // outcome: VeyraN does not sell or manage a Notesnook subscription, so
+  // every feature id that can still fail this check is backend-dependent
+  // (see @notesnook/common's veyran-feature-policy.ts) and an "Upgrade"
+  // dialog would be dishonest regardless of the caller's preferred
+  // presentation. See artifacts/veyran-brand-entitlement-audit.md.
+  { value }: { value?: number; type?: "toast" | "dialog" } = {}
 ) {
   const result =
     typeof idOrFeature === "object"
       ? idOrFeature
       : await isFeatureAvailable(idOrFeature, value);
   if (!result.isAllowed) {
-    type === "dialog"
-      ? await UpgradeDialog.show({ feature: result })
-      : showFeatureNotAllowedToast(result);
+    showFeatureNotAllowedToast(result);
     return false;
   }
   return true;

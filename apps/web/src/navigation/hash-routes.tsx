@@ -25,7 +25,6 @@ import {
 } from "../dialogs/add-notebook-dialog";
 import { EmailVerificationDialog } from "../dialogs/email-verification-dialog";
 import { SettingsDialog } from "../dialogs/settings";
-import { BuyDialog } from "../dialogs/buy-dialog";
 import {
   AddReminderDialog,
   EditReminderDialog
@@ -83,12 +82,11 @@ const hashroutes = defineHashRoutes({
   "/tags/create": () => {
     CreateTagDialog.show().then(afterAction);
   },
-  "/buy": () => {
-    BuyDialog.show({}).then(afterAction);
-  },
-  "/buy/:code": ({ code }: { code: string }) => {
-    BuyDialog.show({ couponCode: code }).then(afterAction);
-  },
+  // VeyraN does not sell or manage a Notesnook subscription (billing is
+  // disabled, see packages/core/src/api/veyran-billing-policy.ts), so the
+  // /buy and /buy/:code routes — which opened Notesnook's purchase flow —
+  // are not registered here. See
+  // artifacts/veyran-brand-entitlement-audit.md.
   "/welcome": () => {
     OnboardingDialog.show({})?.then(afterAction);
   },

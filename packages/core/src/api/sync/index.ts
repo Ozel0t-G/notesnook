@@ -182,6 +182,25 @@ export class Sync {
     }
     if (!(await this.db.user.getUser())) return;
 
+    // Never move data between backends implicitly. If this profile's data
+    // originated on a different server, syncing would either upload it to a
+    // backend it does not belong to, or merge that backend's data over it.
+    // Local data stays readable; only sync is refused.
+    const affinity = await this.db.user.backendAffinity.check();
+    if (affinity.status === "mismatch") {
+      this.logger.error(
+        new Error("Sync blocked: profile belongs to a different backend."),
+        "Sync blocked: profile belongs to a different backend.",
+        { ...affinity }
+      );
+      await this.connection.stop();
+      this.autoSync.stop();
+      this.db.eventManager.publish(EVENTS.syncAborted);
+      throw new Error(
+        `Sync is disabled because this profile's data belongs to a different server (${affinity.stored}) than the one currently configured (${affinity.configured}). Log in again to sync with the configured server.`
+      );
+    }
+
     this.logger.info("Starting sync", options);
 
     this.connection.onclose((error = new Error("Connection closed.")) => {

@@ -33,6 +33,7 @@ import {
   KeyTypeFromId,
   UnwrapKeyReturnType
 } from "./key-manager.js";
+import { BackendAffinity } from "./backend-affinity.js";
 
 const ENDPOINTS = {
   signup: "/users",
@@ -50,12 +51,30 @@ const ENDPOINTS = {
 class UserManager {
   private tokenManager: TokenManager;
   private keyManager: KeyManager;
+  readonly backendAffinity: BackendAffinity;
   constructor(private readonly db: Database) {
     this.keyManager = new KeyManager(db);
     this.tokenManager = new TokenManager(db.kv, db.eventManager);
+    this.backendAffinity = new BackendAffinity(db);
 
     EV.subscribe(EVENTS.userUnauthorized, async (url: string) => {
       if (url.includes("/connect/token") || !(await HealthCheck.auth())) return;
+
+      // A session issued by a different backend will always be rejected by the
+      // configured one. Refreshing it would fail with invalid_grant and take us
+      // into logout(), which calls db.reset() and destroys the local database.
+      // The data is not the server's to delete: stop, and ask for a re-login
+      // instead, which leaves local notes readable.
+      const affinity = await this.backendAffinity.check();
+      if (affinity.status === "mismatch") {
+        logger.warn(
+          "Refusing to refresh or revoke a session from another backend.",
+          affinity
+        );
+        this.db.eventManager.publish(EVENTS.userSessionExpired);
+        return;
+      }
+
       try {
         await this.tokenManager._refreshToken(true);
       } catch (e) {
@@ -92,6 +111,7 @@ class UserManager {
     const user = await this.fetchUser();
     if (!user) throw new Error("Failed to fetch user after signup.");
 
+    await this.backendAffinity.record();
     await this.db.setLastSynced(0);
     await this.db.syncer.devices.register();
 
@@ -211,6 +231,10 @@ class UserManager {
 
       const user = await this.fetchUser();
       if (!user) throw new Error("Failed to fetch user.");
+
+      // This backend just authenticated us, so the session (and any data we go
+      // on to sync) provably belongs to it.
+      await this.backendAffinity.record();
 
       if (!sessionExpired) {
         await this.db.setLastSynced(0);

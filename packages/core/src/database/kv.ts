@@ -30,6 +30,12 @@ interface KV {
   deviceId: string;
   lastBackupTime: number;
   fullOfflineMode: boolean;
+  /**
+   * Identity of the backend this profile's data belongs to. See
+   * `api/backend-affinity.ts`. Absent on profiles created before affinity
+   * tracking existed.
+   */
+  backendAffinity: string;
 }
 
 export const KEYS: (keyof KV)[] = [
@@ -40,7 +46,8 @@ export const KEYS: (keyof KV)[] = [
   "monographs",
   "deviceId",
   "lastBackupTime",
-  "fullOfflineMode"
+  "fullOfflineMode",
+  "backendAffinity"
 ];
 
 export class KVStorage {

@@ -21,6 +21,7 @@ import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import { DatabaseLogger, db, initializeDatabaseOnce } from "../common/database";
 import {
   HEADLESS_APP_INTENT_ACTIONS,
+  appLockBlocksHeadlessAccess,
   appIntentLocked,
   executeAppIntentRequest,
   type AppIntentReply,
@@ -87,7 +88,8 @@ export async function runHeadlessAppIntentRequest(
   // persisted settings here: nothing has mounted the App component in this
   // process, so the in-memory lock flag is still at its unlocked default and
   // would wave a locked account's Tasks through.
-  if (appIntentLocked()) return { status: "locked", value: "" };
+  if (appIntentLocked() || appLockBlocksHeadlessAccess())
+    return { status: "locked", value: "" };
   try {
     // db.init is broad but editor-free, and it is what loads the collections
     // and the recurrence maintenance a completion depends on. Creating a

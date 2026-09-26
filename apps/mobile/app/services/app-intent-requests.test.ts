@@ -32,6 +32,7 @@ type MockTask = {
   scheduleVersion?: number;
   reminderDate?: string;
   seriesId?: string;
+  recurrenceRule?: string;
 };
 const mockCreateTask = jest.fn(async (_input: unknown) => ({ id: "saved-task" }));
 const mockCompleteTask = jest.fn(async (_id: string) => {});
@@ -351,6 +352,8 @@ describe("App Intent domain acknowledgements", () => {
         payload: { entityId: `${SCOPE}:aaaaaaaaaaaaaaaaaaaaaaaa` }
       })
     ).resolves.toEqual({ status: "locked", value: "" });
+    expect(mockGetTask).not.toHaveBeenCalled();
+    expect(mockTaskList).not.toHaveBeenCalled();
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
@@ -369,6 +372,8 @@ describe("App Intent domain acknowledgements", () => {
         payload: { entityId: `${SCOPE}:aaaaaaaaaaaaaaaaaaaaaaaa` }
       })
     ).resolves.toEqual({ status: "locked", value: "" });
+    expect(mockGetTask).not.toHaveBeenCalled();
+    expect(mockTaskList).not.toHaveBeenCalled();
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 

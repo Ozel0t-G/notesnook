@@ -136,7 +136,7 @@ export function appIntentLocked() {
  * a completion exactly as it refuses a title, not roll it forward for the UI
  * to discover later.
  */
-function appLockBlocksHeadlessAccess() {
+export function appLockBlocksHeadlessAccess() {
   const user = useUserStore.getState();
   return appLockEnabled() || user.appLocked || user.isLoggingOut;
 }
@@ -180,6 +180,11 @@ async function taskEntityContext(): Promise<TaskEntityContext> {
 export async function executeAppIntentRequest(
   request: AppIntentRequest
 ): Promise<AppIntentReply> {
+  if (
+    HEADLESS_APP_INTENT_ACTIONS.has(request.action) &&
+    appLockBlocksHeadlessAccess()
+  )
+    return failure("locked");
   if (appIntentLocked()) return failure("locked");
   if (!db.isInitialized) return failure("unavailable");
 
@@ -292,6 +297,10 @@ export async function executeAppIntentRequest(
         return { status: "ok", value: JSON.stringify(candidates) };
       }
       case "completeTask": {
+        // Recheck before even resolving an account scope or reading the Task.
+        // A warm process can have stale UI lock state while persisted App Lock
+        // is already enabled.
+        if (appLockBlocksHeadlessAccess()) return failure("locked");
         const taskId = decodeTaskEntityId(
           payload.entityId,
           await currentAccountScope()

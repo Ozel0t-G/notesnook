@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 const mockState = {
   locked: false,
+  persistedAppLock: false,
   migrationsRequired: false,
   initialized: false
 };
@@ -69,6 +70,7 @@ jest.mock("./app-intent-requests", () => ({
     "resolveTasks"
   ]),
   appIntentLocked: () => mockState.locked,
+  appLockBlocksHeadlessAccess: () => mockState.persistedAppLock,
   executeAppIntentRequest: (request: unknown) => mockExecute(request)
 }));
 
@@ -86,6 +88,7 @@ const request = {
 describe("cold start Shortcuts actions", () => {
   beforeEach(() => {
     mockState.locked = false;
+    mockState.persistedAppLock = false;
     mockState.migrationsRequired = false;
     mockState.initialized = false;
     mockInitializeDatabaseOnce.mockClear();
@@ -108,6 +111,18 @@ describe("cold start Shortcuts actions", () => {
     // The in-memory lock flag is still false in a headless process, so this has
     // to come from persisted settings, and it has to come first.
     mockState.locked = true;
+    await expect(runHeadlessAppIntentRequest(request)).resolves.toEqual({
+      status: "locked",
+      value: ""
+    });
+    expect(mockInitializeDatabaseOnce).not.toHaveBeenCalled();
+    expect(mockExecute).not.toHaveBeenCalled();
+  });
+
+  test("a warm process refuses persisted App Lock before database access", async () => {
+    // The UI lock flag can still say unlocked in a warm background process.
+    mockState.locked = false;
+    mockState.persistedAppLock = true;
     await expect(runHeadlessAppIntentRequest(request)).resolves.toEqual({
       status: "locked",
       value: ""

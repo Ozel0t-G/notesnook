@@ -1789,6 +1789,7 @@ export const settingsGroups: SettingSection[] = [
         id: "tos",
         name: strings.tos(),
         icon: "briefcase-outline",
+        hidden: () => Platform.OS === "ios",
         modifer: async () => {
           try {
             await Linking.openURL("https://notesnook.com/tos");
@@ -1802,6 +1803,7 @@ export const settingsGroups: SettingSection[] = [
         id: "privacy-policy",
         name: strings.privacyPolicy(),
         icon: "shield-outline",
+        hidden: () => Platform.OS === "ios",
         modifer: async () => {
           try {
             await Linking.openURL("https://notesnook.com/privacy");

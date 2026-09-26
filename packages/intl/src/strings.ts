@@ -35,7 +35,9 @@ const SEARCH_IN_ROUTE_STRINGS = {
   Editor: () => t`Search in Editor`,
   Home: () => t`Search in Home`,
   Search: () => t`Search in Search`,
-  Monographs: () => t`Search in Monographs`
+  Monographs: () => t`Search in Monographs`,
+  AllNotes: () => t`Search in All Notes`,
+  Inbox: () => t`Search in Inbox`
 };
 
 const TRANSACTION_STATUS = {
@@ -960,14 +962,17 @@ $day$: Current day (eg. Monday)`,
   yourReminders: () => t`Your reminders`,
   yourMonographs: () => t`Your monographs`,
   yourArchive: () => t`Your archive`,
+  yourInbox: () => t`Inbox is empty`,
   favoritesEmpty: () => t`You have not favorited any notes yet`,
   notesEmpty: () => t`You have not created any notes yet`,
+  inboxEmpty: () => t`All your notes are organized in notebooks.`,
   tagsEmpty: () => t`You have not added any tags yet`,
   notebooksEmpty: () => t`You have not added any notebooks yet`,
   remindersEmpty: () => t`You have not set any reminders yet`,
   monographsEmpty: () => t`You have not published any monographs yet`,
   loadingFavorites: () => t`Loading your favorites`,
   loadingNotes: () => t`Loading your notes`,
+  loadingInbox: () => t`Loading your inbox`,
   loadingTags: () => t`Loading your tags`,
   loadingNotebooks: () => t`Loading your notebooks`,
   loadingReminders: () => t`Loading your reminders`,
@@ -1032,7 +1037,9 @@ $day$: Current day (eg. Monday)`,
   tasksNoReminder: () => t`No reminder`,
   tasksNotificationsDisabled: () =>
     t`Task notifications are turned off. Your task will still be saved.`,
-  tasksNotificationsSettingsDesc: () => t`Manage Task alerts in iOS Settings`,
+  tasksNotificationsSettingsDesc: () => t`Open VeyraN settings in iOS`,
+  tasksNotificationsSettingsError: () =>
+    t`Couldn't open Settings. Open the Settings app and enable notifications for VeyraN manually.`,
   tasksRepeat: () => t`Repeat`,
   tasksPriority: () => t`Priority`,
   tasksPriorityNone: () => t`None`,
@@ -1643,7 +1650,9 @@ For example:
     Home: () => t`Home`,
     Search: () => t`Search`,
     Monographs: () => t`Monographs`,
-    Archive: () => t`Archive`
+    Archive: () => t`Archive`,
+    AllNotes: () => t`All Notes`,
+    Inbox: () => t`Inbox`
   },
   searchInRoute: (
     routeName: keyof typeof SEARCH_IN_ROUTE_STRINGS | ({} & string)

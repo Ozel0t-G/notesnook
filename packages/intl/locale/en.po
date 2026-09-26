@@ -13,6 +13,33 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+msgid "All Notes"
+msgstr "All Notes"
+
+msgid "Inbox"
+msgstr "Inbox"
+
+msgid "Inbox is empty"
+msgstr "Inbox is empty"
+
+msgid "All your notes are organized in notebooks."
+msgstr "All your notes are organized in notebooks."
+
+msgid "Loading your inbox"
+msgstr "Loading your inbox"
+
+msgid "Search in All Notes"
+msgstr "Search in All Notes"
+
+msgid "Search in Inbox"
+msgstr "Search in Inbox"
+
+msgid "Open VeyraN settings in iOS"
+msgstr "Open VeyraN settings in iOS"
+
+msgid "Couldn't open Settings. Open the Settings app and enable notifications for VeyraN manually."
+msgstr "Couldn't open Settings. Open the Settings app and enable notifications for VeyraN manually."
+
 #: src/strings.ts:2538
 msgid " \"Notebook > Notes\""
 msgstr " \"Notebook > Notes\""
@@ -4344,10 +4371,6 @@ msgstr "Manage subscription on desktop"
 #: src/strings.ts:850
 msgid "Manage tags"
 msgstr "Manage tags"
-
-#: src/strings.ts:1033
-msgid "Manage Task alerts in iOS Settings"
-msgstr "Manage Task alerts in iOS Settings"
 
 #: src/strings.ts:1152
 msgid "Manage your account related settings here"

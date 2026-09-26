@@ -58,7 +58,8 @@ import dayjs from "dayjs";
 import { ExpiryDate } from "../../ui/expiry-date";
 import {
   homeNoteDisplaySnippet,
-  homeNoteDisplayTitle
+  homeNoteDisplayTitle,
+  isHomeNoteRoute
 } from "../../../utils/home-note-presentation";
 
 type NoteItemProps = {
@@ -95,7 +96,7 @@ const NoteItem = ({
   );
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
-  const isHomeIOS = visual.ios && renderedInRoute === "Notes";
+  const isHomeIOS = visual.ios && isHomeNoteRoute(renderedInRoute);
   const displayTitle = isHomeIOS
     ? homeNoteDisplayTitle(item as Note)
     : item.title;

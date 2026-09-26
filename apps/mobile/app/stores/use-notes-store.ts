@@ -21,29 +21,32 @@ import { db } from "../common/database";
 import createDBCollectionStore from "./create-db-collection-store";
 import { Platform } from "react-native";
 import { homeNoteDateGroup } from "../utils/home-note-presentation";
-import type { GroupOptions, Note } from "@notesnook/core";
+import type { FilteredSelector, GroupOptions, Note } from "@notesnook/core";
+
+/**
+ * Group a notes selector the way the home list does it, so every screen built
+ * on the home renderer shares the same sort, date grouping and counts.
+ */
+export function groupAsHomeNotes(notesSelector: FilteredSelector<Note>) {
+  const options = db.settings.getGroupOptions("home");
+  const useDateGroups =
+    Platform.OS === "ios" &&
+    options.groupBy === "default" &&
+    (options.sortBy === "dateEdited" || options.sortBy === "dateCreated");
+  const grouped = notesSelector.grouped as unknown as (
+    options: GroupOptions,
+    groupKeySelector?: (note: Note) => string
+  ) => ReturnType<typeof notesSelector.grouped>;
+  return grouped.call(
+    notesSelector,
+    options,
+    useDateGroups ? (note: Note) => homeNoteDateGroup(note, options) : undefined
+  );
+}
 
 const { useStore: useNoteStore, useCollection: useNotes } =
   createDBCollectionStore({
-    getCollection: () => {
-      const options = db.settings.getGroupOptions("home");
-      const useDateGroups =
-        Platform.OS === "ios" &&
-        options.groupBy === "default" &&
-        (options.sortBy === "dateEdited" || options.sortBy === "dateCreated");
-      const notesSelector = db.notes.all;
-      const grouped = notesSelector.grouped as unknown as (
-        options: GroupOptions,
-        groupKeySelector?: (note: Note) => string
-      ) => ReturnType<typeof notesSelector.grouped>;
-      return grouped.call(
-        notesSelector,
-        options,
-        useDateGroups
-          ? (note: Note) => homeNoteDateGroup(note, options)
-          : undefined
-      );
-    },
+    getCollection: () => groupAsHomeNotes(db.notes.all),
     eagerlyFetchFirstBatch: true
   });
 

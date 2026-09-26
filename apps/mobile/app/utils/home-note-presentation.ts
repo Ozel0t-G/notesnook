@@ -92,3 +92,13 @@ function capitalizeRelativeDay(offset: number): string {
   }).format(offset, "day");
   return label.charAt(0).toLocaleUpperCase() + label.slice(1);
 }
+
+/**
+ * Routes that render the iOS home notes list: the retained internal Notes
+ * route and the Library's "All Notes" and "Inbox" collections.
+ */
+const HOME_NOTE_ROUTES = ["Notes", "AllNotes", "Inbox"];
+
+export function isHomeNoteRoute(route?: string | number): boolean {
+  return typeof route === "string" && HOME_NOTE_ROUTES.includes(route);
+}

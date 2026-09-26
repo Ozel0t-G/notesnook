@@ -31,6 +31,7 @@ import {
 } from "../../../services/event-manager";
 import { eOnLoadNote, eShowMergeDialog } from "../../../utils/events";
 import { fluidTabsRef } from "../../../utils/global-refs";
+import { isHomeNoteRoute } from "../../../utils/home-note-presentation";
 
 import { NotebooksWithDateEdited, TagsWithDateEdited } from "@notesnook/common";
 import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
@@ -117,7 +118,7 @@ export const NoteWrapper = React.memo<
         index={index}
         color={restProps.color?.colorCode}
         homeNote={
-          Platform.OS === "ios" && restProps.renderedInRoute === "Notes"
+          Platform.OS === "ios" && isHomeNoteRoute(restProps.renderedInRoute)
         }
       >
         <NoteItem {...restProps} item={item} index={index} isTrash={isTrash} />

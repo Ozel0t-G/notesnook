@@ -35,6 +35,7 @@ import { RouteName } from "../../../stores/use-navigation-store";
 import { AppFontSize } from "../../../utils/size";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
+import { isHomeNoteRoute } from "../../../utils/home-note-presentation";
 import Sort from "../../sheets/sort";
 import { IconButton } from "../../ui/icon-button";
 import { Pressable } from "../../ui/pressable";
@@ -120,7 +121,7 @@ export const SectionHeader = React.memo<
           >
             <Heading
               size={
-                visual.ios && screen === "Notes"
+                visual.ios && isHomeNoteRoute(screen)
                   ? AppFontSize.lg
                   : AppFontSize.xxs
               }
@@ -129,7 +130,7 @@ export const SectionHeader = React.memo<
                 textAlignVertical: "center"
               }}
               color={
-                visual.ios && screen === "Notes"
+                visual.ios && isHomeNoteRoute(screen)
                   ? visual.primaryText
                   : color || colors.primary.accent
               }
@@ -138,7 +139,7 @@ export const SectionHeader = React.memo<
                 ? screen === "Search"
                   ? strings.results(itemCount || 0)
                   : strings.pinned().toUpperCase()
-                : visual.ios && screen === "Notes"
+                : visual.ios && isHomeNoteRoute(screen)
                 ? item.title
                 : item.title.toUpperCase()}
             </Heading>
@@ -151,7 +152,7 @@ export const SectionHeader = React.memo<
               gap: DefaultAppStyles.GAP_SMALL
             }}
           >
-            {index === 0 && !(visual.ios && screen === "Notes") ? (
+            {index === 0 && !(visual.ios && isHomeNoteRoute(screen)) ? (
               <>
                 <IconButton
                   name={

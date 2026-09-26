@@ -262,6 +262,40 @@ export class Notes implements ICollection {
     );
   }
 
+  /**
+   * All the notes from {@link all} that do not belong to any notebook i.e.
+   * the "Inbox". Relations are soft deleted so `relations.deleted` has to be
+   * filtered out explicitly, and notebooks sitting in the trash are ignored
+   * the same way `db.relations` ignores them.
+   */
+  get unassigned() {
+    const trashedNotebooks = this.db.trash.cache.notebooks;
+    return this.collection.createFilter<Note>(
+      (qb) =>
+        qb
+          .where(isFalse("dateDeleted"))
+          .where(isFalse("deleted"))
+          .where(isFalse("archived"))
+          .where((eb) =>
+            eb.not(
+              eb.exists(
+                eb
+                  .selectFrom("relations")
+                  .select("relations.id")
+                  .whereRef("relations.toId", "==", "notes.id")
+                  .where("relations.toType", "==", "note")
+                  .where("relations.fromType", "==", "notebook")
+                  .where(isFalse("relations.deleted"))
+                  .$if(trashedNotebooks.length > 0, (b) =>
+                    b.where("relations.fromId", "not in", trashedNotebooks)
+                  )
+              )
+            )
+          ),
+      this.db.options?.batchSize
+    );
+  }
+
   get exportable() {
     return this.collection.createFilter<Note>(
       (qb) => qb.where(isFalse("dateDeleted")).where(isFalse("deleted")),

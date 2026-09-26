@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { SubscriptionPlan } from "@notesnook/core";
 import { database as db } from "../database.js";
+import { isVeyranClientSupported } from "./veyran-feature-policy.js";
 
 type CaptionValue = ("infinity" | (string & {})) | boolean | number;
 type Limit<TCaption extends CaptionValue = CaptionValue> = {
@@ -594,6 +595,12 @@ export function getFeature<TId extends FeatureId>(id: TId): Feature<TId> {
   return features[id] as unknown as Feature<TId>;
 }
 
+/** Every known feature id, in declaration order. Used by the VeyraN feature
+ * policy (and its tests) to verify each feature has been deliberately
+ * classified as client-supported or backend-dependent — see
+ * `veyran-feature-policy.ts`. */
+export const ALL_FEATURE_IDS = Object.keys(features) as FeatureId[];
+
 export function planToAvailability(plan: SubscriptionPlan) {
   return PLAN_TO_AVAILABILITY[plan];
 }
@@ -639,7 +646,16 @@ function getFeatureLimitFromPlan<TId extends FeatureId>(
   feature: Feature<TId>,
   plan: SubscriptionPlan
 ): Limit<Caption<TId>> {
-  const key = PLAN_TO_AVAILABILITY[plan];
+  // VeyraN feature policy: a client-supported feature (see
+  // veyran-feature-policy.ts) is granted at the top tier for every VeyraN
+  // account, regardless of the account's real (always-FREE, since billing
+  // is disabled) Notesnook plan. This is a per-feature capability decision,
+  // not a blanket "isPro = true" — features left out of that set (limits
+  // and services this app cannot itself provide) still resolve from the
+  // account's real plan below, which stays honest.
+  const key = isVeyranClientSupported(feature.id as FeatureId)
+    ? "believer"
+    : PLAN_TO_AVAILABILITY[plan];
   return feature.availability[key] as unknown as Limit<Caption<TId>>;
 }
 

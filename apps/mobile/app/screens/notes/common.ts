@@ -70,6 +70,9 @@ type FirstSaveData = {
   notebook?: string;
 };
 
+// A deferred first-save callback must not outlive a newer screen context.
+let firstSaveRegistration = 0;
+
 export const setOnFirstSave = (
   data: {
     type: string;
@@ -77,11 +80,13 @@ export const setOnFirstSave = (
     notebook?: string;
   } | null
 ) => {
+  const registration = ++firstSaveRegistration;
   if (!data) {
     editorState().onNoteCreated = null;
     return;
   }
   setTimeout(() => {
+    if (registration !== firstSaveRegistration) return;
     editorState().onNoteCreated = (noteId) => onNoteCreated(noteId, data);
   }, 0);
 };
@@ -92,9 +97,11 @@ export const setOnFirstSave = (
  * usual default tag still applies.
  */
 export function setOnFirstSaveUnassigned() {
+  const registration = ++firstSaveRegistration;
   // Match the deferred first-save registration used by Notebook creation, so
   // this assignment survives the transition back into the editor pane.
   setTimeout(() => {
+    if (registration !== firstSaveRegistration) return;
     editorState().onNoteCreated = (noteId) => {
       const defaultTag = db.settings.getDefaultTag();
       if (defaultTag) {

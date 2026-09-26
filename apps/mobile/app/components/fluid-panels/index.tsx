@@ -50,6 +50,11 @@ interface TabProps extends ViewProps {
   onChangeTab: (data: { i: number; from: number }) => void;
   onScroll: (offset: number) => void;
   enabled: boolean;
+  /**
+   * iPad keeps the sidebar pane and its swipe-to-open drawer. iPhone navigates
+   * with the bottom bar instead, so the drawer is disabled there entirely.
+   */
+  drawerEnabled: boolean;
   onDrawerStateChange: (state: boolean) => void;
   initialPage?: FluidTabPage;
 }
@@ -78,6 +83,7 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
     onChangeTab,
     onScroll,
     enabled,
+    drawerEnabled,
     onDrawerStateChange,
     initialPage
   }: TabProps,
@@ -132,7 +138,7 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
 
   useEffect(() => {
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (isDrawerOpen.value && !forcedLock.value) {
+      if (drawerEnabled && isDrawerOpen.value && !forcedLock.value) {
         const routeNames = rootNavigatorRef.current?.getState().routes;
         if (routeNames) {
           const currentRoute = routeNames[routeNames.length - 1].name;
@@ -150,6 +156,7 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
       sub && sub.remove();
     };
   }, [
+    drawerEnabled,
     forcedLock.value,
     homePosition,
     isDrawerOpen,
@@ -186,6 +193,7 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
           return;
         }
         if (index === 0) {
+          if (!drawerEnabled) return;
           onDrawerStateChange(true);
           return (translateX.value = animated ? withSpring(0) : 0);
         }
@@ -208,8 +216,9 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
         forcedLock.value = true;
         return true;
       },
-      isDrawerOpen: () => isDrawerOpen.value,
+      isDrawerOpen: () => drawerEnabled && isDrawerOpen.value,
       openDrawer: (animated = true) => {
+        if (!drawerEnabled) return;
         if (deviceMode === "tablet") {
           translateX.value = animated ? withTiming(0) : 0;
           return;
@@ -223,6 +232,7 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
         onDrawerStateChange(true);
       },
       closeDrawer: (animated = true) => {
+        if (!drawerEnabled) return;
         if (forcedLock.value) return;
         if (deviceMode === "tablet") {
           translateX.value = animated ? withTiming(0) : 0;
@@ -247,6 +257,7 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
     [
       currentTab,
       deviceMode,
+      drawerEnabled,
       translateX,
       onDrawerStateChange,
       homePosition,
@@ -344,7 +355,7 @@ export const FluidPanels = forwardRef<TabsRef, TabProps>(function FluidTabs(
         ...SnappySpringConfig
       };
 
-      if (finalValue < homePosition) {
+      if (drawerEnabled && finalValue < homePosition) {
         if (isSwipeLeft && finalValue < homePosition - 100) {
           translateX.value = withSpring(0, animationConfig);
           isDrawerOpen.value = true;

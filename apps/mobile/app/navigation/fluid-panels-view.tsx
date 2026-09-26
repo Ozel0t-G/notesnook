@@ -26,19 +26,13 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState
 } from "react";
-import { LayoutChangeEvent, View } from "react-native";
+import { LayoutChangeEvent, Platform, View } from "react-native";
 import Orientation, {
   OrientationType,
   useDeviceOrientationChange
 } from "react-native-orientation-locker";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming
-} from "react-native-reanimated";
 import { notesnook } from "../../e2e/test.ids";
 import { db } from "../common/database";
 import { FluidPanels } from "../components/fluid-panels";
@@ -69,7 +63,12 @@ import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { NavigationProps } from "../services/navigation";
 import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
 
-const MOBILE_SIDEBAR_SIZE = 0.85;
+/**
+ * iPhone has no drawer: the bottom bar owns top-level navigation, so the
+ * sidebar pane collapses to zero width and is not mounted at all.
+ * iPad keeps its sidebar pane (see PANE_WIDTHS below).
+ */
+const MOBILE_SIDEBAR_SIZE = 0;
 
 let SideMenu: any = null;
 let EditorWrapper: any = null;
@@ -85,14 +84,17 @@ export const FluidPanelsView = React.memo(
     const dimensions = useSettingStore((state) => state.dimensions);
     const setDimensions = useSettingStore((state) => state.setDimensions);
     const insets = useGlobalSafeAreaInsets();
-    const animatedOpacity = useSharedValue(0);
-    const animatedTranslateY = useSharedValue(-9999);
-    const overlayRef = useRef<Animated.View>(null);
     const [orientation, setOrientation] = useState<OrientationType>(
       Orientation.getInitialOrientation()
     );
     const appLoading = useSettingStore((state) => state.isAppLoading);
     const [isLoading, setIsLoading] = useState(false);
+    /**
+     * The drawer is an iPad-only affordance now. On iPhone the bottom bar is
+     * the only top-level navigation, so the sidebar pane and the
+     * swipe-to-open gesture are both gone.
+     */
+    const drawerEnabled = deviceMode !== "mobile";
 
     useDeviceOrientationChange((o) => {
       if (
@@ -149,17 +151,7 @@ export const FluidPanelsView = React.memo(
       [deviceMode, setFullscreen]
     );
 
-    const toggleView = useCallback(
-      (show: boolean) => {
-        animatedTranslateY.value = show ? 0 : -9999;
-      },
-      [animatedTranslateY]
-    );
-
     useEffect(() => {
-      if (!fluidTabsRef.current?.isDrawerOpen()) {
-        toggleView(false);
-      }
       eSubscribeEvent(eOpenFullscreenEditor, showFullScreenEditor);
       eSubscribeEvent(eCloseFullscreenEditor, closeFullScreenEditor);
 
@@ -172,8 +164,7 @@ export const FluidPanelsView = React.memo(
       dimensions,
       colors,
       showFullScreenEditor,
-      closeFullScreenEditor,
-      toggleView
+      closeFullScreenEditor
     ]);
 
     const setDeviceMode = React.useCallback(
@@ -242,33 +233,6 @@ export const FluidPanelsView = React.memo(
       [setDimensions]
     );
 
-    const PANE_OFFSET = useMemo(
-      () => ({
-        mobile: {
-          sidebar: dimensions.width * MOBILE_SIDEBAR_SIZE,
-          list: dimensions.width + dimensions.width * MOBILE_SIDEBAR_SIZE,
-          editor: dimensions.width * 2 + dimensions.width * MOBILE_SIDEBAR_SIZE
-        },
-        smallTablet: {
-          sidebar: fullscreen
-            ? 0
-            : valueLimiter(dimensions.width * 0.3, 300, 350),
-          list: fullscreen
-            ? 0
-            : dimensions.width + valueLimiter(dimensions.width * 0.3, 300, 350),
-          editor: fullscreen
-            ? 0
-            : dimensions.width + valueLimiter(dimensions.width * 0.3, 300, 350)
-        },
-        tablet: {
-          sidebar: 0,
-          list: 0,
-          editor: 0
-        }
-      }),
-      [dimensions.width, fullscreen]
-    );
-
     const PANE_WIDTHS: PaneWidths = useMemo(
       () => ({
         mobile: {
@@ -291,37 +255,10 @@ export const FluidPanelsView = React.memo(
       [dimensions.width]
     );
 
-    const onScroll = React.useCallback(
-      (scrollOffset: number) => {
-        if (!deviceMode) return;
-        hideAllTooltips();
-
-        if (
-          scrollOffset >
-          PANE_OFFSET[deviceMode as keyof typeof PANE_OFFSET].sidebar - 10
-        ) {
-          animatedOpacity.value = 0;
-          toggleView(false);
-        } else {
-          const o = scrollOffset / 300;
-          const opacity = o < 0 ? 1 : 1 - o;
-          animatedOpacity.value = opacity;
-          toggleView(opacity < 0.1 ? false : true);
-        }
-      },
-      [PANE_OFFSET, animatedOpacity, deviceMode, toggleView]
-    );
-
-    const animatedStyle = useAnimatedStyle(() => {
-      return {
-        opacity: animatedOpacity.value,
-        transform: [
-          {
-            translateY: animatedTranslateY.value
-          }
-        ]
-      };
-    }, []);
+    const onScroll = React.useCallback(() => {
+      if (!deviceMode) return;
+      hideAllTooltips();
+    }, [deviceMode]);
 
     if (!isLoading && !SideMenu && !EditorWrapper) {
       SideMenu = require("../components/side-menu").SideMenu;
@@ -344,6 +281,7 @@ export const FluidPanelsView = React.memo(
             dimensions={dimensions}
             widths={PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]}
             enabled={deviceMode !== "tablet" && !fullscreen}
+            drawerEnabled={drawerEnabled}
             initialPage={route.params?.initialPage}
             onScroll={onScroll}
             onChangeTab={onChangeTab}
@@ -355,23 +293,27 @@ export const FluidPanelsView = React.memo(
               }
             }}
           >
-            <View
-              key="1"
-              style={{
-                height: "100%",
-                width: fullscreen
-                  ? 0
-                  : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]
-                      ?.sidebar,
-                borderRightWidth:
-                  visual.ios && deviceMode === "tablet" ? 0.5 : 0,
-                borderRightColor: visual.separator
-              }}
-            >
-              <ScopedThemeProvider value="navigationMenu">
-                {isLoading ? null : <SideMenu />}
-              </ScopedThemeProvider>
-            </View>
+            {/* iPad sidebar pane. iPhone navigates with the bottom bar, so the
+                side menu is neither sized nor mounted there. */}
+            {drawerEnabled ? (
+              <View
+                key="1"
+                style={{
+                  height: "100%",
+                  width: fullscreen
+                    ? 0
+                    : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]
+                        ?.sidebar,
+                  borderRightWidth:
+                    visual.ios && deviceMode === "tablet" ? 0.5 : 0,
+                  borderRightColor: visual.separator
+                }}
+              >
+                <ScopedThemeProvider value="navigationMenu">
+                  {isLoading ? null : <SideMenu />}
+                </ScopedThemeProvider>
+              </View>
+            ) : null}
 
             <View
               key="2"
@@ -387,38 +329,14 @@ export const FluidPanelsView = React.memo(
               }}
             >
               <ScopedThemeProvider value="list">
-                {deviceMode === "mobile" ? (
-                  <Animated.View
-                    onTouchEnd={() => {
-                      if (useSideBarDraggingStore.getState().dragging) {
-                        useSideBarDraggingStore.setState({
-                          dragging: false
-                        });
-                        return;
-                      }
-                      fluidTabsRef.current?.closeDrawer();
-                      animatedOpacity.value = withTiming(0);
-                      animatedTranslateY.value = withTiming(-9999);
-                    }}
-                    style={[
-                      {
-                        position: "absolute",
-                        width: "100%",
-                        height: "100%",
-                        zIndex: 999,
-                        backgroundColor: colors.primary.backdrop
-                      },
-                      animatedStyle
-                    ]}
-                    ref={overlayRef}
-                  />
-                ) : null}
-
                 <View
                   style={{
                     flex: 1,
                     paddingTop: insets.top,
-                    paddingBottom: insets.bottom
+                    // On iOS the bottom bar is laid out below this pane and
+                    // already covers the home indicator; padding here as well
+                    // would leave a dead strip above the bar.
+                    paddingBottom: Platform.OS === "ios" ? 0 : insets.bottom
                   }}
                 >
                   <AppNavigationStack />

@@ -20,9 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Platform, Pressable, View } from "react-native";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { notesnook } from "../../../e2e/test.ids";
+import { Platform, View } from "react-native";
 import { FloatingButton } from "../../components/container/floating-button";
 import DelayLayout from "../../components/delay-layout";
 import { Header } from "../../components/header";
@@ -163,49 +161,12 @@ export const Home = ({ navigation, route }: NavigationProps<"Notes">) => {
             loading: strings.loadingNotes()
           }}
         />
+        {/* iOS creates notes from the bottom bar's New Note action, so the
+            inline composer bar here would be a duplicate affordance. */}
         {!notes ||
         !notes.placeholders?.length ||
-        selectionMode ? null : Platform.OS === "ios" ? (
-          <View
-            style={{
-              backgroundColor: visual.screenBackground,
-              paddingHorizontal: visual.pagePadding,
-              paddingTop: 10,
-              paddingBottom: 12
-            }}
-          >
-            <Pressable
-              testID={notesnook.buttons.add}
-              accessibilityRole="button"
-              accessibilityLabel={strings.createNewNote()}
-              onPress={openEditor}
-              style={{
-                minHeight: 54,
-                borderRadius: visual.buttonRadius,
-                borderColor: visual.separator,
-                borderWidth: 1,
-                backgroundColor: visual.elevatedSurface,
-                paddingHorizontal: 16,
-                flexDirection: "row",
-                alignItems: "center"
-              }}
-            >
-              <Icon name="plus" size={24} color={colors.primary.accent} />
-              <Paragraph
-                color={visual.secondaryText}
-                size={15}
-                style={{ marginLeft: 12, flex: 1 }}
-              >
-                {strings.newNote()}
-              </Paragraph>
-              <Icon
-                name="pencil-outline"
-                size={21}
-                color={visual.tertiaryText}
-              />
-            </Pressable>
-          </View>
-        ) : (
+        selectionMode ||
+        Platform.OS === "ios" ? null : (
           <FloatingButton onPress={openEditor} alwaysVisible />
         )}
       </DelayLayout>

@@ -17,10 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { useThemeColors } from "@notesnook/theme";
-import {
-  getFocusedRouteNameFromRoute,
-  NavigationContainer
-} from "@react-navigation/native";
+import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as React from "react";
 import { Platform, View } from "react-native";
@@ -42,9 +39,10 @@ import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { AppleTabBar } from "../components/apple-tab-bar";
 import {
-  AppleSection,
+  AppleTabBarSelection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
+import { openEditor } from "../screens/notes/common";
 
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
@@ -66,15 +64,22 @@ let TaggedNotes: any = null;
 let ColoredNotes: any = null;
 let Archive: any = null;
 let Library: any = null;
+/**
+ * Everything the content pane can show now hangs off the Library section.
+ * The internal "Notes" route is kept for links and legacy entry points; it is
+ * presented as Library > All Notes.
+ */
 const LIBRARY_ROUTES = new Set([
   "Library",
+  "Notes",
   "Notebook",
   "TaggedNotes",
   "ColoredNotes",
   "Favorites",
   "Archive",
   "Trash",
-  "Monographs"
+  "Monographs",
+  "Search"
 ]);
 
 const LegacyRemindersRedirect = ({ navigation }: { navigation: any }) => {
@@ -223,8 +228,6 @@ const AppNavigation = React.memo(
         .setFocusedRouteId(home?.params?.id || home?.name);
       if (LIBRARY_ROUTES.has(home.name))
         useAppleNavigationStore.getState().setSection("library");
-      else if (home.name === "Notes")
-        useAppleNavigationStore.getState().setSection("notes");
     }, [home]);
 
     return !home ? null : (
@@ -355,6 +358,7 @@ let Tasks: any = null;
 let TaskDetail: any = null;
 let GlobalSearch: any = null;
 export const RootNavigation = () => {
+  const { colors } = useThemeColors();
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
   );
@@ -384,20 +388,9 @@ export const RootNavigation = () => {
         else if (focused.name === "GlobalSearch")
           useAppleNavigationStore.getState().setSection("search");
         else if (focused.name === "FluidPanelsView") {
-          const target = getFocusedRouteNameFromRoute(focused);
-          if (target === "Notes" || (target && LIBRARY_ROUTES.has(target))) {
-            useAppleNavigationStore
-              .getState()
-              .setSection(target === "Notes" ? "notes" : "library");
-          } else if (
-            ["tasks", "search"].includes(
-              useAppleNavigationStore.getState().section
-            )
-          ) {
-            useAppleNavigationStore
-              .getState()
-              .setSection(useAppleNavigationStore.getState().contentSection);
-          }
+          // Every route the content pane can show lives under Library now,
+          // including the legacy Notes route (Library > All Notes).
+          useAppleNavigationStore.getState().setSection("library");
         }
       }
       if (useSelectionStore.getState().selectionMode) {
@@ -453,18 +446,34 @@ export const RootNavigation = () => {
 
   const initialRouteName = !introCompleted ? "Welcome" : "FluidPanelsView";
 
-  const selectSection = React.useCallback((section: AppleSection) => {
-    useAppleNavigationStore.getState().setSection(section);
-    if (section === "tasks") {
+  const selectSection = React.useCallback((selection: AppleTabBarSelection) => {
+    if (selection === "compose") {
+      // An action, not a section: the previously selected tab stays selected
+      // and is what the user returns to once the editor is dismissed.
+      const currentRoot = rootNavigatorRef.current?.getCurrentRoute()?.name;
+      if (currentRoot === "Tasks" || currentRoot === "GlobalSearch") {
+        // Neither is a note context. Drop any first-save hook a notebook list
+        // left behind so the note is created unassigned.
+        editorState().onNoteCreated = null;
+      }
+      if (currentRoot !== "FluidPanelsView") {
+        rootNavigatorRef.current?.navigate("FluidPanelsView" as any);
+      }
+      openEditor();
+      return;
+    }
+
+    useAppleNavigationStore.getState().setSection(selection);
+    if (selection === "tasks") {
       rootNavigatorRef.current?.navigate("Tasks" as any);
-    } else if (section === "search") {
+    } else if (selection === "search") {
       rootNavigatorRef.current?.navigate("GlobalSearch" as any);
     } else {
       fluidTabsRef.current?.goToPage("home", true);
       rootNavigatorRef.current?.navigate(
         "FluidPanelsView" as any,
         {
-          screen: section === "library" ? "Library" : "Notes"
+          screen: "Library"
         } as any
       );
     }
@@ -478,7 +487,7 @@ export const RootNavigation = () => {
     (deviceMode !== "mobile" || !editorVisible);
 
   return (
-    <View style={{ flex: 1 }}>
+    <View style={{ flex: 1, backgroundColor: colors.primary.background }}>
       <NavigationContainer
         onReady={() => setNavigationReady(true)}
         onStateChange={onStateChange}

@@ -9,24 +9,57 @@ final class VeyraNTabBarViewManager: RCTViewManager {
 
 /// A real UIKit tab bar. The existing React Navigation stacks own screen content;
 /// this view only reports top-level section selections to them.
+///
+/// The trailing "New Note" item is an *action*, not a section: selecting it emits
+/// `compose` and immediately restores the previously selected real tab, so the
+/// user returns to the section they were in once the editor is dismissed.
 @objc(VeyraNTabBarNativeView)
 final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
   private let tabBar = UITabBar()
-  private let sections = ["notes", "tasks", "library", "search"]
+  /// Index-aligned with `tabBar.items`. `compose` is an action, not a section.
+  private let sections = ["library", "tasks", "search", "compose"]
+  private static let composeSection = "compose"
 
-  @objc var selectedSection: String = "notes" { didSet { updateSelection() } }
+  @objc var selectedSection: String = "library" { didSet { updateSelection() } }
   @objc var onSelect: RCTBubblingEventBlock?
 
   override init(frame: CGRect) {
     super.init(frame: frame)
+    backgroundColor = .clear
     tabBar.translatesAutoresizingMaskIntoConstraints = false
     tabBar.delegate = self
-    tabBar.items = [
-      UITabBarItem(title: NSLocalizedString("Notes", comment: "Notes tab"), image: UIImage(systemName: "note.text"), tag: 0),
-      UITabBarItem(title: NSLocalizedString("Tasks", comment: "Tasks tab"), image: UIImage(systemName: "checklist"), tag: 1),
-      UITabBarItem(title: NSLocalizedString("Library", comment: "Library tab"), image: UIImage(systemName: "books.vertical"), tag: 2),
-      UITabBarItem(title: NSLocalizedString("Search", comment: "Search tab"), image: UIImage(systemName: "magnifyingglass"), tag: 3)
-    ]
+
+    let libraryItem = UITabBarItem(
+      title: NSLocalizedString("Library", comment: "Library tab"),
+      image: UIImage(systemName: "books.vertical"),
+      tag: 0
+    )
+    let tasksItem = UITabBarItem(
+      title: NSLocalizedString("Tasks", comment: "Tasks tab"),
+      image: UIImage(systemName: "checklist"),
+      tag: 1
+    )
+    let searchItem = UITabBarItem(
+      title: NSLocalizedString("Search", comment: "Search tab"),
+      image: UIImage(systemName: "magnifyingglass"),
+      tag: 2
+    )
+    let composeItem = UITabBarItem(
+      title: NSLocalizedString("New Note", comment: "New note action in the tab bar"),
+      image: UIImage(systemName: "square.and.pencil"),
+      tag: 3
+    )
+    composeItem.accessibilityLabel = NSLocalizedString(
+      "New note",
+      comment: "Accessibility label for the new note action"
+    )
+    composeItem.accessibilityHint = NSLocalizedString(
+      "Creates a new note and opens the editor",
+      comment: "Accessibility hint for the new note action"
+    )
+    composeItem.accessibilityTraits = [.button]
+
+    tabBar.items = [libraryItem, tasksItem, searchItem, composeItem]
     addSubview(tabBar)
     NSLayoutConstraint.activate([
       tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),
@@ -41,12 +74,19 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
 
   private func updateSelection() {
     guard let index = sections.firstIndex(of: selectedSection),
+          index != sections.firstIndex(of: Self.composeSection),
           let items = tabBar.items, index < items.count else { return }
     tabBar.selectedItem = items[index]
   }
 
   func tabBar(_ tabBar: UITabBar, didSelect item: UITabBarItem) {
     guard sections.indices.contains(item.tag) else { return }
-    onSelect?(["section": sections[item.tag]])
+    let section = sections[item.tag]
+    if section == Self.composeSection {
+      // Never leave the action item selected: restore the real tab first so the
+      // bar already shows the correct section while the editor animates in.
+      updateSelection()
+    }
+    onSelect?(["section": section])
   }
 }

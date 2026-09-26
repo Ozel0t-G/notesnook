@@ -25,18 +25,62 @@ import {
   THEME_COMPATIBILITY_VERSION,
   ThemeDark,
   ThemeDefinition,
-  ThemeLight
+  ThemeLight,
+  ThemeVeyranDark,
+  ThemeVeyranLight
 } from "@notesnook/theme";
 import { ThemesRouter } from "../common/themes-router";
 
 type ColorScheme = "dark" | "light";
+
+/**
+ * True only the very first time the app runs on this device/profile -- none
+ * of the theme-related keys have ever been written. Used to pick System
+ * appearance as the default for brand-new installs without ever touching an
+ * existing install's `followSystemTheme`/`colorScheme` choice (explicit or
+ * not).
+ */
+const IS_FRESH_THEME_INSTALL = !Config.has(
+  (key) =>
+    key === "theme:light" ||
+    key === "theme:dark" ||
+    key === "colorScheme" ||
+    key === "followSystemTheme"
+);
+
+function prefersDarkOS(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  );
+}
+
+/**
+ * Migrate a user still on the shipped default theme (whether they never
+ * touched theming, or explicitly re-picked the shipped default) to its
+ * VeyraN equivalent. Anyone on a different theme -- a marketplace theme or a
+ * hand-edited custom one -- is matched by `id` and left completely alone.
+ */
+export function migrateLegacyDefaultTheme(
+  theme: ThemeDefinition,
+  legacyId: string,
+  replacement: ThemeDefinition
+): ThemeDefinition {
+  return theme.id === legacyId ? replacement : theme;
+}
+
 class ThemeStore extends BaseStore<ThemeStore> {
-  colorScheme: "dark" | "light" = Config.get("colorScheme", "light");
+  colorScheme: "dark" | "light" = Config.get(
+    "colorScheme",
+    IS_FRESH_THEME_INSTALL && prefersDarkOS() ? "dark" : "light"
+  );
   darkTheme = getTheme("dark");
   lightTheme = getTheme("light");
-  followSystemTheme = Config.get("followSystemTheme", false);
+  followSystemTheme = Config.get("followSystemTheme", IS_FRESH_THEME_INSTALL);
 
   init = async () => {
+    this.persistFreshInstallAndMigratedDefaults();
     const { darkTheme, lightTheme, colorScheme } = this.get();
     await changeDesktopTheme(
       colorScheme === "dark" ? darkTheme : lightTheme,
@@ -46,6 +90,27 @@ class ThemeStore extends BaseStore<ThemeStore> {
       darkTheme: await updateTheme(darkTheme),
       lightTheme: await updateTheme(lightTheme)
     });
+  };
+
+  /**
+   * Writes the in-memory defaults chosen by the field initializers above
+   * back to localStorage, so the next load (including the pre-hydration
+   * flash-avoidance script in `src/index.ts`, which reads these keys
+   * directly) sees the resolved value instead of re-deriving it. Safe to
+   * call every session: it only ever writes a value that already matches
+   * what's currently active in memory.
+   */
+  persistFreshInstallAndMigratedDefaults = () => {
+    const { lightTheme, darkTheme, colorScheme, followSystemTheme } =
+      this.get();
+    if (lightTheme.id === ThemeVeyranLight.id)
+      Config.set("theme:light", lightTheme);
+    if (darkTheme.id === ThemeVeyranDark.id)
+      Config.set("theme:dark", darkTheme);
+    if (IS_FRESH_THEME_INSTALL) {
+      Config.set("colorScheme", colorScheme);
+      Config.set("followSystemTheme", followSystemTheme);
+    }
   };
 
   setTheme = (theme: ThemeDefinition) => {
@@ -103,10 +168,24 @@ function getKey(theme: ThemeDefinition) {
   return theme.colorScheme === "dark" ? "darkTheme" : "lightTheme";
 }
 
-function getTheme(colorScheme: ColorScheme) {
+// Every call site of `getTheme()` (field initializers, `setColorScheme`,
+// `init()`'s desktop-chrome sync) goes through the same migration check, so
+// a user still on the shipped default theme never sees the old default
+// again after switching scheme -- e.g. via System live-switching -- before
+// `persistFreshInstallAndMigratedDefaults()` has had a chance to persist the
+// migrated theme.
+function getTheme(colorScheme: ColorScheme): ThemeDefinition {
   return colorScheme === "dark"
-    ? Config.get("theme:dark", ThemeDark)
-    : Config.get("theme:light", ThemeLight);
+    ? migrateLegacyDefaultTheme(
+        Config.get("theme:dark", ThemeDark),
+        "default-dark",
+        ThemeVeyranDark
+      )
+    : migrateLegacyDefaultTheme(
+        Config.get("theme:light", ThemeLight),
+        "default-light",
+        ThemeVeyranLight
+      );
 }
 
 async function updateTheme(theme: ThemeDefinition) {

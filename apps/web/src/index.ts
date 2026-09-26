@@ -23,21 +23,44 @@ import { AppEventManager, AppEvents } from "./common/app-events";
 import { register } from "./service-worker-registration";
 import { getServiceWorkerVersion } from "./utils/version";
 import { register as registerStreamSaver } from "./utils/stream-saver/mitm";
-import { ThemeDark, ThemeLight, themeToCSS } from "@notesnook/theme";
+import {
+  ThemeVeyranDark,
+  ThemeVeyranLight,
+  themeToCSS
+} from "@notesnook/theme";
 import Config from "./utils/config";
 import { setI18nGlobal, Messages } from "@notesnook/intl";
 import { i18n } from "@lingui/core";
 
+// Fresh installs (no persisted `colorScheme` yet) paint using the live OS
+// preference instead of hardcoding light, so System appearance doesn't
+// flash the wrong scheme on first launch. This mirrors the same OS check
+// `ThemeStore`'s field initializers make in `stores/theme-store.ts`.
+const prefersDarkOS =
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(prefers-color-scheme: dark)").matches;
 const colorScheme = JSON.parse(
-  window.localStorage.getItem("colorScheme") || '"light"'
+  window.localStorage.getItem("colorScheme") ||
+    JSON.stringify(prefersDarkOS ? "dark" : "light")
 );
 const root = document.querySelector("html");
 if (root) root.setAttribute("data-theme", colorScheme);
 
-const theme =
+// A persisted theme whose `id` is still the shipped old default (i.e. never
+// customized, or explicitly re-picked the old default) paints as its VeyraN
+// equivalent here too, so the one-time migration in `ThemeStore.init()`
+// doesn't cause a flash of the old theme on the upgrade's first load. Any
+// other persisted theme id (a marketplace or custom theme) paints as-is.
+const rawTheme =
   colorScheme === "dark"
-    ? Config.get("theme:dark", ThemeDark)
-    : Config.get("theme:light", ThemeLight);
+    ? Config.get("theme:dark", ThemeVeyranDark)
+    : Config.get("theme:light", ThemeVeyranLight);
+const theme =
+  rawTheme.id === "default-dark"
+    ? ThemeVeyranDark
+    : rawTheme.id === "default-light"
+    ? ThemeVeyranLight
+    : rawTheme;
 const stylesheet = document.getElementById("theme-colors");
 if (theme) {
   const css = themeToCSS(theme);

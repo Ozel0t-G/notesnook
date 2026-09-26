@@ -21,7 +21,7 @@ import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import dayjs from "dayjs";
 import React from "react";
-import { FlatList, View } from "react-native";
+import { FlatList, Platform, View } from "react-native";
 import { DraxProvider, DraxScrollView } from "react-native-drax";
 import { db } from "../../common/database";
 import Navigation from "../../services/navigation";
@@ -142,42 +142,44 @@ export function SideMenuHome() {
         </DraxProvider>
       ) : null}
 
-      <View
-        style={{
-          paddingHorizontal: DefaultAppStyles.GAP,
-          paddingVertical: DefaultAppStyles.GAP_VERTICAL
-        }}
-      >
-        {dayjs().month() !== 11 ? (
-          <>
-            {(subscriptionType === SubscriptionPlan.FREE ||
-              !subscriptionType ||
-              !user) &&
-            !SettingsService.getProperty("serverUrls") ? (
-              <Button
-                title={pro.title}
-                style={{
-                  width: "100%"
-                }}
-                type="accent"
-                onPress={pro.onPress}
-              />
-            ) : null}
-          </>
-        ) : (
-          <Button
-            title={`Wrapped ${dayjs().year()} 🎉`}
-            style={{
-              width: "100%"
-            }}
-            bold
-            type="secondaryAccented"
-            onPress={() => {
-              Navigation.navigate("Wrapped");
-            }}
-          />
-        )}
-      </View>
+      {Platform.OS === "ios" ? null : (
+        <View
+          style={{
+            paddingHorizontal: DefaultAppStyles.GAP,
+            paddingVertical: DefaultAppStyles.GAP_VERTICAL
+          }}
+        >
+          {dayjs().month() !== 11 ? (
+            <>
+              {(subscriptionType === SubscriptionPlan.FREE ||
+                !subscriptionType ||
+                !user) &&
+              !SettingsService.getProperty("serverUrls") ? (
+                <Button
+                  title={pro.title}
+                  style={{
+                    width: "100%"
+                  }}
+                  type="accent"
+                  onPress={pro.onPress}
+                />
+              ) : null}
+            </>
+          ) : (
+            <Button
+              title={`Wrapped ${dayjs().year()} 🎉`}
+              style={{
+                width: "100%"
+              }}
+              bold
+              type="secondaryAccented"
+              onPress={() => {
+                Navigation.navigate("Wrapped");
+              }}
+            />
+          )}
+        </View>
+      )}
     </View>
   );
 }

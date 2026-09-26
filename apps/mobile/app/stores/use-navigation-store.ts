@@ -66,7 +66,7 @@ export type BillingState = {
 
 export interface RouteParams extends ParamListBase {
   Notes: GenericRouteParam;
-  Library: GenericRouteParam;
+  Library: GenericRouteParam & { initialCollection?: "all-notes" | "inbox" };
   GlobalSearch: GenericRouteParam;
   Notebooks: {
     canGoBack?: boolean;

@@ -26,6 +26,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState
 } from "react";
 import { LayoutChangeEvent, Platform, View } from "react-native";
@@ -33,6 +34,11 @@ import Orientation, {
   OrientationType,
   useDeviceOrientationChange
 } from "react-native-orientation-locker";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming
+} from "react-native-reanimated";
 import { notesnook } from "../../e2e/test.ids";
 import { db } from "../common/database";
 import { FluidPanels } from "../components/fluid-panels";
@@ -68,7 +74,7 @@ import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
  * sidebar pane collapses to zero width and is not mounted at all.
  * iPad keeps its sidebar pane (see PANE_WIDTHS below).
  */
-const MOBILE_SIDEBAR_SIZE = 0;
+const MOBILE_SIDEBAR_SIZE = Platform.OS === "ios" ? 0 : 0.85;
 
 let SideMenu: any = null;
 let EditorWrapper: any = null;
@@ -84,6 +90,9 @@ export const FluidPanelsView = React.memo(
     const dimensions = useSettingStore((state) => state.dimensions);
     const setDimensions = useSettingStore((state) => state.setDimensions);
     const insets = useGlobalSafeAreaInsets();
+    const animatedOpacity = useSharedValue(0);
+    const animatedTranslateY = useSharedValue(-9999);
+    const overlayRef = useRef<Animated.View>(null);
     const [orientation, setOrientation] = useState<OrientationType>(
       Orientation.getInitialOrientation()
     );
@@ -94,7 +103,14 @@ export const FluidPanelsView = React.memo(
      * the only top-level navigation, so the sidebar pane and the
      * swipe-to-open gesture are both gone.
      */
-    const drawerEnabled = deviceMode !== "mobile";
+    const drawerEnabled = Platform.OS !== "ios" || deviceMode !== "mobile";
+
+    const toggleView = useCallback(
+      (show: boolean) => {
+        animatedTranslateY.value = show ? 0 : -9999;
+      },
+      [animatedTranslateY]
+    );
 
     useDeviceOrientationChange((o) => {
       if (
@@ -152,6 +168,7 @@ export const FluidPanelsView = React.memo(
     );
 
     useEffect(() => {
+      if (!fluidTabsRef.current?.isDrawerOpen()) toggleView(false);
       eSubscribeEvent(eOpenFullscreenEditor, showFullScreenEditor);
       eSubscribeEvent(eCloseFullscreenEditor, closeFullScreenEditor);
 
@@ -164,7 +181,8 @@ export const FluidPanelsView = React.memo(
       dimensions,
       colors,
       showFullScreenEditor,
-      closeFullScreenEditor
+      closeFullScreenEditor,
+      toggleView
     ]);
 
     const setDeviceMode = React.useCallback(
@@ -255,10 +273,29 @@ export const FluidPanelsView = React.memo(
       [dimensions.width]
     );
 
-    const onScroll = React.useCallback(() => {
-      if (!deviceMode) return;
-      hideAllTooltips();
-    }, [deviceMode]);
+    const onScroll = React.useCallback(
+      (scrollOffset: number) => {
+        if (!deviceMode) return;
+        hideAllTooltips();
+        if (Platform.OS === "ios" || deviceMode !== "mobile") return;
+        const sidebarOffset = dimensions.width * MOBILE_SIDEBAR_SIZE;
+        if (scrollOffset > sidebarOffset - 10) {
+          animatedOpacity.value = 0;
+          toggleView(false);
+        } else {
+          const o = scrollOffset / 300;
+          const opacity = o < 0 ? 1 : 1 - o;
+          animatedOpacity.value = opacity;
+          toggleView(opacity >= 0.1);
+        }
+      },
+      [animatedOpacity, deviceMode, dimensions.width, toggleView]
+    );
+
+    const animatedStyle = useAnimatedStyle(() => ({
+      opacity: animatedOpacity.value,
+      transform: [{ translateY: animatedTranslateY.value }]
+    }));
 
     if (!isLoading && !SideMenu && !EditorWrapper) {
       SideMenu = require("../components/side-menu").SideMenu;
@@ -329,6 +366,30 @@ export const FluidPanelsView = React.memo(
               }}
             >
               <ScopedThemeProvider value="list">
+                {Platform.OS !== "ios" && deviceMode === "mobile" ? (
+                  <Animated.View
+                    onTouchEnd={() => {
+                      if (useSideBarDraggingStore.getState().dragging) {
+                        useSideBarDraggingStore.setState({ dragging: false });
+                        return;
+                      }
+                      fluidTabsRef.current?.closeDrawer();
+                      animatedOpacity.value = withTiming(0);
+                      animatedTranslateY.value = withTiming(-9999);
+                    }}
+                    style={[
+                      {
+                        position: "absolute",
+                        width: "100%",
+                        height: "100%",
+                        zIndex: 999,
+                        backgroundColor: colors.primary.backdrop
+                      },
+                      animatedStyle
+                    ]}
+                    ref={overlayRef}
+                  />
+                ) : null}
                 <View
                   style={{
                     flex: 1,

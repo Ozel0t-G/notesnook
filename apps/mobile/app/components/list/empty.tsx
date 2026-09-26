@@ -39,6 +39,7 @@ export type PlaceholderData = {
   action?: () => void;
   loading?: string;
   type?: string;
+  plain?: boolean;
 };
 
 type EmptyListProps = {
@@ -87,18 +88,27 @@ export const Empty = React.memo(function Empty({
     >
       {!loading ? (
         <>
-          <Tip
-            color={color}
-            tip={
-              screen !== "Search"
-                ? tip || ({ text: () => placeholder?.paragraph } as TTip)
-                : ({ text: () => placeholder?.paragraph } as TTip)
-            }
-            style={{
-              backgroundColor: "transparent",
-              paddingHorizontal: 0
-            }}
-          />
+          {placeholder?.plain ? (
+            <View style={{ gap: 8 }}>
+              <Heading size={AppFontSize.md}>{placeholder.title}</Heading>
+              <Paragraph size={AppFontSize.sm} textBreakStrategy="balanced">
+                {placeholder.paragraph}
+              </Paragraph>
+            </View>
+          ) : (
+            <Tip
+              color={color}
+              tip={
+                screen !== "Search"
+                  ? tip || ({ text: () => placeholder?.paragraph } as TTip)
+                  : ({ text: () => placeholder?.paragraph } as TTip)
+              }
+              style={{
+                backgroundColor: "transparent",
+                paddingHorizontal: 0
+              }}
+            />
+          )}
           {placeholder?.button && (
             <Button
               testID={notesnook.buttons.add}

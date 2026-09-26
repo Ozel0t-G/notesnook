@@ -22,6 +22,7 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
 
   @objc var selectedSection: String = "library" { didSet { updateSelection() } }
   @objc var onSelect: RCTBubblingEventBlock?
+  @objc var itemTitles: NSDictionary = [:] { didSet { updateTitles() } }
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -50,7 +51,7 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
       tag: 3
     )
     composeItem.accessibilityLabel = NSLocalizedString(
-      "New note",
+      "New Note",
       comment: "Accessibility label for the new note action"
     )
     composeItem.accessibilityHint = NSLocalizedString(
@@ -72,6 +73,15 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
 
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+  private func updateTitles() {
+    guard let items = tabBar.items else { return }
+    for (index, key) in sections.enumerated() where index < items.count {
+      guard let title = itemTitles[key] as? String else { continue }
+      items[index].title = title
+      items[index].accessibilityLabel = title
+    }
+  }
+
   private func updateSelection() {
     guard let index = sections.firstIndex(of: selectedSection),
           index != sections.firstIndex(of: Self.composeSection),
@@ -86,6 +96,9 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
       // Never leave the action item selected: restore the real tab first so the
       // bar already shows the correct section while the editor animates in.
       updateSelection()
+      // On iPad's floating tab presentation UIKit can apply its own selection
+      // after this delegate call. Restore once more on the next main turn.
+      DispatchQueue.main.async { [weak self] in self?.updateSelection() }
     }
     onSelect?(["section": section])
   }

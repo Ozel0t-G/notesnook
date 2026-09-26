@@ -33,7 +33,7 @@ const notesnook = {
       library: "Library",
       tasks: "Tasks",
       search: "Search",
-      newNote: "New note"
+      newNote: "New Note"
     }
   },
   toast: {

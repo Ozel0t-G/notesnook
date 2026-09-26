@@ -85,7 +85,7 @@ const isIOS = () => device.getPlatform() === "ios";
 /** The element that proves the app finished launching into a usable session. */
 const readyElement = () =>
   isIOS()
-    ? element(by.id(notesnook.tabbar.id))
+    ? element(by.text("All Notes"))
     : element(by.id(notesnook.buttons.add));
 
 const Tests = {
@@ -112,7 +112,16 @@ const Tests = {
     await waitFor(element(by.text("I understand")))
       .toBeVisible()
       .withTimeout(10000);
-    await element(by.text("I understand")).tap();
+    await element(by.id(notesnook.ids.default.dialog.yes)).tap();
+    // The welcome flow persists introCompleted when Get started is tapped.
+    // On iOS 27 the offline confirmation can leave its modal mounted after
+    // the navigation callback, so relaunch into the persisted app session.
+    try {
+      await waitFor(readyElement()).toBeVisible().withTimeout(4000);
+      return;
+    } catch {
+      await device.launchApp({ newInstance: true });
+    }
     await waitFor(readyElement()).toBeVisible().withTimeout(30000);
   },
   sleep: (duration: number) => {
@@ -127,9 +136,12 @@ const Tests = {
   fromLabel: Element.fromLabel,
   async exitEditor() {
     if (device.getPlatform() === "ios") {
+      if (device.name.includes("iPad")) await Tests.sleep(350);
       await web()
         .element(by.web.cssSelector("#header button:first-child"))
         .tap();
+      // The editor's keyboard snapshot briefly covers the native tab bar.
+      await Tests.sleep(2000);
     } else {
       await _device.pressBack();
       await _device.pressBack();
@@ -160,6 +172,16 @@ const Tests = {
     await web().element(by.web.className("ProseMirror")).focus();
     await web().element(by.web.className("ProseMirror")).typeText(body, true);
     await Tests.exitEditor();
+    if (isIOS()) {
+      try {
+        await waitFor(element(by.id("library-heading")))
+          .toBeVisible()
+          .withTimeout(1000);
+        await element(by.text("All Notes")).tap();
+      } catch {
+        // Notebook and collection creation already return to a note list.
+      }
+    }
     await Tests.fromText(body).isVisible(10000);
     return { title, body };
   },
@@ -176,13 +198,12 @@ const Tests = {
   },
   /**
    * Selects a top-level section. iOS only; Android has no bottom bar.
-   * The label is scoped to the bar so it cannot collide with screen content
-   * that happens to carry the same label (e.g. a "Search" field).
+   * UIKit owns these labels. React Native's parent testID is not exposed as
+   * an ancestor to Detox on iOS 27, so use the visible tab title directly.
    */
   async tapTab(label: string) {
-    const tab = element(
-      by.label(label).withAncestor(by.id(notesnook.tabbar.id))
-    );
+    // The floating iOS 27 tab bar exposes a decorative duplicate label first.
+    const tab = element(by.text(label)).atIndex(1);
     await waitFor(tab).toBeVisible().withTimeout(10000);
     await tab.tap();
   },
@@ -199,13 +220,13 @@ const Tests = {
    * Reaches a content route. iOS goes through the Library tab, which is the
    * root of every content route now; Android still goes through the drawer.
    *
-   * Note: the All Notes entry inside Library is owned by the Library screen,
-   * so `navigate("Notes")` depends on that row existing.
+   * The old Notes destination maps to Library > All Notes.
    */
   async navigate(screen: RouteName | ({} & string)) {
     if (isIOS()) {
       await Tests.tapTab(notesnook.tabbar.labels.library);
-      await Tests.fromText(screen as string).waitAndTap();
+      const label = screen === "Notes" ? "All Notes" : String(screen);
+      await Tests.fromText(label).waitAndTap();
       return;
     }
     let menu = Tests.fromId(notesnook.ids.default.header.buttons.left);

@@ -16,6 +16,12 @@ msgstr ""
 msgid "All Notes"
 msgstr "All Notes"
 
+msgid "New Note"
+msgstr "New Note"
+
+msgid "Yesterday"
+msgstr "Yesterday"
+
 msgid "Inbox"
 msgstr "Inbox"
 

@@ -17,7 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { TestBuilder } from "./utils";
+import { TestBuilder, Tests } from "./utils";
+import { expect as jestExpect } from "@jest/globals";
 
 describe("APP LAUNCH AND NAVIGATION", () => {
   it("App should launch successfully & hide welcome screen", async () => {
@@ -50,6 +51,113 @@ describe("APP LAUNCH AND NAVIGATION", () => {
       .waitAndTapByLabel("Library")
       .isVisibleByText("Library")
       .run();
+  });
+
+  it("New Note returns to the previously selected section", async () => {
+    if (device.getPlatform() !== "ios") return;
+    await TestBuilder.create().prepare().run();
+
+    await Tests.tapTab("Tasks");
+    await waitFor(element(by.id("task-smart-all")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await Tests.tapNewNote();
+    await Tests.waitForEditor();
+    await Tests.exitEditor();
+    await waitFor(element(by.id("task-smart-all")))
+      .toBeVisible()
+      .withTimeout(10000);
+
+    await Tests.tapTab("Search");
+    await waitFor(element(by.id("global-search-input")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await element(by.id("global-search-input")).tapReturnKey();
+    await Tests.sleep(500);
+    await Tests.tapNewNote();
+    await Tests.waitForEditor();
+    await Tests.exitEditor();
+    await waitFor(element(by.id("global-search-input")))
+      .toBeVisible()
+      .withTimeout(10000);
+    try {
+      await element(by.id("global-search-input")).tapReturnKey();
+    } catch {
+      // The editor return path may already have dismissed the keyboard.
+    }
+    await Tests.sleep(500);
+
+    await Tests.tapTab("Library");
+    await waitFor(element(by.text("All Notes")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await Tests.tapNewNote();
+    await Tests.waitForEditor();
+    await Tests.exitEditor();
+    await waitFor(element(by.text("All Notes")))
+      .toBeVisible()
+      .withTimeout(10000);
+  });
+
+  it("Library opens All Notes and Inbox", async () => {
+    if (device.getPlatform() !== "ios") return;
+    await TestBuilder.create().prepare().run();
+    await waitFor(element(by.text("All Notes")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await waitFor(element(by.text("Inbox")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await device.takeScreenshot("veyran-library");
+    await element(by.text("All Notes")).tap();
+    await waitFor(element(by.text("All Notes")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await device.takeScreenshot("veyran-all-notes");
+    await element(by.id("library-collection-back")).tap();
+    await element(by.text("Inbox")).tap();
+    await waitFor(element(by.text("Inbox")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await device.takeScreenshot("veyran-inbox");
+  });
+
+  it("an Inbox note saves and reopens with its content", async () => {
+    if (device.getPlatform() !== "ios") return;
+    await TestBuilder.create().prepare().run();
+    await element(by.text("Inbox")).tap();
+    await Tests.tapNewNote();
+    await Tests.waitForEditor();
+    const body = "Inbox content survives save and reopen";
+    const editor = web().element(by.web.className("ProseMirror"));
+    await editor.focus();
+    await editor.typeText(body, true);
+    await Tests.exitEditor();
+    const savedRow = element(by.id("note-item-0"));
+    await waitFor(savedRow)
+      .toBeVisible()
+      .withTimeout(15000);
+    await savedRow.tap();
+    await Tests.waitForEditor();
+    jestExpect(
+      await web().element(by.web.className("ProseMirror")).getText()
+    ).toContain(body);
+    await device.takeScreenshot("veyran-inbox-reopened-note");
+  });
+
+  it("Tasks settings row describes its iOS destination", async () => {
+    if (device.getPlatform() !== "ios") return;
+    await TestBuilder.create().prepare().run();
+    await element(by.label("Settings")).tap();
+    await waitFor(element(by.text("Appearance")))
+      .toBeVisible()
+      .withTimeout(10000);
+    const taskSettings = element(by.id("task-notifications-ios"));
+    await element(by.id("settings-list")).swipe("up", "slow", 0.8);
+    await element(by.id("settings-list")).swipe("up", "slow", 0.8);
+    await waitFor(taskSettings).toBeVisible().withTimeout(10000);
+    await expect(element(by.text("Open VeyraN settings in iOS"))).toBeVisible();
+    await device.takeScreenshot("veyran-task-settings-row");
   });
 
   it("Side menu navigation should work", async () => {

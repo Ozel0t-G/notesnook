@@ -86,6 +86,20 @@ export const setOnFirstSave = (
   }, 0);
 };
 
+/**
+ * A Library or global compose action explicitly creates a note without a
+ * notebook, even when the user configured a default notebook. The editor's
+ * usual default tag still applies.
+ */
+export function setOnFirstSaveUnassigned() {
+  editorState().onNoteCreated = (noteId) => {
+    const defaultTag = db.settings.getDefaultTag();
+    if (defaultTag) {
+      void onNoteCreated(noteId, { type: "tag", id: defaultTag });
+    }
+  };
+}
+
 export async function onNoteCreated(noteId: string, data: FirstSaveData) {
   if (!data) return;
   switch (data.type) {

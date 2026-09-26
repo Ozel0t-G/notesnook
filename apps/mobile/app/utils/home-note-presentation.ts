@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { getSortValue, GroupOptions, Note } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
 import { EntityLevel, decode } from "entities";
 
 /** A list-only title: the stored title and editor content are never changed. */
@@ -71,8 +72,8 @@ export function homeNoteDateGroup(
     current.getDate() - 6
   );
 
-  if (date >= today) return capitalizeRelativeDay(0);
-  if (date >= yesterday) return capitalizeRelativeDay(-1);
+  if (date >= today) return strings.tasksToday();
+  if (date >= yesterday) return strings.homeNotesYesterday();
   if (date >= sevenDaysAgo) {
     return new Intl.DateTimeFormat(undefined, {
       weekday: "long",
@@ -84,13 +85,6 @@ export function homeNoteDateGroup(
     month: "long",
     year: "numeric"
   }).format(date);
-}
-
-function capitalizeRelativeDay(offset: number): string {
-  const label = new Intl.RelativeTimeFormat(undefined, {
-    numeric: "auto"
-  }).format(offset, "day");
-  return label.charAt(0).toLocaleUpperCase() + label.slice(1);
 }
 
 /**

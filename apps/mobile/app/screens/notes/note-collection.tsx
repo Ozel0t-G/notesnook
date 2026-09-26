@@ -50,7 +50,7 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { useSelectionStore } from "../../stores/use-selection-store";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { eGroupOptionsUpdated } from "../../utils/events";
-import { openEditor, setOnFirstSave } from "./common";
+import { openEditor, setOnFirstSave, setOnFirstSaveUnassigned } from "./common";
 
 export type NoteCollectionProps = {
   /** Stable id used for selection, scroll and header state. */
@@ -92,9 +92,8 @@ export default function NoteCollection({
   // New notes created from here belong to no notebook: these collections live
   // at the root, unlike the notebook screen which files the note on save.
   React.useEffect(() => {
-    setOnFirstSave(null);
-    const previousFocusedRouteId =
-      useNavigationStore.getState().focusedRouteId;
+    setOnFirstSaveUnassigned();
+    const previousFocusedRouteId = useNavigationStore.getState().focusedRouteId;
     useNavigationStore.getState().setFocusedRouteId(id);
     return () => {
       setOnFirstSave(null);

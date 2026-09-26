@@ -21,7 +21,7 @@ import { EVENTS, Notebook, Tag } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { TaskSymbolView } from "../../components/task-symbol-view";
 import { db } from "../../common/database";
 import Navigation, { NavigationProps } from "../../services/navigation";
@@ -43,7 +43,10 @@ type LibraryDestination = {
 /** The note collections shown above everything else in the Library. */
 type LibraryCollection = "all-notes" | "inbox";
 
-export default function Library({ navigation }: NavigationProps<"Library">) {
+export default function Library({
+  navigation,
+  route
+}: NavigationProps<"Library">) {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const [notebooks, setNotebooks] = React.useState<Notebook[]>([]);
@@ -52,7 +55,9 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
     allNotes?: number;
     inbox?: number;
   }>({});
-  const [collection, setCollection] = React.useState<LibraryCollection>();
+  const [collection, setCollection] = React.useState<LibraryCollection | undefined>(
+    route.params?.initialCollection
+  );
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
   const [allNotes, allNotesLoading, refreshAllNotes] = useNotes();
   const [inboxNotes, inboxLoading, refreshInbox] = useInboxNotes();
@@ -119,9 +124,10 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
         placeholder={{
           title: strings.yourNotes(),
           paragraph: strings.notesEmpty(),
-          button: strings.createNewNote(),
+          button: Platform.OS === "ios" ? undefined : strings.createNewNote(),
           action: openEditor,
-          loading: strings.loadingNotes()
+          loading: strings.loadingNotes(),
+          plain: Platform.OS === "ios"
         }}
         onGoBack={goBackToLibrary}
       />
@@ -140,9 +146,10 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
         placeholder={{
           title: strings.yourInbox(),
           paragraph: strings.inboxEmpty(),
-          button: strings.createNewNote(),
+          button: Platform.OS === "ios" ? undefined : strings.createNewNote(),
           action: openEditor,
           loading: strings.loadingInbox(),
+          plain: Platform.OS === "ios",
           // "notes" has generic tips attached to it which would replace the
           // paragraph above; the inbox has none so its own copy is shown.
           type: "inbox"
@@ -314,6 +321,7 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
           }}
         >
           <Text
+            testID="library-heading"
             style={{
               flex: 1,
               color: visual.primaryText,
@@ -341,9 +349,7 @@ export default function Library({ navigation }: NavigationProps<"Library">) {
             />
           </Pressable>
         </View>
-        {collections.map((item, index) =>
-          row(item, index, collections.length)
-        )}
+        {collections.map((item, index) => row(item, index, collections.length))}
         {destinations.map((item, index) =>
           row(item, index, destinations.length, visual.sectionSpacing)
         )}

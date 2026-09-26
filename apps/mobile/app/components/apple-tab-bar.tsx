@@ -25,6 +25,7 @@ import {
   ViewStyle
 } from "react-native";
 import { useThemeColors } from "@notesnook/theme";
+import { strings } from "@notesnook/intl";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AppleTabBarSelection,
@@ -34,6 +35,7 @@ import { notesnook } from "../../e2e/test.ids";
 
 type NativeTabBarProps = {
   selectedSection: AppleTabBarSelection;
+  itemTitles: Record<"library" | "tasks" | "search" | "compose", string>;
   onSelect: (event: { nativeEvent: { section: AppleTabBarSelection } }) => void;
   style: ViewStyle;
 };
@@ -71,6 +73,12 @@ export function AppleTabBar({
     >
       <NativeTabBar
         selectedSection={section}
+        itemTitles={{
+          library: strings.routes.Library(),
+          tasks: strings.tasksTitle(),
+          search: strings.routes.Search(),
+          compose: strings.newNoteTab()
+        }}
         onSelect={({ nativeEvent }) => onSelect(nativeEvent.section)}
         style={StyleSheet.absoluteFill}
       />

@@ -20,7 +20,7 @@ import { useThemeColors } from "@notesnook/theme";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import * as React from "react";
-import { Platform, View } from "react-native";
+import { Keyboard, Platform, View } from "react-native";
 import { hideAllTooltips } from "../hooks/use-tooltip";
 import SettingsService from "../services/settings";
 import useNavigationStore, {
@@ -32,9 +32,14 @@ import { fluidTabsRef, rootNavigatorRef } from "../utils/global-refs";
 import Navigation from "../services/navigation";
 import { isFeatureAvailable } from "@notesnook/common";
 import { isInternalLink, parseInternalLink } from "@notesnook/core";
-import { eSendEvent } from "../services/event-manager";
+import { eSendEvent, eSubscribeEvent } from "../services/event-manager";
 import { editorState } from "../screens/editor/tiptap/utils";
-import { eOnLoadNote } from "../utils/events";
+import {
+  eCloseFullscreenEditor,
+  eOnExitEditor,
+  eOnLoadNote,
+  eOpenFullscreenEditor
+} from "../utils/events";
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { AppleTabBar } from "../components/apple-tab-bar";
@@ -42,7 +47,8 @@ import {
   AppleTabBarSelection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
-import { openEditor } from "../screens/notes/common";
+import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
+import { DDS } from "../services/device-detection";
 
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
@@ -50,7 +56,7 @@ const DEFAULT_HOME: {
   name: string;
   params: any;
 } = {
-  name: "Notes",
+  name: Platform.OS === "ios" ? "Library" : "Notes",
   params: undefined
 };
 
@@ -90,11 +96,18 @@ const LegacyRemindersRedirect = ({ navigation }: { navigation: any }) => {
         timer = setTimeout(redirect, 100);
         return;
       }
-      navigation.replace("Notes");
+      navigation.replace(Platform.OS === "ios" ? "Library" : "Notes");
       rootNavigatorRef.current.navigate("Tasks" as any);
     };
     redirect();
     return () => clearTimeout(timer);
+  }, [navigation]);
+  return null;
+};
+
+const LegacyNotesRedirect = ({ navigation }: { navigation: any }) => {
+  React.useEffect(() => {
+    navigation.replace("Library", { initialCollection: "all-notes" });
   }, [navigation]);
   return null;
 };
@@ -244,6 +257,7 @@ const AppNavigation = React.memo(
         <AppStack.Screen
           name="Notes"
           getComponent={() => {
+            if (Platform.OS === "ios") return LegacyNotesRedirect;
             Notes = Notes || require("../screens/home").default;
             return Notes;
           }}
@@ -305,10 +319,7 @@ const AppNavigation = React.memo(
           }}
         />
 
-        <AppStack.Screen
-          name="Reminders"
-          component={LegacyRemindersRedirect}
-        />
+        <AppStack.Screen name="Reminders" component={LegacyRemindersRedirect} />
 
         <AppStack.Screen
           name="Monographs"
@@ -377,6 +388,27 @@ export const RootNavigation = () => {
   const [navigationReady, setNavigationReady] = React.useState(false);
   const clearSelection = useSelectionStore((state) => state.clearSelection);
   const resetTimer = React.useRef<NodeJS.Timeout>(undefined);
+  const composeReturnSection = React.useRef<"tasks" | "search" | null>(null);
+
+  React.useEffect(() => {
+    const returnFromCompose = () => {
+      const section = composeReturnSection.current;
+      if (!section) return;
+      composeReturnSection.current = null;
+      Keyboard.dismiss();
+      rootNavigatorRef.current?.navigate(
+        (section === "tasks" ? "Tasks" : "GlobalSearch") as any
+      );
+    };
+    const subscription = eSubscribeEvent(eOnExitEditor, returnFromCompose);
+    const fullscreenSubscription = eSubscribeEvent(eCloseFullscreenEditor, () => {
+      if (DDS.isTab) returnFromCompose();
+    });
+    return () => {
+      subscription?.unsubscribe();
+      fullscreenSubscription?.unsubscribe();
+    };
+  }, []);
 
   const onStateChange = React.useCallback(
     (state: any) => {
@@ -387,7 +419,10 @@ export const RootNavigation = () => {
           useAppleNavigationStore.getState().setSection("tasks");
         else if (focused.name === "GlobalSearch")
           useAppleNavigationStore.getState().setSection("search");
-        else if (focused.name === "FluidPanelsView") {
+        else if (
+          focused.name === "FluidPanelsView" &&
+          !composeReturnSection.current
+        ) {
           // Every route the content pane can show lives under Library now,
           // including the legacy Notes route (Library > All Notes).
           useAppleNavigationStore.getState().setSection("library");
@@ -452,12 +487,23 @@ export const RootNavigation = () => {
       // and is what the user returns to once the editor is dismissed.
       const currentRoot = rootNavigatorRef.current?.getCurrentRoute()?.name;
       if (currentRoot === "Tasks" || currentRoot === "GlobalSearch") {
+        composeReturnSection.current =
+          currentRoot === "Tasks" ? "tasks" : "search";
         // Neither is a note context. Drop any first-save hook a notebook list
         // left behind so the note is created unassigned.
-        editorState().onNoteCreated = null;
+        setOnFirstSaveUnassigned();
+      } else if (useNavigationStore.getState().currentRoute !== "Notebook") {
+        // Library root, All Notes, and Inbox create unassigned notes.
+        setOnFirstSaveUnassigned();
       }
       if (currentRoot !== "FluidPanelsView") {
         rootNavigatorRef.current?.navigate("FluidPanelsView" as any);
+      }
+      if (DDS.isTab) {
+        // The split editor is persistently visible on iPad and has no close
+        // control. A global compose action needs a dismissible editor so the
+        // previous top-level destination can be restored.
+        setTimeout(() => eSendEvent(eOpenFullscreenEditor), 100);
       }
       openEditor();
       return;

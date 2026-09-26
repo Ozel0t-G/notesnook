@@ -37,6 +37,7 @@ enum VeyraNIntentFailure: LocalizedError {
   case invalidInput
   case notFound
   case ambiguous
+  case alreadyCompleted
   case failed
 
   var errorDescription: String? {
@@ -44,8 +45,10 @@ enum VeyraNIntentFailure: LocalizedError {
     case .unavailable: return "VeyraN could not finish this action. Open the app and try again."
     case .locked: return "Unlock VeyraN before using this shortcut."
     case .invalidInput: return "Check the shortcut inputs and try again."
-    case .notFound: return "The Task or List could not be found."
-    case .ambiguous: return "More than one Task has that title. Use a unique title."
+    case .notFound:
+      return "That Task or List is no longer in VeyraN, or it belongs to another account."
+    case .ambiguous: return "More than one List has that name. Use a unique List name."
+    case .alreadyCompleted: return "That Task is already completed."
     case .failed: return "VeyraN could not save this action."
     }
   }
@@ -57,7 +60,25 @@ enum VeyraNIntentFailure: LocalizedError {
     case "invalid": return .invalidInput
     case "notFound": return .notFound
     case "ambiguous": return .ambiguous
+    case "alreadyCompleted": return .alreadyCompleted
     default: return .failed
+    }
+  }
+}
+
+/// Starts this process's React Native host without mounting a UI surface.
+///
+/// `TaskWidgetReactHost` is the application target's only React Native boot
+/// helper and is not widget specific; it is idempotent and returns immediately
+/// when a host already exists. An action that does not open the app can be
+/// running in a process that has no host yet, and the encrypted Task domain
+/// lives entirely in that host.
+enum VeyraNReactHost {
+  static func ensureStarted() async -> Bool {
+    await withCheckedContinuation { continuation in
+      TaskWidgetReactHost.ensureStarted { started in
+        continuation.resume(returning: started)
+      }
     }
   }
 }
@@ -73,7 +94,20 @@ final class VeyraNIntentMailbox {
   private var pending: [String: PendingIntentRequest] = [:]
   private var replies: [String: IntentReply] = [:]
 
-  func submit(action: String, payload: [String: String]) async throws -> String {
+  /// - Parameters:
+  ///   - requiresHost: For an action that does not open the app. That process
+  ///     may have no React Native instance at all, and the encrypted Task
+  ///     domain lives only there, so it is asked to start before this waits.
+  ///     A foreground action does not need it: the app is being brought up
+  ///     anyway, and its App component starts the host.
+  ///   - timeout: How long a definitive answer is worth waiting for. A cold
+  ///     start has to load the bundle and open the encrypted database.
+  func submit(
+    action: String,
+    payload: [String: String],
+    requiresHost: Bool = false,
+    timeout: TimeInterval = 30
+  ) async throws -> String {
     let id = UUID().uuidString
     lock.lock()
     pending[id] = PendingIntentRequest(id: id, action: action, payload: payload)
@@ -86,11 +120,16 @@ final class VeyraNIntentMailbox {
       replies.removeValue(forKey: id)
       lock.unlock()
     }
+    // Registered first, so the host's drain-on-start finds this request even
+    // when the bundle finishes loading before the notification below is posted.
+    if requiresHost, await VeyraNReactHost.ensureStarted() == false {
+      throw VeyraNIntentFailure.unavailable
+    }
     DispatchQueue.main.async {
       NotificationCenter.default.post(name: Self.pendingNotification, object: nil)
     }
 
-    for _ in 0..<300 {
+    for _ in 0..<max(1, Int(timeout * 10)) {
       if let reply = takeReply(id) {
         guard reply.status == "ok" else {
           throw VeyraNIntentFailure.from(reply.status)

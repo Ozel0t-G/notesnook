@@ -6,6 +6,7 @@ import Config from "react-native-config";
 import "react-native-get-random-values";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { enableFreeze } from "react-native-screens";
+import { AppIntentHost } from "./app/services/app-intent-host";
 import { BackgroundSync } from "./app/services/background-sync";
 import Notifications from "./app/services/notifications";
 import { TaskWidgetCompletionHost } from "./app/services/task-widget-completion-host";
@@ -19,6 +20,10 @@ Notifications.init();
 // possibly on a cold start where no surface is ever mounted. It is answered
 // here, at the top level, rather than from the App component.
 TaskWidgetCompletionHost.start();
+// The Shortcuts actions that do not open the app — the Task parameter picker,
+// Complete Task and Today's Tasks — reach this process the same way, so they are
+// answered here rather than from the App component.
+AppIntentHost.start();
 
 enableFreeze(true);
 NetInfo.configure({

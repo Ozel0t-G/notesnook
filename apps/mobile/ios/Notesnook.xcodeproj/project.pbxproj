@@ -70,6 +70,7 @@
 		D10000000000000000000020 /* VeyraNIntentMailbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000020 /* VeyraNIntentMailbox.swift */; };
 		D10000000000000000000021 /* VeyraNIntentModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000021 /* VeyraNIntentModule.m */; };
 		D10000000000000000000022 /* VeyraNShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000022 /* VeyraNShortcuts.swift */; };
+		D10000000000000000000025 /* VeyraNTaskEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000025 /* VeyraNTaskEntity.swift */; };
 		D10000000000000000000023 /* VeyraNCaptureOpenIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000023 /* VeyraNCaptureOpenIntent.swift */; };
 		D10000000000000000000024 /* VeyraNCaptureOpenIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000023 /* VeyraNCaptureOpenIntent.swift */; };
 		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
@@ -208,6 +209,7 @@
 		D20000000000000000000020 /* VeyraNIntentMailbox.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNIntentMailbox.swift; sourceTree = "<group>"; };
 		D20000000000000000000021 /* VeyraNIntentModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNIntentModule.m; sourceTree = "<group>"; };
 		D20000000000000000000022 /* VeyraNShortcuts.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNShortcuts.swift; sourceTree = "<group>"; };
+		D20000000000000000000025 /* VeyraNTaskEntity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNTaskEntity.swift; sourceTree = "<group>"; };
 		D20000000000000000000023 /* VeyraNCaptureOpenIntent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNCaptureOpenIntent.swift; sourceTree = "<group>"; };
 		D20000000000000000000003 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = ../../../resources/icon.png; sourceTree = SOURCE_ROOT; };
 		D20000000000000000000004 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -442,6 +444,7 @@
 				D20000000000000000000020 /* VeyraNIntentMailbox.swift */,
 				D20000000000000000000021 /* VeyraNIntentModule.m */,
 				D20000000000000000000022 /* VeyraNShortcuts.swift */,
+				D20000000000000000000025 /* VeyraNTaskEntity.swift */,
 			);
 			name = AppIntents;
 			path = Notesnook/AppIntents;
@@ -1063,6 +1066,7 @@
 				D10000000000000000000020 /* VeyraNIntentMailbox.swift in Sources */,
 				D10000000000000000000021 /* VeyraNIntentModule.m in Sources */,
 				D10000000000000000000022 /* VeyraNShortcuts.swift in Sources */,
+				D10000000000000000000025 /* VeyraNTaskEntity.swift in Sources */,
 				D10000000000000000000023 /* VeyraNCaptureOpenIntent.swift in Sources */,
 				64F1C8C66C1A56ADE2A0CAA5 /* SceneDelegate.m in Sources */,
 			);

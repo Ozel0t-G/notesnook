@@ -77,6 +77,14 @@ private enum VeyraNCaptureFailure: LocalizedError {
 @available(iOS 18.0, *)
 struct VeyraNOpenCaptureIntent: OpenIntent {
   static let title: LocalizedStringResource = "Open VeyraN Capture"
+
+  // Control Center plumbing, not a user-facing action. Its only job is to ask
+  // the app for a capture surface, which Shortcuts already offers properly
+  // through Quick Task and Quick Note; listing it as a seventh action would be
+  // confusing. Controls reference this intent type directly and do not need it
+  // to be discoverable, the same as the widget's completion intent.
+  static var isDiscoverable: Bool { false }
+
   @available(iOS 26.0, *)
   static let supportedModes: IntentModes = .foreground(.immediate)
 

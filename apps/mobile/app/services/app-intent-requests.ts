@@ -17,20 +17,62 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { strings } from "@notesnook/intl";
 import { db } from "../common/database";
+import { MMKV } from "../common/database/mmkv";
+import { taskWidgetAccountScope } from "../hooks/task-widget-completion-intents";
 import { textToHTML } from "./notifications";
 import { TaskNotifications } from "./task-notifications";
 import Navigation from "./navigation";
+import { ReminderWidget } from "./reminder-widget";
+import SettingsService from "./settings";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useUserStore } from "../stores/use-user-store";
+import {
+  buildTaskEntityCandidate,
+  buildTaskEntityCandidates,
+  decodeTaskEntityId,
+  decodeTaskEntityIds,
+  matchOpenTasks,
+  rankOpenTasks,
+  resolveTaskCompletionTarget,
+  type TaskEntityCandidate,
+  type TaskEntityContext
+} from "./app-intent-tasks";
+
+export type AppIntentAction =
+  | "createTask"
+  | "completeTask"
+  | "createNote"
+  | "todayTasks"
+  | "suggestTasks"
+  | "resolveTasks";
 
 export type AppIntentRequest = {
   id: string;
-  action: "createTask" | "completeTask" | "createNote" | "todayTasks";
+  action: AppIntentAction;
   payload: Record<string, string>;
 };
 
 export type AppIntentReply = { status: string; value: string };
+
+/**
+ * Actions the app can answer without a mounted surface. They read or complete
+ * Tasks through the same encrypted domain the Tasks screen uses, need no user
+ * input and cannot raise a system permission prompt, so their intents do not
+ * have to drag the person into the app to run.
+ *
+ * The two creating actions stay out. `createTask` can ask for notification
+ * permission for a reminder or an urgent Task, and that system alert needs a
+ * foreground app; both write paths keep their existing foreground behavior
+ * until the headless route has been verified on hardware.
+ */
+export const HEADLESS_APP_INTENT_ACTIONS: ReadonlySet<string> = new Set([
+  "completeTask",
+  "todayTasks",
+  "suggestTasks",
+  "resolveTasks"
+]);
 
 const repeatRules: Record<string, string | undefined> = {
   never: undefined,
@@ -57,11 +99,71 @@ function failure(status: string): AppIntentReply {
   return { status, value: "" };
 }
 
+function appLockEnabled() {
+  return (
+    // The persisted setting is the only trustworthy source in a process that
+    // has never mounted the App component.
+    !!SettingsService.get().appLockEnabled ||
+    !!useSettingStore.getState().settings.appLockEnabled
+  );
+}
+
+/**
+ * Whether this process may act on an out-of-app request at all.
+ *
+ * A headless intent process never mounts the App component, so `appLocked` is
+ * still at its unlocked default there and cannot be trusted. `isAppLoading`
+ * only becomes false once the App component has opened the database past its
+ * own App Lock gate, which makes it the positive signal that the person really
+ * is inside an unlocked app.
+ */
+export function appIntentLocked() {
+  const user = useUserStore.getState();
+  if (user.appLocked || user.isLoggingOut) return true;
+  return appLockEnabled() && useSettingStore.getState().isAppLoading;
+}
+
+/**
+ * Whether Task titles may leave the app. Shortcuts output, the Siri response
+ * and the parameter picker all live outside VeyraN, so App Lock withholds
+ * titles even while the current UI is unlocked. This is the same rule the Task
+ * widget snapshot uses.
+ */
+function mayExportTaskTitles() {
+  const user = useUserStore.getState();
+  return !appLockEnabled() && !user.appLocked && !user.isLoggingOut;
+}
+
+/**
+ * The same per-account token the Task widget uses, so one account's saved
+ * Shortcut can never address another account's Task. It is an isolation token,
+ * not a credential.
+ */
+async function currentAccountScope(): Promise<string> {
+  const accountId = (await db.user.getUser())?.id || null;
+  return taskWidgetAccountScope(MMKV, accountId);
+}
+
+async function taskEntityContext(): Promise<TaskEntityContext> {
+  const listNames: Record<string, string> = {};
+  for (const list of await db.taskLists.list()) listNames[list.id] = list.name;
+  return {
+    scope: await currentAccountScope(),
+    today: localDate(new Date()),
+    listNames,
+    labels: {
+      untitled: strings.untitled(),
+      overdue: strings.tasksOverdue(),
+      today: strings.dueToday(),
+      due: (date: string) => strings.due(date)
+    }
+  };
+}
+
 export async function executeAppIntentRequest(
   request: AppIntentRequest
 ): Promise<AppIntentReply> {
-  if (useUserStore.getState().appLocked || useUserStore.getState().isLoggingOut)
-    return failure("locked");
+  if (appIntentLocked()) return failure("locked");
   if (!db.isInitialized) return failure("unavailable");
 
   try {
@@ -127,18 +229,84 @@ export async function executeAppIntentRequest(
         });
         return { status: "ok", value: task.id };
       }
+      case "suggestTasks": {
+        if (!mayExportTaskTitles()) return failure("locked");
+        const context = await taskEntityContext();
+        const tasks = await db.tasks.list();
+        const query = payload.query?.trim();
+        return {
+          status: "ok",
+          value: JSON.stringify(
+            buildTaskEntityCandidates(
+              query
+                ? matchOpenTasks(tasks, query, context.today)
+                : rankOpenTasks(tasks, context.today),
+              context
+            )
+          )
+        };
+      }
+      case "resolveTasks": {
+        if (!mayExportTaskTitles()) return failure("locked");
+        const context = await taskEntityContext();
+        const ids = decodeTaskEntityIds(payload.ids, context.scope);
+        if (!ids) return failure("invalid");
+        const tasks = await db.tasks.list();
+        const byId = new Map(tasks.map((task) => [task.id, task] as const));
+        const candidates: TaskEntityCandidate[] = [];
+        for (const id of ids) {
+          const task = byId.get(id);
+          if (!task) continue;
+          // A saved parameter keeps the identifier Shortcuts stored, but a
+          // recurring series is described by whichever occurrence is open, so
+          // the person sees the schedule the action would actually complete.
+          const target = resolveTaskCompletionTarget(task, tasks);
+          const display =
+            (target.kind === "complete" ? byId.get(target.id) : undefined) ||
+            task;
+          candidates.push(
+            buildTaskEntityCandidate(
+              // The entity id is rebuilt from the same scope it was decoded
+              // with, so it is exactly the identifier that was requested.
+              `${context.scope}:${id}`,
+              display,
+              context
+            )
+          );
+        }
+        return { status: "ok", value: JSON.stringify(candidates) };
+      }
       case "completeTask": {
-        const title = payload.title?.trim();
-        if (!title) return failure("invalid");
-        const matches = (await db.tasks.list()).filter(
-          (task) =>
-            !task.completed &&
-            task.title.toLocaleLowerCase() === title.toLocaleLowerCase()
+        const taskId = decodeTaskEntityId(
+          payload.entityId,
+          await currentAccountScope()
         );
-        if (!matches.length) return failure("notFound");
-        if (matches.length !== 1) return failure("ambiguous");
-        await db.tasks.complete(matches[0].id);
-        return { status: "ok", value: matches[0].id };
+        // A Shortcut saved under another account, or a hand-edited parameter,
+        // names nothing here.
+        if (!taskId) return failure("notFound");
+        const picked = await db.tasks.get(taskId);
+        if (!picked) return failure("notFound");
+        const target = resolveTaskCompletionTarget(
+          picked,
+          await db.tasks.list()
+        );
+        if (target.kind === "alreadyCompleted")
+          return failure("alreadyCompleted");
+        // App Lock may have been turned on while the domain was being read.
+        if (appIntentLocked()) return failure("locked");
+        // The same encrypted-domain operation as the Tasks screen. Core
+        // completion is idempotent and is what advances a recurring series.
+        await db.tasks.complete(target.id);
+        // The Task is persisted. A widget snapshot that cannot be refreshed is
+        // a stale derived cache, not a failed completion, so it must not make
+        // Shortcuts report a failure and invite a second completion.
+        try {
+          ReminderWidget.update();
+          await ReminderWidget.waitForUpdate();
+        } catch {
+          // Keep the persisted completion as the acknowledged result.
+        }
+        return { status: "ok", value: target.id };
       }
       case "createNote": {
         const title = payload.title?.trim();
@@ -173,8 +341,7 @@ export async function executeAppIntentRequest(
       case "todayTasks": {
         // Shortcut output lives outside the app. App Lock therefore blocks
         // exporting Task titles even when the current UI was just unlocked.
-        if (useSettingStore.getState().settings.appLockEnabled)
-          return failure("locked");
+        if (!mayExportTaskTitles()) return failure("locked");
         const titles = (await db.tasks.smartList("today"))
           .slice(0, 50)
           .map((task) => task.title);

@@ -44,7 +44,14 @@ enum VeyraNRepeat: String, AppEnum {
 @available(iOS 16.0, *)
 struct VeyraNCreateTaskIntent: AppIntent {
   static let title: LocalizedStringResource = "Create Task in VeyraN"
-  static let description = IntentDescription("Create a Task in the encrypted VeyraN library.")
+  static let description = IntentDescription(
+    "Create a Task in the encrypted VeyraN library, with an optional reminder and repeat.",
+    categoryName: "Tasks",
+    searchKeywords: ["task", "todo", "reminder", "repeat", "due", "add"],
+    resultValueName: "Task Identifier"
+  )
+  // Kept in the foreground: a reminder or an urgent Task may need notification
+  // permission, and that system alert cannot be presented from the background.
   static var openAppWhenRun: Bool { true }
   @available(iOS 26.0, *)
   static let supportedModes: IntentModes = .foreground(.immediate)
@@ -81,7 +88,12 @@ struct VeyraNCreateTaskIntent: AppIntent {
 @available(iOS 16.0, *)
 struct VeyraNQuickTaskIntent: AppIntent {
   static let title: LocalizedStringResource = "Quick Task in VeyraN"
-  static let description = IntentDescription("Quickly save a Task in VeyraN.")
+  static let description = IntentDescription(
+    "Quickly save a Task in VeyraN.",
+    categoryName: "Tasks",
+    searchKeywords: ["task", "todo", "quick", "add", "capture"],
+    resultValueName: "Task Identifier"
+  )
   static var openAppWhenRun: Bool { true }
   @available(iOS 26.0, *)
   static let supportedModes: IntentModes = .foreground(.immediate)
@@ -106,29 +118,53 @@ struct VeyraNQuickTaskIntent: AppIntent {
 @available(iOS 16.0, *)
 struct VeyraNCompleteTaskIntent: AppIntent {
   static let title: LocalizedStringResource = "Complete Task in VeyraN"
-  static let description = IntentDescription("Complete a Task by its exact title.")
-  static var openAppWhenRun: Bool { true }
+  static let description = IntentDescription(
+    "Choose one of your Tasks and complete it. Repeating Tasks advance to their next date.",
+    categoryName: "Tasks",
+    searchKeywords: ["task", "complete", "done", "check off", "reminder"],
+    resultValueName: "Task Identifier"
+  )
+  // Completing a chosen Task needs no further input and cannot raise a system
+  // permission prompt, so it does not interrupt whatever the person is doing.
+  // The encrypted Task domain is reached in this process instead; see
+  // VeyraNTaskEntity.swift.
+  static var openAppWhenRun: Bool { false }
   @available(iOS 26.0, *)
-  static let supportedModes: IntentModes = .foreground(.immediate)
+  static let supportedModes: IntentModes = .background
 
-  @Parameter(title: "Task Title") var taskTitle: String
+  /// A picked Task record, not a title. Two Tasks may share a title, and the
+  /// old exact-title lookup had to refuse both of them.
+  @Parameter(title: "Task") var task: VeyraNTaskEntity
 
   static var parameterSummary: some ParameterSummary {
-    Summary("Complete \(\.$taskTitle) in VeyraN")
+    Summary("Complete \(\.$task) in VeyraN")
   }
 
-  func perform() async throws -> some IntentResult & ProvidesDialog {
-    _ = try await VeyraNIntentMailbox.shared.submit(
-      action: "completeTask", payload: ["title": taskTitle]
+  func perform() async throws -> some IntentResult & ProvidesDialog & ReturnsValue<String> {
+    // Returns only once the encrypted domain has persisted the completion, so
+    // the dialog can never claim a completion the database did not accept.
+    let id = try await VeyraNIntentMailbox.shared.submit(
+      action: "completeTask",
+      payload: ["entityId": task.id],
+      requiresHost: true,
+      // Long enough for a cold start to load the bundle and open the encrypted
+      // database, short enough to answer the system within the background
+      // execution this intent is given. Matches the Task widget's commit.
+      timeout: 25
     )
-    return .result(dialog: "Task completed in VeyraN.")
+    return .result(value: id, dialog: "Task completed in VeyraN.")
   }
 }
 
 @available(iOS 16.0, *)
 struct VeyraNCreateNoteIntent: AppIntent {
   static let title: LocalizedStringResource = "Create Note in VeyraN"
-  static let description = IntentDescription("Create a Note in the encrypted VeyraN library.")
+  static let description = IntentDescription(
+    "Create a Note in the encrypted VeyraN library.",
+    categoryName: "Notes",
+    searchKeywords: ["note", "write", "add", "create"],
+    resultValueName: "Note Identifier"
+  )
   static var openAppWhenRun: Bool { true }
   @available(iOS 26.0, *)
   static let supportedModes: IntentModes = .foreground(.immediate)
@@ -153,7 +189,12 @@ struct VeyraNCreateNoteIntent: AppIntent {
 @available(iOS 16.0, *)
 struct VeyraNQuickNoteIntent: AppIntent {
   static let title: LocalizedStringResource = "Quick Note in VeyraN"
-  static let description = IntentDescription("Quickly save a Note in VeyraN.")
+  static let description = IntentDescription(
+    "Quickly save a Note in VeyraN.",
+    categoryName: "Notes",
+    searchKeywords: ["note", "quick", "capture", "jot", "add"],
+    resultValueName: "Note Identifier"
+  )
   static var openAppWhenRun: Bool { true }
   @available(iOS 26.0, *)
   static let supportedModes: IntentModes = .foreground(.immediate)
@@ -175,14 +216,21 @@ struct VeyraNQuickNoteIntent: AppIntent {
 @available(iOS 16.0, *)
 struct VeyraNTodayTasksIntent: AppIntent {
   static let title: LocalizedStringResource = "Get Today's VeyraN Tasks"
-  static let description = IntentDescription("Get titles of Tasks due today or overdue.")
-  static var openAppWhenRun: Bool { true }
+  static let description = IntentDescription(
+    "Get titles of Tasks due today or overdue. Unavailable while App Lock is on.",
+    categoryName: "Tasks",
+    searchKeywords: ["task", "today", "overdue", "due", "list"],
+    resultValueName: "Task Titles"
+  )
+  // An action whose whole purpose is to hand a value to the rest of a shortcut
+  // has no reason to take over the screen first.
+  static var openAppWhenRun: Bool { false }
   @available(iOS 26.0, *)
-  static let supportedModes: IntentModes = .foreground(.immediate)
+  static let supportedModes: IntentModes = .background
 
   func perform() async throws -> some IntentResult & ReturnsValue<[String]> {
     let json = try await VeyraNIntentMailbox.shared.submit(
-      action: "todayTasks", payload: [:]
+      action: "todayTasks", payload: [:], requiresHost: true, timeout: 25
     )
     guard let data = json.data(using: .utf8),
           let titles = try? JSONDecoder().decode([String].self, from: data) else {
@@ -205,14 +253,22 @@ struct VeyraNAppShortcuts: AppShortcutsProvider {
       phrases: ["Create a task in \(.applicationName)"],
       shortTitle: "Create Task", systemImageName: "checkmark.circle"
     )
+    // The Task is chosen from the picker, so Siri asks which one rather than
+    // trying to match a spoken title against the whole library.
     AppShortcut(
       intent: VeyraNCompleteTaskIntent(),
-      phrases: ["Complete a task in \(.applicationName)"],
+      phrases: [
+        "Complete a task in \(.applicationName)",
+        "Mark a task done in \(.applicationName)"
+      ],
       shortTitle: "Complete Task", systemImageName: "checkmark"
     )
     AppShortcut(
       intent: VeyraNQuickNoteIntent(),
-      phrases: ["Make a quick note in \(.applicationName)"],
+      phrases: [
+        "Make a quick note in \(.applicationName)",
+        "Jot this down in \(.applicationName)"
+      ],
       shortTitle: "Quick Note", systemImageName: "square.and.pencil"
     )
     AppShortcut(
@@ -222,7 +278,10 @@ struct VeyraNAppShortcuts: AppShortcutsProvider {
     )
     AppShortcut(
       intent: VeyraNTodayTasksIntent(),
-      phrases: ["Show today's tasks in \(.applicationName)"],
+      phrases: [
+        "Show today's tasks in \(.applicationName)",
+        "What's due today in \(.applicationName)"
+      ],
       shortTitle: "Today's Tasks", systemImageName: "calendar"
     )
   }

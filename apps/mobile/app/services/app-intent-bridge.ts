@@ -27,6 +27,7 @@ import { rootNavigatorRef } from "../utils/global-refs";
 import { DatabaseLogger } from "../common/database";
 import {
   AppIntentRequest,
+  HEADLESS_APP_INTENT_ACTIONS,
   executeAppIntentRequest
 } from "./app-intent-requests";
 
@@ -50,6 +51,13 @@ async function drain(module: IntentModule) {
       drainAgain = false;
       const requests = await module.pendingRequests();
       for (const request of requests) {
+        // `AppIntentHost` owns the actions that run without opening the app,
+        // including the Task parameter picker and Complete Task. It is started
+        // at the top level so it also answers a cold background launch. Keeping
+        // the two owners disjoint by action is what stops one request from
+        // being executed twice against the Task domain.
+        if (request?.action && HEADLESS_APP_INTENT_ACTIONS.has(request.action))
+          continue;
         if (!request?.id || !request?.action || !request?.payload) {
           DatabaseLogger.error(
             new Error("Malformed native App Intent request"),

@@ -40,3 +40,13 @@ The theme branch defines VeyraN Light and Dark and includes migration logic inte
 4. Integrate reviewed signed commits deliberately into `test`, preserving unrelated dirty files. Run focused tests, then major build/E2E and network gates. Record any unavailable live-account/device tests explicitly.
 
 This report will be updated with integrated results before the migration can be called complete.
+
+## Review checkpoint after the 2026-09-26 10:30 p.m. quota reset
+
+Claude resumed all three isolated worktrees with delegated agents. A new quota limit stopped branding and theme work at a reported 3:40 a.m. Europe/Oslo reset. No implementation branch was integrated into `test`.
+
+- **Brand:** signed commits `9f7f8cf9b`, `d2302c159`, and `937410151` remove a paid/legacy-plan fallback, remove several web purchase routes, and add an audit. Codex review still found unverified Notesnook storage/file-size tiers, reachable Notesnook help/support and mobile paywall paths, upstream trial and web subscription-update flows, and a web editor permission callback that no longer respects a silent denial. The branch is clean but blocked.
+- **Backend:** signed commits `160418209`, `b96d1e3de`, and `0040a9ea0` add preflight guards, stronger host validation, and tests. Claude reported 63 new core tests and 6 web tests passing, with database-level sync tests unavailable due a native `better-sqlite3` build failure. Independent Codex review still found that a fetched remote user is saved before backend affinity is accepted; `record()` ignores saved server configuration, and signup lacks rollback. These can replace local cached identity or rebind existing notes. The branch is clean but blocked. Live account/sync was not tested.
+- **Theme:** the four earlier signed commits remain. Claude's follow-up has uncommitted picker, upstream-call, metadata, migration, and test edits. It also left incidental package-lock, font, and TypeScript build-info changes that must be classified and cleaned before commits. No integration or visual/device validation occurred.
+
+The dedicated disposable VeyraN test inbox needed for live registration and sync has been requested from the user. Until one is available, production account-flow results remain unverified. The next same-thread continuation is scheduled after the reported quota reset.

@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { TestBuilder, Tests } from "./utils";
 import { expect as jestExpect } from "@jest/globals";
+import { notesnook } from "../test.ids";
 
 describe("APP LAUNCH AND NAVIGATION", () => {
   it("App should launch successfully & hide welcome screen", async () => {
@@ -38,6 +39,18 @@ describe("APP LAUNCH AND NAVIGATION", () => {
       .openTasks()
       .isVisibleById("task-smart-all")
       .run();
+  });
+
+  it("iPad Library child returns through its back control", async () => {
+    if (device.getPlatform() !== "ios" || !device.name.includes("iPad")) return;
+    await TestBuilder.create().prepare().run();
+    await element(by.label("Favorites").withAncestor(by.id("library-scroll"))).tap();
+    const back = element(by.id(notesnook.ids.default.header.buttons.left));
+    await waitFor(back).toBeVisible().withTimeout(10000);
+    await back.tap();
+    await waitFor(element(by.id("library-heading")))
+      .toBeVisible()
+      .withTimeout(10000);
   });
 
   it("Bottom bar sections should work", async () => {

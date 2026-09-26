@@ -252,7 +252,9 @@ const Tests = {
         await expect(element(by.id("library-heading"))).toBeVisible();
       } catch {
         try {
-          await element(by.id(notesnook.ids.default.header.buttons.left)).tap();
+          const back = element(by.id(notesnook.ids.default.header.buttons.left));
+          await waitFor(back).toBeVisible().withTimeout(10000);
+          await back.tap();
         } catch {
           await Tests.tapTab(notesnook.tabbar.labels.library);
         }
@@ -261,9 +263,16 @@ const Tests = {
         .toBeVisible()
         .withTimeout(10000);
       const label = screen === "Notes" ? "All Notes" : String(screen);
-      const destination = element(by.text(label));
+      const destination = element(
+        (screen === "Notes" ? by.text(label) : by.label(label)).withAncestor(
+          by.id("library-scroll")
+        )
+      );
       await waitFor(destination).toBeVisible().withTimeout(10000);
       await destination.tap();
+      await waitFor(element(by.id("library-heading")))
+        .not.toBeVisible()
+        .withTimeout(10000);
       return;
     }
     let menu = Tests.fromId(notesnook.ids.default.header.buttons.left);

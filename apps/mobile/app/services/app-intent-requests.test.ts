@@ -116,7 +116,8 @@ jest.mock("@notesnook/intl", () => ({
     untitled: () => "Untitled",
     tasksOverdue: () => "Overdue",
     dueToday: () => "Due today",
-    due: (date: string) => `Due ${date}`
+    due: (date: string) => `Due ${date}`,
+    tasksCompleted: () => "Completed"
   }
 }));
 
@@ -247,10 +248,12 @@ describe("App Intent domain acknowledgements", () => {
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
-  test("a saved Shortcut for a recurring Task completes the open occurrence", async () => {
-    // Every occurrence has its own id, so the one the Shortcut stored stops
-    // being the open one after the first run. Completion still goes through the
-    // core operation that advances the series.
+  test("a saved Shortcut for a recurring Task never completes a different occurrence", async () => {
+    // Every occurrence has its own id. The occurrence the Shortcut stored is
+    // already completed here, and completion binds strictly to that id: it
+    // must report alreadyCompleted rather than rolling onto the series' next
+    // open occurrence, or a stale saved parameter could complete a Task the
+    // person never picked.
     const series = [
       task("aaaaaaaaaaaaaaaaaaaaaaaa", {
         title: "Water plants",
@@ -270,11 +273,44 @@ describe("App Intent domain acknowledgements", () => {
         action: "completeTask",
         payload: { entityId: `${SCOPE}:aaaaaaaaaaaaaaaaaaaaaaaa` }
       })
+    ).resolves.toEqual({ status: "alreadyCompleted", value: "" });
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
+  test("a double tap or AppIntent retry completes a recurring occurrence only once", async () => {
+    // The Task starts open. The first invocation completes it; a retry or a
+    // double tap resolves the same entity id, now completed, and must not
+    // complete a second occurrence of the series.
+    const picked = task("aaaaaaaaaaaaaaaaaaaaaaaa", {
+      title: "Water plants",
+      reminderDate: "2026-09-19",
+      recurrenceRule: "FREQ=WEEKLY"
+    });
+    mockTaskList.mockResolvedValue([picked]);
+    await expect(
+      executeAppIntentRequest({
+        id: "14",
+        action: "completeTask",
+        payload: { entityId: `${SCOPE}:aaaaaaaaaaaaaaaaaaaaaaaa` }
+      })
     ).resolves.toEqual({
       status: "ok",
-      value: "cccccccccccccccccccccccc"
+      value: "aaaaaaaaaaaaaaaaaaaaaaaa"
     });
-    expect(mockCompleteTask).toHaveBeenCalledWith("cccccccccccccccccccccccc");
+    expect(mockCompleteTask).toHaveBeenCalledTimes(1);
+
+    // The retry resolves the same, now-completed Task: `db.tasks.get` reads
+    // from the same list, which now reflects the completion above.
+    const completed = { ...picked, completed: true };
+    mockTaskList.mockResolvedValue([completed]);
+    await expect(
+      executeAppIntentRequest({
+        id: "15",
+        action: "completeTask",
+        payload: { entityId: `${SCOPE}:aaaaaaaaaaaaaaaaaaaaaaaa` }
+      })
+    ).resolves.toEqual({ status: "alreadyCompleted", value: "" });
+    expect(mockCompleteTask).toHaveBeenCalledTimes(1);
   });
 
   test("a completed Task with no open occurrence is not reported as completed now", async () => {
@@ -318,6 +354,24 @@ describe("App Intent domain acknowledgements", () => {
     expect(mockCompleteTask).not.toHaveBeenCalled();
   });
 
+  test("a warm background process refuses a completion once App Lock is enabled, even though isAppLoading never observed it", async () => {
+    // This process was already running before App Lock got turned on, so
+    // `isAppLoading` is stuck at its stale `false` and `appIntentLocked`
+    // alone would let the request through. The persisted setting must still
+    // refuse the write, the same way it already refuses title export.
+    mockAppLockEnabled = true;
+    mockAppLoading = false;
+    mockTaskList.mockResolvedValue([task("aaaaaaaaaaaaaaaaaaaaaaaa")]);
+    await expect(
+      executeAppIntentRequest({
+        id: "16",
+        action: "completeTask",
+        payload: { entityId: `${SCOPE}:aaaaaaaaaaaaaaaaaaaaaaaa` }
+      })
+    ).resolves.toEqual({ status: "locked", value: "" });
+    expect(mockCompleteTask).not.toHaveBeenCalled();
+  });
+
   test("picker suggestions describe each Task by List and schedule", async () => {
     mockTaskList.mockResolvedValue([
       task("aaaaaaaaaaaaaaaaaaaaaaaa", {
@@ -347,7 +401,11 @@ describe("App Intent domain acknowledgements", () => {
     ]);
   });
 
-  test("a saved parameter resolves to the occurrence it would complete", async () => {
+  test("a saved parameter for a completed occurrence resolves truthfully, not to a later occurrence", async () => {
+    // "Complete Task" refuses this saved parameter once its occurrence is
+    // done rather than completing a later occurrence of the series, so the
+    // picker must display the same completed occurrence rather than the
+    // series' next open one.
     const first = task("aaaaaaaaaaaaaaaaaaaaaaaa", {
       title: "Water plants",
       completed: true,
@@ -376,7 +434,7 @@ describe("App Intent domain acknowledgements", () => {
       {
         id: `${SCOPE}:aaaaaaaaaaaaaaaaaaaaaaaa`,
         title: "Water plants",
-        subtitle: expect.stringContaining("Personal")
+        subtitle: "Personal · Completed"
       }
     ]);
   });

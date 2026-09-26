@@ -51,6 +51,7 @@ export type TaskEntityLabels = {
   overdue: string;
   today: string;
   due: (date: string) => string;
+  completed: string;
 };
 
 /** `<account scope>:<Task id>`. */
@@ -207,6 +208,10 @@ export function taskEntitySubtitle(
 ): string {
   const parts: string[] = [];
   if (listName) parts.push(sanitizeEntityText(listName));
+  // A completed occurrence is displayed as itself, not as whichever
+  // occurrence of its series is still open, so its schedule is no longer
+  // relevant here: the label alone is the truthful state of this identifier.
+  if (task.completed) return [...parts, labels.completed].join(" · ");
   const { date, time } = scheduleOf(task);
   if (date) {
     const when =
@@ -228,9 +233,12 @@ export type TaskEntityContext = {
 };
 
 /**
- * `id` is passed separately because resolving a saved parameter has to keep the
- * identifier Shortcuts already stored, even when the record it describes best
- * is a later occurrence of the same recurring series.
+ * `id` is passed separately because resolving a saved parameter keeps the
+ * identifier Shortcuts already stored, even when the id was rebuilt after a
+ * scope lookup rather than derived fresh from `task.id`. The record itself
+ * must still be the exact one that id addresses: showing a different
+ * occurrence's schedule here would make the picker lie about what tapping
+ * "Complete Task" for this saved parameter will actually do.
  */
 export function buildTaskEntityCandidate(
   id: string,
@@ -270,23 +278,14 @@ export type TaskCompletionTarget =
   | { kind: "alreadyCompleted" };
 
 /**
- * A recurring Task gives every occurrence its own id, so the occurrence a
- * saved Shortcut points at stops being the open one as soon as it is
- * completed. Falling back to the open occurrence of the same series keeps that
- * Shortcut meaningful next week without storing a second identity anywhere;
- * the completion itself still goes through `db.tasks.complete`, which is what
- * advances the series.
+ * What "Complete Task" is allowed to complete: strictly the occurrence the
+ * caller named, never a different occurrence of the same series. A double tap
+ * or an AppIntent retry resolves the same already-completed id and gets
+ * `alreadyCompleted` back instead of rolling forward and completing a second
+ * occurrence.
  */
-export function resolveTaskCompletionTarget(
-  picked: Task,
-  tasks: Task[]
-): TaskCompletionTarget {
-  if (!picked.completed) return { kind: "complete", id: picked.id };
-  const series = picked.seriesId || picked.id;
-  const open = tasks
-    .filter((task) => !task.completed && (task.seriesId || task.id) === series)
-    .sort(compareSchedules);
-  return open.length
-    ? { kind: "complete", id: open[0].id }
-    : { kind: "alreadyCompleted" };
+export function resolveTaskCompletionTarget(picked: Task): TaskCompletionTarget {
+  return picked.completed
+    ? { kind: "alreadyCompleted" }
+    : { kind: "complete", id: picked.id };
 }

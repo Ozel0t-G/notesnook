@@ -124,14 +124,30 @@ export function appIntentLocked() {
 }
 
 /**
+ * Whether a headless process must refuse an out-of-app request outright,
+ * independent of `appIntentLocked`'s `isAppLoading` signal.
+ *
+ * A process that was already warm before App Lock got turned on keeps
+ * `isAppLoading` at its stale `false`, so `appIntentLocked` alone would let it
+ * through. The persisted setting has no such staleness window, so it is
+ * checked directly here rather than through `isAppLoading`. This is the same
+ * rule the Task widget snapshot uses, and it now also gates the headless
+ * "Complete Task" write, not just title export: a locked account must refuse
+ * a completion exactly as it refuses a title, not roll it forward for the UI
+ * to discover later.
+ */
+function appLockBlocksHeadlessAccess() {
+  const user = useUserStore.getState();
+  return appLockEnabled() || user.appLocked || user.isLoggingOut;
+}
+
+/**
  * Whether Task titles may leave the app. Shortcuts output, the Siri response
  * and the parameter picker all live outside VeyraN, so App Lock withholds
- * titles even while the current UI is unlocked. This is the same rule the Task
- * widget snapshot uses.
+ * titles even while the current UI is unlocked.
  */
 function mayExportTaskTitles() {
-  const user = useUserStore.getState();
-  return !appLockEnabled() && !user.appLocked && !user.isLoggingOut;
+  return !appLockBlocksHeadlessAccess();
 }
 
 /**
@@ -155,7 +171,8 @@ async function taskEntityContext(): Promise<TaskEntityContext> {
       untitled: strings.untitled(),
       overdue: strings.tasksOverdue(),
       today: strings.dueToday(),
-      due: (date: string) => strings.due(date)
+      due: (date: string) => strings.due(date),
+      completed: strings.tasksCompleted()
     }
   };
 }
@@ -257,19 +274,17 @@ export async function executeAppIntentRequest(
         for (const id of ids) {
           const task = byId.get(id);
           if (!task) continue;
-          // A saved parameter keeps the identifier Shortcuts stored, but a
-          // recurring series is described by whichever occurrence is open, so
-          // the person sees the schedule the action would actually complete.
-          const target = resolveTaskCompletionTarget(task, tasks);
-          const display =
-            (target.kind === "complete" ? byId.get(target.id) : undefined) ||
-            task;
+          // A saved parameter keeps the identifier Shortcuts stored, and it is
+          // displayed as exactly the record that id addresses. Completion
+          // binds strictly to this occurrence, so a completed one is labeled
+          // completed here rather than shown as whichever occurrence of the
+          // series is still open, which "Complete Task" would refuse anyway.
           candidates.push(
             buildTaskEntityCandidate(
               // The entity id is rebuilt from the same scope it was decoded
               // with, so it is exactly the identifier that was requested.
               `${context.scope}:${id}`,
-              display,
+              task,
               context
             )
           );
@@ -286,14 +301,13 @@ export async function executeAppIntentRequest(
         if (!taskId) return failure("notFound");
         const picked = await db.tasks.get(taskId);
         if (!picked) return failure("notFound");
-        const target = resolveTaskCompletionTarget(
-          picked,
-          await db.tasks.list()
-        );
+        const target = resolveTaskCompletionTarget(picked);
         if (target.kind === "alreadyCompleted")
           return failure("alreadyCompleted");
-        // App Lock may have been turned on while the domain was being read.
-        if (appIntentLocked()) return failure("locked");
+        // App Lock may have been turned on while the domain was being read,
+        // or this warm process may have been locked all along without
+        // `isAppLoading` ever having observed it.
+        if (appLockBlocksHeadlessAccess()) return failure("locked");
         // The same encrypted-domain operation as the Tasks screen. Core
         // completion is idempotent and is what advances a recurring series.
         await db.tasks.complete(target.id);

@@ -44,7 +44,8 @@ const labels = {
   untitled: "Untitled",
   overdue: "Overdue",
   today: "Due today",
-  due: (date: string) => `Due ${date}`
+  due: (date: string) => `Due ${date}`,
+  completed: "Completed"
 };
 
 const context: TaskEntityContext = {
@@ -215,58 +216,78 @@ describe("Shortcuts Task picker contents", () => {
 describe("what a saved Shortcut parameter completes", () => {
   test("an open Task is the Task that gets completed", () => {
     const open = task("a".repeat(24));
-    expect(resolveTaskCompletionTarget(open, [open])).toEqual({
+    expect(resolveTaskCompletionTarget(open)).toEqual({
       kind: "complete",
       id: open.id
     });
   });
 
-  test("a completed occurrence resolves to the open occurrence of its series", () => {
-    // Each occurrence has its own id, so the id a Shortcut saved stops being
-    // the open one after the first run. The next occurrence is still the same
-    // user intent, and completing it goes through the same core operation.
+  test("a completed Task is reported as already completed, not rolled onto another occurrence", () => {
+    // Each occurrence has its own id. Completion binds strictly to the id the
+    // caller named: rolling forward onto the series' next open occurrence
+    // here would let a stale saved parameter complete a Task the person never
+    // selected.
     const first = task("a".repeat(24), {
       completed: true,
       reminderDate: "2026-09-19",
       recurrenceRule: "FREQ=WEEKLY"
     });
-    const second = task("b".repeat(24), {
-      seriesId: first.id,
-      reminderDate: "2026-09-26",
-      recurrenceRule: "FREQ=WEEKLY"
+    expect(resolveTaskCompletionTarget(first)).toEqual({
+      kind: "alreadyCompleted"
     });
-    const third = task("c".repeat(24), {
-      seriesId: first.id,
-      reminderDate: "2026-10-03",
-      recurrenceRule: "FREQ=WEEKLY"
+  });
+
+  test("a double tap or AppIntent retry completes only once", () => {
+    // The first invocation completes the picked occurrence. A retry or a
+    // double tap resolves the same, now-completed Task id and must not
+    // complete a second occurrence of the series.
+    const picked = task("a".repeat(24), { recurrenceRule: "FREQ=WEEKLY" });
+    expect(resolveTaskCompletionTarget(picked)).toEqual({
+      kind: "complete",
+      id: picked.id
     });
-    expect(
-      resolveTaskCompletionTarget(first, [third, second, first])
-    ).toEqual({ kind: "complete", id: second.id });
-    // Resolving from a later occurrence finds the same series, and always the
-    // earliest occurrence that is still open.
-    const completedSecond = { ...second, completed: true };
-    expect(
-      resolveTaskCompletionTarget(completedSecond, [
-        third,
-        completedSecond,
-        first
-      ])
-    ).toEqual({ kind: "complete", id: third.id });
+    const completed = { ...picked, completed: true };
+    expect(resolveTaskCompletionTarget(completed)).toEqual({
+      kind: "alreadyCompleted"
+    });
   });
 
   test("a completed Task with nothing open is reported as already completed", () => {
     const done = task("a".repeat(24), { completed: true });
-    expect(resolveTaskCompletionTarget(done, [done])).toEqual({
+    expect(resolveTaskCompletionTarget(done)).toEqual({
       kind: "alreadyCompleted"
     });
   });
+});
 
-  test("another series' open Task is never completed by mistake", () => {
-    const done = task("a".repeat(24), { completed: true });
-    const other = task("b".repeat(24), { seriesId: "c".repeat(24) });
-    expect(resolveTaskCompletionTarget(done, [done, other])).toEqual({
-      kind: "alreadyCompleted"
+describe("what the picker displays for a saved Shortcut parameter", () => {
+  test("an open Task is displayed with its own schedule", () => {
+    const open = task("a".repeat(24), { reminderDate: "2026-09-20" });
+    expect(taskEntitySubtitle(open, "Personal", TODAY, labels)).toBe(
+      "Personal · Overdue"
+    );
+  });
+
+  test("a completed occurrence is displayed as itself, labeled completed, never as a later occurrence of its series", () => {
+    // Each occurrence has its own id, and completion binds strictly to the id
+    // a Shortcut saved: "Complete Task" refuses that saved parameter once its
+    // occurrence is done rather than rolling forward. The picker must not
+    // show a later occurrence's schedule for it either, or tapping the
+    // action on what the picker displayed would not do what it just showed.
+    const first = task("a".repeat(24), {
+      completed: true,
+      reminderDate: "2026-09-19",
+      recurrenceRule: "FREQ=WEEKLY"
     });
+    expect(taskEntitySubtitle(first, "Personal", TODAY, labels)).toBe(
+      "Personal · Completed"
+    );
+  });
+
+  test("a completed Task with no List name is still labeled completed", () => {
+    const done = task("a".repeat(24), { completed: true });
+    expect(taskEntitySubtitle(done, undefined, TODAY, labels)).toBe(
+      "Completed"
+    );
   });
 });

@@ -73,6 +73,12 @@ struct VeyraNTaskEntityQuery: EntityStringQuery {
   /// the encrypted database, but it is also blocking a visible list.
   private static let timeout: TimeInterval = 20
 
+  // iOS 27 is the first release that can route this query to the main app
+  // process explicitly. The encrypted Task domain only exists there, so
+  // background routing must not be left to guess a target.
+  @available(iOS 27.0, *)
+  static var allowedExecutionTargets: IntentExecutionTargets { .main }
+
   /// Resolving a parameter a Shortcut already saved.
   func entities(for identifiers: [String]) async throws -> [VeyraNTaskEntity] {
     let wellFormed = identifiers.filter {

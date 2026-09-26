@@ -47,8 +47,7 @@ struct VeyraNCreateTaskIntent: AppIntent {
   static let description = IntentDescription(
     "Create a Task in the encrypted VeyraN library, with an optional reminder and repeat.",
     categoryName: "Tasks",
-    searchKeywords: ["task", "todo", "reminder", "repeat", "due", "add"],
-    resultValueName: "Task Identifier"
+    searchKeywords: ["task", "todo", "reminder", "repeat", "due", "add"]
   )
   // Kept in the foreground: a reminder or an urgent Task may need notification
   // permission, and that system alert cannot be presented from the background.
@@ -91,8 +90,7 @@ struct VeyraNQuickTaskIntent: AppIntent {
   static let description = IntentDescription(
     "Quickly save a Task in VeyraN.",
     categoryName: "Tasks",
-    searchKeywords: ["task", "todo", "quick", "add", "capture"],
-    resultValueName: "Task Identifier"
+    searchKeywords: ["task", "todo", "quick", "add", "capture"]
   )
   static var openAppWhenRun: Bool { true }
   @available(iOS 26.0, *)
@@ -121,8 +119,7 @@ struct VeyraNCompleteTaskIntent: AppIntent {
   static let description = IntentDescription(
     "Choose one of your Tasks and complete it. Repeating Tasks advance to their next date.",
     categoryName: "Tasks",
-    searchKeywords: ["task", "complete", "done", "check off", "reminder"],
-    resultValueName: "Task Identifier"
+    searchKeywords: ["task", "complete", "done", "check off", "reminder"]
   )
   // Completing a chosen Task needs no further input and cannot raise a system
   // permission prompt, so it does not interrupt whatever the person is doing.
@@ -131,6 +128,11 @@ struct VeyraNCompleteTaskIntent: AppIntent {
   static var openAppWhenRun: Bool { false }
   @available(iOS 26.0, *)
   static let supportedModes: IntentModes = .background
+  // iOS 27 is the first release that can route a background intent to the
+  // main app process explicitly. The encrypted Task domain only exists
+  // there, so background routing must not be left to guess a target.
+  @available(iOS 27.0, *)
+  static var allowedExecutionTargets: IntentExecutionTargets { .main }
 
   /// A picked Task record, not a title. Two Tasks may share a title, and the
   /// old exact-title lookup had to refuse both of them.
@@ -162,8 +164,7 @@ struct VeyraNCreateNoteIntent: AppIntent {
   static let description = IntentDescription(
     "Create a Note in the encrypted VeyraN library.",
     categoryName: "Notes",
-    searchKeywords: ["note", "write", "add", "create"],
-    resultValueName: "Note Identifier"
+    searchKeywords: ["note", "write", "add", "create"]
   )
   static var openAppWhenRun: Bool { true }
   @available(iOS 26.0, *)
@@ -192,8 +193,7 @@ struct VeyraNQuickNoteIntent: AppIntent {
   static let description = IntentDescription(
     "Quickly save a Note in VeyraN.",
     categoryName: "Notes",
-    searchKeywords: ["note", "quick", "capture", "jot", "add"],
-    resultValueName: "Note Identifier"
+    searchKeywords: ["note", "quick", "capture", "jot", "add"]
   )
   static var openAppWhenRun: Bool { true }
   @available(iOS 26.0, *)
@@ -219,14 +219,18 @@ struct VeyraNTodayTasksIntent: AppIntent {
   static let description = IntentDescription(
     "Get titles of Tasks due today or overdue. Unavailable while App Lock is on.",
     categoryName: "Tasks",
-    searchKeywords: ["task", "today", "overdue", "due", "list"],
-    resultValueName: "Task Titles"
+    searchKeywords: ["task", "today", "overdue", "due", "list"]
   )
   // An action whose whole purpose is to hand a value to the rest of a shortcut
   // has no reason to take over the screen first.
   static var openAppWhenRun: Bool { false }
   @available(iOS 26.0, *)
   static let supportedModes: IntentModes = .background
+  // iOS 27 is the first release that can route a background intent to the
+  // main app process explicitly. The encrypted Task domain only exists
+  // there, so background routing must not be left to guess a target.
+  @available(iOS 27.0, *)
+  static var allowedExecutionTargets: IntentExecutionTargets { .main }
 
   func perform() async throws -> some IntentResult & ReturnsValue<[String]> {
     let json = try await VeyraNIntentMailbox.shared.submit(

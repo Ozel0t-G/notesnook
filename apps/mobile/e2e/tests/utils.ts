@@ -205,6 +205,14 @@ const Tests = {
    * an ancestor to Detox on iOS 27, so use the visible tab title directly.
    */
   async tapTab(label: string) {
+    if (label === "Library") {
+      try {
+        await expect(element(by.id("library-heading"))).toBeVisible();
+        return;
+      } catch {
+        // A Library collection or child route is currently covering the root.
+      }
+    }
     const idByLabel: Record<string, string> = {
       Library: notesnook.tabbar.itemIds.library,
       Tasks: notesnook.tabbar.itemIds.tasks,
@@ -212,8 +220,16 @@ const Tests = {
       "New Note": notesnook.tabbar.itemIds.newNote
     };
     const tab = element(by.id(idByLabel[label]));
-    await waitFor(tab).toBeVisible().withTimeout(10000);
-    await tab.tap();
+    try {
+      await waitFor(tab).toBeVisible().withTimeout(1500);
+      await tab.tap();
+    } catch {
+      // UIKit does not always expose the selected item's identifier on
+      // iPhone. Its visible title remains a tappable fallback.
+      const title = element(by.text(label)).atIndex(1);
+      await waitFor(title).toBeVisible().withTimeout(10000);
+      await title.tap();
+    }
   },
   /** Opens Tasks: the bottom bar on iOS, the drawer entry on Android. */
   async openTasks() {
@@ -232,9 +248,22 @@ const Tests = {
    */
   async navigate(screen: RouteName | ({} & string)) {
     if (isIOS()) {
-      await Tests.tapTab(notesnook.tabbar.labels.library);
+      try {
+        await expect(element(by.id("library-heading"))).toBeVisible();
+      } catch {
+        try {
+          await element(by.id(notesnook.ids.default.header.buttons.left)).tap();
+        } catch {
+          await Tests.tapTab(notesnook.tabbar.labels.library);
+        }
+      }
+      await waitFor(element(by.id("library-heading")))
+        .toBeVisible()
+        .withTimeout(10000);
       const label = screen === "Notes" ? "All Notes" : String(screen);
-      await Tests.fromText(label).waitAndTap();
+      const destination = element(by.text(label));
+      await waitFor(destination).toBeVisible().withTimeout(10000);
+      await destination.tap();
       return;
     }
     let menu = Tests.fromId(notesnook.ids.default.header.buttons.left);

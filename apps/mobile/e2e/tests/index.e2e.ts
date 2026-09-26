@@ -30,7 +30,10 @@ describe("APP LAUNCH AND NAVIGATION", () => {
       .prepare()
       .navigate("Favorites")
       .navigate("Monographs")
+      .navigate("Archive")
       .navigate("Trash")
+      .navigate("Notes")
+      .isVisibleByText("All Notes")
       // Reminders is a redirect stub now; Tasks is its own top-level section.
       .openTasks()
       .isVisibleById("task-smart-all")
@@ -39,18 +42,39 @@ describe("APP LAUNCH AND NAVIGATION", () => {
 
   it("Bottom bar sections should work", async () => {
     if (device.getPlatform() !== "ios") return;
-    await TestBuilder.create()
-      .prepare()
-      // Library is the root of every content route, including All Notes.
-      .waitAndTapByLabel("Library")
-      .isVisibleByText("Library")
-      .waitAndTapByLabel("Search")
-      .isVisibleById("global-search-input")
-      .waitAndTapByLabel("Tasks")
-      .isVisibleById("task-smart-all")
-      .waitAndTapByLabel("Library")
-      .isVisibleByText("Library")
-      .run();
+    await TestBuilder.create().prepare().run();
+    await Tests.tapTab("Library");
+    await waitFor(element(by.id("library-heading")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await Tests.tapTab("Search");
+    await waitFor(element(by.id("global-search-input")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await element(by.id("global-search-input")).tapReturnKey();
+    await Tests.sleep(500);
+    await Tests.tapTab("Tasks");
+    await waitFor(element(by.id("task-smart-all")))
+      .toBeVisible()
+      .withTimeout(10000);
+    await Tests.tapTab("Library");
+    await waitFor(element(by.id("library-heading")))
+      .toBeVisible()
+      .withTimeout(10000);
+  });
+
+  it("Library edge swipe does not open the legacy drawer", async () => {
+    if (device.getPlatform() !== "ios" || device.name.includes("iPad")) return;
+    await TestBuilder.create().prepare().run();
+    await element(by.id("library-scroll")).swipe(
+      "right",
+      "slow",
+      0.7,
+      0.02,
+      0.5
+    );
+    await expect(element(by.id("library-heading"))).toBeVisible();
+    await expect(element(by.text("Upgrade plan"))).not.toBeVisible();
   });
 
   it("New Note returns to the previously selected section", async () => {

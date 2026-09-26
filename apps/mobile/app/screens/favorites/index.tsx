@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import React from "react";
+import { Platform } from "react-native";
 import DelayLayout from "../../components/delay-layout";
 import { Header } from "../../components/header";
 import List from "../../components/list";
@@ -53,7 +54,7 @@ export const Favorites = ({
       <Header
         renderedInRoute={route.name}
         title={strings.routes[route.name]()}
-        canGoBack={false}
+        canGoBack={Platform.OS === "ios"}
         hasSearch={true}
         id={route.name}
         onSearch={() => {

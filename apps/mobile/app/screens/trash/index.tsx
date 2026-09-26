@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import React from "react";
+import { Platform } from "react-native";
 import { db } from "../../common/database";
 import { FloatingButton } from "../../components/container/floating-button";
 import DelayLayout from "../../components/delay-layout";
@@ -83,7 +84,7 @@ export const Trash = ({ navigation, route }: NavigationProps<"Trash">) => {
         renderedInRoute={route.name}
         title={route.name}
         id={route.name}
-        canGoBack={false}
+        canGoBack={Platform.OS === "ios"}
         hasSearch={true}
         onSearch={() => {
           Navigation.push("Search", {

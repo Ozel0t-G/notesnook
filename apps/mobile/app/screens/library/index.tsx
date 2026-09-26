@@ -55,9 +55,9 @@ export default function Library({
     allNotes?: number;
     inbox?: number;
   }>({});
-  const [collection, setCollection] = React.useState<LibraryCollection | undefined>(
-    route.params?.initialCollection
-  );
+  const [collection, setCollection] = React.useState<
+    LibraryCollection | undefined
+  >(route.params?.initialCollection);
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
   const [allNotes, allNotesLoading, refreshAllNotes] = useNotes();
   const [inboxNotes, inboxLoading, refreshInbox] = useInboxNotes();
@@ -311,7 +311,10 @@ export default function Library({
 
   return (
     <View style={{ flex: 1, backgroundColor: visual.screenBackground }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView
+        testID="library-scroll"
+        contentContainerStyle={{ paddingBottom: 32 }}
+      >
         <View
           style={{
             flexDirection: "row",

@@ -31,7 +31,7 @@ import { ClientOnly } from "remix-utils/client-only";
 import { Editor } from "./editor.client";
 import { formatDate } from "@notesnook/core";
 import { slugify } from "../../utils/slugify";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { NNCrypto } from "../../utils/nncrypto.client";
 import { hashNavigate } from "../../utils/use-hash-location";
 import { Icon } from "@notesnook/ui";
@@ -42,6 +42,7 @@ import {
   mdiLockOutline
 } from "@mdi/js";
 import { Footer } from "../footer";
+import { sanitizeSharedHtml } from "../../utils/sanitize-shared-html";
 
 type TableOfContent = {
   title: string;
@@ -114,6 +115,7 @@ export const MonographPage = ({
 }) => {
   const [tableOfContents, setTableOfContents] = useState<TableOfContent[]>([]);
   const [content, setContent] = useState(monograph.content);
+  const safeHtml = useMemo(() => sanitizeSharedHtml(content?.data), [content?.data]);
   const [showTableOfContents, setShowTableOfContents] = useState(false);
   const editorContainer = useRef<HTMLDivElement>(null);
 
@@ -227,7 +229,7 @@ export const MonographPage = ({
               <Box
                 className="tiptap ProseMirror theme-scope-editor"
                 dangerouslySetInnerHTML={{
-                  __html: content?.data || "<p></p>"
+                  __html: safeHtml || "<p></p>"
                 }}
                 sx={{ color: "paragraph", cursor: "text" }}
               />
@@ -235,7 +237,7 @@ export const MonographPage = ({
           >
             {() => (
               <Editor
-                content={content?.data || "<p></p>"}
+                content={safeHtml || "<p></p>"}
                 onLoad={() => {
                   const toc = generateTableOfContents();
                   setTableOfContents(toc);

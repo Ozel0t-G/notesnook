@@ -19,7 +19,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { RRule } from "rrule";
 import { Mutex } from "async-mutex";
-import { strings } from "@notesnook/intl";
 import Database from "../api/index.js";
 import { Reminder, SettingItem } from "../types.js";
 import { getId, makeId } from "../utils/id.js";
@@ -34,6 +33,9 @@ import {
 const VERSION = 1;
 const PREFIX = "appleTasks:v1:";
 const DEFAULT_LIST_ID = makeId(`${PREFIX}defaultList`);
+// This is persisted account data, so it must not depend on Lingui being ready
+// or change when a device switches locale. Existing saved names still win.
+const DEFAULT_LIST_NAME = "Reminders";
 const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const warnedRecordKeys = new Set<string>();
@@ -563,7 +565,7 @@ export class TaskLists extends TaskRecordStore {
   private virtualDefault(): TaskList {
     return {
       id: DEFAULT_LIST_ID,
-      name: strings.reminders(),
+      name: DEFAULT_LIST_NAME,
       sortOrder: 0,
       createdAt: 0,
       updatedAt: 0,

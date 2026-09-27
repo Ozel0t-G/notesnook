@@ -1151,8 +1151,11 @@ describe("standalone Tasks", () => {
   test("opening Tasks keeps the default list virtual until a mutation", async () => {
     const db = await databaseTest();
     const defaultList = await db.taskLists.default();
+    expect(defaultList.name).toBe("Reminders");
     expect(
-      (await db.taskLists.list()).some((list) => list.id === defaultList.id)
+      (await db.taskLists.list()).some(
+        (list) => list.id === defaultList.id && list.name === "Reminders"
+      )
     ).toBe(true);
     expect(db.taskLists.getSync(defaultList.id)?.id).toBe(defaultList.id);
     expect(db.settings.collection.items()).toEqual([]);
@@ -1170,6 +1173,19 @@ describe("standalone Tasks", () => {
       db.taskLists.listSync().some((list) => list.id === defaultList.id)
     ).toBe(true);
     expect((await db.user.backendAffinity.check()).status).toBe("unknown");
+  });
+
+  test("a saved default or custom list name is retained", async () => {
+    const db = await databaseTest();
+    const virtual = await db.taskLists.default();
+    const custom = await db.taskLists.create("My Project");
+    await db.taskLists.update(virtual.id, { name: "My Reminders" });
+
+    expect((await db.taskLists.default()).name).toBe("My Reminders");
+    expect(db.taskLists.getSync(virtual.id)?.name).toBe("My Reminders");
+    expect(
+      (await db.taskLists.list()).find((list) => list.id === custom.id)?.name
+    ).toBe("My Project");
   });
 
   test("future default-list schema is not overwritten by this client", async () => {

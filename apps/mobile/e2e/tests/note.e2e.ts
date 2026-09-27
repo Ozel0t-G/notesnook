@@ -31,6 +31,26 @@ describe("NOTE TESTS", () => {
       .run();
   });
 
+  it("retains an edit to an existing note after save and reopen", async () => {
+    const original = "Existing note before edit";
+    const addition = "Existing note edit survives reopen";
+    await TestBuilder.create().prepare().createNote(undefined, original).run();
+    const savedRow = element(by.id("note-item-0"));
+    await waitFor(savedRow).toBeVisible().withTimeout(15000);
+    await savedRow.tap();
+    await Tests.waitForEditor();
+    const editor = web().element(by.web.className("ProseMirror"));
+    await editor.focus();
+    await editor.typeText(addition, true);
+    await Tests.exitEditor();
+    await waitFor(savedRow).toBeVisible().withTimeout(15000);
+    await savedRow.tap();
+    await Tests.waitForEditor();
+    jestExpect(
+      await web().element(by.web.className("ProseMirror")).getText()
+    ).toContain(addition);
+  });
+
   it("Open and close a note", async () => {
     await TestBuilder.create()
       .prepare()

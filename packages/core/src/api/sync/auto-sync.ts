@@ -39,6 +39,7 @@ export class AutoSync {
     };
     db.eventManager.subscribe(EVENTS.userSessionExpired, () => endSession());
     db.eventManager.subscribe(EVENTS.userLoggedOut, () => endSession());
+    db.eventManager.subscribe(EVENTS.backendRecoveryStarted, () => this.stop());
     db.eventManager.subscribe(EVENTS.userLoggedIn, () => {
       this.sessionEnded = false;
     });

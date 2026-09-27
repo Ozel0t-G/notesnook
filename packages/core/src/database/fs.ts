@@ -40,6 +40,7 @@ export type QueueItem = DownloadableFile & {
 
 export class FileStorage {
   id = Date.now();
+  private syncUploadCancellationVersion = 0;
   downloads = new Map<string, QueueItem>();
   uploads = new Map<string, QueueItem>();
   groups = {
@@ -155,9 +156,15 @@ export class FileStorage {
   }
 
   async queueUploads(files: DownloadableFile[], groupId: string) {
+    const cancellationVersion = this.syncUploadCancellationVersion;
     try {
       let current = 0;
       const token = await this.tokenManager.getAccessToken();
+      if (
+        groupId === "sync-uploads" &&
+        cancellationVersion !== this.syncUploadCancellationVersion
+      )
+        return;
       const total = files.length;
 
       if (this.groups.uploads.has(groupId)) {
@@ -173,6 +180,11 @@ export class FileStorage {
       this.groups.uploads.set(groupId, group);
 
       for (const file of files as QueueItem[]) {
+        if (
+          groupId === "sync-uploads" &&
+          cancellationVersion !== this.syncUploadCancellationVersion
+        )
+          return;
         if (!group.has(file.filename)) continue;
 
         const upload = this.uploads.get(file.filename);
@@ -260,6 +272,9 @@ export class FileStorage {
   }
 
   async cancel(groupId: string) {
+    // Invalidate a sync upload even if it is still awaiting a token and has
+    // not yet created a group for cancel() to find.
+    if (groupId === "sync-uploads") this.syncUploadCancellationVersion++;
     const queues = [
       {
         type: "download",

@@ -173,14 +173,25 @@ export class Sync {
     this.autoSync = new AutoSync(db, 1000);
     this.devices = new SyncDevices(db.kv, db.tokenManager);
 
+    const stopNetwork = async () => {
+      this.autoSync.stop();
+      await Promise.all([
+        this.closeConnection(),
+        this.db.fs().cancel("sync-uploads")
+      ]);
+    };
     const stopForSessionEnd = () => {
       this.sessionEnded = true;
-      this.autoSync.stop();
-      void this.closeConnection();
+      void stopNetwork().catch((error) =>
+        this.logger.error(error, "Could not stop expired sync traffic")
+      );
     };
     db.eventManager.subscribe(EVENTS.userLoggedOut, () => stopForSessionEnd());
     db.eventManager.subscribe(EVENTS.userSessionExpired, () =>
       stopForSessionEnd()
+    );
+    db.eventManager.subscribe(EVENTS.backendRecoveryStarted, () =>
+      stopNetwork()
     );
     db.eventManager.subscribe(EVENTS.userLoggedIn, () => {
       this.sessionEnded = false;
@@ -251,6 +262,7 @@ export class Sync {
 
     this.autoSync.stop();
     await this.closeConnection();
+    await this.db.fs().cancel("sync-uploads");
     this.db.eventManager.publish(EVENTS.syncAborted);
     throw new BackendMismatchError(affinity, "Sync");
   }
@@ -264,6 +276,12 @@ export class Sync {
     } catch (error) {
       this.logger.error(error, "Could not close blocked sync connection");
     }
+  }
+
+  private async isInboundBlocked() {
+    return (
+      this.sessionEnded || (await this.db.user.backendAffinity.isBlocked())
+    );
   }
 
   async init(isForceSync?: boolean) {
@@ -304,6 +322,8 @@ export class Sync {
       } else throw error;
     }
 
+    await this.assertBackendAllowed();
+
     if (this.conflictedNoteIds.length > 0) {
       await this.db
         .sql()
@@ -315,6 +335,7 @@ export class Sync {
     }
 
     if (this.uncachedAttachments.length > 0 && options.offlineMode) {
+      await this.assertBackendAllowed();
       await this.db
         .fs()
         .queueDownloads(this.uncachedAttachments, "offline-mode", {
@@ -393,6 +414,7 @@ export class Sync {
   async uploadAttachments() {
     await this.assertBackendAllowed();
     const attachments = await this.db.attachments.pending.items();
+    await this.assertBackendAllowed();
     this.logger.info("Uploading attachments...", { total: attachments.length });
 
     await this.db.fs().queueUploads(
@@ -402,6 +424,7 @@ export class Sync {
       })),
       "sync-uploads"
     );
+    await this.assertBackendAllowed();
   }
 
   /**
@@ -455,6 +478,7 @@ export class Sync {
       decrypted.push(
         ...(await this.db.storage().decryptMulti(keyInfo.key, itemsToDecrypt))
       );
+      await this.assertBackendAllowed();
     }
 
     const deserialized: MaybeDeletedItem<Item>[] = [];
@@ -475,6 +499,7 @@ export class Sync {
         version,
         this.db
       );
+      await this.assertBackendAllowed();
       if (item) deserialized.push(item);
     }
 
@@ -491,6 +516,7 @@ export class Sync {
 
     const collection = this.db[collectionType].collection;
     const localItems = await collection.records(chunk.items.map((i) => i.id));
+    await this.assertBackendAllowed();
     let items: (MaybeDeletedItem<Item> | undefined)[] = [];
     if (itemType === "content") {
       items = deserialized.map((item) =>
@@ -511,6 +537,8 @@ export class Sync {
               this.merger.mergeItem(item, localItems[item.id])
             );
     }
+
+    await this.assertBackendAllowed();
 
     if (itemType === "note" || itemType === "content") {
       items.forEach((item) =>
@@ -533,6 +561,7 @@ export class Sync {
     this.logger.debug(`Merged ${items.length} items for type ${itemType}`, {
       ids: items.map((i) => i?.id)
     });
+    await this.assertBackendAllowed();
     await collection.put(items as any);
   }
 
@@ -586,7 +615,7 @@ export class Sync {
     );
     this.connection.on("SendVaultKey", async (vaultKey) => {
       if (this.connection?.state !== HubConnectionState.Connected) return false;
-      if (await this.db.user.backendAffinity.isBlocked()) return false;
+      if (await this.isInboundBlocked()) return false;
 
       if (
         vaultKey &&
@@ -596,6 +625,7 @@ export class Sync {
         vaultKey.length > 0
       ) {
         const vault = await this.db.vaults.default();
+        if (await this.isInboundBlocked()) return false;
         if (!vault)
           await migrateVaultKey(
             this.db,
@@ -610,9 +640,10 @@ export class Sync {
 
     this.connection.on("SendItems", async (chunk) => {
       if (this.connection?.state !== HubConnectionState.Connected) return false;
-      if (await this.db.user.backendAffinity.isBlocked()) return false;
+      if (await this.isInboundBlocked()) return false;
 
       const keys = await this.db.user.getDataEncryptionKeys();
+      if (await this.isInboundBlocked()) return false;
       if (!keys || !keys.length) {
         this.logger.error(
           new Error("User encryption keys not generated. Please relogin.")
@@ -628,6 +659,8 @@ export class Sync {
       );
       await this.processChunk(chunk, keys, options);
 
+      if (await this.isInboundBlocked()) return false;
+
       sendSyncProgressEvent(this.db.eventManager, `download`, chunk.count);
 
       return true;
@@ -635,7 +668,7 @@ export class Sync {
 
     this.connection.on("SendMonographs", async (monographs: Monograph[]) => {
       if (this.connection?.state !== HubConnectionState.Connected) return false;
-      if (await this.db.user.backendAffinity.isBlocked()) return false;
+      if (await this.isInboundBlocked()) return false;
 
       const ids = monographs.map((m) => m.id);
       await this.db.monographsCollection.collection.put(
@@ -644,7 +677,9 @@ export class Sync {
           type: "monograph"
         }))
       );
+      if (await this.isInboundBlocked()) return false;
       await this.db.monographs.refresh().catch(this.logger.error);
+      if (await this.isInboundBlocked()) return false;
       this.db.eventManager.publish(EVENTS.monographsUpdated, ids);
 
       return true;
@@ -656,9 +691,11 @@ export class Sync {
         if (this.connection?.state !== HubConnectionState.Connected) {
           return false;
         }
-        if (await this.db.user.backendAffinity.isBlocked()) return false;
+        if (await this.isInboundBlocked()) return false;
 
         await handleInboxItems(inboxItems, this.db);
+
+        if (await this.isInboundBlocked()) return false;
 
         return true;
       }

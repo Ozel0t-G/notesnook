@@ -80,6 +80,7 @@ export const EVENTS = {
   userFetched: "user:fetched",
   userSignedUp: "user:signedUp",
   userSessionExpired: "user:sessionExpired",
+  backendRecoveryStarted: "backend:recoveryStarted",
   databaseSyncRequested: "db:syncRequested",
   syncProgress: "sync:progress",
   syncCompleted: "sync:completed",

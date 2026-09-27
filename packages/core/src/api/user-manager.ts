@@ -702,6 +702,9 @@ class UserManager {
     )
       throw new Error("Could not persist account recovery intent.");
     snapshot.mutationStarted = true;
+    // The durable marker is now in place. Tear down any old sync connection
+    // and upload queue before changing identity, token, or encryption state.
+    await this.db.eventManager.publishWithResult(EVENTS.backendRecoveryStarted);
   }
 
   private async finishSessionMutation(

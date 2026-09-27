@@ -149,6 +149,7 @@ describe("sync preflight", () => {
     if (affinity) kv.set("backendAffinity", affinity);
 
     const createConnection = vi.fn();
+    const cancelUploads = vi.fn(async () => undefined);
     const db = {
       kv: () => ({
         read: async (k: string) => kv.get(k),
@@ -159,6 +160,7 @@ describe("sync preflight", () => {
         read: async (key: string) => kv.get(key)
       }),
       eventManager: new EventManager(),
+      fs: () => ({ cancel: cancelUploads }),
       user: { getUser: async () => kv.get("user") },
       tokenManager: { getAccessToken: async () => "token" }
     } as never;
@@ -171,7 +173,7 @@ describe("sync preflight", () => {
     // connection being opened.
     (sync as unknown as { createConnection: unknown }).createConnection =
       createConnection;
-    return { sync, db, createConnection, kv };
+    return { sync, db, createConnection, cancelUploads, kv };
   }
 
   test("refuses to sync a profile bound to another backend, before connecting", async () => {
@@ -209,7 +211,7 @@ describe("sync preflight", () => {
   });
 
   test("session expiry closes an active connection and blocks later fetch/push traffic", async () => {
-    const { sync, db, kv } = syncHarness({
+    const { sync, db, kv, cancelUploads } = syncHarness({
       v: 1,
       api: VEYRAN.api,
       auth: VEYRAN.auth,
@@ -227,6 +229,7 @@ describe("sync preflight", () => {
       EVENTS.userSessionExpired
     );
     expect(stop).toHaveBeenCalledOnce();
+    expect(cancelUploads).toHaveBeenCalledWith("sync-uploads");
     expect(sync.connection).toBeUndefined();
     expect(sync.autoSync.isAutoSyncing).toBe(false);
 
@@ -246,6 +249,134 @@ describe("sync preflight", () => {
     );
     expect(invoke).not.toHaveBeenCalled();
     expect(send).not.toHaveBeenCalled();
+  });
+
+  test("verified recovery intent tears down an idle socket and cancels uploads immediately", async () => {
+    const { sync, db, kv, cancelUploads } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    const stop = vi.fn(async () => undefined);
+    sync.connection = { state: "Connected", stop } as never;
+    await sync.autoSync.start();
+
+    kv.set("backendRecoveryRequired", true);
+    (db as unknown as { eventManager: EventManager }).eventManager.publish(
+      EVENTS.backendRecoveryStarted
+    );
+    expect(stop).toHaveBeenCalledOnce();
+    expect(cancelUploads).toHaveBeenCalledWith("sync-uploads");
+    expect(sync.connection).toBeUndefined();
+    expect(sync.autoSync.isAutoSyncing).toBe(false);
+  });
+
+  test("inbound decrypt cannot merge a chunk after recovery begins", async () => {
+    const { sync, db, kv } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    let releaseDecrypt!: (value: string[]) => void;
+    const decrypt = new Promise<string[]>((resolve) => {
+      releaseDecrypt = resolve;
+    });
+    const decryptMulti = vi.fn(() => decrypt);
+    (db as unknown as { storage: () => unknown }).storage = () => ({
+      read: async (key: string) => kv.get(key),
+      decryptMulti
+    });
+
+    const processing = sync.processChunk(
+      { type: "note", items: [{ id: "n1", v: 1 }] } as never,
+      [{ version: 0, key: { key: "key" } }] as never,
+      { type: "fetch" }
+    );
+    await vi.waitFor(() => expect(decryptMulti).toHaveBeenCalledOnce());
+    kv.set("backendRecoveryRequired", true);
+    releaseDecrypt(["{}"]);
+    await expect(processing).rejects.toThrow(BackendMismatchError);
+  });
+
+  test("inbound vault and monograph callbacks recheck recovery after awaited reads", async () => {
+    const { db, kv } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    const handlers = new Map<string, (...args: any[]) => Promise<boolean>>();
+    const connection = {
+      state: "Connected",
+      on: vi.fn(
+        (name: string, handler: (...args: any[]) => Promise<boolean>) => {
+          handlers.set(name, handler);
+        }
+      ),
+      stop: vi.fn(async () => undefined)
+    };
+    vi.doMock("@microsoft/signalr", () => ({
+      HubConnectionBuilder: class {
+        withUrl() {
+          return this;
+        }
+        withHubProtocol() {
+          return this;
+        }
+        build() {
+          return connection;
+        }
+      },
+      HttpTransportType: { WebSockets: 1 },
+      JsonHubProtocol: class {}
+    }));
+    const sync = new Sync(db);
+    await (
+      sync as unknown as {
+        createConnection: (options: unknown) => Promise<void>;
+      }
+    ).createConnection({ type: "fetch" });
+
+    let releaseVault!: (value: unknown) => void;
+    const vault = new Promise<unknown>((resolve) => {
+      releaseVault = resolve;
+    });
+    const defaultVault = vi.fn(() => vault);
+    let releasePut!: () => void;
+    const putGate = new Promise<void>((resolve) => {
+      releasePut = resolve;
+    });
+    const put = vi.fn(() => putGate);
+    const refresh = vi.fn(async () => undefined);
+    Object.assign(db as object, {
+      vaults: { default: defaultVault },
+      monographsCollection: { collection: { put } },
+      monographs: { refresh }
+    });
+
+    const vaultCallback = handlers.get("SendVaultKey")!;
+    const pendingVault = vaultCallback({
+      cipher: "c",
+      iv: "i",
+      salt: "s",
+      length: 1
+    });
+    await vi.waitFor(() => expect(defaultVault).toHaveBeenCalledOnce());
+    kv.set("backendRecoveryRequired", true);
+    releaseVault(undefined);
+    await expect(pendingVault).resolves.toBe(false);
+
+    kv.delete("backendRecoveryRequired");
+    const monographCallback = handlers.get("SendMonographs")!;
+    const pendingMonographs = monographCallback([{ id: "m1" }]);
+    await vi.waitFor(() => expect(put).toHaveBeenCalledOnce());
+    kv.set("backendRecoveryRequired", true);
+    releasePut();
+    await expect(pendingMonographs).resolves.toBe(false);
+    expect(refresh).not.toHaveBeenCalled();
+    vi.doUnmock("@microsoft/signalr");
   });
 
   test("session expiry blocks active sync even before a recovery marker is written", async () => {

@@ -366,8 +366,8 @@ describe("automatic logout must not destroy local data", () => {
       const expired = vi.fn();
       const eventDb = new Database();
       eventDb.user = user;
-      eventDb.tokenManager.getAccessToken = vi.fn(async () =>
-        "existing-access"
+      eventDb.tokenManager.getAccessToken = vi.fn(
+        async () => "existing-access"
       );
       const close = vi.fn();
       class TestEventSource {
@@ -930,6 +930,66 @@ describe("three-step login preserves the original session", () => {
       refresh_token: "final-refresh"
     });
     expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("recovery teardown is announced only after the durable marker and before local identity changes", async () => {
+    const local = serverUser("same-account");
+    const { user, db, kv } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "old-key"
+    });
+    arrangeGrants();
+    const observed: Array<{ marker: unknown; token: unknown; user: unknown }> =
+      [];
+    db.eventManager.subscribe(EVENTS.backendRecoveryStarted, () => {
+      observed.push({
+        marker: kv.get("backendRecoveryRequired"),
+        token: kv.get("token"),
+        user: kv.get("user")
+      });
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await user.authenticatePassword("someone@example.test", "pw");
+
+    expect(observed).toEqual([
+      { marker: true, token: originalToken, user: local }
+    ]);
+  });
+
+  test("login waits for active sync teardown before replacing the old token", async () => {
+    const { user, db, kv } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "old-key"
+    });
+    arrangeGrants();
+    let announceTeardown!: () => void;
+    let finishTeardown!: () => void;
+    const teardownStarted = new Promise<void>((resolve) => {
+      announceTeardown = resolve;
+    });
+    const teardownFinished = new Promise<void>((resolve) => {
+      finishTeardown = resolve;
+    });
+    db.eventManager.subscribe(EVENTS.backendRecoveryStarted, async () => {
+      announceTeardown();
+      await teardownFinished;
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    const login = user.authenticatePassword("someone@example.test", "pw");
+    await teardownStarted;
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    expect(kv.get("token")).toEqual(originalToken);
+    finishTeardown();
+    await login;
+    expect(kv.get("token")).toMatchObject({ access_token: "final-access" });
   });
 
   test("marker removal failure before deletion rolls back the committed login", async () => {

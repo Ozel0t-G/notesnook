@@ -84,8 +84,8 @@ const PADDING = 50;
 const QUALITY = 80;
 const logo = loadImage(
   import.meta.env.DEV
-    ? path.resolve(__dirname, "../../public/logo.svg")
-    : path.resolve(__dirname, "../../client/logo.svg")
+    ? path.resolve(__dirname, "../../public/logo.png")
+    : path.resolve(__dirname, "../../client/logo.png")
 );
 
 const boldFontFamily = fontFamilies.bold.join(",");
@@ -116,7 +116,7 @@ export async function makeImage(metadata: OGMetadata, cacheKey: string) {
   // Draw bottom text
   ctx.fillStyle = theme.primary.heading;
   ctx.font = "600 32px InterBold";
-  ctx.fillText("Notesnook Monograph", PADDING + 95, HEIGHT - PADDING - 55);
+  ctx.fillText("VeyraN Sharing", PADDING + 95, HEIGHT - PADDING - 55);
 
   ctx.fillStyle = theme.secondary.paragraph;
   ctx.font = "25px Inter";

@@ -46,7 +46,14 @@ export const meta: MetaFunction = () => {
     titleFull: "VeyraN Sharing",
     type: "website",
     url: PUBLIC_URL,
-    imageUrl: `${PUBLIC_URL}/social.png`,
+    imageUrl: `${PUBLIC_URL}/api/og.jpg?${new URLSearchParams({
+      title: "VeyraN Sharing",
+      description: Buffer.from(
+        "Anonymous, secure and encrypted note sharing.",
+        "utf-8"
+      ).toString("base64"),
+      date: "VeyraN"
+    })}`,
     description:
       "Anonymous, secure and encrypted note sharing with password protection."
   });

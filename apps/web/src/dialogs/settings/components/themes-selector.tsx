@@ -16,55 +16,30 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-import { httpBatchLink } from "@trpc/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { Box, Button, Flex, Input, Text } from "@theme-ui/components";
 import { CheckCircleOutline, Loading } from "../../../components/icons";
 import {
-  THEME_COMPATIBILITY_VERSION,
+  ThemeDefinition,
   getPreviewColors,
   validateTheme
 } from "@notesnook/theme";
 import { debounce } from "@notesnook/common";
 import { useStore as useThemeStore } from "../../../stores/theme-store";
-import { useStore as useUserStore } from "../../../stores/user-store";
 import {
-  ThemesRouter,
-  THEME_SERVER_URL,
-  ThemesTRPC
-} from "../../../common/themes-router";
-import {
-  BUILT_IN_THEMES,
   BUILT_IN_THEMES_BY_ID,
-  uniqueById
+  visibleLocalThemes
 } from "../../../common/veyran-built-in-themes";
 import { ThemeMetadata } from "@notesnook/themes-server";
 import { ThemePreview } from "../../../components/theme-preview";
-import { Loader } from "../../../components/loader";
 import { showToast } from "../../../utils/toast";
 import { showFilePicker, readFile } from "../../../utils/file-picker";
 import { VirtualizedGrid } from "../../../components/virtualized-grid";
 import { ThemeDetailsDialog } from "../../theme-details-dialog";
 import { strings } from "@notesnook/intl";
 
-const ThemesClient = ThemesTRPC.createClient({
-  links: [
-    httpBatchLink({
-      url: THEME_SERVER_URL
-    })
-  ]
-});
-const ThemesQueryClient = new QueryClient();
-
 export function ThemesSelector() {
-  return (
-    <ThemesTRPC.Provider client={ThemesClient} queryClient={ThemesQueryClient}>
-      <QueryClientProvider client={ThemesQueryClient}>
-        <ThemesList />
-      </QueryClientProvider>
-    </ThemesTRPC.Provider>
-  );
+  return <ThemesList />;
 }
 
 const COLOR_SCHEMES = [
@@ -81,78 +56,29 @@ function ThemesList() {
 
   const [isApplying, setIsApplying] = useState(false);
   const setCurrentTheme = useThemeStore((store) => store.setTheme);
-  const user = useUserStore((store) => store.user);
   const darkTheme = useThemeStore((store) => store.darkTheme);
   const lightTheme = useThemeStore((store) => store.lightTheme);
   const isThemeCurrentlyApplied = useThemeStore(
     (store) => store.isThemeCurrentlyApplied
   );
-  const filters = [];
-  if (searchQuery) filters.push({ type: "term" as const, value: searchQuery });
-  if (colorScheme !== "all")
-    filters.push({ type: "colorScheme" as const, value: colorScheme });
-
-  const themes = ThemesTRPC.themes.useInfiniteQuery(
-    {
-      limit: 10,
-      compatibilityVersion: THEME_COMPATIBILITY_VERSION,
-      filters
-    },
-    {
-      keepPreviousData: true,
-      select: (themes) => ({
-        pageParams: themes.pageParams,
-        pages: themes.pages.map((page) => ({
-          nextCursor: page.nextCursor,
-          themes: page.themes.filter(
-            (theme) => !isThemeCurrentlyApplied(theme.id)
-          )
-        }))
-      }),
-      getNextPageParam: (lastPage) => lastPage.nextCursor
-    }
-  );
-
-  const items = uniqueById([
-    {
-      ...darkTheme,
-      previewColors: getPreviewColors(darkTheme)
-    },
-    {
-      ...lightTheme,
-      previewColors: getPreviewColors(lightTheme)
-    },
-    ...BUILT_IN_THEMES.map((theme) => ({
-      ...theme,
-      previewColors: getPreviewColors(theme)
-    })),
-    ...(themes.data?.pages.flatMap((a) => a.themes) || [])
-  ]);
+  const items = visibleLocalThemes(
+    darkTheme,
+    lightTheme,
+    searchQuery,
+    colorScheme
+  ).map((theme) => ({
+    ...theme,
+    previewColors: getPreviewColors(theme)
+  }));
 
   const setTheme = useCallback(
     async (theme: ThemeMetadata) => {
       if (isThemeCurrentlyApplied(theme.id)) return;
 
-      // Built-ins (including both VeyraN themes) are applied directly from
-      // the copy already bundled with the app -- never through the
-      // marketplace's installTheme call, which only knows about themes
-      // actually hosted on themes-api.notesnook.com and would fail (or
-      // simply hang) offline.
       const builtIn = BUILT_IN_THEMES_BY_ID.get(theme.id);
-      if (builtIn) {
-        setCurrentTheme(builtIn);
-        return;
-      }
-
       setIsApplying(true);
       try {
-        const fullTheme = await ThemesRouter.installTheme.query({
-          id: theme.id,
-          compatibilityVersion: THEME_COMPATIBILITY_VERSION,
-          userId: user?.id
-        });
-        if (!fullTheme) return;
-        setCurrentTheme(fullTheme);
+        setCurrentTheme(builtIn || (theme as ThemeDefinition));
       } catch (e) {
         console.error(e);
         if (e instanceof Error)
@@ -164,7 +90,7 @@ function ThemesList() {
         setIsApplying(false);
       }
     },
-    [isThemeCurrentlyApplied, setCurrentTheme, user?.id]
+    [isThemeCurrentlyApplied, setCurrentTheme]
   );
 
   return (
@@ -237,32 +163,22 @@ function ThemesList() {
           mt: 2
         }}
       >
-        {themes.isInitialLoading ? (
-          <Loader title={strings.loadingThemes()} />
-        ) : (
-          <VirtualizedGrid
-            columns={2}
-            items={items}
-            getItemKey={(index) => items[index].id}
-            estimatedSize={285}
-            mode="dynamic"
-            onEndReached={() =>
-              themes.hasNextPage ? themes.fetchNextPage() : null
-            }
-            renderItem={({ item: theme }) => (
-              <ThemeItem
-                key={theme.id}
-                theme={theme}
-                isApplied={isThemeCurrentlyApplied(theme.id)}
-                isApplying={isApplying}
-                setTheme={setTheme}
-              />
-            )}
-          />
-        )}
-        {!themes.isInitialLoading && themes.isFetching ? (
-          <Loading color="accent" sx={{ mt: 2 }} />
-        ) : null}
+        <VirtualizedGrid
+          columns={2}
+          items={items}
+          getItemKey={(index) => items[index].id}
+          estimatedSize={285}
+          mode="dynamic"
+          renderItem={({ item: theme }) => (
+            <ThemeItem
+              key={theme.id}
+              theme={theme}
+              isApplied={isThemeCurrentlyApplied(theme.id)}
+              isApplying={isApplying}
+              setTheme={setTheme}
+            />
+          )}
+        />
       </Box>
     </>
   );

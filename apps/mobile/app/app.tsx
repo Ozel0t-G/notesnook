@@ -18,11 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { i18n } from "@lingui/core";
 import { I18nProvider } from "@lingui/react";
-import {
-  ScopedThemeProvider,
-  THEME_COMPATIBILITY_VERSION,
-  useThemeEngineStore
-} from "@notesnook/theme";
+import { ScopedThemeProvider, useThemeEngineStore } from "@notesnook/theme";
 import React, { PropsWithChildren, useEffect, useState } from "react";
 import { Appearance, I18nManager, Linking, StatusBar } from "react-native";
 import "react-native-gesture-handler";
@@ -35,10 +31,8 @@ import { Toast } from "./components/toast";
 import { useAppEvents } from "./hooks/use-app-events";
 import { NotePreviewConfigure } from "./screens/note-preview-configure";
 import { RootNavigation } from "./navigation/navigation-stack";
-import { themeTrpcClient } from "./screens/settings/theme-selector";
 import Notifications from "./services/notifications";
 import SettingsService from "./services/settings";
-import { BUILT_IN_THEME_IDS } from "./utils/veyran-theme-migration";
 import { TipManager } from "./services/tip-manager";
 import { changeSystemBarColors, useThemeStore } from "./stores/use-theme-store";
 import { useUserStore } from "./stores/use-user-store";
@@ -132,35 +126,6 @@ export const withTheme = (
     ]);
 
     useEffect(() => {
-      setTimeout(() => {
-        const currentTheme = colorScheme === "dark" ? darkTheme : lightTheme;
-        if (!currentTheme) return;
-        // Built-ins (both VeyraN themes, and the two original defaults)
-        // never need a marketplace update check on startup -- see
-        // `BUILT_IN_THEME_IDS`'s doc comment.
-        if (BUILT_IN_THEME_IDS.has(currentTheme.id)) return;
-        themeTrpcClient.updateTheme
-          .query({
-            version: currentTheme.version,
-            compatibilityVersion: THEME_COMPATIBILITY_VERSION,
-            id: currentTheme.id
-          })
-          .then((theme) => {
-            if (theme) {
-              theme.colorScheme === "dark"
-                ? useThemeStore.setState({
-                    darkTheme: theme
-                  })
-                : useThemeStore.setState({
-                    lightTheme: theme
-                  });
-            }
-          })
-          .catch(() => {
-            /* empty */
-          });
-      }, 1000);
-
       const listener = Appearance.addChangeListener(({ colorScheme }) => {
         if (colorScheme && SettingsService.getProperty("useSystemTheme")) {
           useThemeStore.setState({

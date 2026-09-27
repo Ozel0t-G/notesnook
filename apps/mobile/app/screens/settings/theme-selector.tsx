@@ -19,7 +19,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { LegendList } from "@legendapp/list";
 import { strings } from "@notesnook/intl";
 import {
-  THEME_COMPATIBILITY_VERSION,
   ThemeDefinition,
   getPreviewColors,
   useThemeColors,
@@ -27,27 +26,14 @@ import {
 } from "@notesnook/theme";
 import type {
   CompiledThemeDefinition,
-  ThemeMetadata,
-  ThemesRouter
+  ThemeMetadata
 } from "@notesnook/themes-server";
 import { keepLocalCopy, pick } from "@react-native-documents/picker";
-import {
-  notifyManager,
-  QueryClient,
-  QueryClientProvider
-} from "@tanstack/react-query";
-import { createTRPCProxyClient, httpBatchLink } from "@trpc/client";
-import { createTRPCReact } from "@trpc/react-query";
 import React, { useState } from "react";
-import {
-  ActivityIndicator,
-  Linking,
-  TouchableOpacity,
-  View
-} from "react-native";
+import { Linking, TouchableOpacity, View } from "react-native";
 import ReactNativeBlobUtil from "react-native-blob-util";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { DatabaseLogger, db } from "../../common/database";
+import { DatabaseLogger } from "../../common/database";
 import { santizeUri } from "../../common/filesystem/utils";
 import SheetProvider from "../../components/sheet-provider";
 import { Button } from "../../components/ui/button";
@@ -63,25 +49,12 @@ import { getElevationStyle } from "../../utils/elevation";
 import { MenuItemsList } from "../../utils/menu-items";
 import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
-import { openLinkInBrowser } from "../../utils/functions";
 import Clipboard from "@react-native-clipboard/clipboard";
 import {
-  BUILT_IN_THEMES,
-  BUILT_IN_THEME_IDS,
-  BUILT_IN_THEMES_BY_ID
+  BUILT_IN_THEMES_BY_ID,
+  visibleLocalThemes
 } from "../../utils/veyran-theme-migration";
 
-const THEME_SERVER_URL = "https://themes-api.notesnook.com";
-//@ts-ignore
-export const themeTrpcClient = createTRPCProxyClient<ThemesRouter>({
-  links: [
-    httpBatchLink({
-      url: THEME_SERVER_URL
-    })
-  ]
-});
-notifyManager.setBatchNotifyFunction((cb) => cb());
-notifyManager.setNotifyFunction((cb) => cb());
 function ThemeSelector() {
   const [darkTheme, lightTheme] = useThemeStore((state) => [
     state.darkTheme,
@@ -95,37 +68,10 @@ function ThemeSelector() {
     "all"
   );
 
-  const filters = [];
-  if (searchQuery) filters.push({ type: "term" as const, value: searchQuery });
-  if (colorScheme !== "all")
-    filters.push({ type: "colorScheme" as const, value: colorScheme });
-
-  const themes = trpc.themes.useInfiniteQuery(
-    {
-      limit: 10,
-      compatibilityVersion: THEME_COMPATIBILITY_VERSION,
-      filters
-    },
-    {
-      keepPreviousData: true,
-      getNextPageParam: (lastPage) => lastPage.nextCursor
-    }
-  );
-
-  if (themes?.isError) {
-    DatabaseLogger.error(
-      new Error(themes.error.message),
-      "themes loading error",
-      themes.error?.data || undefined
-    );
-  }
-
-  const select = (item: Partial<ThemeMetadata>, fromFile?: boolean) => {
+  const select = (item: Partial<ThemeMetadata>) => {
     presentSheet({
       context: "theme-details",
-      component: (ref, close) => (
-        <ThemeSetter close={close} theme={item} fromFile={fromFile} />
-      )
+      component: (ref, close) => <ThemeSetter close={close} theme={item} />
     });
   };
 
@@ -340,44 +286,6 @@ function ThemeSelector() {
     }, 400);
   };
 
-  function getThemes(): ThemeMetadata[] {
-    const pages = themes.data?.pages;
-
-    return (
-      pages
-        ?.map((page) => {
-          return page.themes;
-        })
-        .flat()
-        // Built-ins are injected locally below (always, regardless of
-        // network state) -- drop them here so a marketplace result never
-        // renders as a second, duplicate entry for the same theme id.
-        .filter((theme) => !BUILT_IN_THEME_IDS.has(theme.id))
-        .filter((theme) =>
-          searchQuery && searchQuery !== ""
-            ? colorScheme === "all" || colorScheme === theme.colorScheme
-            : darkTheme.id !== theme.id &&
-              lightTheme.id !== theme.id &&
-              (colorScheme === "all" || colorScheme === theme.colorScheme)
-        ) || []
-    );
-  }
-
-  // Built-ins (both VeyraN themes, and the two original defaults) must
-  // always be listed and selectable -- regardless of what the active pair
-  // is, whether the marketplace is reachable, or whether a search/filter is
-  // active -- and are excluded here only when they're already shown as the
-  // active pair or don't match the current color-scheme filter.
-  function getBuiltInThemes(): ThemeMetadata[] {
-    if (searchQuery && searchQuery !== "") return [];
-    return BUILT_IN_THEMES.filter(
-      (theme) =>
-        darkTheme.id !== theme.id &&
-        lightTheme.id !== theme.id &&
-        (colorScheme === "all" || colorScheme === theme.colorScheme)
-    ) as unknown as ThemeMetadata[];
-  }
-
   return (
     <>
       <SheetProvider context="theme-details" />
@@ -492,13 +400,7 @@ function ThemeSelector() {
                     ToastManager.show({
                       heading: strings.invalidThemeFileFormat(),
                       type: "error",
-                      context: "global",
-                      actionText: strings.learnMore(),
-                      func: () => {
-                        openLinkInBrowser(
-                          "https://notesnook.com/help/custom-themes/introduction"
-                        );
-                      }
+                      context: "global"
                     });
                     return;
                   }
@@ -529,7 +431,7 @@ function ThemeSelector() {
 
                     return;
                   }
-                  select(json, true);
+                  select(json);
                 } catch (e) {
                   if ((e as Error).message.includes("Code=3072")) {
                     return;
@@ -544,21 +446,12 @@ function ThemeSelector() {
         <LegendList
           numColumns={2}
           data={
-            [
-              ...(colorScheme === "dark" ||
-              (searchQuery && searchQuery !== "")
-                ? []
-                : [lightTheme as unknown as ThemeMetadata]),
-              ...(colorScheme === "light" ||
-              (searchQuery && searchQuery !== "")
-                ? []
-                : [darkTheme as unknown as ThemeMetadata]),
-              ...getBuiltInThemes(),
-              // The marketplace listing itself is still gated on network
-              // state -- only the built-ins above (and the active pair)
-              // must survive being offline or the request still loading.
-              ...(themes.isLoading || themes.isError ? [] : getThemes())
-            ]
+            visibleLocalThemes(
+              darkTheme,
+              lightTheme,
+              searchQuery,
+              colorScheme
+            ) as unknown as ThemeMetadata[]
           }
           ListEmptyComponent={
             <View
@@ -569,9 +462,7 @@ function ThemeSelector() {
                 alignItems: "center"
               }}
             >
-              {themes.isLoading ? (
-                <ActivityIndicator color={colors.primary.accent} />
-              ) : searchQuery ? (
+              {searchQuery ? (
                 <Paragraph color={colors.secondary.paragraph}>
                   {strings.noResultsForSearch(searchQuery)}
                 </Paragraph>
@@ -580,69 +471,24 @@ function ThemeSelector() {
               )}
             </View>
           }
-          ListFooterComponent={
-            <View
-              style={{
-                height: 100,
-                width: "100%",
-                justifyContent: "center",
-                alignItems: "center"
-              }}
-            >
-              {themes.isError ? (
-                <Paragraph color={colors.error.paragraph}>
-                  {strings.errorLoadingThemes()}. {themes.error.message}.
-                </Paragraph>
-              ) : (themes.isLoading || themes.isFetching) &&
-                getThemes().length ? (
-                <ActivityIndicator color={colors.primary.accent} />
-              ) : null}
-            </View>
-          }
           estimatedItemSize={200}
           renderItem={renderItem}
-          onEndReachedThreshold={0.1}
-          onEndReached={() => {
-            themes.fetchNextPage();
-          }}
         />
       </View>
     </>
   );
 }
 
-const trpc = createTRPCReact<ThemesRouter>();
-export default function ThemeSelectorWithQueryClient() {
-  const [queryClient] = useState(() => new QueryClient());
-  const [trpcClient] = useState(() =>
-    //@ts-ignore
-    trpc.createClient({
-      links: [
-        //@ts-ignore
-        httpBatchLink({
-          url: THEME_SERVER_URL
-        })
-      ]
-    })
-  );
-
-  return (
-    <trpc.Provider client={trpcClient} queryClient={queryClient}>
-      <QueryClientProvider client={queryClient}>
-        <ThemeSelector />
-      </QueryClientProvider>
-    </trpc.Provider>
-  );
+export default function ThemeSelectorScreen() {
+  return <ThemeSelector />;
 }
 
 const ThemeSetter = ({
   theme,
-  close,
-  fromFile
+  close
 }: {
   theme: Partial<CompiledThemeDefinition>;
   close?: (ctx?: string) => void;
-  fromFile?: boolean;
 }) => {
   const [darkTheme, lightTheme] = useThemeStore((state) => [
     state.darkTheme,
@@ -657,22 +503,9 @@ const ThemeSetter = ({
   const applyTheme = async () => {
     if (!theme.id) return;
     try {
-      // Built-ins (both VeyraN themes, and the two original defaults) are
-      // applied directly from the copy already bundled with the app --
-      // never through the marketplace's installTheme call, which only
-      // knows about themes actually hosted on themes-api.notesnook.com and
-      // would fail (or simply hang) offline.
+      // Bundled themes and imported custom themes are applied locally.
       const builtIn = BUILT_IN_THEMES_BY_ID.get(theme.id);
-      const user = builtIn ? undefined : await db.user?.getUser();
-      const fullTheme =
-        builtIn ||
-        (fromFile
-          ? (theme as ThemeDefinition)
-          : await themeTrpcClient.installTheme.query({
-              compatibilityVersion: THEME_COMPATIBILITY_VERSION,
-              id: theme.id,
-              userId: user?.id
-            }));
+      const fullTheme = builtIn || (theme as ThemeDefinition);
       if (!fullTheme) return;
       theme.colorScheme === "dark"
         ? useThemeStore.getState().setDarkTheme(fullTheme)

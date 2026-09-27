@@ -24,27 +24,33 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // by design (no react-native mocking needed, unlike most of this
 // directory's tests).
 
-import { ThemeDark, ThemeLight, ThemeVeyranDark, ThemeVeyranLight } from "@notesnook/theme";
+import {
+  ThemeDark,
+  ThemeLight,
+  ThemeVeyranDark,
+  ThemeVeyranLight
+} from "@notesnook/theme";
 import {
   BUILT_IN_THEMES,
   BUILT_IN_THEME_IDS,
   BUILT_IN_THEMES_BY_ID,
+  visibleLocalThemes,
   migrateLegacyDefaultTheme,
   migrateLegacyDefaultThemes
 } from "./veyran-theme-migration";
 
 describe("migrateLegacyDefaultTheme", () => {
   test("replaces the shipped default dark theme with VeyraN Dark", () => {
-    expect(migrateLegacyDefaultTheme(ThemeDark, "default-dark", ThemeVeyranDark)).toBe(
-      ThemeVeyranDark
-    );
+    expect(
+      migrateLegacyDefaultTheme(ThemeDark, "default-dark", ThemeVeyranDark)
+    ).toBe(ThemeVeyranDark);
   });
 
   test("leaves a marketplace/custom theme id untouched", () => {
     const custom = { ...ThemeDark, id: "my-custom-dark" };
-    expect(migrateLegacyDefaultTheme(custom, "default-dark", ThemeVeyranDark)).toBe(
-      custom
-    );
+    expect(
+      migrateLegacyDefaultTheme(custom, "default-dark", ThemeVeyranDark)
+    ).toBe(custom);
   });
 
   test("passes through an undefined theme (settings blob predates theming)", () => {
@@ -106,5 +112,31 @@ describe("built-in theme bookkeeping", () => {
     expect(BUILT_IN_THEMES_BY_ID.get("veyran-light")?.id).toBe("veyran-light");
     expect(BUILT_IN_THEMES_BY_ID.get("veyran-dark")?.id).toBe("veyran-dark");
     expect(BUILT_IN_THEMES_BY_ID.get("some-marketplace-theme")).toBeUndefined();
+  });
+
+  test("offline search finds VeyraN built-ins even when neither is active", () => {
+    const customLight = { ...ThemeLight, id: "custom-light" };
+    const customDark = { ...ThemeDark, id: "custom-dark" };
+    expect(
+      visibleLocalThemes(customDark, customLight, "vEyRaN").map(
+        (theme) => theme.id
+      )
+    ).toEqual(["veyran-light", "veyran-dark"]);
+    expect(
+      visibleLocalThemes(customDark, customLight, "veyRan", "dark").map(
+        (theme) => theme.id
+      )
+    ).toEqual(["veyran-dark"]);
+  });
+
+  test("fresh offline picker includes both VeyraN built-ins and an active custom theme", () => {
+    const custom = { ...ThemeLight, id: "custom-light" };
+    const ids = visibleLocalThemes(ThemeVeyranDark, custom).map(
+      (theme) => theme.id
+    );
+    expect(ids).toEqual(
+      expect.arrayContaining(["veyran-light", "veyran-dark", "custom-light"])
+    );
+    expect(ids.filter((id) => id === "veyran-dark")).toHaveLength(1);
   });
 });

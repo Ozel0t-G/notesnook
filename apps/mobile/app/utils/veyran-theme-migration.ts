@@ -27,13 +27,9 @@ import {
 
 /**
  * The themes bundled with the app itself. Shared by:
- *  - `app.tsx`'s startup effect, which must never send a marketplace
- *    update-check for one of these (none of the VeyraN ones are, or ever
- *    will be, listed on themes-api.notesnook.com; the two original defaults
- *    are updated by shipping a new app build, not a live fetch);
  *  - `screens/settings/theme-selector.tsx`'s picker, which must always be
- *    able to list and apply these locally, regardless of network state or
- *    what the active pair currently is.
+ *    able to list and apply these locally, regardless of network state,
+ *    search text, or what the active pair currently is.
  */
 export const BUILT_IN_THEMES: ThemeDefinition[] = [
   ThemeVeyranLight,
@@ -47,6 +43,25 @@ export const BUILT_IN_THEME_IDS = new Set(
 export const BUILT_IN_THEMES_BY_ID = new Map(
   BUILT_IN_THEMES.map((theme) => [theme.id, theme])
 );
+
+/** Local picker model, including the active custom pair and bundled themes. */
+export function visibleLocalThemes(
+  activeDark: ThemeDefinition,
+  activeLight: ThemeDefinition,
+  search = "",
+  colorScheme: "all" | "dark" | "light" = "all"
+): ThemeDefinition[] {
+  const term = search.trim().toLocaleLowerCase();
+  const seen = new Set<string>();
+  return [activeLight, activeDark, ...BUILT_IN_THEMES].filter((theme) => {
+    if (seen.has(theme.id)) return false;
+    seen.add(theme.id);
+    return (
+      (colorScheme === "all" || theme.colorScheme === colorScheme) &&
+      (!term || theme.name.toLocaleLowerCase().includes(term))
+    );
+  });
+}
 
 /**
  * Migrate a user still on the shipped default theme (whether they never

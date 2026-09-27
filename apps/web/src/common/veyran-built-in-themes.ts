@@ -27,9 +27,8 @@ import {
 
 /**
  * The themes bundled with the app itself. They must always be selectable --
- * regardless of what the active pair is, whether the themes-api marketplace
- * is reachable, or whether the marketplace even lists them at all (VeyraN's
- * themes never will) -- and applying one must never depend on the network.
+ * regardless of what the active pair is or whether the device is online.
+ * Applying one must never depend on the network.
  *
  * Kept in its own module (only depending on `@notesnook/theme`, not on the
  * rest of `themes-selector.tsx`'s UI/query stack) so it can be unit-tested
@@ -56,4 +55,19 @@ export function uniqueById<T extends { id: string }>(items: T[]): T[] {
     seen.add(item.id);
     return true;
   });
+}
+
+/** Local picker model. A slow or unavailable marketplace cannot hide these. */
+export function visibleLocalThemes(
+  activeDark: ThemeDefinition,
+  activeLight: ThemeDefinition,
+  search = "",
+  colorScheme: "all" | "dark" | "light" = "all"
+): ThemeDefinition[] {
+  const term = search.trim().toLocaleLowerCase();
+  return uniqueById([activeDark, activeLight, ...BUILT_IN_THEMES]).filter(
+    (theme) =>
+      (colorScheme === "all" || theme.colorScheme === colorScheme) &&
+      (!term || theme.name.toLocaleLowerCase().includes(term))
+  );
 }

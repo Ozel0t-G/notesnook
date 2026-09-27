@@ -22,8 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //  - users still on the shipped old default theme are migrated to VeyraN
 //  - explicit/custom theme selections are preserved exactly as-is
 //  - "follow system" reacts to a live OS scheme change
-//  - built-in themes never hit the themes-api.notesnook.com marketplace,
-//    for either an update check or to apply them
+//  - appearance changes never contact the upstream theme marketplace
 //  - built-in themes are always listed and locally selectable, independent
 //    of the active pair or the marketplace query's state
 //
@@ -43,26 +42,9 @@ import { migrateLegacyDefaultTheme } from "../src/stores/theme-store";
 import {
   BUILT_IN_THEMES,
   BUILT_IN_THEMES_BY_ID,
-  uniqueById
+  uniqueById,
+  visibleLocalThemes
 } from "../src/common/veyran-built-in-themes";
-
-const { updateThemeQuery, installThemeQuery } = vi.hoisted(() => ({
-  updateThemeQuery: vi.fn(async () => undefined),
-  installThemeQuery: vi.fn(async () => undefined)
-}));
-
-// `setColorScheme`/`init()` both fire off a request to the themes marketplace
-// to check for an update to the active theme. Stub it out so the store
-// tests below stay hermetic (no real network access) and deterministic, and
-// so built-in-bypass tests can assert the mock was never even called.
-vi.mock("../src/common/themes-router", () => ({
-  ThemesRouter: {
-    updateTheme: { query: updateThemeQuery },
-    installTheme: { query: installThemeQuery }
-  },
-  THEME_SERVER_URL: "https://themes-api.notesnook.com",
-  ThemesTRPC: {}
-}));
 
 function mockMatchMedia(prefersDark: boolean) {
   const listeners = new Set<(e: { matches: boolean }) => void>();
@@ -78,7 +60,9 @@ function mockMatchMedia(prefersDark: boolean) {
     removeListener: (cb: (e: { matches: boolean }) => void) =>
       listeners.delete(cb)
   };
-  window.matchMedia = vi.fn().mockReturnValue(mql) as unknown as typeof window.matchMedia;
+  window.matchMedia = vi
+    .fn()
+    .mockReturnValue(mql) as unknown as typeof window.matchMedia;
   return {
     fireChange(matches: boolean) {
       mql.matches = matches;
@@ -198,18 +182,20 @@ describe("ThemeStore bootstrap", () => {
   });
 
   it("never sends a marketplace update-check for a built-in theme, on init() or on a scheme switch", async () => {
+    const network = vi.spyOn(globalThis, "fetch");
     mockMatchMedia(false);
     const { useStore } = await import("../src/stores/theme-store");
 
     // Fresh install -> both slots are VeyraN (built-in) already.
     await useStore.getState().init();
-    expect(updateThemeQuery).not.toHaveBeenCalled();
+    expect(network).not.toHaveBeenCalled();
 
     await useStore.getState().setColorScheme("dark");
-    expect(updateThemeQuery).not.toHaveBeenCalled();
+    expect(network).not.toHaveBeenCalled();
   });
 
-  it("does send a marketplace update-check for a real custom/marketplace theme", async () => {
+  it("keeps an active custom theme local without a marketplace update request", async () => {
+    const network = vi.spyOn(globalThis, "fetch");
     mockMatchMedia(false);
     const customDark = { ...ThemeDark, id: "my-custom-dark" };
     window.localStorage.setItem("theme:dark", JSON.stringify(customDark));
@@ -217,9 +203,8 @@ describe("ThemeStore bootstrap", () => {
     const { useStore } = await import("../src/stores/theme-store");
     await useStore.getState().init();
 
-    expect(updateThemeQuery).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "my-custom-dark" })
-    );
+    expect(useStore.getState().darkTheme.id).toBe("my-custom-dark");
+    expect(network).not.toHaveBeenCalled();
   });
 });
 
@@ -267,5 +252,29 @@ describe("themes-selector built-ins", () => {
     expect(ids).toContain("veyran-dark");
     expect(ids).toContain("veyran-light");
     expect(ids.filter((id) => id === "veyran-dark")).toHaveLength(1);
+  });
+
+  it("renders bundled themes during loading, failure, or a hanging remote service", () => {
+    const activeCustom = { ...ThemeLight, id: "my-custom-light" };
+    // This is the exact local model used by the picker. It accepts no remote
+    // state or result, so all three service states produce the same UI items.
+    const ids = visibleLocalThemes(ThemeVeyranDark, activeCustom).map(
+      (theme) => theme.id
+    );
+    expect(ids).toEqual(
+      expect.arrayContaining(["veyran-light", "veyran-dark", "my-custom-light"])
+    );
+    expect(ids.filter((id) => id === "veyran-dark")).toHaveLength(1);
+  });
+
+  it("finds VeyraN themes offline with search and color filters", () => {
+    expect(
+      visibleLocalThemes(
+        ThemeVeyranDark,
+        ThemeVeyranLight,
+        "veyRan",
+        "light"
+      ).map((theme) => theme.id)
+    ).toEqual(["veyran-light"]);
   });
 });

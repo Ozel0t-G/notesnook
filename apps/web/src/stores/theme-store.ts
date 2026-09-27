@@ -22,15 +22,12 @@ import BaseStore from "./index";
 import Config from "../utils/config";
 import { desktop } from "../common/desktop-bridge";
 import {
-  THEME_COMPATIBILITY_VERSION,
   ThemeDark,
   ThemeDefinition,
   ThemeLight,
   ThemeVeyranDark,
   ThemeVeyranLight
 } from "@notesnook/theme";
-import { ThemesRouter } from "../common/themes-router";
-import { BUILT_IN_THEME_IDS } from "../common/veyran-built-in-themes";
 
 type ColorScheme = "dark" | "light";
 
@@ -189,28 +186,11 @@ function getTheme(colorScheme: ColorScheme): ThemeDefinition {
       );
 }
 
-// None of the VeyraN built-ins are (or ever will be) listed on
-// themes-api.notesnook.com, so an "update check" for them is always a
-// wasted round trip that can only time out or 404; the two original
-// defaults are bundled too, and are updated by shipping a new app build
-// rather than a live marketplace fetch. `updateTheme()` never needs to
-// contact the marketplace for any built-in (see `BUILT_IN_THEME_IDS`'s own
-// doc comment for why the picker shares this same set).
+// Installed custom themes retain their local definition. The upstream theme
+// marketplace is not a production VeyraN service, so startup and appearance
+// changes cannot refresh themes from it.
 async function updateTheme(theme: ThemeDefinition) {
-  if (BUILT_IN_THEME_IDS.has(theme.id)) return theme;
-
-  const { id, version } = theme;
-  try {
-    const updatedTheme = await ThemesRouter.updateTheme.query({
-      compatibilityVersion: THEME_COMPATIBILITY_VERSION,
-      id,
-      version
-    });
-    if (!updatedTheme) return theme;
-    return updatedTheme;
-  } catch (e) {
-    return theme;
-  }
+  return theme;
 }
 
 function changeDesktopTheme(theme: ThemeDefinition, system: boolean) {

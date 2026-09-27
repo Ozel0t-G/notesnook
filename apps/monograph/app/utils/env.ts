@@ -23,6 +23,8 @@ export const API_HOST =
 export const PUBLIC_URL =
   import.meta.env.PUBLIC_URL ||
   p.env.PUBLIC_URL ||
-  `http://localhost:${import.meta.env.PORT || p.env.PORT || 5173}`;
+  (import.meta.env.PROD
+    ? "https://share.veyran.northcore.space"
+    : `http://localhost:${import.meta.env.PORT || p.env.PORT || 5173}`);
 export const COMPATIBILITY_VERSION = 1;
 export const INSTANCE_NAME = p.env.INSTANCE_NAME || "default";

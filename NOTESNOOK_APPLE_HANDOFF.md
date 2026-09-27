@@ -1,5 +1,40 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
+## September 27 installed Mac TestFlight and live QA — newest evidence
+
+This section supersedes the interim Mac install/E2E status immediately below.
+The new **macOS TestFlight 3.4.8 (1790539967)** became internally available,
+was installed through the native TestFlight app, and is the actual build used
+for runtime QA. `/Applications/VeyraN.app` reports that build, version 3.4.8,
+Apple's TestFlight Beta Distribution signature, and team `QXCNJY73A8`.
+The existing encrypted profile was preserved. Authenticated session continuity
+survived a full quit/relaunch; fresh password/MFA entry in this build was not
+needed and was not re-tested. The dedicated plus-alias QA account identified
+in this handoff was used. The newer task text names a different email address;
+that account identity remains to be reconciled.
+
+**PASS:** VeyraN Light, Dark, Auto/System, Mac branding/navigation; Mac↔Web
+Note title/body in both directions; Notebook assignment; Tag add/remove;
+archive/restore and Trash/restore; Mac→Web and Web→Mac UI attachment downloads
+with matching SHA-256; new anonymous VeyraN Share with HTTPS OG metadata,
+then revoke/404; Mac Task create/edit/list/flag/priority/restart/complete.
+Web-to-Mac and Mac-to-Web Note updates appeared without reload. The transport
+mechanism was not conclusively identified. A stale Mac Notebook count/filter
+after restore cleared on app restart while Web and the Mac Note chip retained
+the relation. The Mac UI explicitly marks Urgent alarms unavailable on macOS;
+physical iPhone behavior remains tomorrow's QA.
+
+The universal **iPhone/iPad 3.4.16 (18)** upload remains accepted by Apple,
+but App Store Connect processing completion and internal group membership
+are still unverified because Apple browser reauthentication is required.
+The Mac candidate's internal availability is proven by actual TestFlight
+installation. Production Sync authenticated Web Note write/read also passed
+after the `c7734b9` deployment. Full domain attribution, fresh Mac login/MFA,
+natural token refresh, optional Skiff image import, and physical mobile QA
+remain open. Final production readiness is **FAIL**; no `main` merge or App
+Store production submission occurred. Full evidence and sanitized screenshots
+are in [the TestFlight QA report](artifacts/veyran-testflight-qa/REPORT.md).
+
 ## September 27 internal TestFlight candidates — latest handoff
 
 This section supersedes the older no-TestFlight instruction below. The user

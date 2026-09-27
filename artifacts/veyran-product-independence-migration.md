@@ -1,5 +1,40 @@
 # VeyraN product independence migration — release gate open
 
+## Installed Mac TestFlight and production Web E2E — 2026-09-27, final run update
+
+This section supersedes the interim Mac-not-installable and authenticated-QA
+pending rows below. The internal Mac beta **3.4.8 (1790539967)** was offered
+by native TestFlight, installed through it, and verified as Apple TestFlight
+Beta Distribution in `/Applications/VeyraN.app`. The existing Electron
+encrypted profile and authenticated QA session survived installation and full
+quit/relaunch without deletion. New Mac UI showed VeyraN Light/Dark and
+Auto/System; Light applied and Auto was restored. The packaged renderer lacks
+`themes-api.notesnook.com`. An offline packet-level theme check was not run.
+
+Mac TestFlight↔production Web Note title/body sync **PASS** in both directions;
+changes appeared without reload. Notebook assignment and Tag add/removal
+**PASS**. Archive/restore and Trash/restore **PASS**. After restore, the Mac
+Notebook count/filter was temporarily stale (0/empty) although Web retained
+the Note and Mac Notes showed its Notebook chip; restarting Mac restored 1/the
+Note. Both UI attachment directions **PASS** with matching SHA-256. A new
+anonymous VeyraN Share and HTTPS OG image **PASS**, and revoke returned 404.
+Mac Task create/edit/flag/priority/List/restart/complete **PASS**; two-client
+Tasks and Urgent iPhone behavior are **DEFERRED TO PHYSICAL QA**. Chrome
+Network showed VeyraN Web, API Sync WebSocket, and Events SSE, with occasional
+SSE HTTP/2 errors and successful reconnects; complete Mac/file host domain
+attribution remains **PARTIAL PASS**. No raw HAR/tokens were stored.
+
+The post-deploy production Web Sync smoke **PASS**: a newly created Note kept
+its title/body after a full reload and synced into the new Mac beta. The
+universal iOS/iPadOS **3.4.16 (18)** upload remains accepted for processing;
+ASC processing completion/internal group assignment are **NOT TESTED** due
+Apple reauthentication. Actual Mac TestFlight availability is **PASS**.
+Testing used the approved disposable plus-alias QA account from the Apple
+handoff; the task text names a different address, so fresh login/MFA for that
+named account is **NOT TESTED**. Final production readiness remains **FAIL**.
+See [the detailed QA report](veyran-testflight-qa/REPORT.md) and
+[physical-device checklist](VEYRAN_TESTFLIGHT_PHYSICAL_QA.md).
+
 ## TestFlight candidate and server hardening — 2026-09-27, late evening
 
 **Candidate uploads: PASS; final production readiness: FAIL.** This section

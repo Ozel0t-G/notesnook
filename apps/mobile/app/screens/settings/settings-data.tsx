@@ -1261,8 +1261,12 @@ export const settingsGroups: SettingSection[] = [
           {
             id: "change-backup-dir",
             name: strings.changeBackupDir(),
-            description: () =>
-              SettingsService.get().backupDirectoryAndroid?.name || "",
+            description: () => {
+              const name = SettingsService.get().backupDirectoryAndroid?.name;
+              return name?.includes("Notesnook backups")
+                ? strings.existingBackupFolder()
+                : name || "";
+            },
             icon: "folder",
             hidden: () =>
               !SettingsService.get().backupDirectoryAndroid ||

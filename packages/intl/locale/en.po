@@ -626,12 +626,12 @@ msgid "{plan} plan"
 msgstr "{plan} plan"
 
 #: src/strings.ts:743
-msgid "{platform, select, android {{name} saved to selected path} other {{name} saved to File Manager/Notesnook/downloads}}"
-msgstr "{platform, select, android {{name} saved to selected path} other {{name} saved to File Manager/Notesnook/downloads}}"
+msgid "{platform, select, android {{name} saved to selected path} other {{name} saved to your device}}"
+msgstr "{platform, select, android {{name} saved to selected path} other {{name} saved to your device}}"
 
 #: src/strings.ts:1450
-msgid "{platform, select, android {Backup file saved in \"Notesnook backups\" folder on your phone.} other {Backup file is saved in File Manager/Notesnook folder}}"
-msgstr "{platform, select, android {Backup file saved in \"Notesnook backups\" folder on your phone.} other {Backup file is saved in File Manager/Notesnook folder}}"
+msgid "{platform, select, android {Backup file saved in the selected folder on your phone.} other {Backup file saved on your device.}}"
+msgstr "{platform, select, android {Backup file saved in the selected folder on your phone.} other {Backup file saved on your device.}}"
 
 #: src/strings.ts:2485
 msgid "{selected} selected"
@@ -931,8 +931,8 @@ msgid "All tools in this group will be removed from the toolbar."
 msgstr "All tools in this group will be removed from the toolbar."
 
 #: src/strings.ts:1459
-msgid "All your backups are stored in 'Phone Storage/Notesnook/backups/' folder"
-msgstr "All your backups are stored in 'Phone Storage/Notesnook/backups/' folder"
+msgid "Backups are stored on your device in the configured backup location."
+msgstr "Backups are stored on your device in the configured backup location."
 
 #: src/strings.ts:1012
 msgid "Allow notifications in Settings to use Urgent reminders."
@@ -3042,6 +3042,10 @@ msgstr "Execute"
 #: src/strings.ts:2566
 msgid "Execute a command..."
 msgstr "Execute a command..."
+
+#: src/strings.ts:1356
+msgid "Existing backup folder"
+msgstr "Existing backup folder"
 
 #: src/strings.ts:2127
 msgid "Exit fullscreen"
@@ -6294,8 +6298,8 @@ msgid "Select files to import"
 msgstr "Select files to import"
 
 #: src/strings.ts:1720
-msgid "Select folder where Notesnook backup files are stored to view and restore them from the app"
-msgstr "Select folder where Notesnook backup files are stored to view and restore them from the app"
+msgid "Select the folder containing your backup files to view and restore them"
+msgstr "Select the folder containing your backup files to view and restore them"
 
 #: src/strings.ts:1721
 msgid "Select folder with backup files"

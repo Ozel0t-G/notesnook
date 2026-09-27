@@ -593,11 +593,11 @@ msgid "{plan} plan"
 msgstr ""
 
 #: src/strings.ts:743
-msgid "{platform, select, android {{name} saved to selected path} other {{name} saved to File Manager/Notesnook/downloads}}"
+msgid "{platform, select, android {{name} saved to selected path} other {{name} saved to your device}}"
 msgstr ""
 
 #: src/strings.ts:1450
-msgid "{platform, select, android {Backup file saved in \"Notesnook backups\" folder on your phone.} other {Backup file is saved in File Manager/Notesnook folder}}"
+msgid "{platform, select, android {Backup file saved in the selected folder on your phone.} other {Backup file saved on your device.}}"
 msgstr ""
 
 #: src/strings.ts:2485
@@ -898,7 +898,7 @@ msgid "All tools in this group will be removed from the toolbar."
 msgstr ""
 
 #: src/strings.ts:1459
-msgid "All your backups are stored in 'Phone Storage/Notesnook/backups/' folder"
+msgid "Backups are stored on your device in the configured backup location."
 msgstr ""
 
 #: src/strings.ts:1012
@@ -3008,6 +3008,10 @@ msgstr ""
 
 #: src/strings.ts:2566
 msgid "Execute a command..."
+msgstr ""
+
+#: src/strings.ts:1356
+msgid "Existing backup folder"
 msgstr ""
 
 #: src/strings.ts:2127
@@ -6259,7 +6263,7 @@ msgid "Select files to import"
 msgstr ""
 
 #: src/strings.ts:1720
-msgid "Select folder where Notesnook backup files are stored to view and restore them from the app"
+msgid "Select the folder containing your backup files to view and restore them"
 msgstr ""
 
 #: src/strings.ts:1721

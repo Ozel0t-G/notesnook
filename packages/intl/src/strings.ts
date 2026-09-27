@@ -745,7 +745,7 @@ $day$: Current day (eg. Monday)`,
   fileSaved: (name: string, platform: string) =>
     select(platform, {
       android: `${name} saved to selected path`,
-      other: `${name} saved to File Manager/Notesnook/downloads`
+      other: `${name} saved to your device`
     }),
   downloadError: (message: string) => t`Error downloading file: ${message}`,
   invalid: (type: string) => t`Invalid ${type}`,
@@ -1353,6 +1353,7 @@ $day$: Current day (eg. Monday)`,
   ],
   noDirectorySelected: () => t`No directory selected`,
   changeBackupDir: () => t`Change backup directory`,
+  existingBackupFolder: () => t`Existing backup folder`,
   backupEncryption: () => t`Backup encryption`,
   backupEncryptionDesc: () => t`Encrypt your backups for added security`,
   restoreBackup: () => t`Restore backup`,
@@ -1456,15 +1457,15 @@ $day$: Current day (eg. Monday)`,
   backupComplete: () => t`Backup complete`,
   backupSaved: (platform: string) =>
     select(platform, {
-      android: 'Backup file saved in "Notesnook backups" folder on your phone.',
-      other: "Backup file is saved in File Manager/Notesnook folder"
+      android: "Backup file saved in the selected folder on your phone.",
+      other: "Backup file saved on your device."
     }),
   shareBackup: () => t`Share backup`,
   neverAskAgain: () => t`Never ask again`,
   backingUpData: (type?: "full" | "partial") =>
     t`Creating a${type === "full" ? " full" : ""} backup`,
   backupDataDesc: () =>
-    t`All your backups are stored in 'Phone Storage/Notesnook/backups/' folder`,
+    t`Backups are stored on your device in the configured backup location.`,
   backupSuccess: () => t`Backup successful`,
   biometricsAuthFailed: () =>
     t`Biometrics authentication failed. Please try again.`,
@@ -1727,7 +1728,7 @@ For example:
   exportedNotesLocked: () =>
     t`Some exported notes are locked, Unlock to export them`,
   selectFolderForBackupFilesDesc: () =>
-    t`Select folder where Notesnook backup files are stored to view and restore them from the app`,
+    t`Select the folder containing your backup files to view and restore them`,
   selectBackupFolder: () => t`Select folder with backup files`,
   selectBackupFileDesc: () =>
     t`Select a backup file from your device to restore backup`,

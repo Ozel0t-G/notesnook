@@ -44,27 +44,34 @@ import { getCachePathForFile } from "../common/filesystem/io";
 const MS_DAY = 86400000;
 const MS_WEEK = MS_DAY * 7;
 const MONTH = MS_DAY * 30;
+const VEYRAN_BACKUP_DIRECTORY = "VeyraN backups";
+const LEGACY_BACKUP_DIRECTORY = "Notesnook backups";
+
+export async function resolveBackupDirectoryAndroid(
+  folder: ScopedStorage.FileType
+) {
+  if (
+    folder.name.includes(VEYRAN_BACKUP_DIRECTORY) ||
+    folder.name.includes(LEGACY_BACKUP_DIRECTORY)
+  ) {
+    return folder;
+  }
+
+  const files = await ScopedStorage.listFiles(folder.uri);
+  const directories = files.filter((file) => file.type === "directory");
+  // Reuse a selected legacy folder so existing backups remain visible. New
+  // folders use the VeyraN name without renaming any stored user files.
+  return (
+    directories.find((file) => file.name === LEGACY_BACKUP_DIRECTORY) ||
+    directories.find((file) => file.name === VEYRAN_BACKUP_DIRECTORY) ||
+    ScopedStorage.createDirectory(folder.uri, VEYRAN_BACKUP_DIRECTORY)
+  );
+}
 
 async function getDirectoryAndroid() {
   const folder = await ScopedStorage.openDocumentTree(true);
   if (!folder) return null;
-  let subfolder;
-  if (!folder.name.includes("Notesnook backups")) {
-    const files = await ScopedStorage.listFiles(folder.uri);
-    for (const file of files) {
-      if (file.type === "directory" && file.name === "Notesnook backups") {
-        subfolder = file;
-      }
-    }
-    if (!subfolder) {
-      subfolder = await ScopedStorage.createDirectory(
-        folder.uri,
-        "Notesnook backups"
-      );
-    }
-  } else {
-    subfolder = folder;
-  }
+  const subfolder = await resolveBackupDirectoryAndroid(folder);
   SettingsService.set({
     backupDirectoryAndroid: subfolder
   });

@@ -528,7 +528,7 @@ export default class Backup {
     const { version = 0 } = backup;
     if (version > CURRENT_DATABASE_VERSION)
       throw new Error(
-        "This backup was made from a newer version of Notesnook. Cannot migrate."
+        "This backup was made by a newer app version and cannot be restored here."
       );
 
     switch (version) {

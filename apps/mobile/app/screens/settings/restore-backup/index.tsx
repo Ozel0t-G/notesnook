@@ -45,6 +45,7 @@ import { SectionItem } from "../../../screens/settings/section-item";
 import { ToastManager } from "../../../services/event-manager";
 import Navigation from "../../../services/navigation";
 import SettingsService from "../../../services/settings";
+import { resolveBackupDirectoryAndroid } from "../../../services/backup";
 import { refreshAllStores } from "../../../stores/create-db-collection-store";
 import { useUserStore } from "../../../stores/use-user-store";
 import { AppFontSize } from "../../../utils/size";
@@ -408,15 +409,8 @@ export const RestoreBackup = () => {
               icon: "folder",
               modifer: async () => {
                 const folder = await ScopedStorage.openDocumentTree(true);
-                let subfolder;
-                if (folder.name !== "Notesnook backups") {
-                  subfolder = await ScopedStorage.createDirectory(
-                    folder.uri,
-                    "Notesnook backups"
-                  );
-                } else {
-                  subfolder = folder;
-                }
+                if (!folder) return;
+                const subfolder = await resolveBackupDirectoryAndroid(folder);
                 SettingsService.set({
                   backupDirectoryAndroid: subfolder
                 });

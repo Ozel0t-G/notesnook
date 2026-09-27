@@ -41,6 +41,7 @@ import http from "../../utils/http.js";
 import hosts, { setPersistedHostOverrides } from "../../utils/constants.js";
 import UserManager from "../user-manager.js";
 import { SyncDevices } from "../sync/devices.js";
+import TokenManager from "../token-manager.js";
 import { StoredAffinity } from "../backend-affinity.js";
 import { EVENTS, EV } from "../../common.js";
 import EventManager from "../../utils/event-manager.js";
@@ -58,6 +59,7 @@ const NOTESNOOK = {
 
 const mockGet = http.get as unknown as Mock;
 const mockPost = http.post as unknown as Mock;
+const mockDelete = http.delete as unknown as Mock;
 
 function affinityRecord(api: string, auth: string): StoredAffinity {
   return { v: 1, api, auth, recordedAt: 1 };
@@ -476,6 +478,41 @@ describe("token refresh is blocked across a boundary", () => {
     await expect(tokenManager._refreshToken(true)).rejects.toThrow(
       /different server/
     );
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+});
+
+describe("recovery intent blocks credential retrieval", () => {
+  test("an unexpired token cannot reach account or sync APIs while quarantined", async () => {
+    const { user, db, kv } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: {
+        access_token: "unexpired-access",
+        refresh_token: "unexpired-refresh",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600,
+        t: Date.now()
+      }
+    });
+    kv.set("backendRecoveryRequired", true);
+    const tokenManager = (user as unknown as { tokenManager: TokenManager })
+      .tokenManager;
+    const devices = new SyncDevices(db.kv, tokenManager);
+
+    await expect(tokenManager.getToken(false, false)).rejects.toThrow(
+      /cannot be attributed/
+    );
+    await expect(tokenManager.getAccessToken()).rejects.toThrow(
+      /cannot be attributed/
+    );
+    await expect(user.getSessions()).rejects.toThrow(/cannot be attributed/);
+    await expect(user.clearSessions()).rejects.toThrow(/cannot be attributed/);
+    await expect(devices.register()).rejects.toThrow(/cannot be attributed/);
+    await expect(
+      tokenManager.getAccessTokenFromAuthorizationCode("same-account", "code")
+    ).rejects.toThrow(/cannot be attributed/);
+    expect(mockGet).not.toHaveBeenCalled();
     expect(mockPost).not.toHaveBeenCalled();
   });
 });
@@ -1039,6 +1076,39 @@ describe("three-step login preserves the original session", () => {
     expect(kv.get("backendAffinity")).toEqual(stored);
     expect(kv.get("lastSynced")).toBe(456);
     expect(kv.get("deviceId")).toBe("old-device");
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("rollback unregisters a newly registered device with the verified token despite quarantine", async () => {
+    const { user, db, kv, deriveCryptoKey } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      deviceId: "old-device",
+      cryptoKey: "old-key"
+    });
+    const tokenManager = (user as unknown as { tokenManager: TokenManager })
+      .tokenManager;
+    (db.syncer as unknown as { devices: SyncDevices }).devices =
+      new SyncDevices(db.kv, tokenManager);
+    arrangeGrants();
+    mockDelete.mockResolvedValueOnce(undefined);
+    deriveCryptoKey.mockRejectedValueOnce(new Error("key write failed"));
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow("key write failed");
+
+    expect(mockDelete).toHaveBeenCalledOnce();
+    expect(mockDelete.mock.calls[0][0]).toMatch(
+      /^https:\/\/api\.veyran\.northcore\.space\/devices\?deviceId=/
+    );
+    expect(mockDelete.mock.calls[0][1]).toBe("final-access");
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("deviceId")).toBe("old-device");
+    expect(kv.get("cryptoKey")).toBe("old-key");
     expect(kv.has("backendRecoveryRequired")).toBe(false);
   });
 

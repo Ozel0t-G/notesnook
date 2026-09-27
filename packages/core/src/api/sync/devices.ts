@@ -49,11 +49,11 @@ export class SyncDevices {
     }
   }
 
-  async unregister() {
+  async unregister(accessToken?: string, apiHost = hosts.API_HOST) {
     const deviceId = await this.kv().read("deviceId");
     if (!deviceId) return;
-    const url = `${hosts.API_HOST}/devices?deviceId=${deviceId}`;
-    const token = await this.tokenManager.getAccessToken();
+    const url = `${apiHost}/devices?deviceId=${deviceId}`;
+    const token = accessToken || (await this.tokenManager.getAccessToken());
     return http.delete(url, token).then(() => this.kv().delete("deviceId"));
   }
 

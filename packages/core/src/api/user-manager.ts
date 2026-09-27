@@ -157,6 +157,8 @@ class UserManager {
         "Could not confirm the new account against the configured server, so nothing on this device was changed. Please check your connection and try again."
       );
 
+    snapshot.rollbackAccessToken = grantedToken.access_token;
+
     this.assertConfigurationUnchanged(snapshot);
     if (snapshot.user && snapshot.user.id !== user.id)
       throw new Error(
@@ -322,6 +324,8 @@ class UserManager {
         throw new Error(
           "Could not confirm your account against the configured server, so nothing on this device was changed. Please check your connection and try again."
         );
+
+      snapshot.rollbackAccessToken = grantedToken.access_token;
 
       if (snapshot.user && snapshot.user.id !== user.id)
         throw new Error(
@@ -661,6 +665,7 @@ class UserManager {
       cryptoKeyState: await this.db.storage().snapshotCryptoKeyState(),
       cryptoKeyTouched: false,
       mutationStarted: false,
+      rollbackAccessToken: undefined as string | undefined,
       backend: this.backendAffinity.current(),
       serverSettings: JSON.stringify(getPersistedHostOverrides() || {})
     };
@@ -770,7 +775,10 @@ class UserManager {
     try {
       const newDeviceId = await this.db.kv().read("deviceId");
       if (newDeviceId && newDeviceId !== snapshot.deviceId)
-        await this.db.syncer.devices.unregister();
+        await this.db.syncer.devices.unregister(
+          snapshot.rollbackAccessToken,
+          snapshot.backend.api
+        );
     } catch (error) {
       deviceError = error;
       logger.error(error, "Could not inspect or unregister a failed device");

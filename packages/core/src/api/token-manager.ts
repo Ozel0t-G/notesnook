@@ -70,6 +70,10 @@ class TokenManager {
   ) {}
 
   async getToken(renew = true, forceRenew = false): Promise<Token | undefined> {
+    // A durable recovery intent may coexist with an unexpired access token.
+    // Guard every credential read, not just refresh, so account and sync
+    // callers cannot use a partially committed session after a restart.
+    if (this.guard) await this.guard("Using your session");
     const token = await this.storage().read("token");
     if (!token || !token.access_token) return;
 
@@ -171,6 +175,7 @@ class TokenManager {
   }
 
   async getAccessTokenFromAuthorizationCode(userId: string, authCode: string) {
+    if (this.guard) await this.guard("Completing your sign in");
     return await this.saveToken(
       await http.post(`${constants.AUTH_HOST}${ENDPOINTS.temporaryToken}`, {
         authorization_code: authCode,

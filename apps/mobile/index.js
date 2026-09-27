@@ -27,7 +27,7 @@ AppIntentHost.start();
 
 enableFreeze(true);
 NetInfo.configure({
-  reachabilityUrl: "https://api.notesnook.com/health",
+  reachabilityUrl: "https://api.veyran.northcore.space/health",
   reachabilityTest: (response) => {
     if (!response) return false;
     console.log("reachabilty test", response.status);

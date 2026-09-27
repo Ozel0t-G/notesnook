@@ -336,8 +336,32 @@ export class BackendAffinity {
     return { api, auth };
   }
 
+  /** A saved explicit endpoint is authoritative even if only one was saved. */
+  private persistedConflict(configured: BackendIdentity) {
+    const overrides = getPersistedHostOverrides();
+    if (!overrides) return undefined;
+    const fields: ("api" | "auth")[] = [];
+    const api = overrides.API_HOST && normalizeEndpoint(overrides.API_HOST);
+    const auth = overrides.AUTH_HOST && normalizeEndpoint(overrides.AUTH_HOST);
+    if (overrides.API_HOST && api !== configured.api) fields.push("api");
+    if (overrides.AUTH_HOST && auth !== configured.auth) fields.push("auth");
+    if (!fields.length) return undefined;
+    return {
+      status: "mismatch" as const,
+      stored: { api: api || "", auth: auth || "" },
+      configured,
+      mismatched: fields,
+      evidence: "persisted-config" as const
+    };
+  }
+
   async check(): Promise<BackendAffinityResult> {
     const configured = this.current();
+
+    // A recorded affinity is never permission to silently ignore a user's
+    // explicitly saved server selection. Require the configuration to agree.
+    const savedConflict = this.persistedConflict(configured);
+    if (savedConflict) return savedConflict;
 
     const user = await this.db.user.getUser();
     if (!user) return { status: "no-user", configured, evidence: "none" };
@@ -421,9 +445,9 @@ export class BackendAffinity {
 
     const result = await this.check();
     if (result.status === "match") return result;
-    if (result.status === "mismatch" && result.evidence === "record")
+    if (result.status === "mismatch")
       throw new Error(
-        "This profile is already bound to a different backend. Migrating its data between backends is not supported here."
+        "This profile is already bound or explicitly configured for a different backend. Migrating its data between backends is not supported here."
       );
 
     await this.write(this.current());

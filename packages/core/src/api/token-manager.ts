@@ -73,9 +73,7 @@ class TokenManager {
     const token = await this.storage().read("token");
     if (!token || !token.access_token) return;
 
-    this.logger.info("Access token requested", {
-      accessToken: token.access_token.slice(0, 10)
-    });
+    this.logger.info("Access token requested");
 
     const isExpired = renew && this._isTokenExpired(token);
     if (this._isTokenRefreshable(token) && (forceRenew || isExpired)) {

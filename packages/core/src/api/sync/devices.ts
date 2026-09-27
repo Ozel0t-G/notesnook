@@ -33,9 +33,20 @@ export class SyncDevices {
     const deviceId = getId();
     const url = `${hosts.API_HOST}/devices?deviceId=${deviceId}`;
     const token = await this.tokenManager.getAccessToken();
-    return http
-      .post(url, null, token)
-      .then(() => this.kv().write("deviceId", deviceId));
+    await http.post(url, null, token);
+    try {
+      await this.kv().write("deviceId", deviceId);
+    } catch (error) {
+      // A failed local write must not leave an untracked registration that the
+      // next login cannot identify or unregister. Best-effort remote cleanup;
+      // the original local failure remains the one reported to the caller.
+      try {
+        await http.delete(url, token);
+      } catch {
+        // The local profile has no reference to this device either way.
+      }
+      throw error;
+    }
   }
 
   async unregister() {

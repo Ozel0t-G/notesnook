@@ -19,8 +19,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { User } from "../types.js";
 import http from "../utils/http.js";
-import constants from "../utils/constants.js";
-import TokenManager from "./token-manager.js";
+import constants, { getPersistedHostOverrides } from "../utils/constants.js";
+import TokenManager, { Token } from "./token-manager.js";
 import { EV, EVENTS } from "../common.js";
 import { HealthCheck } from "./healthcheck.js";
 import Database from "./index.js";
@@ -51,6 +51,14 @@ const ENDPOINTS = {
 class UserManager {
   private tokenManager: TokenManager;
   private keyManager: KeyManager;
+  // Interim MFA credentials are never persisted over an existing session.
+  // A process exit during login therefore leaves the previous session intact.
+  private pendingLogin?: {
+    email: string;
+    token: Token;
+    backend: ReturnType<BackendAffinity["current"]>;
+    serverSettings: string;
+  };
   readonly backendAffinity: BackendAffinity;
   constructor(private readonly db: Database) {
     this.keyManager = new KeyManager(db);
@@ -106,15 +114,24 @@ class UserManager {
   async signup(email: string, password: string) {
     email = email.toLowerCase();
 
+    await this.backendAffinity.assertAllowed("Creating an account");
+
     // Signup writes a token before it can verify anything, so the prior state
     // has to be recoverable if the backend boundary rejects what follows.
     const snapshot = await this.snapshotSession();
+    if (snapshot.user)
+      throw new Error(
+        "This profile already belongs to an account. Start a new profile to create another account; local notes were not changed."
+      );
+    let user: User;
     try {
-      await this.signupInternal(email, password, snapshot);
+      user = await this.signupInternal(email, password, snapshot);
     } catch (e) {
-      await this.restoreSession(snapshot);
+      await this.rollbackSession(snapshot);
       throw e;
     }
+    this.db.eventManager.publish(EVENTS.userLoggedIn, user);
+    await this.publishFetchedUserSafely(user, snapshot.user);
   }
 
   private async signupInternal(
@@ -139,10 +156,15 @@ class UserManager {
         "Could not confirm the new account against the configured server, so nothing on this device was changed. Please check your connection and try again."
       );
 
+    this.assertConfigurationUnchanged(snapshot);
+    if (snapshot.user && snapshot.user.id !== user.id)
+      throw new Error(
+        "This profile belongs to a different account. Its local notes were not changed or uploaded. Start a new profile to create another account."
+      );
+
     await this.bindProfileToConfiguredBackend();
-    await this.commitFetchedUser(user, snapshot.user);
+    await this.commitFetchedUser(user, snapshot.user, false);
     await this.db.setLastSynced(0);
-    await this.db.syncer.devices.register();
 
     await this.db.storage().deriveCryptoKey({
       password,
@@ -166,7 +188,9 @@ class UserManager {
       )
     });
 
-    this.db.eventManager.publish(EVENTS.userLoggedIn, user);
+    await this.db.syncer.devices.register();
+
+    return user;
   }
 
   async authenticateEmail(email: string) {
@@ -174,35 +198,48 @@ class UserManager {
 
     email = email.toLowerCase();
 
+    await this.backendAffinity.assertAllowed("Signing in");
+    this.pendingLogin = undefined;
+    const backend = this.backendAffinity.current();
+    const serverSettings = JSON.stringify(getPersistedHostOverrides() || {});
+
     const result = await http.post(`${constants.AUTH_HOST}${ENDPOINTS.token}`, {
       email,
       grant_type: "email",
       client_id: "notesnook"
     });
 
-    await this.tokenManager.saveToken(result);
+    this.assertConfigurationUnchanged({ backend, serverSettings });
+    this.pendingLogin = {
+      email,
+      token: { ...result, t: Date.now() } as Token,
+      backend,
+      serverSettings
+    };
     return result.additional_data;
   }
 
   async authenticateMultiFactorCode(code: string, method: string) {
     if (!code || !method) throw new Error("code & method are required.");
 
-    const token = await this.tokenManager.getToken();
+    const token = this.pendingLogin?.token;
     if (!token || token.scope !== "auth:grant_types:mfa")
       throw new Error("No token found.");
+    this.assertPendingLoginConfiguration();
 
-    await this.tokenManager.saveToken(
-      await http.post(
-        `${constants.AUTH_HOST}${ENDPOINTS.token}`,
-        {
-          grant_type: "mfa",
-          client_id: "notesnook",
-          "mfa:code": code,
-          "mfa:method": method
-        },
-        token.access_token
-      )
+    const response = await http.post(
+      `${constants.AUTH_HOST}${ENDPOINTS.token}`,
+      {
+        grant_type: "mfa",
+        client_id: "notesnook",
+        "mfa:code": code,
+        "mfa:method": method
+      },
+      token.access_token
     );
+    this.assertPendingLoginConfiguration();
+    if (this.pendingLogin)
+      this.pendingLogin.token = { ...response, t: Date.now() } as Token;
     return true;
   }
 
@@ -214,68 +251,80 @@ class UserManager {
   ) {
     if (!email || !password) throw new Error("email & password are required.");
 
-    const token = await this.tokenManager.getToken();
+    const token =
+      this.pendingLogin?.token ??
+      (await this.tokenManager.getToken(false, false));
     if (!token || token.scope !== "auth:grant_types:mfa_password")
       throw new Error("No token found.");
 
     email = email.toLowerCase();
+    if (this.pendingLogin && this.pendingLogin.email !== email)
+      throw new Error("The login email changed. Start sign in again.");
+    await this.backendAffinity.assertAllowed("Signing in");
+    this.assertPendingLoginConfiguration();
     if (!hashedPassword) {
       hashedPassword = await this.db.storage().hash(password, email);
     }
     const snapshot = await this.snapshotSession();
+    let authenticatedUser: User;
     try {
       let usesFallback = false;
-      await this.tokenManager.saveToken(
-        await http
-          .post(
-            `${constants.AUTH_HOST}${ENDPOINTS.token}`,
-            {
-              grant_type: "mfa_password",
-              client_id: "notesnook",
-              scope: "notesnook.sync offline_access IdentityServerApi",
-              password: hashedPassword
-            },
-            token.access_token
-          )
-          .catch(async (e) => {
-            if (e instanceof Error && e.message === "Password is incorrect.") {
-              hashedPassword = await this.db
-                .storage()
-                .hash(password, email, { usesFallback: true });
-              if (hashedPassword === null) return Promise.reject(e);
-              usesFallback = true;
-              return await http.post(
-                `${constants.AUTH_HOST}${ENDPOINTS.token}`,
-                {
-                  grant_type: "mfa_password",
-                  client_id: "notesnook",
-                  scope: "notesnook.sync offline_access IdentityServerApi",
-                  password: hashedPassword
-                },
-                token.access_token
-              );
-            }
-            return Promise.reject(e);
-          })
-      );
+      const grantedToken = await http
+        .post(
+          `${constants.AUTH_HOST}${ENDPOINTS.token}`,
+          {
+            grant_type: "mfa_password",
+            client_id: "notesnook",
+            scope: "notesnook.sync offline_access IdentityServerApi",
+            password: hashedPassword
+          },
+          token.access_token
+        )
+        .catch(async (e) => {
+          if (e instanceof Error && e.message === "Password is incorrect.") {
+            hashedPassword = await this.db
+              .storage()
+              .hash(password, email, { usesFallback: true });
+            if (hashedPassword === null) return Promise.reject(e);
+            usesFallback = true;
+            return await http.post(
+              `${constants.AUTH_HOST}${ENDPOINTS.token}`,
+              {
+                grant_type: "mfa_password",
+                client_id: "notesnook",
+                scope: "notesnook.sync offline_access IdentityServerApi",
+                password: hashedPassword
+              },
+              token.access_token
+            );
+          }
+          return Promise.reject(e);
+        });
 
       // Verify before committing anything. `fetchRemoteUser` writes nothing, so
       // a rejected cross-backend login cannot leave another backend's identity
       // (and salt) cached over this profile's own.
-      const user = await this.fetchRemoteUser();
+      const user = await this.fetchRemoteUser(grantedToken.access_token);
       if (!user)
         throw new Error(
           "Could not confirm your account against the configured server, so nothing on this device was changed. Please check your connection and try again."
         );
 
+      if (snapshot.user && snapshot.user.id !== user.id)
+        throw new Error(
+          "This profile belongs to a different account. Its local notes were not changed or uploaded. Start a new profile to sign in to another account."
+        );
+
+      this.assertConfigurationUnchanged(snapshot);
+
       // Only now, with the account verified and the boundary checked, is it safe
       // to replace the cached identity.
       await this.bindProfileToConfiguredBackend();
-      await this.commitFetchedUser(user, snapshot.user as User | undefined);
+      await this.tokenManager.saveToken(grantedToken);
+      await this.commitFetchedUser(user, snapshot.user, false);
 
       if (!sessionExpired) {
         await this.db.setLastSynced(0);
-        await this.db.syncer.devices.register();
       }
 
       if (usesFallback) {
@@ -289,15 +338,20 @@ class UserManager {
           salt: user.salt
         });
       }
-      this.db.eventManager.publish(EVENTS.userLoggedIn, user);
+      if (!sessionExpired) await this.db.syncer.devices.register();
+      this.pendingLogin = undefined;
+      authenticatedUser = user;
     } catch (e) {
       // Put the profile back exactly as it was: cached identity, token and
       // affinity record. Leaving any of the three half-updated is what would
       // let local notes become eligible to sync to the wrong backend.
-      await this.restoreSession(snapshot);
-      await this.tokenManager.saveToken(token);
+      await this.rollbackSession(snapshot);
+      if (!(e instanceof Error && e.message === "Password is incorrect."))
+        this.pendingLogin = undefined;
       throw e;
     }
+    this.db.eventManager.publish(EVENTS.userLoggedIn, authenticatedUser);
+    await this.publishFetchedUserSafely(authenticatedUser, snapshot.user);
   }
 
   async getSessions() {
@@ -507,13 +561,17 @@ class UserManager {
    * Reads the stored token directly rather than through `getAccessToken`, so a
    * renewal cannot be triggered while affinity is still undetermined.
    */
-  private async fetchRemoteUser(): Promise<User | undefined> {
-    const token = await this.tokenManager.getToken(false, false);
-    if (!token?.access_token) return undefined;
+  private async fetchRemoteUser(
+    accessToken?: string
+  ): Promise<User | undefined> {
+    const token =
+      accessToken ||
+      (await this.tokenManager.getToken(false, false))?.access_token;
+    if (!token) return undefined;
     try {
       const user = await http.get(
         `${constants.API_HOST}${ENDPOINTS.user}`,
-        token.access_token
+        token
       );
       return user || undefined;
     } catch (e) {
@@ -523,8 +581,25 @@ class UserManager {
   }
 
   /** Persist a freshly fetched account and emit the events that follow from it. */
-  private async commitFetchedUser(user: User, oldUser?: User) {
+  private async commitFetchedUser(
+    user: User,
+    oldUser?: User,
+    publishEvents = true
+  ) {
     await this.setUser(user);
+    if (publishEvents) await this.publishFetchedUser(user, oldUser);
+  }
+
+  private async publishFetchedUserSafely(user: User, oldUser?: User) {
+    try {
+      await this.publishFetchedUser(user, oldUser);
+    } catch (error) {
+      // A nonessential event or plan refresh cannot undo a committed login.
+      logger.error(error, "Could not publish updated account metadata");
+    }
+  }
+
+  private async publishFetchedUser(user: User, oldUser?: User) {
     if (
       oldUser &&
       (oldUser.subscription.plan !== user.subscription.plan ||
@@ -551,15 +626,54 @@ class UserManager {
     return {
       user: await this.db.kv().read("user"),
       token: await this.db.kv().read("token"),
-      affinity: await this.db.kv().read("backendAffinity")
+      affinity: await this.db.kv().read("backendAffinity"),
+      lastSynced: await this.db.kv().read("lastSynced"),
+      deviceId: await this.db.kv().read("deviceId"),
+      backend: this.backendAffinity.current(),
+      serverSettings: JSON.stringify(getPersistedHostOverrides() || {})
     };
   }
 
-  private async restoreSession(snapshot: {
-    user?: User;
-    token?: unknown;
-    affinity?: unknown;
-  }) {
+  private assertConfigurationUnchanged(
+    snapshot: Pick<
+      Awaited<ReturnType<UserManager["snapshotSession"]>>,
+      "backend" | "serverSettings"
+    >
+  ) {
+    const current = this.backendAffinity.current();
+    if (
+      current.api !== snapshot.backend.api ||
+      current.auth !== snapshot.backend.auth ||
+      JSON.stringify(getPersistedHostOverrides() || {}) !==
+        snapshot.serverSettings
+    )
+      throw new Error("Server settings changed during sign in. Start again.");
+  }
+
+  private assertPendingLoginConfiguration() {
+    if (this.pendingLogin) this.assertConfigurationUnchanged(this.pendingLogin);
+  }
+
+  private async rollbackSession(
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+  ) {
+    const newDeviceId = await this.db.kv().read("deviceId");
+    if (newDeviceId && newDeviceId !== snapshot.deviceId) {
+      try {
+        await this.db.syncer.devices.unregister();
+      } catch (error) {
+        logger.error(
+          error,
+          "Could not unregister a device after failed sign in"
+        );
+      }
+    }
+    await this.restoreSession(snapshot);
+  }
+
+  private async restoreSession(
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+  ) {
     const kv = this.db.kv();
     if (snapshot.user) await kv.write("user", snapshot.user);
     else await kv.delete("user");
@@ -572,6 +686,11 @@ class UserManager {
     if (snapshot.affinity)
       await kv.write("backendAffinity", snapshot.affinity as never);
     else await kv.delete("backendAffinity");
+    if (snapshot.lastSynced !== undefined)
+      await kv.write("lastSynced", snapshot.lastSynced);
+    else await kv.delete("lastSynced");
+    if (snapshot.deviceId) await kv.write("deviceId", snapshot.deviceId);
+    else await kv.delete("deviceId");
     this.keyManager.clearCache();
   }
 

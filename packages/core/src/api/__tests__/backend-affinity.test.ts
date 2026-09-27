@@ -472,7 +472,34 @@ describe("adoptCurrentBackend", () => {
         confirmedByUser: true,
         verifiedAgainstBackend: true
       })
-    ).rejects.toThrow(/already bound to a different backend/);
+    ).rejects.toThrow(/already bound or explicitly configured/);
     expect(kv.get("backendAffinity")).toEqual(stored);
+  });
+
+  test("explicit adoption cannot override a saved server selection", async () => {
+    const { db, kv } = fakeDb({ user: { id: "legacy" } });
+    setPersistedHostOverrides({
+      API_HOST: NOTESNOOK.api,
+      AUTH_HOST: NOTESNOOK.auth
+    });
+    await expect(
+      new BackendAffinity(db).adoptCurrentBackend({
+        confirmedByUser: true,
+        verifiedAgainstBackend: true
+      })
+    ).rejects.toThrow(/explicitly configured for a different backend/);
+    expect(kv.has("backendAffinity")).toBe(false);
+  });
+
+  test("one mismatched explicit endpoint is enough to refuse adoption", async () => {
+    const { db, kv } = fakeDb({ user: { id: "legacy" } });
+    setPersistedHostOverrides({ API_HOST: NOTESNOOK.api });
+    await expect(
+      new BackendAffinity(db).adoptCurrentBackend({
+        confirmedByUser: true,
+        verifiedAgainstBackend: true
+      })
+    ).rejects.toThrow(/explicitly configured for a different backend/);
+    expect(kv.has("backendAffinity")).toBe(false);
   });
 });

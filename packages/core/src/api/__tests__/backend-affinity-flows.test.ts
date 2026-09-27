@@ -40,6 +40,7 @@ vi.mock("../../utils/http.js", () => ({
 import http from "../../utils/http.js";
 import hosts, { setPersistedHostOverrides } from "../../utils/constants.js";
 import UserManager from "../user-manager.js";
+import { SyncDevices } from "../sync/devices.js";
 import { StoredAffinity } from "../backend-affinity.js";
 import { EVENTS, EV } from "../../common.js";
 import EventManager from "../../utils/event-manager.js";
@@ -81,17 +82,24 @@ function harness(options: {
   storedUser?: User;
   affinity?: StoredAffinity;
   token?: Record<string, unknown>;
+  lastSynced?: number;
+  deviceId?: string;
 }) {
   const kv = new Map<string, unknown>();
   if (options.storedUser) kv.set("user", options.storedUser);
   if (options.affinity) kv.set("backendAffinity", options.affinity);
   if (options.token) kv.set("token", options.token);
+  if (options.lastSynced !== undefined)
+    kv.set("lastSynced", options.lastSynced);
+  if (options.deviceId) kv.set("deviceId", options.deviceId);
 
   const reset = vi.fn(async () => true);
-  const setLastSynced = vi.fn(async () => undefined);
+  const setLastSynced = vi.fn(async (value: number) => {
+    kv.set("lastSynced", value);
+  });
   const deriveCryptoKey = vi.fn(async () => undefined);
-  const unregister = vi.fn(async () => undefined);
-  const register = vi.fn(async () => undefined);
+  const unregister = vi.fn(async () => void kv.delete("deviceId"));
+  const register = vi.fn(async () => void kv.set("deviceId", "new-device"));
 
   const kvAccessor = () => ({
     read: async (key: string) => kv.get(key),
@@ -124,7 +132,16 @@ function harness(options: {
   // BackendAffinity reads the account through db.user.
   (db as unknown as { user: UserManager }).user = user;
 
-  return { db, user, kv, reset, setLastSynced, deriveCryptoKey, register };
+  return {
+    db,
+    user,
+    kv,
+    reset,
+    setLastSynced,
+    deriveCryptoKey,
+    register,
+    unregister
+  };
 }
 
 const original = { api: hosts.API_HOST, auth: hosts.AUTH_HOST };
@@ -172,7 +189,7 @@ describe("login records affinity only from a verified account", () => {
 
     await expect(
       user.authenticatePassword("someone@example.test", "pw")
-    ).rejects.toThrow(/not bound to it|could not confirm/i);
+    ).rejects.toThrow(/cannot be attributed|could not confirm/i);
 
     expect(kv.get("backendAffinity")).toBeUndefined();
   });
@@ -564,7 +581,7 @@ describe("a rejected login leaves the profile exactly as it was", () => {
 
     await expect(
       user.authenticatePassword("foreign@example.test", "pw")
-    ).rejects.toThrow(/cannot be attributed to a server/);
+    ).rejects.toThrow(/cannot be attributed to a backend/);
 
     expect(kv.has("backendAffinity")).toBe(false);
     expect(kv.get("user")).toEqual(local);
@@ -626,4 +643,217 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     });
     expect(kv.get("user")).toMatchObject({ id: "brand-new" });
   });
+
+  test("a late signup failure restores the original sync and device state", async () => {
+    const { user, kv, register, unregister } = harness({
+      lastSynced: 789,
+      deviceId: "previous-device"
+    });
+    mockPost.mockResolvedValue({
+      access_token: "signup-token",
+      refresh_token: "signup-refresh",
+      scope: "notesnook.sync offline_access IdentityServerApi",
+      expires_in: 3600
+    });
+    mockGet.mockResolvedValue(serverUser("brand-new"));
+    register.mockImplementationOnce(async () => {
+      kv.set("deviceId", "new-device");
+      throw new Error("device registration interrupted");
+    });
+
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "device registration interrupted"
+    );
+    expect(unregister).toHaveBeenCalledOnce();
+    expect(kv.get("lastSynced")).toBe(789);
+    expect(kv.get("deviceId")).toBe("previous-device");
+    expect(kv.has("user")).toBe(false);
+    expect(kv.has("token")).toBe(false);
+    expect(kv.has("backendAffinity")).toBe(false);
+  });
+});
+
+describe("three-step login preserves the original session", () => {
+  const originalToken = {
+    access_token: "original-access",
+    refresh_token: "original-refresh",
+    scope: "notesnook.sync offline_access IdentityServerApi",
+    expires_in: 3600,
+    t: 123
+  };
+
+  function arrangeGrants(remoteUser = serverUser("same-account")) {
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "email-stage",
+        scope: "auth:grant_types:mfa",
+        additional_data: { methods: ["app"] }
+      })
+      .mockResolvedValueOnce({
+        access_token: "mfa-stage",
+        scope: "auth:grant_types:mfa_password"
+      })
+      .mockResolvedValueOnce({
+        access_token: "final-access",
+        refresh_token: "final-refresh",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600
+      });
+    mockGet.mockResolvedValue(remoteUser);
+  }
+
+  test("email and MFA never replace the persisted access or refresh token", async () => {
+    const { user, kv } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken
+    });
+    arrangeGrants();
+
+    await user.authenticateEmail("Someone@example.test");
+    expect(kv.get("token")).toEqual(originalToken);
+    await user.authenticateMultiFactorCode("123456", "app");
+    expect(kv.get("token")).toEqual(originalToken);
+    await user.authenticatePassword("someone@example.test", "pw");
+    expect(kv.get("token")).toMatchObject({
+      access_token: "final-access",
+      refresh_token: "final-refresh"
+    });
+  });
+
+  test("a server change during MFA stops before presenting the temporary credential", async () => {
+    const { user, kv } = harness({ token: originalToken });
+    mockPost.mockResolvedValueOnce({
+      access_token: "email-stage",
+      scope: "auth:grant_types:mfa",
+      additional_data: { methods: ["app"] }
+    });
+    await user.authenticateEmail("someone@example.test");
+    hosts.AUTH_HOST = NOTESNOOK.auth;
+
+    await expect(
+      user.authenticateMultiFactorCode("123456", "app")
+    ).rejects.toThrow(/Server settings changed/);
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(kv.get("token")).toEqual(originalToken);
+  });
+
+  test("rejected remote account restores the entire original session", async () => {
+    const stored = affinityRecord(VEYRAN.api, VEYRAN.auth);
+    const local = serverUser("same-account");
+    const { user, kv } = harness({
+      storedUser: local,
+      affinity: stored,
+      token: originalToken,
+      lastSynced: 909,
+      deviceId: "old-device"
+    });
+    arrangeGrants(serverUser("foreign-account"));
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow(/different account/);
+
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("backendAffinity")).toEqual(stored);
+    expect(kv.get("lastSynced")).toBe(909);
+    expect(kv.get("deviceId")).toBe("old-device");
+  });
+
+  test("a late device failure restores sync, device, identity, and token", async () => {
+    const stored = affinityRecord(VEYRAN.api, VEYRAN.auth);
+    const local = serverUser("same-account");
+    const { user, kv, register, unregister } = harness({
+      storedUser: local,
+      affinity: stored,
+      token: originalToken,
+      lastSynced: 456,
+      deviceId: "old-device"
+    });
+    arrangeGrants();
+    register.mockImplementationOnce(async () => {
+      kv.set("deviceId", "new-device");
+      throw new Error("device write failed");
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow("device write failed");
+
+    expect(unregister).toHaveBeenCalledOnce();
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("backendAffinity")).toEqual(stored);
+    expect(kv.get("lastSynced")).toBe(456);
+    expect(kv.get("deviceId")).toBe("old-device");
+  });
+
+  test("can retry after failure without carrying a temporary identity", async () => {
+    const { user, kv } = harness({ token: originalToken });
+    arrangeGrants();
+    mockGet.mockRejectedValueOnce(new Error("temporary outage"));
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow(/Could not confirm/);
+    expect(kv.get("token")).toEqual(originalToken);
+
+    arrangeGrants();
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await user.authenticatePassword("someone@example.test", "pw");
+    expect(kv.get("user")).toMatchObject({ id: "same-account" });
+  });
+
+  test("an incorrect password can be retried without repeating MFA or replacing the old session", async () => {
+    const { user, kv } = harness({ token: originalToken });
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "email-stage",
+        scope: "auth:grant_types:mfa",
+        additional_data: { methods: ["app"] }
+      })
+      .mockResolvedValueOnce({
+        access_token: "mfa-stage",
+        scope: "auth:grant_types:mfa_password"
+      })
+      .mockRejectedValueOnce(new Error("Password is incorrect."))
+      .mockRejectedValueOnce(new Error("Password is incorrect."))
+      .mockResolvedValueOnce({
+        access_token: "final-access",
+        refresh_token: "final-refresh",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600
+      });
+    mockGet.mockResolvedValue(serverUser());
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "wrong")
+    ).rejects.toThrow("Password is incorrect.");
+    expect(kv.get("token")).toEqual(originalToken);
+    await user.authenticatePassword("someone@example.test", "correct");
+    expect(kv.get("token")).toMatchObject({ access_token: "final-access" });
+  });
+});
+
+test("a failed local device write attempts to remove its remote registration", async () => {
+  const write = vi.fn(async () => {
+    throw new Error("device write failed");
+  });
+  mockPost.mockResolvedValue(undefined);
+  const devices = new SyncDevices(() => ({ write } as never), {
+    getAccessToken: async () => "access-token"
+  } as never);
+
+  await expect(devices.register()).rejects.toThrow("device write failed");
+  const url = mockPost.mock.calls[0][0];
+  expect(http.delete).toHaveBeenCalledWith(url, "access-token");
 });

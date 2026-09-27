@@ -268,25 +268,36 @@ export class BackendAffinity {
         "Cannot record backend affinity: the configured hosts are not valid absolute URLs."
       );
 
-    const existing = await this.get();
-    if (existing) {
-      const fields = diff(existing, configured);
-      if (fields.length === 0)
-        return { ok: true, identity: configured, changed: false };
-      return {
-        ok: false,
-        conflict: {
-          status: "mismatch",
-          stored: { api: existing.api, auth: existing.auth },
-          configured,
-          mismatched: fields,
-          evidence: "record"
-        }
-      };
-    }
+    // Consult the full evidence chain, not just the stored record. A profile
+    // that predates affinity tracking has no record, but may still have
+    // explicitly saved server URLs naming a different backend; writing over
+    // that would rebind existing data on the strength of a fresh login.
+    const result = await this.check();
 
-    await this.write(configured);
-    return { ok: true, identity: configured, changed: true };
+    switch (result.status) {
+      case "no-user":
+        // Nothing server-derived exists yet, so there is nothing to endanger.
+        await this.write(configured);
+        return { ok: true, identity: configured, changed: true };
+
+      case "match":
+        // Agreement. Persist it if it was only implied by configuration, so the
+        // attribution survives a later change to those settings.
+        if (result.evidence !== "record") {
+          await this.write(configured);
+          return { ok: true, identity: configured, changed: true };
+        }
+        return { ok: true, identity: configured, changed: false };
+
+      case "mismatch":
+        return { ok: false, conflict: result };
+
+      case "unknown":
+        // An account exists but cannot be attributed. Adopting it here would be
+        // exactly the silent rebinding this guard exists to prevent; it must go
+        // through `adoptCurrentBackend` with explicit user intent.
+        return { ok: false, conflict: result };
+    }
   }
 
   private async write(identity: BackendIdentity) {
@@ -382,22 +393,6 @@ export class BackendAffinity {
       throw new BackendMismatchError(result, operation);
     }
     return result;
-  }
-
-  /**
-   * Record affinity after the configured backend has positively identified the
-   * account. `verified` must come from a fresh authenticated response, never
-   * from a cached user: a cached user proves only that this device once had an
-   * account somewhere, which is exactly the case we must not relabel.
-   */
-  async recordVerified(verified: boolean) {
-    if (!verified) {
-      this.logger.warn(
-        "Not recording backend affinity: the account was not freshly verified against the configured backend."
-      );
-      return undefined;
-    }
-    return await this.record();
   }
 
   /**

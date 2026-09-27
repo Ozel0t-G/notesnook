@@ -295,8 +295,8 @@ describe("check", () => {
 });
 
 describe("record", () => {
-  test("binds an unrecorded profile", async () => {
-    const { db, kv } = fakeDb({ user: { id: "u" } });
+  test("binds a profile that has no account yet", async () => {
+    const { db, kv } = fakeDb({});
     const affinity = new BackendAffinity(db);
     const outcome = await affinity.record();
     expect(outcome.ok).toBe(true);
@@ -305,7 +305,60 @@ describe("record", () => {
       api: VEYRAN.api,
       auth: VEYRAN.auth
     });
-    expect((await affinity.check()).status).toBe("match");
+  });
+
+  /**
+   * Round-2 regression. record() previously consulted only the stored record, so
+   * a profile with existing notes and no record was bound on the strength of a
+   * fresh login. An unattributable profile must never be adopted silently.
+   */
+  test("refuses to adopt an unattributable profile that already has an account", async () => {
+    const { db, kv } = fakeDb({ user: { id: "legacy" } });
+    const outcome = await new BackendAffinity(db).record();
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(outcome.conflict.status).toBe("unknown");
+    expect(kv.has("backendAffinity")).toBe(false);
+  });
+
+  /**
+   * Round-2 regression. Explicitly saved Notesnook hosts are evidence, but
+   * record() ignored them because there was no stored record, so a fresh VeyraN
+   * login could rebind the profile.
+   */
+  test("refuses to rebind when saved server configuration names another backend", async () => {
+    const { db, kv } = fakeDb({ user: { id: "legacy" } });
+    setPersistedHostOverrides({
+      API_HOST: NOTESNOOK.api,
+      AUTH_HOST: NOTESNOOK.auth
+    });
+    const outcome = await new BackendAffinity(db).record();
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) {
+      expect(outcome.conflict.status).toBe("mismatch");
+      expect(outcome.conflict.evidence).toBe("persisted-config");
+    }
+    expect(kv.has("backendAffinity")).toBe(false);
+  });
+
+  // Agreement implied by configuration is promoted to a durable record, so the
+  // attribution survives a later change to those settings.
+  test("promotes matching saved configuration to a stored record", async () => {
+    const { db, kv } = fakeDb({ user: { id: "legacy" } });
+    setPersistedHostOverrides({
+      API_HOST: VEYRAN.api,
+      AUTH_HOST: VEYRAN.auth
+    });
+    const outcome = await new BackendAffinity(db).record();
+    expect(outcome).toMatchObject({ ok: true, changed: true });
+    expect(kv.get("backendAffinity")).toMatchObject({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth
+    });
+
+    // Still attributed once the saved configuration is gone.
+    setPersistedHostOverrides(undefined);
+    expect((await new BackendAffinity(db).check()).status).toBe("match");
   });
 
   // Relabelling is the mechanism by which legacy notes would be uploaded to a
@@ -334,13 +387,6 @@ describe("record", () => {
     await expect(new BackendAffinity(db).record()).rejects.toThrow(
       /not valid absolute URLs/
     );
-  });
-
-  // A cached user proves only that this device once had an account somewhere.
-  test("recordVerified writes nothing when the account was not freshly verified", async () => {
-    const { db, kv } = fakeDb({ user: { id: "u" } });
-    expect(await new BackendAffinity(db).recordVerified(false)).toBeUndefined();
-    expect(kv.has("backendAffinity")).toBe(false);
   });
 });
 

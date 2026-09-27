@@ -106,6 +106,22 @@ class UserManager {
   async signup(email: string, password: string) {
     email = email.toLowerCase();
 
+    // Signup writes a token before it can verify anything, so the prior state
+    // has to be recoverable if the backend boundary rejects what follows.
+    const snapshot = await this.snapshotSession();
+    try {
+      await this.signupInternal(email, password, snapshot);
+    } catch (e) {
+      await this.restoreSession(snapshot);
+      throw e;
+    }
+  }
+
+  private async signupInternal(
+    email: string,
+    password: string,
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+  ) {
     const hashedPassword = await this.db.storage().hash(password, email);
     await this.tokenManager.saveToken(
       await http.post(`${constants.API_HOST}${ENDPOINTS.signup}`, {
@@ -115,14 +131,16 @@ class UserManager {
       })
     );
 
-    const { user, fresh } = await this.fetchUserInternal();
-    if (!user) throw new Error("Failed to fetch user after signup.");
-    if (!fresh)
+    // Verify without writing, so a profile that cannot be bound keeps its own
+    // cached identity and salt.
+    const user = await this.fetchRemoteUser();
+    if (!user)
       throw new Error(
-        "Could not confirm the new account against the configured server. Signup is incomplete; please try again."
+        "Could not confirm the new account against the configured server, so nothing on this device was changed. Please check your connection and try again."
       );
 
     await this.bindProfileToConfiguredBackend();
+    await this.commitFetchedUser(user, snapshot.user);
     await this.db.setLastSynced(0);
     await this.db.syncer.devices.register();
 
@@ -204,6 +222,7 @@ class UserManager {
     if (!hashedPassword) {
       hashedPassword = await this.db.storage().hash(password, email);
     }
+    const snapshot = await this.snapshotSession();
     try {
       let usesFallback = false;
       await this.tokenManager.saveToken(
@@ -240,14 +259,19 @@ class UserManager {
           })
       );
 
-      const { user, fresh } = await this.fetchUserInternal();
-      if (!user) throw new Error("Failed to fetch user.");
+      // Verify before committing anything. `fetchRemoteUser` writes nothing, so
+      // a rejected cross-backend login cannot leave another backend's identity
+      // (and salt) cached over this profile's own.
+      const user = await this.fetchRemoteUser();
+      if (!user)
+        throw new Error(
+          "Could not confirm your account against the configured server, so nothing on this device was changed. Please check your connection and try again."
+        );
 
-      // Only a fresh response proves which backend this account lives on. A
-      // cached user here would mean the account lookup failed, and recording
-      // affinity from it would relabel existing data as belonging to a server
-      // that never confirmed it.
-      await this.bindProfileToConfiguredBackend(fresh);
+      // Only now, with the account verified and the boundary checked, is it safe
+      // to replace the cached identity.
+      await this.bindProfileToConfiguredBackend();
+      await this.commitFetchedUser(user, snapshot.user as User | undefined);
 
       if (!sessionExpired) {
         await this.db.setLastSynced(0);
@@ -267,6 +291,10 @@ class UserManager {
       }
       this.db.eventManager.publish(EVENTS.userLoggedIn, user);
     } catch (e) {
+      // Put the profile back exactly as it was: cached identity, token and
+      // affinity record. Leaving any of the three half-updated is what would
+      // let local notes become eligible to sync to the wrong backend.
+      await this.restoreSession(snapshot);
       await this.tokenManager.saveToken(token);
       throw e;
     }
@@ -345,15 +373,14 @@ class UserManager {
    * the session back. Resolving it is an explicit migration decision, exposed
    * separately via `backendAffinity.adoptCurrentBackend`.
    */
-  private async bindProfileToConfiguredBackend(verified = true) {
-    const outcome = await this.backendAffinity.recordVerified(verified);
-    if (!outcome) {
-      throw new Error(
-        "Could not confirm your account against the configured server, so this device was not bound to it. Your local notes are unchanged. Please check your connection and try again."
-      );
-    }
+  private async bindProfileToConfiguredBackend() {
+    const outcome = await this.backendAffinity.record();
     if (!outcome.ok) {
-      const { stored, configured } = outcome.conflict;
+      const { stored, configured, status } = outcome.conflict;
+      if (status === "unknown")
+        throw new Error(
+          "This device already holds notes that cannot be attributed to a server, so it was not bound to this account. Your local notes are unchanged and were not uploaded. Sign in to the server they came from, start a new profile, or confirm explicitly that they belong to this account."
+        );
       throw new Error(
         `This profile's data belongs to a different server (api ${stored?.api}, auth ${stored?.auth}) than the one you signed in to (api ${configured.api}, auth ${configured.auth}). Your local notes are unchanged and were not uploaded. Sign in to the original server, or start a new profile.`
       );
@@ -455,22 +482,7 @@ class UserManager {
         token
       );
       if (user) {
-        await this.setUser(user);
-        if (
-          oldUser &&
-          (oldUser.subscription.plan !== user.subscription.plan ||
-            oldUser.subscription.status !== user.subscription.status ||
-            oldUser.subscription.provider !== user.subscription.provider)
-        ) {
-          await this.tokenManager._refreshToken(true);
-          this.db.eventManager.publish(
-            EVENTS.userSubscriptionUpdated,
-            user.subscription
-          );
-        }
-        if (oldUser && !oldUser.isEmailConfirmed && user.isEmailConfirmed)
-          this.db.eventManager.publish(EVENTS.userEmailConfirmed);
-        this.db.eventManager.publish(EVENTS.userFetched, user);
+        await this.commitFetchedUser(user, oldUser);
         return { user, fresh: true };
       } else {
         // The server answered but gave us nothing usable. This is not proof of
@@ -481,6 +493,86 @@ class UserManager {
       logger.error(e, "Error fetching user");
       return { user: oldUser, fresh: false };
     }
+  }
+
+  /**
+   * Read the account from the configured backend without writing anything.
+   *
+   * Used by login and signup to verify the account *before* the profile is
+   * bound to a backend or the cached identity is replaced. It must stay free of
+   * side effects: the cached user carries the salt that local content is keyed
+   * from, so overwriting it before the backend boundary has been checked would
+   * leave a rejected login with another backend's identity in place.
+   *
+   * Reads the stored token directly rather than through `getAccessToken`, so a
+   * renewal cannot be triggered while affinity is still undetermined.
+   */
+  private async fetchRemoteUser(): Promise<User | undefined> {
+    const token = await this.tokenManager.getToken(false, false);
+    if (!token?.access_token) return undefined;
+    try {
+      const user = await http.get(
+        `${constants.API_HOST}${ENDPOINTS.user}`,
+        token.access_token
+      );
+      return user || undefined;
+    } catch (e) {
+      logger.error(e, "Error verifying account against the configured backend");
+      return undefined;
+    }
+  }
+
+  /** Persist a freshly fetched account and emit the events that follow from it. */
+  private async commitFetchedUser(user: User, oldUser?: User) {
+    await this.setUser(user);
+    if (
+      oldUser &&
+      (oldUser.subscription.plan !== user.subscription.plan ||
+        oldUser.subscription.status !== user.subscription.status ||
+        oldUser.subscription.provider !== user.subscription.provider)
+    ) {
+      await this.tokenManager._refreshToken(true);
+      this.db.eventManager.publish(
+        EVENTS.userSubscriptionUpdated,
+        user.subscription
+      );
+    }
+    if (oldUser && !oldUser.isEmailConfirmed && user.isEmailConfirmed)
+      this.db.eventManager.publish(EVENTS.userEmailConfirmed);
+    this.db.eventManager.publish(EVENTS.userFetched, user);
+  }
+
+  /**
+   * Capture the account state a flow may have to undo. Login and signup both
+   * write a token before they can verify anything, so a rejection has to put
+   * back exactly what was there.
+   */
+  private async snapshotSession() {
+    return {
+      user: await this.db.kv().read("user"),
+      token: await this.db.kv().read("token"),
+      affinity: await this.db.kv().read("backendAffinity")
+    };
+  }
+
+  private async restoreSession(snapshot: {
+    user?: User;
+    token?: unknown;
+    affinity?: unknown;
+  }) {
+    const kv = this.db.kv();
+    if (snapshot.user) await kv.write("user", snapshot.user);
+    else await kv.delete("user");
+    if (snapshot.token)
+      await kv.write(
+        "token",
+        snapshot.token as Parameters<typeof kv.write>[1] as never
+      );
+    else await kv.delete("token");
+    if (snapshot.affinity)
+      await kv.write("backendAffinity", snapshot.affinity as never);
+    else await kv.delete("backendAffinity");
+    this.keyManager.clearCache();
   }
 
   changePassword(oldPassword: string, newPassword: string) {

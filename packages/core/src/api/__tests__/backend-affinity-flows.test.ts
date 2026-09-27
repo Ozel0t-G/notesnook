@@ -109,6 +109,9 @@ function harness(options: {
       hash: async (password: string) => `hashed:${password}`,
       deriveCryptoKey,
       deriveCryptoKeyFallback: vi.fn(async () => undefined),
+      getCryptoKey: async () => "master-key",
+      encrypt: async () => ({ cipher: "c", iv: "i", salt: "s", length: 1 }),
+      encryptMulti: async () => [],
       clear: async () => kv.clear(),
       read: async (key: string) => kv.get(key),
       write: async (key: string, value: unknown) => void kv.set(key, value)
@@ -386,5 +389,241 @@ describe("token refresh is blocked across a boundary", () => {
       /different server/
     );
     expect(mockPost).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Round-2 regressions. The previous implementation wrote the fetched remote user
+ * into KV inside the fetch, before the backend boundary was checked, so a
+ * rejected cross-backend login restored the token but left another backend's
+ * identity cached over this profile's own. The cached user carries the salt that
+ * local content is keyed from, so that was silent corruption of the profile's
+ * identity, not just a stale field.
+ */
+describe("a rejected login leaves the profile exactly as it was", () => {
+  const mfaToken = {
+    access_token: "mfa-pw-token",
+    scope: "auth:grant_types:mfa_password",
+    refresh_token: "r",
+    expires_in: 3600,
+    t: Date.now()
+  };
+
+  /** The account this device already belongs to, on the other backend. */
+  function localIdentity() {
+    return {
+      ...serverUser("local-user"),
+      email: "local@example.test",
+      salt: "local-salt-that-keys-local-content"
+    } as User;
+  }
+
+  /** A different account, returned by the backend being signed in to. */
+  function foreignIdentity() {
+    return {
+      ...serverUser("foreign-user"),
+      email: "foreign@example.test",
+      salt: "foreign-salt"
+    } as User;
+  }
+
+  function grantSucceedsButAccountIsForeign() {
+    mockPost.mockResolvedValue({
+      access_token: "new",
+      refresh_token: "r2",
+      scope: "notesnook.sync offline_access IdentityServerApi",
+      expires_in: 3600
+    });
+    mockGet.mockResolvedValue(foreignIdentity());
+  }
+
+  test("the cached identity and its salt are not overwritten", async () => {
+    const local = localIdentity();
+    const stored = affinityRecord(NOTESNOOK.api, NOTESNOOK.auth);
+    const { user, kv } = harness({
+      storedUser: local,
+      affinity: stored,
+      token: mfaToken
+    });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow(/belongs to a different server/);
+
+    expect(kv.get("user")).toEqual(local);
+    expect((kv.get("user") as User).salt).toBe(
+      "local-salt-that-keys-local-content"
+    );
+  });
+
+  test("the pre-login token is restored", async () => {
+    const { user, kv } = harness({
+      storedUser: localIdentity(),
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth),
+      token: mfaToken
+    });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow();
+
+    expect(kv.get("token")).toMatchObject({ access_token: "mfa-pw-token" });
+  });
+
+  test("the existing affinity record is untouched", async () => {
+    const stored = affinityRecord(NOTESNOOK.api, NOTESNOOK.auth);
+    const { user, kv } = harness({
+      storedUser: localIdentity(),
+      affinity: stored,
+      token: mfaToken
+    });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow();
+
+    expect(kv.get("backendAffinity")).toEqual(stored);
+  });
+
+  // The whole point of the rejection: nothing may become eligible to upload.
+  test("sync stays blocked afterwards, so no note data can leave", async () => {
+    const { user, kv } = harness({
+      storedUser: localIdentity(),
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth),
+      token: mfaToken
+    });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow();
+
+    expect(await user.backendAffinity.isBlocked()).toBe(true);
+    expect(kv.get("backendAffinity")).toMatchObject({ api: NOTESNOOK.api });
+  });
+
+  test("the sync checkpoint is not reset by a rejected login", async () => {
+    const { user, setLastSynced } = harness({
+      storedUser: localIdentity(),
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth),
+      token: mfaToken
+    });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow();
+
+    expect(setLastSynced).not.toHaveBeenCalled();
+  });
+
+  test("no encryption key is derived from the foreign salt", async () => {
+    const { user, deriveCryptoKey } = harness({
+      storedUser: localIdentity(),
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth),
+      token: mfaToken
+    });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow();
+
+    expect(deriveCryptoKey).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Round-2 regression: an unrecorded profile with explicitly saved Notesnook
+   * hosts was rebindable by a fresh VeyraN login.
+   */
+  test("saved configuration for another backend blocks the login and keeps state", async () => {
+    const local = localIdentity();
+    const { user, kv } = harness({ storedUser: local, token: mfaToken });
+    setPersistedHostOverrides({
+      API_HOST: NOTESNOOK.api,
+      AUTH_HOST: NOTESNOOK.auth
+    });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow(/belongs to a different server/);
+
+    expect(kv.has("backendAffinity")).toBe(false);
+    expect(kv.get("user")).toEqual(local);
+  });
+
+  /** An unattributable profile must not be adopted by simply logging in. */
+  test("an unattributable profile is not adopted by logging in", async () => {
+    const local = localIdentity();
+    const { user, kv } = harness({ storedUser: local, token: mfaToken });
+    grantSucceedsButAccountIsForeign();
+
+    await expect(
+      user.authenticatePassword("foreign@example.test", "pw")
+    ).rejects.toThrow(/cannot be attributed to a server/);
+
+    expect(kv.has("backendAffinity")).toBe(false);
+    expect(kv.get("user")).toEqual(local);
+  });
+});
+
+describe("a rejected signup leaves the profile exactly as it was", () => {
+  test("credentials and identity are rolled back when binding is refused", async () => {
+    const local = {
+      ...serverUser("local-user"),
+      salt: "local-salt"
+    } as User;
+    const priorToken = {
+      access_token: "prior",
+      refresh_token: "pr",
+      scope: "notesnook.sync offline_access",
+      expires_in: 3600,
+      t: Date.now()
+    };
+    const { user, kv } = harness({
+      storedUser: local,
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth),
+      token: priorToken
+    });
+
+    mockPost.mockResolvedValue({
+      access_token: "signup-token",
+      refresh_token: "sr",
+      scope: "notesnook.sync offline_access",
+      expires_in: 3600
+    });
+    mockGet.mockResolvedValue(serverUser("brand-new"));
+
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      /belongs to a different server/
+    );
+
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("token")).toMatchObject({ access_token: "prior" });
+    expect(kv.get("backendAffinity")).toMatchObject({ api: NOTESNOOK.api });
+  });
+
+  test("a signup on a profile with no prior account still binds and commits", async () => {
+    const { user, kv } = harness({});
+    mockPost.mockResolvedValue({
+      access_token: "signup-token",
+      refresh_token: "sr",
+      scope: "notesnook.sync offline_access",
+      expires_in: 3600
+    });
+    mockGet.mockResolvedValue(serverUser("brand-new"));
+
+    await user.signup("new@example.test", "pw");
+
+    expect(kv.get("backendAffinity")).toMatchObject({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth
+    });
+    expect(kv.get("user")).toMatchObject({ id: "brand-new" });
   });
 });

@@ -94,7 +94,7 @@ export const ProfileSettings: SettingsGroup[] = [
       {
         key: "delete-data-for-not-logged-in-user",
         title: strings.deleteData(),
-        description: strings.deleteAccountDesc(),
+        description: strings.deleteLocalDataDesc(),
         keywords: [
           strings.deleteData(),
           strings.deleteAccount(),
@@ -109,7 +109,7 @@ export const ProfileSettings: SettingsGroup[] = [
             action: async () => {
               const ok = await ConfirmDialog.show({
                 title: strings.deleteData(),
-                message: strings.deleteAccountDesc(),
+                message: strings.deleteLocalDataDesc(),
                 positiveButtonText: strings.yes(),
                 negativeButtonText: strings.no()
               });

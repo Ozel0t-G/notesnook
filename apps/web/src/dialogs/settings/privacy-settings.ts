@@ -108,6 +108,10 @@ export const PrivacySettings: SettingsGroup[] = [
         key: "custom-cors",
         title: strings.corsBypass(),
         description: strings.corsBypassDesc(),
+        isHidden: () =>
+          !import.meta.env.DEV &&
+          !IS_TESTING &&
+          !Config.get("corsProxy", ""),
         components: [
           {
             type: "button",

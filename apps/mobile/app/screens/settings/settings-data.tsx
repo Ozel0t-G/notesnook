@@ -80,11 +80,11 @@ export const settingsGroups: SettingSection[] = [
         id: "delete-data",
         name: strings.deleteData(),
         icon: "delete",
-        description: strings.deleteAccountDesc(),
+        description: strings.deleteLocalDataDesc(),
         modifer: () => {
           presentDialog({
             title: strings.deleteData(),
-            paragraph: strings.irreverisibleAction(),
+            paragraph: strings.deleteLocalDataDesc(),
             positiveType: "errorShade",
             positiveText: "Delete data",
             positivePress: async () => {
@@ -857,7 +857,10 @@ export const settingsGroups: SettingSection[] = [
             ? undefined
             : strings.serversConfigurationDesc(),
         icon: "server",
-        component: "server-config"
+        component: "server-config",
+        hidden: () =>
+          !__DEV__ &&
+          Object.keys(SettingsService.getProperty("serverUrls") || {}).length === 0
       }
     ]
   },
@@ -896,7 +899,9 @@ export const settingsGroups: SettingSection[] = [
           keyboardType: "url"
         },
         property: "corsProxy",
-        icon: "arrow-decision-outline"
+        icon: "arrow-decision-outline",
+        hidden: () =>
+          !__DEV__ && !SettingsService.getProperty("corsProxy")
       },
 
       {

@@ -1195,8 +1195,10 @@ $day$: Current day (eg. Monday)`,
     t`Logging out will clear all data stored on THIS DEVICE. Make sure you have synced all your changes before logging out.`,
   logoutError: () => t`Error logging out`,
   deleteAccount: () => t`Delete account`,
+  deleteLocalDataDesc: () =>
+    t`This permanently deletes locally stored notes and settings on this device. It does not delete a VeyraN account. Back up any unsynced notes before proceeding. This cannot be undone.`,
   deleteAccountDesc: () =>
-    t`Your account will be permanently deleted along with all your data, login credentials, and subscription information. This action is IRREVERSIBLE. Make sure you have saved a backup of your notes before proceeding.`,
+    t`Your VeyraN account and data stored on the VeyraN service will be permanently deleted. Back up your notes before proceeding. This cannot be undone.`,
   enterAccountPassword: () => t`Enter account password`,
   enterAccountPasswordDesc: () => t`Enter account password to proceed.`,
   failedToDeleteAccount: () => t`Failed to delete account`,

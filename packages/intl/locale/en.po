@@ -7175,6 +7175,10 @@ msgstr "This note is not referenced in other notes."
 msgid "This note will be published to a public URL."
 msgstr "This note will be published to a public URL."
 
+#: src/strings.ts:1198
+msgid "This permanently deletes locally stored notes and settings on this device. It does not delete a VeyraN account. Back up any unsynced notes before proceeding. This cannot be undone."
+msgstr "This permanently deletes locally stored notes and settings on this device. It does not delete a VeyraN account. Back up any unsynced notes before proceeding. This cannot be undone."
+
 #: src/strings.ts:1021
 msgid "This Task came from a Reminder. Changes made in older app versions will not update this Task."
 msgstr "This Task came from a Reminder. Changes made in older app versions will not update this Task."
@@ -8155,8 +8159,8 @@ msgid "Your account will be downgraded in {days} days"
 msgstr "Your account will be downgraded in {days} days"
 
 #: src/strings.ts:1191
-msgid "Your account will be permanently deleted along with all your data, login credentials, and subscription information. This action is IRREVERSIBLE. Make sure you have saved a backup of your notes before proceeding."
-msgstr "Your account will be permanently deleted along with all your data, login credentials, and subscription information. This action is IRREVERSIBLE. Make sure you have saved a backup of your notes before proceeding."
+msgid "Your VeyraN account and data stored on the VeyraN service will be permanently deleted. Back up your notes before proceeding. This cannot be undone."
+msgstr "Your VeyraN account and data stored on the VeyraN service will be permanently deleted. Back up your notes before proceeding. This cannot be undone."
 
 #: src/strings.ts:962
 msgid "Your archive"

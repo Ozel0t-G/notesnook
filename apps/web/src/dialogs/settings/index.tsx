@@ -82,6 +82,7 @@ import { InboxSettings } from "./inbox-settings";
 import { withFeatureCheck } from "../../common";
 import { hashNavigate } from "../../navigation";
 import { isMac } from "../../utils/platform";
+import Config from "../../utils/config";
 import "../../styles/veyran-mac-settings.css";
 
 type SettingsDialogProps = BaseDialogProps<false> & {
@@ -132,7 +133,15 @@ const sectionGroups: SectionGroup[] = [
         title: strings.notifications(),
         icon: Notification
       },
-      { key: "servers", title: strings.servers(), icon: Servers }
+      {
+        key: "servers",
+        title: strings.servers(),
+        icon: Servers,
+        isHidden: () =>
+          !import.meta.env.DEV &&
+          !IS_TESTING &&
+          Object.keys(Config.get("serverUrls", {})).length === 0
+      }
     ]
   },
   {

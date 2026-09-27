@@ -273,9 +273,9 @@ export const strings = {
   monographSelfDestructDesc: () =>
     t`Published note link will be automatically deleted once it is viewed by someone.`,
   monographLearnMore: () => t`Learn more about Notesnook Monograph`,
-  rateAppHeading: () => t`Do you enjoy using Notesnook?`,
+  rateAppHeading: () => t`Do you enjoy using VeyraN?`,
   rateAppDesc: () =>
-    t`It took us a year to bring Notesnook to life. Share your experience and suggestions to help us improve it.`,
+    t`Share your experience and suggestions to help us improve VeyraN.`,
   recoveryKeySavedConfirmation: () =>
     t`Tap twice to confirm you have saved the recovery key.`,
   noBlocksLinked: () => t`No blocks linked`,
@@ -467,7 +467,7 @@ $day$: Current day (eg. Monday)`,
     t`You can also link a note to multiple Notebooks. Tap and hold any notebook to enable multi-select.`,
   changeEmail: () => t`Change email address`,
   changeEmailDesc: () =>
-    t`Your account email will be changed without affecting your subscription or any other settings.`,
+    t`Your account email will be changed without affecting your notes or other settings.`,
   changeEmailNotice: () => t`You will be logged out from all your devices`,
   export: () => t`Export`,
   exportNotes: (notes: number) =>
@@ -476,10 +476,10 @@ $day$: Current day (eg. Monday)`,
   issueDesc: () =>
     t`We are sorry, it seems that the app crashed due to an error. You can submit a bug report below so we can fix this asap.`,
   issueDesc2: () =>
-    t`Let us know if you have faced any issue/bug while using Notesnook. We will try to fix it as soon as possible.`,
+    t`Let us know if you have faced an issue while using VeyraN.`,
   migrationSaveBackup: () => t`Save a backup of your notes`,
   migrationSaveBackupDesc: () =>
-    t`Thank you for updating Notesnook! We will be applying some minor changes for a better note taking experience.`,
+    t`Thank you for updating VeyraN. We will apply the latest changes to your notes.`,
   moveNotebook: (count: number, title: string) =>
     plural(count, {
       one: `Moving ${title}`,
@@ -1283,7 +1283,7 @@ $day$: Current day (eg. Monday)`,
   privacyAndSecurity: () => t`Privacy & security`,
   telemetry: () => t`Telemetry`,
   telemetryDesc: () =>
-    t`Contribute towards a better Notesnook. All tracking information is anonymous.`,
+    t`Help improve VeyraN. All tracking information is anonymous.`,
   marketingEmails: () => t`Marketing emails`,
   marketingEmailsDesc: () =>
     t`We will send you occasional promotional offers & product updates on your email (sent once every month).`,
@@ -1382,8 +1382,7 @@ $day$: Current day (eg. Monday)`,
   emailSupport: () => t`Email support`,
   emailSupportDesc: () => t`VeyraN support contact is not configured yet`,
   documentation: () => t`Documentation`,
-  documentationDesc: () =>
-    t`Read the documentation to learn more about Notesnook`,
+  documentationDesc: () => t`Read the documentation to learn more about VeyraN`,
   debugging: () => t`Debugging`,
   debuggingDesc: () =>
     t`Get helpful debug info about the app to help us find bugs.`,
@@ -1395,9 +1394,9 @@ $day$: Current day (eg. Monday)`,
     t`Join our Telegram group to chat with other users and the team`,
   joinMastodon: () => t`Follow us on Mastodon`,
   joinMastodonDesc: () =>
-    t`Follow us on Mastodon for updates and news about Notesnook`,
+    t`Follow us on Mastodon for updates and news about VeyraN`,
   followOnX: () => t`Follow us on X`,
-  followOnXDesc: () => t`Follow us on X for updates and news about Notesnook`,
+  followOnXDesc: () => t`Follow us on X for updates and news about VeyraN`,
   joinDiscord: () => t`Join our Discord server`,
   joinDiscordDesc: () =>
     t`Join our Discord server to chat with other users and the team`,
@@ -1410,9 +1409,9 @@ $day$: Current day (eg. Monday)`,
   about: () => t`About`,
   downloadOnDesktop: () => t`Download on desktop`,
   downloadOnDesktopDesc: () =>
-    t`Get Notesnook app on your desktop and access all notes`,
+    t`Get VeyraN on your desktop and access all notes`,
   roadmap: () => t`Roadmap`,
-  roadmapDesc: () => t`See what the future of Notesnook is going to be like.`,
+  roadmapDesc: () => t`See what the future of VeyraN is going to be like.`,
   checkForUpdates: () => t`Check for updates`,
   checkForUpdatesDesc: () => t`Check for a new version of VeyraN`,
   autoUpdateCheck: () => t`Check for updates automatically`,
@@ -1805,9 +1804,9 @@ For example:
     t`This error usually means the search index is corrupted.`,
   searchIndexCorruptFix: () =>
     t`This error can be fixed by rebuilding the search index. This action won't result in any kind of data loss.`,
-  installNotesnook: () => t`Install Notesnook`,
+  installNotesnook: () => t`Install VeyraN`,
   installNotesnookDesc: (platform: string) =>
-    t`For a more integrated user experience, try out Notesnook for ${platform}`,
+    t`For a more integrated user experience, try out VeyraN for ${platform}`,
   nativeFeatures: () => [
     t`Native high-performance encryption`,
     t`Automatic backups`,
@@ -1902,19 +1901,15 @@ For example:
   yourFullName: () => t`Your full name`,
   memberSince: (date: string) => t`Member since ${date}`,
   betaLoginNotice: () =>
-    t`You are logging into the beta version of Notesnook. Switching between beta &amp; stable versions can cause weird issues including data loss. It is recommended that you do not use both simultaneously.`,
+    t`You are logging into a beta version of VeyraN. Switching between beta and stable versions can cause data loss. Do not use both versions with the same account.`,
   loggingIn: () => t`Logging you in`,
   pleaseWaitLogin: () => t`Please wait while you are authenticated.`,
   emailConfirmed: () => t`Your email has been confirmed.`,
   confirmEmailThankyou: () =>
-    t`Thank you for choosing end-to-end encrypted note taking. Now you can sync your notes to unlimited devices.`,
-  shareWithFriends: () => t`Share Notesnook with friends!`,
-  tagPromoWinText: () => [
-    t`Use`,
-    t`#notesnook`,
-    t`and get a chance to win free promo codes.`
-  ],
-  shareWithFriendsDesc: () => t`Because where's the fun in nookin' alone?`,
+    t`Your VeyraN email is confirmed. You can now sync your encrypted notes across your devices.`,
+  shareWithFriends: () => t`Share VeyraN with friends!`,
+  tagPromoWinText: () => [t`Use`, t`#veyran`, t`to share your experience.`],
+  shareWithFriendsDesc: () => t`Share your notes securely.`,
   notebooksAllCaps: () => t`NOTEBOOKS`,
   authenticatedAs: (email: string) => t`Authenticated as ${email}`,
   rememberedYourPassword: () => t`Remembered your password?`,
@@ -2198,13 +2193,13 @@ Please note that we will respond to your feature request on the link above. **We
     t`You can change the theme at any time from Settings or the side menu.`,
   crossPlatformEncrypted: () => t`Cross platform & 100% encrypted`,
   encryptsEverything: () =>
-    t`Notesnook encrypts everything offline before syncing to your other devices. This means that no one can read your notes except you. Not even us.`,
+    t`VeyraN encrypts notes on your device before syncing them to your other devices.`,
   joinTheCause: () => t`Join the cause`,
   meetPrivacyMinded: () =>
     t`Meet other privacy-minded people & talk to us directly about your concerns, issues and suggestions.`,
   nextLevelPrivateNoteTaking: () =>
     t`Experience the next level of private note taking"`,
-  welcomeToNotesnookPro: () => t`Welcome to Notesnook Pro`,
+  welcomeToNotesnookPro: () => t`Welcome to VeyraN`,
   thankYouPrivacy: () =>
     t`Thank you. You are the proof that privacy always comes first.`,
   weAreAlwaysListening: () =>
@@ -2305,12 +2300,12 @@ Please note that we will respond to your feature request on the link above. **We
   advanced: () => t`Advanced`,
   useCustomDns: () => t`Use custom DNS`,
   customDnsDescription: () =>
-    t`Notesnook uses the following DNS providers:
+    t`The app uses the following DNS providers:
 
 1. Cloudflare DNS
 2. Quad9
 
-This can sometimes bypass local ISP blockages on Notesnook traffic. Disable this if you want the app to use system's DNS settings.`,
+This can sometimes bypass local ISP blockages on VeyraN traffic. Disable this if you want the app to use system DNS settings.`,
   changeProxy: () => t`Change proxy`,
   proxy: () => t`Proxy`,
   proxyDescription: () =>
@@ -2384,8 +2379,8 @@ Use this if changes from other devices are not appearing on this device. This wi
   pasteAndMatchStyle: () => t`Paste and match style`,
   pasteWithoutFormatting: () => t`Paste without formatting`,
   configure: () => t`Configure`,
-  usingOfficialInstance: () => t`Using official Notesnook instance`,
-  usingOfficialService: () => t`Using the official sync service`,
+  usingOfficialInstance: () => t`Using the VeyraN service`,
+  usingOfficialService: () => t`Using the configured sync service`,
   veyranMacWelcome: () =>
     t`Your notes, Tasks, and reminders in one private space.`,
   usingInstance: (instance: string, version: string) =>
@@ -2541,7 +2536,7 @@ Use this if changes from other devices are not appearing on this device. This wi
   failed: () => t`Failed`,
   cacheClearedDesc: () => t`All cached attachments have been cleared.`,
   restoreBackupConfirm: () => t`Restore backup?`,
-  serversConfigurationDesc: () => t`Configure server URLs for Notesnook`,
+  serversConfigurationDesc: () => t`Configure VeyraN server URLs`,
   prioritySupport: () => t`Get Priority support`,
   boostProductivityNotebook: () =>
     t`Boost your productivity with Notebooks and organize your notes.`,
@@ -2593,7 +2588,7 @@ Use this if changes from other devices are not appearing on this device. This wi
   recents: () => t`Recents`,
   removeFromRecents: () => t`Remove from recents`,
   releaseTrack: () => t`Release track`,
-  releaseTrackDesc: () => t`Select the release track for Notesnook.`,
+  releaseTrackDesc: () => t`Select the release track for VeyraN.`,
   stable: () => t`Stable`,
   beta: () => t`Beta`,
   zoom: () => t`Zoom`,
@@ -2721,7 +2716,11 @@ Use this if changes from other devices are not appearing on this device. This wi
   unlimited: () => t`Unlimited`,
   fiveYearPlan: () => t`5 year plan (One time purchase)`,
   educationPlan: () => t`Education plan`,
-  welcomeToPlan: (plan: string) => t`Welcome to Notesnook ${plan}`,
+  welcomeToPlan: (plan: string) => {
+    void plan;
+    return t`Welcome to VeyraN`;
+  },
+  welcomeToVeyran: () => t`Welcome to VeyraN`,
   thankYouForPurchase: () => t`Thank you for the purchase`,
   changePlan: () => t`Change plan`,
   contactSupportToChangePlan: () =>
@@ -2779,7 +2778,7 @@ Use this if changes from other devices are not appearing on this device. This wi
   confirmationEmailSent: () => t`Confirmation email sent`,
   inboxAPI: () => t`Inbox API`,
   inboxAPIDesc: () =>
-    t`Share things to Notesnook from anywhere using the Inbox API`,
+    t`Share things to VeyraN from anywhere using the Inbox API`,
   enableInboxAPI: () => t`Enable Inbox API`,
   enableInboxAPIDesc: () => t`Enable/Disable Inbox API`,
   manageInboxKeys: () => t`Inbox PGP Keys`,
@@ -2895,7 +2894,7 @@ Continue without attachments?`,
   openingLocalFileDesc: (filePath: string) =>
     t`Are you sure you want to open this file: ${filePath}?`,
   cantOpenFileLinksInBrowsers: () =>
-    t`File links cannot be opened in browsers. Please use the Notesnook desktop app.`,
+    t`File links cannot be opened in browsers. Please use the VeyraN desktop app.`,
   expiryDateMustBeInTheFuture: () => t`Expiry date must be in the future`,
   expiryDateCannotBeMoreThan1YearInTheFuture: () =>
     t`Expiry date cannot be more than 1 year in the future`,
@@ -2933,7 +2932,7 @@ Continue without attachments?`,
   versionDeleted: () => actions.deleted.version(1),
   offlineMode: () => t`Offline mode`,
   offlineModeDesc: () =>
-    t`Using Notesnook without an account will NOT sync your notes across devices and could result in data loss if you lose access to your device or uninstall the app. Make sure to backup your notes regularly.`,
+    t`Using VeyraN without an account will not sync your notes across devices. Back up your notes regularly to avoid losing local data.`,
   alignment: () => t`Alignment`,
   handwriting: () => t`Handwriting`,
   editHandwriting: () => t`Edit handwriting`

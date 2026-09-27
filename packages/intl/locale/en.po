@@ -661,10 +661,6 @@ msgstr "{words, plural, one {# word} other {# words}}"
 msgid "{words, plural, other {# selected}}"
 msgstr "{words, plural, other {# selected}}"
 
-#: src/strings.ts:1904
-msgid "#notesnook"
-msgstr "#notesnook"
-
 #: src/strings.ts:2794
 msgid "1 day"
 msgstr "1 day"
@@ -922,10 +918,6 @@ msgstr "All server urls are required."
 msgid "All the data in your account will be overwritten with the data in the backup file. There is no way to reverse this action."
 msgstr "All the data in your account will be overwritten with the data in the backup file. There is no way to reverse this action."
 
-#: src/strings.ts:2275
-msgid "All the source code for Notesnook is available & open for everyone on GitHub."
-msgstr "All the source code for Notesnook is available & open for everyone on GitHub."
-
 #: src/strings.ts:430
 msgid "All tools are grouped"
 msgstr "All tools are grouped"
@@ -965,10 +957,6 @@ msgstr "and"
 #: src/strings.ts:103
 msgid "and "
 msgstr "and "
-
-#: src/strings.ts:1905
-msgid "and get a chance to win free promo codes."
-msgstr "and get a chance to win free promo codes."
 
 #: src/strings.ts:2662
 msgid "and much more."
@@ -1356,10 +1344,6 @@ msgstr "Backups"
 msgid "Basic"
 msgstr "Basic"
 
-#: src/strings.ts:1907
-msgid "Because where's the fun in nookin' alone?"
-msgstr "Because where's the fun in nookin' alone?"
-
 #: src/strings.ts:1237
 msgid "Behavior"
 msgstr "Behavior"
@@ -1604,10 +1588,6 @@ msgstr "Changing password is an irreversible process. You will be logged out fro
 msgid "Characters"
 msgstr "Characters"
 
-#: src/strings.ts:1409
-msgid "Check for new version of Notesnook"
-msgstr "Check for new version of Notesnook"
-
 #: src/strings.ts:1412
 msgid "Check for new version of the app available on app launch"
 msgstr "Check for new version of the app available on app launch"
@@ -1789,32 +1769,6 @@ msgstr "Clear trash interval"
 msgid "Clear vault"
 msgstr "Clear vault"
 
-#: src/strings.ts:1987
-msgid ""
-"Clearing attachments cache will perform the following actions:\n"
-"\n"
-"- Downloaded images & files: **cleared**\n"
-"- Pending uploads: **cleared**\n"
-"- Uploaded images & files: _unaffected_\n"
-"\n"
-"All attachments will be downloaded & cached again on access.\n"
-"\n"
-"---\n"
-"\n"
-"**Only use this for troubleshooting purposes. If you are having persistent issues, it is recommended that you reach out to us via support@streetwriters.co so we can help you resolve it permanently.**"
-msgstr ""
-"Clearing attachments cache will perform the following actions:\n"
-"\n"
-"- Downloaded images & files: **cleared**\n"
-"- Pending uploads: **cleared**\n"
-"- Uploaded images & files: _unaffected_\n"
-"\n"
-"All attachments will be downloaded & cached again on access.\n"
-"\n"
-"---\n"
-"\n"
-"**Only use this for troubleshooting purposes. If you are having persistent issues, it is recommended that you reach out to us via support@streetwriters.co so we can help you resolve it permanently.**"
-
 #: src/strings.ts:2353
 msgid "Clearing trash will permanently delete all the items in your trash. This action is IRREVERSIBLE."
 msgstr "Clearing trash will permanently delete all the items in your trash. This action is IRREVERSIBLE."
@@ -1985,10 +1939,6 @@ msgstr "Compression failed"
 msgid "Configure"
 msgstr "Configure"
 
-#: src/strings.ts:2534
-msgid "Configure server URLs for Notesnook"
-msgstr "Configure server URLs for Notesnook"
-
 #: src/strings.ts:682
 msgid "Confirm email"
 msgstr "Confirm email"
@@ -2029,17 +1979,9 @@ msgstr "Connected to all servers sucessfully."
 msgid "Contact support"
 msgstr "Contact support"
 
-#: src/strings.ts:1375
-msgid "Contact us directly via support@streetwriters.co for any help or support"
-msgstr "Contact us directly via support@streetwriters.co for any help or support"
-
 #: src/strings.ts:543
 msgid "Continue"
 msgstr "Continue"
-
-#: src/strings.ts:1277
-msgid "Contribute towards a better Notesnook. All tracking information is anonymous."
-msgstr "Contribute towards a better Notesnook. All tracking information is anonymous."
 
 #: src/strings.ts:1361
 msgid "Controls whether this device should receive reminder notifications."
@@ -2588,10 +2530,6 @@ msgstr "Dismiss announcement"
 #: src/strings.ts:45
 msgid "Disputed"
 msgstr "Disputed"
-
-#: src/strings.ts:273
-msgid "Do you enjoy using Notesnook?"
-msgstr "Do you enjoy using Notesnook?"
 
 #: src/strings.ts:1376
 msgid "Documentation"
@@ -3345,10 +3283,6 @@ msgstr "File length is 0. Please upload this file again from the attachment mana
 msgid "File length mismatch. Expected {expectedSize} but got {currentSize} bytes. Please upload this file again from the attachment manager."
 msgstr "File length mismatch. Expected {expectedSize} but got {currentSize} bytes. Please upload this file again from the attachment manager."
 
-#: src/strings.ts:2889
-msgid "File links cannot be opened in browsers. Please use the Notesnook desktop app."
-msgstr "File links cannot be opened in browsers. Please use the Notesnook desktop app."
-
 #: src/strings.ts:951
 msgid "File mismatch"
 msgstr "File mismatch"
@@ -3401,17 +3335,9 @@ msgstr "Follow"
 msgid "Follow us on Mastodon"
 msgstr "Follow us on Mastodon"
 
-#: src/strings.ts:1390
-msgid "Follow us on Mastodon for updates and news about Notesnook"
-msgstr "Follow us on Mastodon for updates and news about Notesnook"
-
 #: src/strings.ts:1391
 msgid "Follow us on X"
 msgstr "Follow us on X"
-
-#: src/strings.ts:1392
-msgid "Follow us on X for updates and news about Notesnook"
-msgstr "Follow us on X for updates and news about Notesnook"
 
 #: src/strings.ts:2404
 msgid "Font family"
@@ -3428,10 +3354,6 @@ msgstr "Font size"
 #: src/strings.ts:2649
 msgid "For a monthly subscription, you can get a refund within 7 days of purchase. For a yearly subscription, we offer a full refund within 14 days of purchase. For a 5 year subscription, you can request a refund within 30 days of purchase."
 msgstr "For a monthly subscription, you can get a refund within 7 days of purchase. For a yearly subscription, we offer a full refund within 14 days of purchase. For a 5 year subscription, you can request a refund within 30 days of purchase."
-
-#: src/strings.ts:1800
-msgid "For a more integrated user experience, try out Notesnook for {platform}"
-msgstr "For a more integrated user experience, try out Notesnook for {platform}"
 
 #: src/strings.ts:1881
 msgid "for help regarding how to use the Notesnook Importer."
@@ -3452,24 +3374,6 @@ msgstr "Force pull changes"
 #: src/strings.ts:1218
 msgid "Force push changes"
 msgstr "Force push changes"
-
-#: src/strings.ts:2336
-msgid ""
-"Force push:\n"
-"Use this if changes made on this device are not appearing on other devices. This will overwrite the data on the server with the data from this device.\n"
-"\n"
-"Force pull:\n"
-"Use this if changes from other devices are not appearing on this device. This will overwrite the data on this device with the latest data from the server.\n"
-"\n"
-"**These must only be used for troubleshooting. Using them regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co.**"
-msgstr ""
-"Force push:\n"
-"Use this if changes made on this device are not appearing on other devices. This will overwrite the data on the server with the data from this device.\n"
-"\n"
-"Force pull:\n"
-"Use this if changes from other devices are not appearing on this device. This will overwrite the data on this device with the latest data from the server.\n"
-"\n"
-"**These must only be used for troubleshooting. Using them regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co.**"
 
 #: src/strings.ts:553
 msgid "Forgot password?"
@@ -3518,10 +3422,6 @@ msgstr "General"
 #: src/strings.ts:1381
 msgid "Get helpful debug info about the app to help us find bugs."
 msgstr "Get helpful debug info about the app to help us find bugs."
-
-#: src/strings.ts:1405
-msgid "Get Notesnook app on your desktop and access all notes"
-msgstr "Get Notesnook app on your desktop and access all notes"
 
 #: src/strings.ts:2281
 msgid "Get Notesnook app on your iPhone and access all your notes on the go."
@@ -3666,10 +3566,6 @@ msgstr "Height"
 #: src/strings.ts:1369
 msgid "Help and support"
 msgstr "Help and support"
-
-#: src/strings.ts:161
-msgid "Help improve Notesnook by sending completely anonymized"
-msgstr "Help improve Notesnook by sending completely anonymized"
 
 #: src/strings.ts:1488
 msgid "Hide"
@@ -3923,10 +3819,6 @@ msgstr "Insert row above"
 msgid "Insert row below"
 msgstr "Insert row below"
 
-#: src/strings.ts:1798
-msgid "Install Notesnook"
-msgstr "Install Notesnook"
-
 #: src/strings.ts:2272
 msgid "Install update"
 msgstr "Install update"
@@ -3971,10 +3863,6 @@ msgstr "It may take a minute to receive your code."
 #: src/strings.ts:1704
 msgid "It seems that your changes could not be saved. What to do next:"
 msgstr "It seems that your changes could not be saved. What to do next:"
-
-#: src/strings.ts:275
-msgid "It took us a year to bring Notesnook to life. Share your experience and suggestions to help us improve it."
-msgstr "It took us a year to bring Notesnook to life. Share your experience and suggestions to help us improve it."
 
 #: src/strings.ts:2385
 msgid "Italic"
@@ -4096,10 +3984,6 @@ msgstr "Least relevant first"
 #: src/strings.ts:1676
 msgid "Legal"
 msgstr "Legal"
-
-#: src/strings.ts:476
-msgid "Let us know if you have faced any issue/bug while using Notesnook. We will try to fix it as soon as possible."
-msgstr "Let us know if you have faced any issue/bug while using Notesnook. We will try to fix it as soon as possible."
 
 #: src/strings.ts:1632
 msgid "Library"
@@ -4329,10 +4213,6 @@ msgstr "Login successful"
 #: src/strings.ts:1475
 msgid "Login to encrypt and sync notes"
 msgstr "Login to encrypt and sync notes"
-
-#: src/strings.ts:2740
-msgid "Login to upload attachments. [Read more](https://notesnook.com/help/faqs/login-to-upload-attachments)"
-msgstr "Login to upload attachments. [Read more](https://notesnook.com/help/faqs/login-to-upload-attachments)"
 
 #: src/strings.ts:542
 msgid "Login to your account"
@@ -4941,10 +4821,6 @@ msgstr "Notesnook Circle"
 msgid "Notesnook Circle brings together trusted partners who share our commitment to privacy, transparency, and user freedom."
 msgstr "Notesnook Circle brings together trusted partners who share our commitment to privacy, transparency, and user freedom."
 
-#: src/strings.ts:2191
-msgid "Notesnook encrypts everything offline before syncing to your other devices. This means that no one can read your notes except you. Not even us."
-msgstr "Notesnook encrypts everything offline before syncing to your other devices. This means that no one can read your notes except you. Not even us."
-
 #: src/strings.ts:2266
 msgid "Notesnook Importer"
 msgstr "Notesnook Importer"
@@ -4952,30 +4828,6 @@ msgstr "Notesnook Importer"
 #: src/strings.ts:1179
 msgid "Notesnook Pro"
 msgstr "Notesnook Pro"
-
-#: src/strings.ts:2298
-msgid ""
-"Notesnook uses the following DNS providers:\n"
-"\n"
-"1. Cloudflare DNS\n"
-"2. Quad9\n"
-"\n"
-"This can sometimes bypass local ISP blockages on Notesnook traffic. Disable this if you want the app to use system's DNS settings."
-msgstr ""
-"Notesnook uses the following DNS providers:\n"
-"\n"
-"1. Cloudflare DNS\n"
-"2. Quad9\n"
-"\n"
-"This can sometimes bypass local ISP blockages on Notesnook traffic. Disable this if you want the app to use system's DNS settings."
-
-#: src/strings.ts:1100
-msgid "Notesnook will send you a 2FA code on your email when prompted"
-msgstr "Notesnook will send you a 2FA code on your email when prompted"
-
-#: src/strings.ts:1107
-msgid "Notesnook will send you an SMS with a 2FA code when prompted"
-msgstr "Notesnook will send you an SMS with a 2FA code when prompted"
 
 #: src/strings.ts:2261
 msgid "Notifications"
@@ -5711,10 +5563,6 @@ msgstr "Read full release notes on Github"
 msgid "Read only"
 msgstr "Read only"
 
-#: src/strings.ts:1378
-msgid "Read the documentation to learn more about Notesnook"
-msgstr "Read the documentation to learn more about Notesnook"
-
 #: src/strings.ts:1399
 msgid "Read the privacy policy"
 msgstr "Read the privacy policy"
@@ -6284,10 +6132,6 @@ msgstr "Saved"
 msgid "Saving"
 msgstr "Saving"
 
-#: src/strings.ts:1702
-msgid "Saving this note is taking too long. Copy your changes and restart the app to prevent data loss. If the problem persists, please report it to us at support@streetwriters.co."
-msgstr "Saving this note is taking too long. Copy your changes and restart the app to prevent data loss. If the problem persists, please report it to us at support@streetwriters.co."
-
 #: src/strings.ts:796
 msgid "Saving zip file ({progress}%). Please wait..."
 msgstr "Saving zip file ({progress}%). Please wait..."
@@ -6421,10 +6265,6 @@ msgstr "Security key"
 msgid "Security key successfully registered."
 msgstr "Security key successfully registered."
 
-#: src/strings.ts:1407
-msgid "See what the future of Notesnook is going to be like."
-msgstr "See what the future of Notesnook is going to be like."
-
 #: src/strings.ts:1447
 msgid "Select"
 msgstr "Select"
@@ -6516,10 +6356,6 @@ msgstr "Select the folder that includes your backup files to list them here."
 #: src/strings.ts:2254
 msgid "Select the languages the spell checker should check in."
 msgstr "Select the languages the spell checker should check in."
-
-#: src/strings.ts:2586
-msgid "Select the release track for Notesnook."
-msgstr "Select the release track for Notesnook."
 
 #: src/strings.ts:237
 msgid "SELECTED NOTE"
@@ -6730,14 +6566,6 @@ msgstr "Share backup"
 #: src/strings.ts:453
 msgid "Share note"
 msgstr "Share note"
-
-#: src/strings.ts:1901
-msgid "Share Notesnook with friends!"
-msgstr "Share Notesnook with friends!"
-
-#: src/strings.ts:2773
-msgid "Share things to Notesnook from anywhere using the Inbox API"
-msgstr "Share things to Notesnook from anywhere using the Inbox API"
 
 #: src/strings.ts:594
 msgid "Share to cloud"
@@ -7207,10 +7035,6 @@ msgstr "Text color"
 msgid "Text direction"
 msgstr "Text direction"
 
-#: src/strings.ts:1900
-msgid "Thank you for choosing end-to-end encrypted note taking. Now you can sync your notes to unlimited devices."
-msgstr "Thank you for choosing end-to-end encrypted note taking. Now you can sync your notes to unlimited devices."
-
 #: src/strings.ts:2164
 msgid "Thank you for reporting!"
 msgstr "Thank you for reporting!"
@@ -7222,10 +7046,6 @@ msgstr "Thank you for subscribing"
 #: src/strings.ts:2715
 msgid "Thank you for the purchase"
 msgstr "Thank you for the purchase"
-
-#: src/strings.ts:479
-msgid "Thank you for updating Notesnook! We will be applying some minor changes for a better note taking experience."
-msgstr "Thank you for updating Notesnook! We will be applying some minor changes for a better note taking experience."
 
 #: src/strings.ts:2165
 msgid "Thank you for your feedback!"
@@ -7338,11 +7158,6 @@ msgstr "This is a one time purchase, no subscription."
 #: src/strings.ts:2159
 msgid "This may take a while"
 msgstr "This may take a while"
-
-#: src/strings.ts:1214
-#: src/strings.ts:1223
-msgid "This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co."
-msgstr "This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co."
 
 #: src/strings.ts:2766
 msgid "This note is empty"
@@ -7858,18 +7673,6 @@ msgstr "User verification failed"
 msgid "Using {instance} (v{version})"
 msgstr "Using {instance} (v{version})"
 
-#: src/strings.ts:2927
-msgid "Using Notesnook without an account will NOT sync your notes across devices and could result in data loss if you lose access to your device or uninstall the app. Make sure to backup your notes regularly."
-msgstr "Using Notesnook without an account will NOT sync your notes across devices and could result in data loss if you lose access to your device or uninstall the app. Make sure to backup your notes regularly."
-
-#: src/strings.ts:2377
-msgid "Using official Notesnook instance"
-msgstr "Using official Notesnook instance"
-
-#: src/strings.ts:2378
-msgid "Using the official sync service"
-msgstr "Using the official sync service"
-
 #: src/strings.ts:1823
 msgid "v{version} available"
 msgstr "v{version} available"
@@ -8092,14 +7895,6 @@ msgstr "Welcome back, {email}"
 msgid "Welcome back!"
 msgstr "Welcome back!"
 
-#: src/strings.ts:2714
-msgid "Welcome to Notesnook {plan}"
-msgstr "Welcome to Notesnook {plan}"
-
-#: src/strings.ts:2197
-msgid "Welcome to Notesnook Pro"
-msgstr "Welcome to Notesnook Pro"
-
 #: src/strings.ts:1505
 msgid "What do I do if I am not getting the email?"
 msgstr "What do I do if I am not getting the email?"
@@ -8185,10 +7980,6 @@ msgstr "You are editing \"{notebookTitle}\"."
 #: src/strings.ts:2157
 msgid "You are editing #{tag}"
 msgstr "You are editing #{tag}"
-
-#: src/strings.ts:1895
-msgid "You are logging into the beta version of Notesnook. Switching between beta &amp; stable versions can cause weird issues including data loss. It is recommended that you do not use both simultaneously."
-msgstr "You are logging into the beta version of Notesnook. Switching between beta &amp; stable versions can cause weird issues including data loss. It is recommended that you do not use both simultaneously."
 
 #: src/strings.ts:1474
 msgid "You are not logged in"
@@ -8322,16 +8113,6 @@ msgstr "You have unsynced notes. Take a backup or sync your notes to avoid losin
 msgid "You must log out in order to change/reset server URLs."
 msgstr "You must log out in order to change/reset server URLs."
 
-#: src/strings.ts:2856
-msgid ""
-"You need to login to restore attachments from a backup file. [Read more](https://notesnook.com/help/faqs/login-to-restore-attachments-in-backup).\n"
-"  \n"
-"Continue without attachments?"
-msgstr ""
-"You need to login to restore attachments from a backup file. [Read more](https://notesnook.com/help/faqs/login-to-restore-attachments-in-backup).\n"
-"  \n"
-"Continue without attachments?"
-
 #: src/strings.ts:1181
 msgid "You subscribed to Notesnook Pro on {date}. Verify this subscription?"
 msgstr "You subscribed to Notesnook Pro on {date}. Verify this subscription?"
@@ -8363,10 +8144,6 @@ msgstr "You will be logged out from all your devices"
 #: src/strings.ts:1965
 msgid "You will receive instructions on how to recover your account on this email"
 msgstr "You will receive instructions on how to recover your account on this email"
-
-#: src/strings.ts:467
-msgid "Your account email will be changed without affecting your subscription or any other settings."
-msgstr "Your account email will be changed without affecting your subscription or any other settings."
 
 #: src/strings.ts:2031
 msgid "Your account has been recovered."
@@ -8576,3 +8353,224 @@ msgstr "Zoom in or out the app content."
 #: src/strings.ts:1813
 msgid "Zoom out"
 msgstr "Zoom out"
+
+#: src/strings.ts:1911
+msgid "#veyran"
+msgstr "#veyran"
+
+#: src/strings.ts:1416
+msgid "Check for a new version of VeyraN"
+msgstr "Check for a new version of VeyraN"
+
+#: src/strings.ts:1992
+msgid ""
+"Clearing attachments cache will perform the following actions:\n"
+"\n"
+"- Downloaded images & files: **cleared**\n"
+"- Pending uploads: **cleared**\n"
+"- Uploaded images & files: _unaffected_\n"
+"\n"
+"All attachments will be downloaded & cached again on access.\n"
+"\n"
+"---\n"
+"\n"
+"**Only use this for troubleshooting purposes. If problems continue, preserve a local backup and diagnostic logs before retrying.**"
+msgstr ""
+"Clearing attachments cache will perform the following actions:\n"
+"\n"
+"- Downloaded images & files: **cleared**\n"
+"- Pending uploads: **cleared**\n"
+"- Uploaded images & files: _unaffected_\n"
+"\n"
+"All attachments will be downloaded & cached again on access.\n"
+"\n"
+"---\n"
+"\n"
+"**Only use this for troubleshooting purposes. If problems continue, preserve a local backup and diagnostic logs before retrying.**"
+
+#: src/strings.ts:2539
+msgid "Configure VeyraN server URLs"
+msgstr "Configure VeyraN server URLs"
+
+#: src/strings.ts:276
+msgid "Do you enjoy using VeyraN?"
+msgstr "Do you enjoy using VeyraN?"
+
+#: src/strings.ts:2897
+msgid "File links cannot be opened in browsers. Please use the VeyraN desktop app."
+msgstr "File links cannot be opened in browsers. Please use the VeyraN desktop app."
+
+#: src/strings.ts:1397
+msgid "Follow us on Mastodon for updates and news about VeyraN"
+msgstr "Follow us on Mastodon for updates and news about VeyraN"
+
+#: src/strings.ts:1399
+msgid "Follow us on X for updates and news about VeyraN"
+msgstr "Follow us on X for updates and news about VeyraN"
+
+#: src/strings.ts:1809
+msgid "For a more integrated user experience, try out VeyraN for {platform}"
+msgstr "For a more integrated user experience, try out VeyraN for {platform}"
+
+#: src/strings.ts:2341
+msgid ""
+"Force push:\n"
+"Use this if changes made on this device are not appearing on other devices. This will overwrite the data on the server with the data from this device.\n"
+"\n"
+"Force pull:\n"
+"Use this if changes from other devices are not appearing on this device. This will overwrite the data on this device with the latest data from the server.\n"
+"\n"
+"**These must only be used for troubleshooting. Using them regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying.**"
+msgstr ""
+"Force push:\n"
+"Use this if changes made on this device are not appearing on other devices. This will overwrite the data on the server with the data from this device.\n"
+"\n"
+"Force pull:\n"
+"Use this if changes from other devices are not appearing on this device. This will overwrite the data on this device with the latest data from the server.\n"
+"\n"
+"**These must only be used for troubleshooting. Using them regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying.**"
+
+#: src/strings.ts:1412
+msgid "Get VeyraN on your desktop and access all notes"
+msgstr "Get VeyraN on your desktop and access all notes"
+
+#: src/strings.ts:163
+msgid "Help improve VeyraN by sending completely anonymized"
+msgstr "Help improve VeyraN by sending completely anonymized"
+
+#: src/strings.ts:1286
+msgid "Help improve VeyraN. All tracking information is anonymous."
+msgstr "Help improve VeyraN. All tracking information is anonymous."
+
+#: src/strings.ts:1807
+msgid "Install VeyraN"
+msgstr "Install VeyraN"
+
+#: src/strings.ts:479
+msgid "Let us know if you have faced an issue while using VeyraN."
+msgstr "Let us know if you have faced an issue while using VeyraN."
+
+#: src/strings.ts:2748
+msgid "Log in to upload attachments."
+msgstr "Log in to upload attachments."
+
+#: src/strings.ts:1385
+msgid "Read the documentation to learn more about VeyraN"
+msgstr "Read the documentation to learn more about VeyraN"
+
+#: src/strings.ts:1711
+msgid "Saving this note is taking too long. Copy your changes and restart the app to prevent data loss. If the problem persists, copy your changes and keep diagnostic logs."
+msgstr "Saving this note is taking too long. Copy your changes and restart the app to prevent data loss. If the problem persists, copy your changes and keep diagnostic logs."
+
+#: src/strings.ts:1414
+msgid "See what the future of VeyraN is going to be like."
+msgstr "See what the future of VeyraN is going to be like."
+
+#: src/strings.ts:2591
+msgid "Select the release track for VeyraN."
+msgstr "Select the release track for VeyraN."
+
+#: src/strings.ts:2781
+msgid "Share things to VeyraN from anywhere using the Inbox API"
+msgstr "Share things to VeyraN from anywhere using the Inbox API"
+
+#: src/strings.ts:1910
+msgid "Share VeyraN with friends!"
+msgstr "Share VeyraN with friends!"
+
+#: src/strings.ts:278
+msgid "Share your experience and suggestions to help us improve VeyraN."
+msgstr "Share your experience and suggestions to help us improve VeyraN."
+
+#: src/strings.ts:1912
+msgid "Share your notes securely."
+msgstr "Share your notes securely."
+
+#: src/strings.ts:1116
+msgid "SMS-based 2FA is unavailable in VeyraN"
+msgstr "SMS-based 2FA is unavailable in VeyraN"
+
+#: src/strings.ts:482
+msgid "Thank you for updating VeyraN. We will apply the latest changes to your notes."
+msgstr "Thank you for updating VeyraN. We will apply the latest changes to your notes."
+
+#: src/strings.ts:2303
+msgid ""
+"The app uses the following DNS providers:\n"
+"\n"
+"1. Cloudflare DNS\n"
+"2. Quad9\n"
+"\n"
+"This can sometimes bypass local ISP blockages on VeyraN traffic. Disable this if you want the app to use system DNS settings."
+msgstr ""
+"The app uses the following DNS providers:\n"
+"\n"
+"1. Cloudflare DNS\n"
+"2. Quad9\n"
+"\n"
+"This can sometimes bypass local ISP blockages on VeyraN traffic. Disable this if you want the app to use system DNS settings."
+
+#: src/strings.ts:2280
+msgid "The upstream Notesnook source is available on GitHub. See Licenses for attribution."
+msgstr "The upstream Notesnook source is available on GitHub. See Licenses for attribution."
+
+#: src/strings.ts:1223
+#: src/strings.ts:1232
+msgid "This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying."
+msgstr "This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying."
+
+#: src/strings.ts:1911
+msgid "to share your experience."
+msgstr "to share your experience."
+
+#: src/strings.ts:2383
+msgid "Using the configured sync service"
+msgstr "Using the configured sync service"
+
+#: src/strings.ts:2382
+msgid "Using the VeyraN service"
+msgstr "Using the VeyraN service"
+
+#: src/strings.ts:2935
+msgid "Using VeyraN without an account will not sync your notes across devices. Back up your notes regularly to avoid losing local data."
+msgstr "Using VeyraN without an account will not sync your notes across devices. Back up your notes regularly to avoid losing local data."
+
+#: src/strings.ts:2196
+msgid "VeyraN encrypts notes on your device before syncing them to your other devices."
+msgstr "VeyraN encrypts notes on your device before syncing them to your other devices."
+
+#: src/strings.ts:1383
+msgid "VeyraN support contact is not configured yet"
+msgstr "VeyraN support contact is not configured yet"
+
+#: src/strings.ts:1110
+msgid "VeyraN will send you a 2FA code by email when prompted"
+msgstr "VeyraN will send you a 2FA code by email when prompted"
+
+#: src/strings.ts:2202
+#: src/strings.ts:2721
+#: src/strings.ts:2723
+msgid "Welcome to VeyraN"
+msgstr "Welcome to VeyraN"
+
+#: src/strings.ts:1904
+msgid "You are logging into a beta version of VeyraN. Switching between beta and stable versions can cause data loss. Do not use both versions with the same account."
+msgstr "You are logging into a beta version of VeyraN. Switching between beta and stable versions can cause data loss. Do not use both versions with the same account."
+
+#: src/strings.ts:2864
+msgid ""
+"You need to log in to restore attachments from a backup file.\n"
+"  \n"
+"Continue without attachments?"
+msgstr ""
+"You need to log in to restore attachments from a backup file.\n"
+"  \n"
+"Continue without attachments?"
+
+#: src/strings.ts:470
+msgid "Your account email will be changed without affecting your notes or other settings."
+msgstr "Your account email will be changed without affecting your notes or other settings."
+
+#: src/strings.ts:1909
+msgid "Your VeyraN email is confirmed. You can now sync your encrypted notes across your devices."
+msgstr "Your VeyraN email is confirmed. You can now sync your encrypted notes across your devices."

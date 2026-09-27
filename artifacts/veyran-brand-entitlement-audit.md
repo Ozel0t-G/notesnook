@@ -325,3 +325,27 @@ signed Claude commits remain intact; this pass continues their work.
   routing are owned by backend/network/theme branches. They must be reviewed
   after integration; this branch alone does not pass the production network
   gate.
+
+## Independent brand review follow-up (2026-09-27)
+
+- The Web profile no longer derives a displayed plan or storage allowance from
+  cached Notesnook subscription data. Its compatibility helper returns a
+  neutral `Account` label for unregistered legacy surfaces; the normal profile
+  displays the name and email without claiming backend provenance.
+- The reachable `/welcome` dialog now welcomes users to VeyraN without a plan.
+  Web authentication no longer rotates upstream testimonials or renders an
+  upstream "official instance" label. The email-confirmed page no longer
+  advertises upstream social accounts or promotional codes.
+- The mobile rating message is disabled until VeyraN has an owned store
+  destination. The legacy rate sheet has no mounted route and remains inert.
+- Reachable migration, account, DNS, release, Inbox, offline, file-link and
+  onboarding strings now use VeyraN or neutral service language. The Lingui
+  English and pseudo-locale catalogs were rebuilt; hand-added Apple navigation
+  labels were preserved after extraction. Compiled English output contains
+  `Welcome to VeyraN` and the configured-service label, with no old welcome or
+  upstream-official-instance message.
+- Focused validation: Intl `build-locale`, catalog compile and Vite production
+  build pass. Web Vite production build passes after supplying already built
+  dependency artifacts in this isolated worktree; those temporary links were
+  removed. Prettier and `git diff --check` pass. Runtime browser screenshots,
+  account flows and backend affinity remain integration gates.

@@ -131,7 +131,7 @@ export default function DebugLogs() {
   const downloadLogs = React.useCallback(async () => {
     try {
       let path = null;
-      const fileName = sanitizeFilename(`notesnook_logs_${Date.now()}`);
+      const fileName = sanitizeFilename(`veyran_logs_${Date.now()}`);
       const data = currentLog?.logs
         .map((log) => {
           return !log ? "" : format(log);

@@ -131,7 +131,7 @@ export const RecoveryKeyDialog = DialogManager.register(
                         blob
                           ? FileSaver.saveAs(
                               blob,
-                              `${email}-notesnook-recoverykey.png`
+                              `${email}-veyran-recoverykey.png`
                             )
                           : null;
                       });
@@ -154,7 +154,7 @@ export const RecoveryKeyDialog = DialogManager.register(
                         .then((user) => user?.email || "user");
                       FileSaver.saveAs(
                         new Blob([Buffer.from(key.value)]),
-                        `${email}-notesnook-recoverykey.txt`
+                        `${email}-veyran-recoverykey.txt`
                       );
                     }}
                     sx={{ fontSize: "body" }}

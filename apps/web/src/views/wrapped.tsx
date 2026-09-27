@@ -461,7 +461,7 @@ function SummarySlide({ stats }: { stats: WrappedStats }) {
           textDecorationColor: "border"
         }}
       >
-        NOTESNOOK WRAPPED {new Date().getFullYear()}
+        VEYRAN WRAPPED {new Date().getFullYear()}
       </Text>
       <Flex
         sx={{

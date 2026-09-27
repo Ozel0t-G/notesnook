@@ -3254,10 +3254,6 @@ msgstr ""
 msgid "File mismatch"
 msgstr ""
 
-#: src/strings.ts:2883
-msgid "File size limit exceeded. Please upgrade your plan."
-msgstr ""
-
 #: src/strings.ts:947
 msgid "File size should be less than {sizeInMB}"
 msgstr ""
@@ -8527,4 +8523,8 @@ msgstr ""
 
 #: src/strings.ts:2271
 msgid "Import notes"
+msgstr ""
+
+#: src/strings.ts:2891
+msgid "This file cannot be attached because the configured service does not support its size."
 msgstr ""

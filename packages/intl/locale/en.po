@@ -3287,10 +3287,6 @@ msgstr "File length mismatch. Expected {expectedSize} but got {currentSize} byte
 msgid "File mismatch"
 msgstr "File mismatch"
 
-#: src/strings.ts:2883
-msgid "File size limit exceeded. Please upgrade your plan."
-msgstr "File size limit exceeded. Please upgrade your plan."
-
 #: src/strings.ts:947
 msgid "File size should be less than {sizeInMB}"
 msgstr "File size should be less than {sizeInMB}"
@@ -8578,3 +8574,7 @@ msgstr "for help using the VeyraN importer."
 #: src/strings.ts:2271
 msgid "Import notes"
 msgstr "Import notes"
+
+#: src/strings.ts:2891
+msgid "This file cannot be attached because the configured service does not support its size."
+msgstr "This file cannot be attached because the configured service does not support its size."

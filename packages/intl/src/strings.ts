@@ -2889,7 +2889,7 @@ Continue without attachments?`,
   compressing: () => t`Compressing`,
   encrypting: () => t`Encrypting`,
   fileSizeLimitExceededPleaseUpgrade: () =>
-    t`File size limit exceeded. Please upgrade your plan.`,
+    t`This file cannot be attached because the configured service does not support its size.`,
   compressionFailed: () => t`Compression failed`,
   openingLocalFile: () => t`Opening local file`,
   openingLocalFileDesc: (filePath: string) =>

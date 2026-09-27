@@ -639,7 +639,7 @@ export const MFARecoveryCodes = ({
               onPress={async () => {
                 try {
                   let path;
-                  let fileName = "notesnook_recoverycodes";
+                  let fileName = "veyran_recoverycodes";
                   fileName = sanitizeFilename(fileName, { replacement: "_" });
                   fileName = fileName + ".txt";
                   const codeString = codes.join("\n");

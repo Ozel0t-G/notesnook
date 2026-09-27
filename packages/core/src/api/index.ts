@@ -405,6 +405,11 @@ class Database {
    */
   async connectSSE(args?: { force: boolean }) {
     await this.sseMutex.runExclusive(async () => {
+      const expectedHosts = {
+        api: Hosts.API_HOST,
+        auth: Hosts.AUTH_HOST,
+        events: Hosts.SSE_HOST
+      };
       const forceReconnect = args && args.force;
       const EventSource = this.options.eventsource;
       if (
@@ -428,7 +433,17 @@ class Database {
       const token = await this.tokenManager.getAccessToken();
       if (!token) return;
 
-      this.eventSource = new EventSource(`${Hosts.SSE_HOST}/sse`, {
+      // Token acquisition can await a refresh. A server switch during that
+      // window must not present the old credential to the new events host.
+      await this.user.backendAffinity.assertAllowed("Connecting to events");
+      if (
+        Hosts.API_HOST !== expectedHosts.api ||
+        Hosts.AUTH_HOST !== expectedHosts.auth ||
+        Hosts.SSE_HOST !== expectedHosts.events
+      )
+        throw new Error("Server settings changed while connecting to events.");
+
+      this.eventSource = new EventSource(`${expectedHosts.events}/sse`, {
         headers: { Authorization: `Bearer ${token}` }
       });
 

@@ -204,17 +204,23 @@ function harness(options: {
   };
 }
 
-const original = { api: hosts.API_HOST, auth: hosts.AUTH_HOST };
+const original = {
+  api: hosts.API_HOST,
+  auth: hosts.AUTH_HOST,
+  sse: hosts.SSE_HOST
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
   hosts.API_HOST = VEYRAN.api;
   hosts.AUTH_HOST = VEYRAN.auth;
+  hosts.SSE_HOST = "https://events.veyran.northcore.space";
   setPersistedHostOverrides(undefined);
 });
 afterEach(() => {
   hosts.API_HOST = original.api;
   hosts.AUTH_HOST = original.auth;
+  hosts.SSE_HOST = original.sse;
   setPersistedHostOverrides(undefined);
   EV.unsubscribeAll();
 });
@@ -223,7 +229,6 @@ describe("login records affinity only from a verified account", () => {
   const mfaToken = {
     access_token: "mfa-pw-token",
     scope: "auth:grant_types:mfa_password",
-    refresh_token: "r",
     expires_in: 3600,
     t: Date.now()
   };
@@ -274,15 +279,26 @@ describe("login records affinity only from a verified account", () => {
   });
 
   test("a freshly verified account binds the profile", async () => {
-    const { user, kv } = harness({ token: mfaToken });
-    mockPost.mockResolvedValue({
-      access_token: "new",
-      refresh_token: "r2",
-      scope: "notesnook.sync offline_access IdentityServerApi",
-      expires_in: 3600
-    });
+    const { user, kv } = harness({});
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "email-stage",
+        scope: "auth:grant_types:mfa"
+      })
+      .mockResolvedValueOnce({
+        access_token: "mfa-stage",
+        scope: "auth:grant_types:mfa_password"
+      })
+      .mockResolvedValueOnce({
+        access_token: "new",
+        refresh_token: "r2",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600
+      });
     mockGet.mockResolvedValue(serverUser());
 
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
     await user.authenticatePassword("someone@example.test", "pw");
 
     expect(kv.get("backendAffinity")).toMatchObject({
@@ -343,6 +359,46 @@ describe("login records affinity only from a verified account", () => {
 });
 
 describe("signup records affinity only from a verified account", () => {
+  test("a host switch while hashing prevents signup from reaching the new server", async () => {
+    const { user, db, kv } = harness({});
+    const storage = db.storage.bind(db);
+    vi.spyOn(db, "storage").mockImplementation(() => ({
+      ...storage(),
+      hash: async () => {
+        hosts.API_HOST = NOTESNOOK.api;
+        return "hashed:pw";
+      }
+    }));
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      /Server settings changed/
+    );
+    expect(mockPost).not.toHaveBeenCalled();
+    expect(kv.has("backendAffinity")).toBe(false);
+  });
+
+  test("a host switch after local key derivation rolls signup back before user update", async () => {
+    const { user, kv, deriveCryptoKey, register } = harness({});
+    mockPost.mockResolvedValue({
+      access_token: "new-signup-token",
+      refresh_token: "new-refresh",
+      scope: "notesnook.sync offline_access IdentityServerApi"
+    });
+    mockGet.mockResolvedValue(serverUser("brand-new"));
+    deriveCryptoKey.mockImplementationOnce(async () => {
+      hosts.API_HOST = NOTESNOOK.api;
+    });
+
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      /Server settings changed/
+    );
+    expect(http.patch.json).not.toHaveBeenCalled();
+    expect(register).not.toHaveBeenCalled();
+    expect(kv.has("user")).toBe(false);
+    expect(kv.has("token")).toBe(false);
+    expect(kv.has("backendAffinity")).toBe(false);
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
   test("an unverified signup does not bind the profile", async () => {
     const { user, kv } = harness({ storedUser: serverUser("stale") });
     mockPost.mockResolvedValue({
@@ -536,6 +592,84 @@ describe("account fetches are blocked across a boundary", () => {
 });
 
 describe("token refresh is blocked across a boundary", () => {
+  test("a host switch while reading the token cannot send a refresh credential", async () => {
+    const token = {
+      access_token: "race-access",
+      refresh_token: "race-refresh",
+      scope: "offline_access notesnook.sync",
+      t: 0,
+      expires_in: 1
+    };
+    const manager = new TokenManager(
+      () =>
+        ({
+          read: async () => {
+            hosts.AUTH_HOST = NOTESNOOK.auth;
+            return token;
+          }
+        } as never),
+      new EventManager(),
+      async () => undefined
+    );
+    await expect(manager._refreshToken(true)).rejects.toThrow(
+      /Server settings changed/
+    );
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("a host switch after refresh response cannot persist the new credential", async () => {
+    const oldToken = {
+      access_token: "old-refresh-race",
+      refresh_token: "old-refresh-secret",
+      scope: "offline_access notesnook.sync",
+      t: 0,
+      expires_in: 1
+    };
+    const write = vi.fn();
+    const manager = new TokenManager(
+      () => ({ read: async () => oldToken, write } as never),
+      new EventManager(),
+      async () => undefined
+    );
+    mockPost.mockImplementationOnce(async () => {
+      hosts.AUTH_HOST = NOTESNOOK.auth;
+      return { access_token: "new-refresh-race" };
+    });
+    await expect(manager._refreshToken(true)).rejects.toThrow(
+      /Server settings changed/
+    );
+    expect(mockPost).toHaveBeenCalledWith(
+      `${VEYRAN.auth}/connect/token`,
+      expect.objectContaining({ refresh_token: "old-refresh-secret" })
+    );
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  test("a host switch during local revoke cleanup cannot redirect logout", async () => {
+    const oldToken = {
+      access_token: "revoke-host-race",
+      refresh_token: "revoke-refresh",
+      scope: "offline_access notesnook.sync",
+      t: Date.now(),
+      expires_in: 3600
+    };
+    const manager = new TokenManager(
+      () =>
+        ({
+          read: async () => oldToken,
+          delete: async () => {
+            hosts.AUTH_HOST = NOTESNOOK.auth;
+          }
+        } as never),
+      new EventManager(),
+      async () => undefined
+    );
+    await expect(manager.revokeToken()).rejects.toThrow(
+      /Server settings changed/
+    );
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
   test("a refresh token is never presented to a foreign identity server", async () => {
     const { user } = harness({
       storedUser: serverUser(),
@@ -559,6 +693,53 @@ describe("token refresh is blocked across a boundary", () => {
     );
     expect(mockPost).not.toHaveBeenCalled();
   });
+
+  test("a legacy token without cached user cannot be read or refreshed", async () => {
+    const { user } = harness({
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth),
+      token: {
+        access_token: "legacy-access",
+        refresh_token: "legacy-refresh",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600,
+        t: Date.now()
+      }
+    });
+    const tokenManager = (user as unknown as { tokenManager: TokenManager })
+      .tokenManager;
+    await expect(tokenManager.getToken(false, false)).rejects.toThrow(
+      /different server/
+    );
+    await expect(tokenManager._refreshToken(true)).rejects.toThrow(
+      /different server/
+    );
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+});
+
+test("an events-host switch during token acquisition cannot open a stream", async () => {
+  const { user } = harness({
+    storedUser: serverUser(),
+    affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+    token: { access_token: "existing-access" }
+  });
+  const eventDb = new Database();
+  eventDb.user = user;
+  eventDb.tokenManager.getAccessToken = vi.fn(async () => {
+    hosts.SSE_HOST = "https://events.example.test";
+    return "existing-access";
+  });
+  const opened = vi.fn();
+  class TestEventSource {
+    constructor() {
+      opened();
+    }
+    close() {}
+  }
+  eventDb.setup({ eventsource: TestEventSource as never } as never);
+
+  await expect(eventDb.connectSSE()).rejects.toThrow(/Server settings changed/);
+  expect(opened).not.toHaveBeenCalled();
 });
 
 describe("recovery intent blocks credential retrieval", () => {
@@ -834,7 +1015,10 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
 
   test("a failed intent write prevents every local account mutation", async () => {
     const priorToken = { access_token: "original", refresh_token: "prior" };
-    const { user, kv, storageWrite, register } = harness({ token: priorToken });
+    const { user, kv, storageWrite, register } = harness({
+      token: priorToken,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
     mockPost.mockResolvedValue({ access_token: "signup-access" });
     mockGet.mockResolvedValue(serverUser("brand-new"));
     storageWrite.mockRejectedValueOnce(new Error("intent storage unavailable"));
@@ -844,7 +1028,9 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     );
     expect(kv.get("token")).toEqual(priorToken);
     expect(kv.has("user")).toBe(false);
-    expect(kv.has("backendAffinity")).toBe(false);
+    expect(kv.get("backendAffinity")).toEqual(
+      affinityRecord(VEYRAN.api, VEYRAN.auth)
+    );
     expect(register).not.toHaveBeenCalled();
   });
 
@@ -945,6 +1131,40 @@ describe("three-step login preserves the original session", () => {
       refresh_token: "final-refresh"
     });
     expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("a host switch after the password grant cannot present the new token to that host", async () => {
+    const { user, kv, register } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken
+    });
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "email-stage",
+        scope: "auth:grant_types:mfa"
+      })
+      .mockResolvedValueOnce({
+        access_token: "mfa-stage",
+        scope: "auth:grant_types:mfa_password"
+      })
+      .mockImplementationOnce(async () => {
+        hosts.API_HOST = NOTESNOOK.api;
+        return {
+          access_token: "new-account-token",
+          refresh_token: "new-refresh",
+          scope: "notesnook.sync offline_access IdentityServerApi"
+        };
+      });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow(/Could not confirm|Server settings changed/);
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(register).not.toHaveBeenCalled();
+    expect(kv.get("token")).toEqual(originalToken);
   });
 
   test("recovery teardown is announced only after the durable marker and before local identity changes", async () => {
@@ -1163,7 +1383,10 @@ describe("three-step login preserves the original session", () => {
   });
 
   test("a server change during MFA stops before presenting the temporary credential", async () => {
-    const { user, kv } = harness({ token: originalToken });
+    const { user, kv } = harness({
+      token: originalToken,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
     mockPost.mockResolvedValueOnce({
       access_token: "email-stage",
       scope: "auth:grant_types:mfa",
@@ -1483,7 +1706,10 @@ describe("three-step login preserves the original session", () => {
   });
 
   test("can retry after failure without carrying a temporary identity", async () => {
-    const { user, kv } = harness({ token: originalToken });
+    const { user, kv } = harness({
+      token: originalToken,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
     arrangeGrants();
     mockGet.mockRejectedValueOnce(new Error("temporary outage"));
     await user.authenticateEmail("someone@example.test");
@@ -1501,7 +1727,10 @@ describe("three-step login preserves the original session", () => {
   });
 
   test("an incorrect password can be retried without repeating MFA or replacing the old session", async () => {
-    const { user, kv } = harness({ token: originalToken });
+    const { user, kv } = harness({
+      token: originalToken,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
     mockPost
       .mockResolvedValueOnce({
         access_token: "email-stage",

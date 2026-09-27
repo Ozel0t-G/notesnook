@@ -35,6 +35,7 @@ import {
   UnwrapKeyReturnType
 } from "./key-manager.js";
 import { BackendAffinity } from "./backend-affinity.js";
+import { bindCredential } from "../utils/credential-host-binding.js";
 
 const ENDPOINTS = {
   signup: "/users",
@@ -115,11 +116,13 @@ class UserManager {
 
   async signup(email: string, password: string) {
     email = email.toLowerCase();
-
+    const expected = this.captureConfiguration();
     await this.backendAffinity.assertAllowed("Creating an account");
+    this.assertConfigurationUnchanged(expected);
 
     // Account proof stays in memory until it is ready to commit locally.
     const snapshot = await this.snapshotSession();
+    this.assertConfigurationUnchanged(expected);
     if (snapshot.user)
       throw new Error(
         "This profile already belongs to an account. Start a new profile to create another account; local notes were not changed."
@@ -141,18 +144,24 @@ class UserManager {
     snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
   ) {
     const hashedPassword = await this.db.storage().hash(password, email);
+    this.assertConfigurationUnchanged(snapshot);
     const grantedToken = await http.post(
-      `${constants.API_HOST}${ENDPOINTS.signup}`,
+      `${snapshot.backend.api}${ENDPOINTS.signup}`,
       {
         email,
         password: hashedPassword,
         client_id: "notesnook"
       }
     );
+    this.assertConfigurationUnchanged(snapshot);
+    bindCredential(grantedToken.access_token, snapshot.backend);
 
     // Verify without writing, so a profile that cannot be bound keeps its own
     // cached identity and salt.
-    const user = await this.fetchRemoteUser(grantedToken.access_token);
+    const user = await this.fetchRemoteUser(
+      grantedToken.access_token,
+      snapshot
+    );
     if (!user)
       throw new Error(
         "Could not confirm the new account against the configured server, so nothing on this device was changed. Please check your connection and try again."
@@ -195,10 +204,15 @@ class UserManager {
           masterKey
         )
       },
-      grantedToken.access_token
+      grantedToken.access_token,
+      snapshot
     );
 
-    await this.db.syncer.devices.register(grantedToken.access_token);
+    this.assertConfigurationUnchanged(snapshot);
+    await this.db.syncer.devices.register(
+      grantedToken.access_token,
+      snapshot.backend.api
+    );
     await this.finishSessionMutation(snapshot, {
       userId: user.id,
       accessToken: grantedToken.access_token,
@@ -214,18 +228,20 @@ class UserManager {
 
     email = email.toLowerCase();
 
+    const expected = this.captureConfiguration();
     await this.backendAffinity.assertAllowed("Signing in");
+    this.assertConfigurationUnchanged(expected);
     this.pendingLogin = undefined;
-    const backend = this.backendAffinity.current();
-    const serverSettings = JSON.stringify(getPersistedHostOverrides() || {});
+    const { backend, serverSettings } = expected;
 
-    const result = await http.post(`${constants.AUTH_HOST}${ENDPOINTS.token}`, {
+    const result = await http.post(`${backend.auth}${ENDPOINTS.token}`, {
       email,
       grant_type: "email",
       client_id: "notesnook"
     });
 
     this.assertConfigurationUnchanged({ backend, serverSettings });
+    bindCredential(result.access_token, backend);
     this.pendingLogin = {
       email,
       token: { ...result, t: Date.now() } as Token,
@@ -244,7 +260,7 @@ class UserManager {
     this.assertPendingLoginConfiguration();
 
     const response = await http.post(
-      `${constants.AUTH_HOST}${ENDPOINTS.token}`,
+      `${this.pendingLogin!.backend.auth}${ENDPOINTS.token}`,
       {
         grant_type: "mfa",
         client_id: "notesnook",
@@ -254,6 +270,7 @@ class UserManager {
       token.access_token
     );
     this.assertPendingLoginConfiguration();
+    bindCredential(response.access_token, this.pendingLogin!.backend);
     if (this.pendingLogin)
       this.pendingLogin.token = { ...response, t: Date.now() } as Token;
     return true;
@@ -276,18 +293,22 @@ class UserManager {
     email = email.toLowerCase();
     if (this.pendingLogin && this.pendingLogin.email !== email)
       throw new Error("The login email changed. Start sign in again.");
+    const expected = this.pendingLogin || this.captureConfiguration();
     await this.backendAffinity.assertAllowed("Signing in");
+    this.assertConfigurationUnchanged(expected);
     this.assertPendingLoginConfiguration();
     if (!hashedPassword) {
       hashedPassword = await this.db.storage().hash(password, email);
     }
     const snapshot = await this.snapshotSession();
+    this.assertConfigurationUnchanged(expected);
     let authenticatedUser: User;
     try {
       let usesFallback = false;
+      this.assertConfigurationUnchanged(expected);
       const grantedToken = await http
         .post(
-          `${constants.AUTH_HOST}${ENDPOINTS.token}`,
+          `${expected.backend.auth}${ENDPOINTS.token}`,
           {
             grant_type: "mfa_password",
             client_id: "notesnook",
@@ -303,8 +324,9 @@ class UserManager {
               .hash(password, email, { usesFallback: true });
             if (hashedPassword === null) return Promise.reject(e);
             usesFallback = true;
+            this.assertConfigurationUnchanged(expected);
             return await http.post(
-              `${constants.AUTH_HOST}${ENDPOINTS.token}`,
+              `${expected.backend.auth}${ENDPOINTS.token}`,
               {
                 grant_type: "mfa_password",
                 client_id: "notesnook",
@@ -317,10 +339,16 @@ class UserManager {
           return Promise.reject(e);
         });
 
+      this.assertConfigurationUnchanged(expected);
+      bindCredential(grantedToken.access_token, expected.backend);
+
       // Verify before committing anything. `fetchRemoteUser` writes nothing, so
       // a rejected cross-backend login cannot leave another backend's identity
       // (and salt) cached over this profile's own.
-      const user = await this.fetchRemoteUser(grantedToken.access_token);
+      const user = await this.fetchRemoteUser(
+        grantedToken.access_token,
+        expected
+      );
       if (!user)
         throw new Error(
           "Could not confirm your account against the configured server, so nothing on this device was changed. Please check your connection and try again."
@@ -346,8 +374,13 @@ class UserManager {
         await this.db.setLastSynced(0);
       }
 
-      if (!sessionExpired)
-        await this.db.syncer.devices.register(grantedToken.access_token);
+      if (!sessionExpired) {
+        this.assertConfigurationUnchanged(expected);
+        await this.db.syncer.devices.register(
+          grantedToken.access_token,
+          expected.backend.api
+        );
+      }
 
       snapshot.cryptoKeyTouched = true;
       if (usesFallback) {
@@ -503,13 +536,18 @@ class UserManager {
     return true;
   }
 
-  private async updateUser(partial: Partial<User>, accessToken?: string) {
+  private async updateUser(
+    partial: Partial<User>,
+    accessToken?: string,
+    expected = this.captureConfiguration()
+  ) {
     const user = await this.getUser();
     if (!user) return;
 
     const token = accessToken || (await this.tokenManager.getAccessToken());
+    this.assertConfigurationUnchanged(expected);
     await http.patch.json(
-      `${constants.API_HOST}${ENDPOINTS.user}`,
+      `${expected.backend.api}${ENDPOINTS.user}`,
       partial,
       token
     );
@@ -597,15 +635,17 @@ class UserManager {
    * renewal cannot be triggered while affinity is still undetermined.
    */
   private async fetchRemoteUser(
-    accessToken?: string
+    accessToken?: string,
+    expected = this.captureConfiguration()
   ): Promise<User | undefined> {
     const token =
       accessToken ||
       (await this.tokenManager.getToken(false, false))?.access_token;
     if (!token) return undefined;
     try {
+      this.assertConfigurationUnchanged(expected);
       const user = await http.get(
-        `${constants.API_HOST}${ENDPOINTS.user}`,
+        `${expected.backend.api}${ENDPOINTS.user}`,
         token
       );
       return user || undefined;
@@ -672,6 +712,13 @@ class UserManager {
         | undefined,
       syncTeardownConfirmed: false,
       rollbackAccessToken: undefined as string | undefined,
+      backend: this.backendAffinity.current(),
+      serverSettings: JSON.stringify(getPersistedHostOverrides() || {})
+    };
+  }
+
+  private captureConfiguration() {
+    return {
       backend: this.backendAffinity.current(),
       serverSettings: JSON.stringify(getPersistedHostOverrides() || {})
     };

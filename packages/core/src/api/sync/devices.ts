@@ -22,6 +22,7 @@ import hosts from "../../utils/constants.js";
 import http from "../../utils/http.js";
 import { getId } from "../../utils/id.js";
 import TokenManager from "../token-manager.js";
+import { sameConfiguredHost } from "../../utils/credential-host-binding.js";
 
 export class SyncDevices {
   constructor(
@@ -29,10 +30,12 @@ export class SyncDevices {
     private readonly tokenManager: TokenManager
   ) {}
 
-  async register(accessToken?: string) {
+  async register(accessToken?: string, apiHost = hosts.API_HOST) {
     const deviceId = getId();
-    const url = `${hosts.API_HOST}/devices?deviceId=${deviceId}`;
+    const url = `${apiHost}/devices?deviceId=${deviceId}`;
     const token = accessToken || (await this.tokenManager.getAccessToken());
+    if (!sameConfiguredHost(apiHost, hosts.API_HOST))
+      throw new Error("Server settings changed during device registration.");
     await http.post(url, null, token);
     try {
       await this.kv().write("deviceId", deviceId);

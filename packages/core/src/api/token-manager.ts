@@ -24,6 +24,7 @@ import { withTimeout, Mutex } from "async-mutex";
 import { logger } from "../logger.js";
 import { KVStorageAccessor } from "../interfaces.js";
 import EventManager from "../utils/event-manager.js";
+import { bindCredential } from "../utils/credential-host-binding.js";
 
 export type Token = {
   access_token: string;
@@ -69,12 +70,32 @@ class TokenManager {
     private readonly guard?: (operation: string) => Promise<unknown>
   ) {}
 
+  private captureHosts() {
+    return { api: constants.API_HOST, auth: constants.AUTH_HOST };
+  }
+
+  private assertHostsUnchanged(
+    expected: ReturnType<TokenManager["captureHosts"]>
+  ) {
+    if (
+      constants.API_HOST !== expected.api ||
+      constants.AUTH_HOST !== expected.auth
+    )
+      throw new Error(
+        "Server settings changed while using account credentials. Start again."
+      );
+  }
+
   async getToken(renew = true, forceRenew = false): Promise<Token | undefined> {
     // A durable recovery intent may coexist with an unexpired access token.
     // Guard every credential read, not just refresh, so account and sync
     // callers cannot use a partially committed session after a restart.
+    const expected = this.captureHosts();
     if (this.guard) await this.guard("Using your session");
+    this.assertHostsUnchanged(expected);
     const token = await this.storage().read("token");
+    if (this.guard) await this.guard("Using your session");
+    this.assertHostsUnchanged(expected);
     if (!token || !token.access_token) return;
 
     this.logger.info("Access token requested");
@@ -85,6 +106,7 @@ class TokenManager {
       return await this.getToken(false, false);
     }
 
+    bindCredential(token.access_token, expected);
     return token;
   }
 
@@ -120,13 +142,16 @@ class TokenManager {
 
   async _refreshToken(forceRenew = false) {
     await this.REFRESH_TOKEN_MUTEX.runExclusive(async () => {
+      const expected = this.captureHosts();
       // Presenting a refresh token to an identity server that did not mint it
       // leaks the credential and provokes an invalid_grant, which historically
       // led to a destructive logout.
       if (this.guard) await this.guard("Refreshing your session");
+      this.assertHostsUnchanged(expected);
       this.logger.info("Refreshing access token");
 
       const token = await this.getToken(false, false);
+      this.assertHostsUnchanged(expected);
       if (!token) throw new Error("No access token found to refresh.");
       if (!forceRenew && !this._isTokenExpired(token)) {
         return;
@@ -139,8 +164,10 @@ class TokenManager {
         return;
       }
 
+      if (this.guard) await this.guard("Refreshing your session");
+      this.assertHostsUnchanged(expected);
       const refreshTokenResponse = await http.post(
-        `${constants.AUTH_HOST}${ENDPOINTS.token}`,
+        `${expected.auth}${ENDPOINTS.token}`,
         {
           refresh_token,
           grant_type: "refresh_token",
@@ -148,41 +175,49 @@ class TokenManager {
           client_id: "notesnook"
         }
       );
+      if (this.guard) await this.guard("Saving your refreshed session");
+      this.assertHostsUnchanged(expected);
       await this.saveToken(refreshTokenResponse);
       this.eventManager.publish(EVENTS.tokenRefreshed);
     });
   }
 
   async revokeToken() {
+    const expected = this.captureHosts();
     if (this.guard) await this.guard("Signing out of the server");
     const token = await this.getToken();
     if (!token) return;
     const { access_token } = token;
 
+    this.assertHostsUnchanged(expected);
     await this.storage().delete("token");
-    await http.post(
-      `${constants.AUTH_HOST}${ENDPOINTS.logout}`,
-      null,
-      access_token
-    );
+    this.assertHostsUnchanged(expected);
+    await http.post(`${expected.auth}${ENDPOINTS.logout}`, null, access_token);
   }
 
   saveToken(tokenResponse: Omit<Token, "t">) {
     this.logger.info("Saving new token");
     if (!tokenResponse || !tokenResponse.access_token) return;
     const token: Token = { ...tokenResponse, t: Date.now() };
+    bindCredential(token.access_token, this.captureHosts());
     return this.storage().write("token", token);
   }
 
   async getAccessTokenFromAuthorizationCode(userId: string, authCode: string) {
+    const expected = this.captureHosts();
     if (this.guard) await this.guard("Completing your sign in");
-    return await this.saveToken(
-      await http.post(`${constants.AUTH_HOST}${ENDPOINTS.temporaryToken}`, {
+    this.assertHostsUnchanged(expected);
+    const grantedToken = await http.post(
+      `${expected.auth}${ENDPOINTS.temporaryToken}`,
+      {
         authorization_code: authCode,
         user_id: userId,
         client_id: "notesnook"
-      })
+      }
     );
+    if (this.guard) await this.guard("Saving your session");
+    this.assertHostsUnchanged(expected);
+    return await this.saveToken(grantedToken);
   }
 }
 export default TokenManager;

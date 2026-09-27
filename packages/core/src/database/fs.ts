@@ -27,6 +27,7 @@ import { DataFormat, SerializedKey } from "@notesnook/crypto";
 import { EVENTS } from "../common.js";
 import { logger } from "../logger.js";
 import EventManager from "../utils/event-manager.js";
+import { assertCredentialDestination } from "../utils/credential-host-binding.js";
 
 export type FileStorageAccessor = () => FileStorage;
 export type DownloadableFile = {
@@ -125,6 +126,7 @@ export class FileStorage {
         });
 
         const url = `${hosts.API_HOST}/s3?name=${filename}`;
+        assertCredentialDestination(token, url);
         const { execute, cancel } = this.fs.downloadFile(filename, {
           url,
           chunkSize,
@@ -200,6 +202,7 @@ export class FileStorage {
         const { filename, chunkSize } = file;
         let error = null;
         const url = `${hosts.API_HOST}/s3?name=${filename}`;
+        assertCredentialDestination(token, url);
         const { execute, cancel } = this.fs.uploadFile(filename, {
           chunkSize,
           url,
@@ -255,6 +258,7 @@ export class FileStorage {
     const file: QueueItem = { filename, chunkSize };
     const token = await this.tokenManager.getAccessToken();
     const group = this.groups.downloads.get(groupId) || new Set();
+    assertCredentialDestination(token, url);
     const { execute, cancel } = this.fs.downloadFile(filename, {
       url,
       chunkSize,
@@ -334,6 +338,7 @@ export class FileStorage {
 
     const token = await this.tokenManager.getAccessToken();
     const url = `${hosts.API_HOST}/s3?name=${filename}`;
+    assertCredentialDestination(token, url);
     return await this.fs.deleteFile(filename, {
       url,
       headers: { Authorization: `Bearer ${token}` },
@@ -348,6 +353,7 @@ export class FileStorage {
 
     const token = await this.tokenManager.getAccessToken();
     const url = `${hosts.API_HOST}/s3/bulk-delete`;
+    assertCredentialDestination(token, url);
     return await this.fs.bulkDeleteFiles(filenames, {
       url,
       headers: { Authorization: `Bearer ${token}` },

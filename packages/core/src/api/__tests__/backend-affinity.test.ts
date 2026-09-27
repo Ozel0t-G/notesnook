@@ -197,6 +197,34 @@ describe("check", () => {
     expect((await new BackendAffinity(db).check()).status).toBe("no-user");
   });
 
+  test("a token without cached user still obeys stored backend affinity", async () => {
+    const { db, kv } = fakeDb({
+      affinity: record(NOTESNOOK.api, NOTESNOOK.auth)
+    });
+    kv.set("token", {
+      access_token: "legacy-access",
+      refresh_token: "legacy-refresh"
+    });
+    const result = await new BackendAffinity(db).check();
+    expect(result.status).toBe("mismatch");
+    expect(result.stored).toEqual(NOTESNOOK);
+  });
+
+  test("a token without cached user or provenance fails closed", async () => {
+    const { db, kv } = fakeDb({});
+    kv.set("token", { access_token: "unattributed-access" });
+    expect((await new BackendAffinity(db).check()).status).toBe("unknown");
+  });
+
+  test("a persisted MFA challenge without provenance also fails closed", async () => {
+    const { db, kv } = fakeDb({});
+    kv.set("token", {
+      access_token: "old-mfa-token",
+      scope: "auth:grant_types:mfa_password"
+    });
+    expect((await new BackendAffinity(db).check()).status).toBe("unknown");
+  });
+
   test("matches when both api and auth agree", async () => {
     const { db } = fakeDb({
       user: { id: "u" },

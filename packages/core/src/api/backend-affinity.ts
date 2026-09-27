@@ -387,8 +387,10 @@ export class BackendAffinity {
     if (savedConflict) return savedConflict;
 
     const user = await this.db.user.getUser();
-    if (!user) return { status: "no-user", configured, evidence: "none" };
-
+    // A missing cached user is not proof of a fresh profile. A token or an
+    // affinity record can survive a partial logout/recovery and still carry
+    // credentials issued by another backend.
+    const token = await this.db.kv().read("token");
     const stored = await this.get();
     if (stored) {
       const identity = { api: stored.api, auth: stored.auth };
@@ -413,6 +415,11 @@ export class BackendAffinity {
         evidence: "persisted-config"
       };
     }
+
+    // Even a persisted interim MFA token has an unknown issuing server when
+    // there is no affinity record. Fresh MFA credentials stay only in memory.
+    if (!user && !token?.access_token)
+      return { status: "no-user", configured, evidence: "none" };
 
     // An account with no record and no persisted configuration. Fail safe.
     return { status: "unknown", configured, evidence: "none" };

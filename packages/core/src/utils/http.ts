@@ -21,6 +21,7 @@ import { EV, EVENTS } from "../common.js";
 import { logger } from "../logger.js";
 import { getServerNameFromHost } from "./constants.js";
 import { extractHostname } from "./hostname.js";
+import { assertCredentialDestination } from "./credential-host-binding.js";
 
 type ContentType = "application/json" | "application/x-www-form-urlencoded";
 type RequestBody = Record<string, string | number | boolean | undefined> | null;
@@ -69,6 +70,7 @@ export default {
 };
 
 async function request(url: string, method: "GET" | "DELETE", token?: string) {
+  assertCredentialDestination(token, url);
   return handleResponse(
     await fetchWrapped(url, {
       method,
@@ -84,6 +86,7 @@ async function bodyRequest(
   method: "POST" | "PATCH" | "PUT",
   contentType: ContentType = "application/x-www-form-urlencoded"
 ) {
+  assertCredentialDestination(token, url);
   return handleResponse(
     await fetchWrapped(url, {
       method,
@@ -139,7 +142,11 @@ export function errorTransformer(errorJson: {
   };
 }
 
-async function fetchWrapped(input: string, init: RequestInit, timeoutMs = 30000) {
+async function fetchWrapped(
+  input: string,
+  init: RequestInit,
+  timeoutMs = 30000
+) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {

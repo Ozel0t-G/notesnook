@@ -25,6 +25,7 @@ import {
   SYNC_CHECK_IDS
 } from "../../common.js";
 import Constants from "../../utils/constants.js";
+import { assertCredentialDestination } from "../../utils/credential-host-binding.js";
 import TokenManager from "../token-manager.js";
 import Collector from "./collector.js";
 import { type HubConnection } from "@microsoft/signalr";
@@ -598,11 +599,13 @@ export class Sync {
       this.db.eventManager,
       (op) => this.db.user.backendAffinity.assertAllowed(op)
     );
+    const connectionUrl = `${Constants.API_HOST}/hubs/sync/v2`;
     this.connection = new HubConnectionBuilder()
-      .withUrl(`${Constants.API_HOST}/hubs/sync/v2`, {
+      .withUrl(connectionUrl, {
         accessTokenFactory: async () => {
           const token = await tokenManager.getAccessToken();
           if (!token) throw new Error("Failed to get access token.");
+          assertCredentialDestination(token, connectionUrl);
           return token;
         },
         skipNegotiation: true,

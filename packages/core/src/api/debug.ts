@@ -29,6 +29,6 @@ export class Debug {
   }): Promise<IssueReportResponse | undefined> {
     // There is no verified VeyraN issue-reporting service. Never send issue
     // content or account identifiers to the upstream Notesnook service.
-    return { error: "VeyraN issue reporting is unavailable." };
+    throw new Error("VeyraN issue reporting is unavailable.");
   }
 }

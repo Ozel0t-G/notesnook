@@ -27,6 +27,6 @@ it("does not send issue reports to an upstream service", async () => {
 
   await expect(
     Debug.report({ title: "Issue", body: "Private account details", userId: "id" })
-  ).resolves.toEqual({ error: "VeyraN issue reporting is unavailable." });
+  ).rejects.toThrow("VeyraN issue reporting is unavailable.");
   expect(fetch).not.toHaveBeenCalled();
 });

@@ -38,6 +38,7 @@ import { RootNavigation } from "./navigation/navigation-stack";
 import { themeTrpcClient } from "./screens/settings/theme-selector";
 import Notifications from "./services/notifications";
 import SettingsService from "./services/settings";
+import { BUILT_IN_THEME_IDS } from "./utils/veyran-theme-migration";
 import { TipManager } from "./services/tip-manager";
 import { changeSystemBarColors, useThemeStore } from "./stores/use-theme-store";
 import { useUserStore } from "./stores/use-user-store";
@@ -134,6 +135,10 @@ export const withTheme = (
       setTimeout(() => {
         const currentTheme = colorScheme === "dark" ? darkTheme : lightTheme;
         if (!currentTheme) return;
+        // Built-ins (both VeyraN themes, and the two original defaults)
+        // never need a marketplace update check on startup -- see
+        // `BUILT_IN_THEME_IDS`'s doc comment.
+        if (BUILT_IN_THEME_IDS.has(currentTheme.id)) return;
         themeTrpcClient.updateTheme
           .query({
             version: currentTheme.version,

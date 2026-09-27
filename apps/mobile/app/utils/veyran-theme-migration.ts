@@ -18,10 +18,35 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import {
+  ThemeDark,
   ThemeDefinition,
+  ThemeLight,
   ThemeVeyranDark,
   ThemeVeyranLight
 } from "@notesnook/theme";
+
+/**
+ * The themes bundled with the app itself. Shared by:
+ *  - `app.tsx`'s startup effect, which must never send a marketplace
+ *    update-check for one of these (none of the VeyraN ones are, or ever
+ *    will be, listed on themes-api.notesnook.com; the two original defaults
+ *    are updated by shipping a new app build, not a live fetch);
+ *  - `screens/settings/theme-selector.tsx`'s picker, which must always be
+ *    able to list and apply these locally, regardless of network state or
+ *    what the active pair currently is.
+ */
+export const BUILT_IN_THEMES: ThemeDefinition[] = [
+  ThemeVeyranLight,
+  ThemeVeyranDark,
+  ThemeLight,
+  ThemeDark
+];
+export const BUILT_IN_THEME_IDS = new Set(
+  BUILT_IN_THEMES.map((theme) => theme.id)
+);
+export const BUILT_IN_THEMES_BY_ID = new Map(
+  BUILT_IN_THEMES.map((theme) => [theme.id, theme])
+);
 
 /**
  * Migrate a user still on the shipped default theme (whether they never

@@ -17,14 +17,18 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-// NOT RUN this session: this repo checkout has no installed node_modules
-// (no jest binary, no `@notesnook/theme` dist build), so this file could not
-// actually be executed here. It is dependency-free by design (no
-// react-native mocking needed, unlike most of this directory's tests) and
-// should run under the project's existing jest setup once installed.
+// RUN this session with `npx jest app/utils/veyran-theme-migration.test.ts`
+// from `apps/mobile`, against a real `npm install`/`@notesnook/theme` build
+// (see artifacts/veyran-theme-audit.md for exactly what was and wasn't
+// possible to install/run). All tests below passed. It stays dependency-free
+// by design (no react-native mocking needed, unlike most of this
+// directory's tests).
 
 import { ThemeDark, ThemeLight, ThemeVeyranDark, ThemeVeyranLight } from "@notesnook/theme";
 import {
+  BUILT_IN_THEMES,
+  BUILT_IN_THEME_IDS,
+  BUILT_IN_THEMES_BY_ID,
   migrateLegacyDefaultTheme,
   migrateLegacyDefaultThemes
 } from "./veyran-theme-migration";
@@ -76,5 +80,31 @@ describe("migrateLegacyDefaultThemes", () => {
     expect(result.lighTheme).toBe(customLight);
     // The dark theme is still migrated independently.
     expect(result.darkTheme).toBe(ThemeVeyranDark);
+  });
+});
+
+describe("built-in theme bookkeeping", () => {
+  test("lists every built-in theme, including both VeyraN themes", () => {
+    const ids = BUILT_IN_THEMES.map((theme) => theme.id);
+    expect(ids).toEqual(
+      expect.arrayContaining([
+        "veyran-light",
+        "veyran-dark",
+        "default-light",
+        "default-dark"
+      ])
+    );
+  });
+
+  test("BUILT_IN_THEME_IDS matches BUILT_IN_THEMES exactly", () => {
+    expect(BUILT_IN_THEME_IDS.has("veyran-light")).toBe(true);
+    expect(BUILT_IN_THEME_IDS.has("veyran-dark")).toBe(true);
+    expect(BUILT_IN_THEME_IDS.has("some-marketplace-theme")).toBe(false);
+  });
+
+  test("resolves a built-in by id for a local apply path", () => {
+    expect(BUILT_IN_THEMES_BY_ID.get("veyran-light")?.id).toBe("veyran-light");
+    expect(BUILT_IN_THEMES_BY_ID.get("veyran-dark")?.id).toBe("veyran-dark");
+    expect(BUILT_IN_THEMES_BY_ID.get("some-marketplace-theme")).toBeUndefined();
   });
 });

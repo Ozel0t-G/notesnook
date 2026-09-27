@@ -30,6 +30,7 @@ import {
   ThemeVeyranLight
 } from "@notesnook/theme";
 import { ThemesRouter } from "../common/themes-router";
+import { BUILT_IN_THEME_IDS } from "../common/veyran-built-in-themes";
 
 type ColorScheme = "dark" | "light";
 
@@ -188,7 +189,16 @@ function getTheme(colorScheme: ColorScheme): ThemeDefinition {
       );
 }
 
+// None of the VeyraN built-ins are (or ever will be) listed on
+// themes-api.notesnook.com, so an "update check" for them is always a
+// wasted round trip that can only time out or 404; the two original
+// defaults are bundled too, and are updated by shipping a new app build
+// rather than a live marketplace fetch. `updateTheme()` never needs to
+// contact the marketplace for any built-in (see `BUILT_IN_THEME_IDS`'s own
+// doc comment for why the picker shares this same set).
 async function updateTheme(theme: ThemeDefinition) {
+  if (BUILT_IN_THEME_IDS.has(theme.id)) return theme;
+
   const { id, version } = theme;
   try {
     const updatedTheme = await ThemesRouter.updateTheme.query({

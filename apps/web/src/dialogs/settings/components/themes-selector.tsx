@@ -34,6 +34,11 @@ import {
   THEME_SERVER_URL,
   ThemesTRPC
 } from "../../../common/themes-router";
+import {
+  BUILT_IN_THEMES,
+  BUILT_IN_THEMES_BY_ID,
+  uniqueById
+} from "../../../common/veyran-built-in-themes";
 import { ThemeMetadata } from "@notesnook/themes-server";
 import { ThemePreview } from "../../../components/theme-preview";
 import { Loader } from "../../../components/loader";
@@ -108,7 +113,7 @@ function ThemesList() {
     }
   );
 
-  const items = [
+  const items = uniqueById([
     {
       ...darkTheme,
       previewColors: getPreviewColors(darkTheme)
@@ -117,12 +122,28 @@ function ThemesList() {
       ...lightTheme,
       previewColors: getPreviewColors(lightTheme)
     },
+    ...BUILT_IN_THEMES.map((theme) => ({
+      ...theme,
+      previewColors: getPreviewColors(theme)
+    })),
     ...(themes.data?.pages.flatMap((a) => a.themes) || [])
-  ];
+  ]);
 
   const setTheme = useCallback(
     async (theme: ThemeMetadata) => {
       if (isThemeCurrentlyApplied(theme.id)) return;
+
+      // Built-ins (including both VeyraN themes) are applied directly from
+      // the copy already bundled with the app -- never through the
+      // marketplace's installTheme call, which only knows about themes
+      // actually hosted on themes-api.notesnook.com and would fail (or
+      // simply hang) offline.
+      const builtIn = BUILT_IN_THEMES_BY_ID.get(theme.id);
+      if (builtIn) {
+        setCurrentTheme(builtIn);
+        return;
+      }
+
       setIsApplying(true);
       try {
         const fullTheme = await ThemesRouter.installTheme.query({

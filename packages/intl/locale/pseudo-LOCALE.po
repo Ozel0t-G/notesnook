@@ -1384,7 +1384,7 @@ msgid "Browse"
 msgstr ""
 
 #: src/strings.ts:835
-msgid "Built from Notesnook"
+msgid "Your notes, your space"
 msgstr ""
 
 #: src/strings.ts:2401
@@ -7675,7 +7675,7 @@ msgid "Version history cleared"
 msgstr ""
 
 #: src/strings.ts:837
-msgid "VeyraN is a modified Notesnook client. Notesnook and its original authors, Streetwriters, are credited in Licenses."
+msgid "Keep your notes, tasks, and ideas together with VeyraN."
 msgstr ""
 
 #: src/strings.ts:50

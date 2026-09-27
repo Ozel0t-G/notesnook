@@ -835,9 +835,8 @@ $day$: Current day (eg. Monday)`,
         t`Your privacy matters to us, no matter who you are. In a world where everyone is trying to spy on you, VeyraN encrypts all your data before it leaves your device. With VeyraN no one can ever sell your data again.`
     },
     {
-      headings: [() => t`Built from Notesnook`],
-      body: () =>
-        t`VeyraN is a modified Notesnook client. Notesnook and its original authors, Streetwriters, are credited in Licenses.`
+      headings: [() => t`Your notes, your space`],
+      body: () => t`Keep your notes, tasks, and ideas together with VeyraN.`
     }
   ],
 

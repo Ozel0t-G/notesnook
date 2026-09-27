@@ -237,8 +237,9 @@ export async function getDatabaseKey(
   }
 
   if (await Keychain.hasInternetCredentials("notesnook")) {
-    const userKeyCredentials =
-      await Keychain.getInternetCredentials("notesnook");
+    const userKeyCredentials = await Keychain.getInternetCredentials(
+      "notesnook"
+    );
 
     if (userKeyCredentials) {
       const userKeyCipher: Cipher = (await encrypt(
@@ -296,6 +297,7 @@ export async function deriveCryptoKeyFallback(data: SerializedKey) {
     MMKV.setMap(USER_KEY_CIPHER, userKeyCipher);
   } catch (e) {
     DatabaseLogger.error(e);
+    throw e;
   }
 }
 
@@ -323,7 +325,19 @@ export async function deriveCryptoKey(data: SerializedKey) {
     MMKV.setMap(USER_KEY_CIPHER, userKeyCipher);
   } catch (e) {
     DatabaseLogger.error(e);
+    throw e;
   }
+}
+
+/** Preserve the exact encrypted MMKV value; never expose the plaintext key. */
+export async function snapshotCryptoKeyState() {
+  const cipher = MMKV.getMap(USER_KEY_CIPHER);
+  return cipher ? JSON.parse(JSON.stringify(cipher)) : undefined;
+}
+
+export async function restoreCryptoKeyState(state: unknown) {
+  if (state === undefined || state === null) MMKV.removeItem(USER_KEY_CIPHER);
+  else MMKV.setMap(USER_KEY_CIPHER, state as Cipher<"base64">);
 }
 
 export async function getCryptoKey() {

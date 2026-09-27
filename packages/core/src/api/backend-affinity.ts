@@ -220,11 +220,17 @@ export class BackendMismatchError extends Error {
 
 export class BackendAffinity {
   private logger = logger.scope("BackendAffinity");
+  private quarantined = false;
 
   constructor(private readonly db: Database) {}
 
   current() {
     return currentBackendIdentity();
+  }
+
+  /** A failed local rollback must stop all account traffic in this process. */
+  quarantine() {
+    this.quarantined = true;
   }
 
   /**
@@ -357,6 +363,16 @@ export class BackendAffinity {
 
   async check(): Promise<BackendAffinityResult> {
     const configured = this.current();
+    if (this.quarantined)
+      return { status: "unknown", configured, evidence: "none" };
+    // A previous local rollback may have failed while SQLite or the key store
+    // was unavailable. Keep the network blocked after restart as well.
+    try {
+      if (await this.db.storage().read<boolean>("backendRecoveryRequired"))
+        return { status: "unknown", configured, evidence: "none" };
+    } catch {
+      return { status: "unknown", configured, evidence: "none" };
+    }
 
     // A recorded affinity is never permission to silently ignore a user's
     // explicitly saved server selection. Require the configuration to agree.

@@ -84,6 +84,7 @@ function harness(options: {
   token?: Record<string, unknown>;
   lastSynced?: number;
   deviceId?: string;
+  cryptoKey?: string;
 }) {
   const kv = new Map<string, unknown>();
   if (options.storedUser) kv.set("user", options.storedUser);
@@ -92,19 +93,42 @@ function harness(options: {
   if (options.lastSynced !== undefined)
     kv.set("lastSynced", options.lastSynced);
   if (options.deviceId) kv.set("deviceId", options.deviceId);
+  if (options.cryptoKey) kv.set("cryptoKey", options.cryptoKey);
 
   const reset = vi.fn(async () => true);
   const setLastSynced = vi.fn(async (value: number) => {
     kv.set("lastSynced", value);
   });
-  const deriveCryptoKey = vi.fn(async () => undefined);
+  const deriveCryptoKey = vi.fn(async () => {
+    kv.set("cryptoKey", "new-derived-key");
+  });
   const unregister = vi.fn(async () => void kv.delete("deviceId"));
   const register = vi.fn(async () => void kv.set("deviceId", "new-device"));
+
+  const restoreSessionState = vi.fn(async (state: Record<string, unknown>) => {
+    // Match the real KV adapter's transaction: stage the entire write, then
+    // replace the map only when every operation succeeds.
+    const staged = new Map(kv);
+    for (const key of [
+      "user",
+      "token",
+      "backendAffinity",
+      "lastSynced",
+      "deviceId"
+    ]) {
+      const value = state[key];
+      if (value === undefined) staged.delete(key);
+      else staged.set(key, value);
+    }
+    kv.clear();
+    for (const [key, value] of staged) kv.set(key, value);
+  });
 
   const kvAccessor = () => ({
     read: async (key: string) => kv.get(key),
     write: async (key: string, value: unknown) => void kv.set(key, value),
     delete: async (key: string) => void kv.delete(key),
+    restoreSessionState,
     clear: async () => kv.clear()
   });
 
@@ -116,6 +140,11 @@ function harness(options: {
     storage: () => ({
       hash: async (password: string) => `hashed:${password}`,
       deriveCryptoKey,
+      snapshotCryptoKeyState: async () => kv.get("cryptoKey"),
+      restoreCryptoKeyState: async (state: unknown) => {
+        if (state === undefined) kv.delete("cryptoKey");
+        else kv.set("cryptoKey", state);
+      },
       deriveCryptoKeyFallback: vi.fn(async () => undefined),
       getCryptoKey: async () => "master-key",
       encrypt: async () => ({ cipher: "c", iv: "i", salt: "s", length: 1 }),
@@ -140,7 +169,8 @@ function harness(options: {
     setLastSynced,
     deriveCryptoKey,
     register,
-    unregister
+    unregister,
+    restoreSessionState
   };
 }
 
@@ -324,6 +354,34 @@ describe("automatic logout must not destroy local data", () => {
     const { user, reset } = harness({ storedUser: serverUser() });
     await user.logout(false, "revoked", { userInitiated: false });
     expect(reset).not.toHaveBeenCalled();
+  });
+
+  test("a revoked session on the matching backend clears only credentials", async () => {
+    const local = serverUser("account");
+    const { user, db, kv, reset } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: {
+        access_token: "revoked",
+        refresh_token: "revoked-refresh",
+        scope: "notesnook.sync offline_access IdentityServerApi"
+      },
+      lastSynced: 811,
+      deviceId: "registered-device",
+      cryptoKey: "local-content-key"
+    });
+    const expired = vi.fn();
+    db.eventManager.subscribe(EVENTS.userSessionExpired, expired);
+
+    await user.logout(false, "invalid_grant", { userInitiated: false });
+
+    expect(reset).not.toHaveBeenCalled();
+    expect(kv.has("token")).toBe(false);
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("lastSynced")).toBe(811);
+    expect(kv.get("deviceId")).toBe("registered-device");
+    expect(kv.get("cryptoKey")).toBe("local-content-key");
+    expect(expired).toHaveBeenCalledOnce();
   });
 
   // An explicit sign-out is still expected to clear local data.
@@ -647,7 +705,8 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
   test("a late signup failure restores the original sync and device state", async () => {
     const { user, kv, register, unregister } = harness({
       lastSynced: 789,
-      deviceId: "previous-device"
+      deviceId: "previous-device",
+      cryptoKey: "original-key"
     });
     mockPost.mockResolvedValue({
       access_token: "signup-token",
@@ -667,6 +726,7 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     expect(unregister).toHaveBeenCalledOnce();
     expect(kv.get("lastSynced")).toBe(789);
     expect(kv.get("deviceId")).toBe("previous-device");
+    expect(kv.get("cryptoKey")).toBe("original-key");
     expect(kv.has("user")).toBe(false);
     expect(kv.has("token")).toBe(false);
     expect(kv.has("backendAffinity")).toBe(false);
@@ -791,6 +851,66 @@ describe("three-step login preserves the original session", () => {
     expect(kv.get("backendAffinity")).toEqual(stored);
     expect(kv.get("lastSynced")).toBe(456);
     expect(kv.get("deviceId")).toBe("old-device");
+  });
+
+  test("a key-store failure after writing a new key restores the original key and session", async () => {
+    const { user, kv, deriveCryptoKey } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "original-key",
+      lastSynced: 123,
+      deviceId: "original-device"
+    });
+    arrangeGrants();
+    deriveCryptoKey.mockImplementationOnce(async () => {
+      kv.set("cryptoKey", "partially-written-new-key");
+      throw new Error("key store write interrupted");
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow("key store write interrupted");
+
+    expect(kv.get("cryptoKey")).toBe("original-key");
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("deviceId")).toBe("original-device");
+    expect(kv.get("lastSynced")).toBe(123);
+  });
+
+  test("failed atomic KV recovery blocks further account traffic and still restores the key", async () => {
+    const { user, db, kv, deriveCryptoKey, restoreSessionState } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "original-key"
+    });
+    arrangeGrants();
+    deriveCryptoKey.mockImplementationOnce(async () => {
+      kv.set("cryptoKey", "partially-written-new-key");
+      throw new Error("key write failed");
+    });
+    restoreSessionState.mockRejectedValueOnce(
+      new Error("database is read-only")
+    );
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow(/rollback could not be completed/);
+
+    expect(kv.get("cryptoKey")).toBe("original-key");
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    expect(await user.backendAffinity.isBlocked()).toBe(true);
+    await expect(
+      user.authenticateEmail("someone@example.test")
+    ).rejects.toThrow(/cannot be attributed/);
+    const reopened = new UserManager(db);
+    (db as unknown as { user: UserManager }).user = reopened;
+    expect(await reopened.backendAffinity.isBlocked()).toBe(true);
   });
 
   test("can retry after failure without carrying a temporary identity", async () => {

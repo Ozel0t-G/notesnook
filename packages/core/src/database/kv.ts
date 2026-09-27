@@ -52,6 +52,19 @@ export const KEYS: (keyof KV)[] = [
   "backendAffinity"
 ];
 
+export type SessionKVState = Pick<
+  Partial<KV>,
+  "user" | "token" | "backendAffinity" | "lastSynced" | "deviceId"
+>;
+
+const SESSION_KEYS = [
+  "user",
+  "token",
+  "backendAffinity",
+  "lastSynced",
+  "deviceId"
+] as const;
+
 export class KVStorage {
   private readonly db: LazyDatabaseAccessor<RawDatabaseSchema>;
   constructor(db: LazyDatabaseAccessor) {
@@ -87,6 +100,29 @@ export class KVStorage {
   async delete<T extends keyof KV>(key: T) {
     await this.db.then((db) =>
       db.deleteFrom("kv").where("key", "==", key).execute()
+    );
+  }
+
+  /** Restore all account and sync markers in one SQLite transaction. */
+  async restoreSessionState(state: SessionKVState) {
+    await this.db.then((db) =>
+      db.transaction().execute(async (tx) => {
+        for (const key of SESSION_KEYS) {
+          const value = state[key];
+          if (value === undefined) {
+            await tx.deleteFrom("kv").where("key", "==", key).execute();
+          } else {
+            await tx
+              .replaceInto("kv")
+              .values({
+                key,
+                value: JSON.stringify(value),
+                dateModified: Date.now()
+              })
+              .execute();
+          }
+        }
+      })
     );
   }
 

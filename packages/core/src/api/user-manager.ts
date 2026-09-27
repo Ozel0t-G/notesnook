@@ -68,7 +68,7 @@ class UserManager {
     );
 
     EV.subscribe(EVENTS.userUnauthorized, async (url: string) => {
-      if (url.includes("/connect/token") || !(await HealthCheck.auth())) return;
+      if (url.includes("/connect/token")) return;
 
       // A session issued by a different identity server will always be
       // rejected by the configured one. Refreshing it would fail with
@@ -85,6 +85,7 @@ class UserManager {
         this.db.eventManager.publish(EVENTS.userSessionExpired);
         return;
       }
+      if (!(await HealthCheck.auth())) return;
 
       try {
         await this.tokenManager._refreshToken(true);
@@ -166,6 +167,7 @@ class UserManager {
     await this.commitFetchedUser(user, snapshot.user, false);
     await this.db.setLastSynced(0);
 
+    snapshot.cryptoKeyTouched = true;
     await this.db.storage().deriveCryptoKey({
       password,
       salt: user.salt
@@ -327,6 +329,9 @@ class UserManager {
         await this.db.setLastSynced(0);
       }
 
+      if (!sessionExpired) await this.db.syncer.devices.register();
+
+      snapshot.cryptoKeyTouched = true;
       if (usesFallback) {
         await this.db.storage().deriveCryptoKeyFallback({
           password,
@@ -338,7 +343,6 @@ class UserManager {
           salt: user.salt
         });
       }
-      if (!sessionExpired) await this.db.syncer.devices.register();
       this.pendingLogin = undefined;
       authenticatedUser = user;
     } catch (e) {
@@ -383,11 +387,9 @@ class UserManager {
   }
 
   /**
-   * @param options.userInitiated defaults to true, preserving the behaviour of
-   * every existing caller: an explicit logout clears local data. Automatic,
-   * server-triggered logouts must pass false, which makes this refuse to reset
-   * a profile whose data belongs to a different backend. A foreign server
-   * rejecting our token is not authority to delete the user's notes.
+   * @param options.userInitiated defaults to true. Only an explicit sign-out
+   * may reset local data. A server rejecting a token has no authority to
+   * delete notes, regardless of whether the backend affinity still matches.
    */
   async logout(
     revoke = true,
@@ -395,11 +397,17 @@ class UserManager {
     options?: { userInitiated?: boolean }
   ) {
     const userInitiated = options?.userInitiated ?? true;
-    if (!userInitiated && (await this.backendAffinity.isBlocked())) {
-      logger.warn(
-        "Refusing an automatic logout that would reset a profile bound to another backend.",
-        { reason }
-      );
+    if (!userInitiated) {
+      if (!(await this.backendAffinity.isBlocked())) {
+        try {
+          await this.db.kv().delete("token");
+        } catch (error) {
+          // A token that could not be deleted must not be refreshed or used.
+          this.backendAffinity.quarantine();
+          logger.error(error, "Could not clear an expired session token");
+        }
+      }
+      this.pendingLogin = undefined;
       this.db.eventManager.publish(EVENTS.userSessionExpired);
       return;
     }
@@ -618,9 +626,9 @@ class UserManager {
   }
 
   /**
-   * Capture the account state a flow may have to undo. Login and signup both
-   * write a token before they can verify anything, so a rejection has to put
-   * back exactly what was there.
+   * Capture every locally persisted account marker, including the opaque
+   * platform key-store state. A failed signup or final login commit must put
+   * them back together; interim MFA tokens never enter this snapshot.
    */
   private async snapshotSession() {
     return {
@@ -629,6 +637,8 @@ class UserManager {
       affinity: await this.db.kv().read("backendAffinity"),
       lastSynced: await this.db.kv().read("lastSynced"),
       deviceId: await this.db.kv().read("deviceId"),
+      cryptoKeyState: await this.db.storage().snapshotCryptoKeyState(),
+      cryptoKeyTouched: false,
       backend: this.backendAffinity.current(),
       serverSettings: JSON.stringify(getPersistedHostOverrides() || {})
     };
@@ -668,30 +678,45 @@ class UserManager {
         );
       }
     }
-    await this.restoreSession(snapshot);
+    let kvError: unknown;
+    let keyError: unknown;
+    try {
+      await this.restoreSession(snapshot);
+    } catch (error) {
+      kvError = error;
+    }
+    if (snapshot.cryptoKeyTouched) {
+      try {
+        await this.db.storage().restoreCryptoKeyState(snapshot.cryptoKeyState);
+      } catch (error) {
+        keyError = error;
+      }
+    }
+    this.keyManager.clearCache();
+    if (kvError || keyError) {
+      this.backendAffinity.quarantine();
+      try {
+        await this.db.storage().write("backendRecoveryRequired", true);
+      } catch (error) {
+        logger.error(error, "Could not persist the backend recovery block");
+      }
+      logger.error(kvError || keyError, "Account rollback failed");
+      throw new Error(
+        "Account rollback could not be completed. Local note records were not deleted, and network access is blocked until the profile is repaired."
+      );
+    }
   }
 
   private async restoreSession(
     snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
   ) {
-    const kv = this.db.kv();
-    if (snapshot.user) await kv.write("user", snapshot.user);
-    else await kv.delete("user");
-    if (snapshot.token)
-      await kv.write(
-        "token",
-        snapshot.token as Parameters<typeof kv.write>[1] as never
-      );
-    else await kv.delete("token");
-    if (snapshot.affinity)
-      await kv.write("backendAffinity", snapshot.affinity as never);
-    else await kv.delete("backendAffinity");
-    if (snapshot.lastSynced !== undefined)
-      await kv.write("lastSynced", snapshot.lastSynced);
-    else await kv.delete("lastSynced");
-    if (snapshot.deviceId) await kv.write("deviceId", snapshot.deviceId);
-    else await kv.delete("deviceId");
-    this.keyManager.clearCache();
+    await this.db.kv().restoreSessionState({
+      user: snapshot.user,
+      token: snapshot.token,
+      backendAffinity: snapshot.affinity,
+      lastSynced: snapshot.lastSynced,
+      deviceId: snapshot.deviceId
+    });
   }
 
   changePassword(oldPassword: string, newPassword: string) {

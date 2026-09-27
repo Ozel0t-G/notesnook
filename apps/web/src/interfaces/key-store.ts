@@ -381,6 +381,17 @@ class KeyStore extends BaseStore<KeyStore> {
     else return JSON.parse(decoder.decode(decryptedBlob)).value as Secrets[T];
   };
 
+  deleteValue = async <T extends keyof Secrets>(name: T) => {
+    if (this.get().isLocked)
+      throw new Error("Please unlock the key store to delete values.");
+    await this.#secretStore.delete(name);
+    this.set((store) => {
+      const secrets = { ...store.secrets };
+      delete secrets[name];
+      store.secrets = secrets;
+    });
+  };
+
   clear = async () => {
     await this.#metadataStore?.clear();
     await this.#secretStore?.clear();

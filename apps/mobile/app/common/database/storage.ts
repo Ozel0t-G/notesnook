@@ -27,6 +27,8 @@ import {
   encryptMulti,
   generateCryptoKey,
   getCryptoKey,
+  snapshotCryptoKeyState,
+  restoreCryptoKeyState,
   hash,
   generateCryptoKeyFallback
 } from "./encryption";
@@ -179,6 +181,8 @@ export const Storage: IStorage = {
   },
   hash,
   getCryptoKey,
+  snapshotCryptoKeyState,
+  restoreCryptoKeyState,
   encrypt,
   encryptMulti,
   decrypt,

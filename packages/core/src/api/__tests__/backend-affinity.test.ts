@@ -51,6 +51,7 @@ function record(api: string, auth: string): StoredAffinity {
 function fakeDb(options: {
   user?: Partial<User>;
   affinity?: StoredAffinity | string;
+  recoveryRequired?: boolean;
 }) {
   const kv = new Map<string, unknown>();
   if (options.affinity !== undefined)
@@ -61,6 +62,12 @@ function fakeDb(options: {
         read: async (key: string) => kv.get(key),
         write: async (key: string, value: unknown) => void kv.set(key, value),
         delete: async (key: string) => void kv.delete(key)
+      }),
+      storage: () => ({
+        read: async (key: string) =>
+          key === "backendRecoveryRequired"
+            ? options.recoveryRequired
+            : undefined
       }),
       user: { getUser: async () => options.user }
     } as unknown as Database,
@@ -426,6 +433,19 @@ describe("assertAllowed", () => {
       /Local notes remain available/
     );
   });
+});
+
+test("a persisted failed-rollback marker blocks traffic after restart", async () => {
+  const { db } = fakeDb({
+    user: { id: "account" },
+    affinity: record(VEYRAN.api, VEYRAN.auth),
+    recoveryRequired: true
+  });
+  const affinity = new BackendAffinity(db);
+  expect((await affinity.check()).status).toBe("unknown");
+  await expect(affinity.assertAllowed("Sync")).rejects.toThrow(
+    /cannot be attributed/
+  );
 });
 
 describe("adoptCurrentBackend", () => {

@@ -124,6 +124,17 @@ export class NNStorage implements IStorage {
     return this.keyStore()?.getValue("userEncryptionKey");
   }
 
+  async snapshotCryptoKeyState(): Promise<unknown> {
+    return this.keyStore()?.getValue("userEncryptionKey");
+  }
+
+  async restoreCryptoKeyState(state: unknown): Promise<void> {
+    const store = this.keyStore();
+    if (!store) throw new Error("No key store found!");
+    if (state === undefined) await store.deleteValue("userEncryptionKey");
+    else await store.setValue("userEncryptionKey", state as string);
+  }
+
   async generateCryptoKey(
     password: string,
     salt?: string

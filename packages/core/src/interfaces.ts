@@ -69,6 +69,9 @@ export interface IStorage {
     options?: { usesFallback?: boolean }
   ): Promise<string>;
   getCryptoKey(): Promise<string | undefined>;
+  /** Opaque, storage-specific state; keep encrypted/ciphertext in its native store. */
+  snapshotCryptoKeyState(): Promise<unknown>;
+  restoreCryptoKeyState(state: unknown): Promise<void>;
   generateCryptoKey(password: string, salt?: string): Promise<SerializedKey>;
   generatePGPKeyPair(): Promise<SerializedKeyPair>;
   decryptPGPMessage(

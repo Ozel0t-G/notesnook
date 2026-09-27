@@ -154,6 +154,7 @@ describe("sync preflight", () => {
         write: async (k: string, v: unknown) => void kv.set(k, v),
         delete: async (k: string) => void kv.delete(k)
       }),
+      storage: () => ({ read: async () => undefined }),
       eventManager: new EventManager(),
       user: { getUser: async () => kv.get("user") },
       tokenManager: { getAccessToken: async () => "token" }

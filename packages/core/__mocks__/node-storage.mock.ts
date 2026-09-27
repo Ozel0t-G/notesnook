@@ -113,6 +113,15 @@ export class NodeStorageInterface implements IStorage {
     return key;
   }
 
+  async snapshotCryptoKeyState(): Promise<unknown> {
+    return this.read<string>("userEncryptionKey");
+  }
+
+  async restoreCryptoKeyState(state: unknown): Promise<void> {
+    if (state === undefined) await this.remove("userEncryptionKey");
+    else await this.write("userEncryptionKey", state as string);
+  }
+
   async generateCryptoKey(
     password: string,
     salt?: string | undefined

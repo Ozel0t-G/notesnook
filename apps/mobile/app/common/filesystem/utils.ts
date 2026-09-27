@@ -124,6 +124,7 @@ export async function getUploadedFileSize(hash: string, retry = 0) {
   try {
     const url = `${hosts.API_HOST}/s3?name=${hash}`;
     const token = await db.tokenManager.getAccessToken();
+    if (!token) throw new Error("No account session is available for files.");
     const attachmentInfo = await headFileSizeRequest(url, token);
 
     const fileSize = getFileSizeFromHeaders(attachmentInfo.headers);

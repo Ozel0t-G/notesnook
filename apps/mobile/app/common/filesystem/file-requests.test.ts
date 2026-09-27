@@ -1,3 +1,5 @@
+export {};
+
 const mockState = {
   issuedHost: "https://api.veyran.northcore.space",
   currentHost: "https://api.veyran.northcore.space"

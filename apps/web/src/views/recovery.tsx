@@ -73,7 +73,7 @@ type RecoveryProps = { route: RecoveryRoutes };
 
 type RecoveryComponent<TRoute extends RecoveryRoutes> = (
   props: BaseRecoveryComponentProps<TRoute>
-) => JSX.Element;
+) => JSX.Element | null;
 
 function getRouteComponent<TRoute extends RecoveryRoutes>(
   route: TRoute
@@ -225,22 +225,16 @@ type RecoveryMethod = {
   title: () => string;
   testId: string;
   description: () => string;
-  isDangerous?: boolean;
 };
 
+// No-key account reset is hidden until a backend provides an atomic recovery
+// contract. UserManager also blocks the old route before any data or HTTP use.
 const recoveryMethods: RecoveryMethod[] = [
   {
     type: "key",
     testId: "step-recovery-key",
     title: () => strings.recoveryKeyMethod(),
     description: () => strings.recoveryKeyMethodDesc()
-  },
-  {
-    type: "reset",
-    testId: "step-reset-account",
-    title: () => strings.clearDataAndResetMethod(),
-    description: () => strings.clearDataAndResetMethodDesc(),
-    isDangerous: true
   }
 ];
 
@@ -277,9 +271,7 @@ function RecoveryMethods(props: BaseRecoveryComponentProps<"methods">) {
             ":first-of-type": { mt: 2 },
             display: "flex",
             flexDirection: "column",
-            bg: method.isDangerous
-              ? "var(--background-secondary)"
-              : "var(--background-error)",
+            bg: "var(--background-secondary)",
             alignSelf: "stretch",
             // alignItems: "center",
             textAlign: "left",
@@ -290,7 +282,7 @@ function RecoveryMethods(props: BaseRecoveryComponentProps<"methods">) {
           <Text
             variant={"title"}
             sx={{
-              color: method.isDangerous ? "var(--heading-error)" : "heading"
+              color: "heading"
             }}
           >
             {method.title()}
@@ -298,9 +290,7 @@ function RecoveryMethods(props: BaseRecoveryComponentProps<"methods">) {
           <Text
             variant={"body"}
             sx={{
-              color: method.isDangerous
-                ? "var(--paragraph-error)"
-                : "var(--paragraph-secondary)",
+              color: "var(--paragraph-secondary)",
               whiteSpace: "pre-wrap"
             }}
           >

@@ -1082,52 +1082,17 @@ class UserManager {
     });
   }
 
-  async resetPasswordWithoutRecoveryKey(newPassword: string) {
-    if (!newPassword) throw new Error("New password is required.");
-
-    const token = await this.tokenManager.getAccessToken();
-    const user = await this.getUser();
-    if (!token || !user) throw new Error("You are not logged in.");
-
-    const updateUserPayload: Partial<User> = {};
-    const newMasterKey = await this.db
-      .storage()
-      .generateCryptoKey(newPassword, user.salt);
-
-    updateUserPayload.dataEncryptionKey = await this.keyManager.wrapKey(
-      await this.db.crypto().generateRandomKey(),
-      newMasterKey
+  async resetPasswordWithoutRecoveryKey(_newPassword: string): Promise<boolean> {
+    // No configured backend has a verified atomic contract for this
+    // destructive flow. The former client called /users/reset before the
+    // password PATCH and could leave an account cleared after a later error.
+    // This is intentionally unavailable for default and override hosts until
+    // a backend capability and safe recovery protocol are established. Keep
+    // the method for API compatibility but refuse it before reading a session,
+    // changing local data, or making a network request.
+    throw new Error(
+      "Account reset without a recovery key is unavailable in VeyraN. No data was changed."
     );
-
-    if (!(await this.resetUser())) throw new Error("Failed to reset user.");
-
-    await http.patch.json(
-      `${constants.API_HOST}/users/password/reset`,
-      {
-        newPassword: await this.db
-          .storage()
-          .hash(newPassword, user.email.toLowerCase()),
-        userKeys: updateUserPayload
-      },
-      token
-    );
-
-    await this.db.storage().deriveCryptoKey({
-      password: newPassword,
-      salt: user.salt
-    });
-
-    this.keyManager.clearCache();
-    await this.setUser({
-      ...user,
-      ...updateUserPayload,
-      attachmentsKey: undefined,
-      monographPasswordsKey: undefined,
-      inboxKeys: undefined,
-      legacyDataEncryptionKey: undefined
-    });
-
-    return true;
   }
 
   async getDataEncryptionKeys(): Promise<

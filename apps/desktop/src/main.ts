@@ -42,6 +42,7 @@ import { i18n } from "@lingui/core";
 import { PATHS } from "./constants";
 import { normalizePathString } from "./utils/resolve-path";
 import { taskReminderScheduler } from "./utils/task-reminder-scheduler";
+import { isExternalUrlAllowed } from "./utils/external-url";
 
 const locale =
   process.env.NODE_ENV === "development"
@@ -284,16 +285,19 @@ async function createWindow() {
     mainWindow.webContents.openDevTools({ mode: "bottom", activate: true });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url);
+    if (isExternalUrlAllowed(details.url)) shell.openExternal(details.url);
     return { action: "deny" };
   });
 
   mainWindow.webContents.on("will-navigate", (event, url) => {
     try {
       const parsedUrl = new URL(url);
-      if (!appHostnames.includes(parsedUrl.hostname)) {
+      const isInternalAppUrl =
+        appHostnames.includes(parsedUrl.hostname) &&
+        (isDevelopment() || parsedUrl.protocol === "https:");
+      if (!isInternalAppUrl) {
         event.preventDefault();
-        shell.openExternal(url);
+        if (isExternalUrlAllowed(url)) shell.openExternal(url);
       }
     } catch (e) {
       console.error("will-navigate: failed to parse URL", url, e);

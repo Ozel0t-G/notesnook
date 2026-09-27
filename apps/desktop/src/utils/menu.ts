@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { strings } from "@notesnook/intl";
 import { Menu, MenuItem, clipboard, shell } from "electron";
+import { isExternalUrlAllowed } from "./external-url";
 
 function setupApplicationMenu() {
   if (process.platform !== "darwin") return;
@@ -123,7 +124,7 @@ function setupMenu() {
         })
       );
 
-    if (params.linkURL.length) {
+    if (isExternalUrlAllowed(params.linkURL)) {
       menu.append(
         new MenuItem({
           label: strings.openInBrowser(),

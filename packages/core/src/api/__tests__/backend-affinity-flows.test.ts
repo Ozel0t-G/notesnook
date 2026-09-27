@@ -45,7 +45,7 @@ import TokenManager from "../token-manager.js";
 import { StoredAffinity } from "../backend-affinity.js";
 import { EVENTS, EV } from "../../common.js";
 import EventManager from "../../utils/event-manager.js";
-import type Database from "../index.js";
+import Database from "../index.js";
 import type { User } from "../../types.js";
 
 const VEYRAN = {
@@ -344,6 +344,70 @@ describe("signup records affinity only from a verified account", () => {
 });
 
 describe("automatic logout must not destroy local data", () => {
+  test.each([false, true])(
+    "an SSE logout preserves local data with recovery intent %s",
+    async (recoveryPending) => {
+      const local = serverUser("account");
+      const token = {
+        access_token: "existing-access",
+        refresh_token: "existing-refresh",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600,
+        t: Date.now()
+      };
+      const { user, db, kv, reset } = harness({
+        storedUser: local,
+        affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+        token,
+        lastSynced: 811,
+        deviceId: "registered-device",
+        cryptoKey: "local-content-key"
+      });
+      const expired = vi.fn();
+      const eventDb = new Database();
+      eventDb.user = user;
+      eventDb.tokenManager.getAccessToken = vi.fn(async () =>
+        "existing-access"
+      );
+      const close = vi.fn();
+      class TestEventSource {
+        onmessage?: (event: { data: string }) => Promise<void>;
+        onopen?: () => void;
+        onerror?: (error: unknown) => void;
+        readyState = 1;
+        OPEN = 1;
+        close = close;
+      }
+      eventDb.setup({ eventsource: TestEventSource as never } as never);
+      db.eventManager.subscribe(EVENTS.userSessionExpired, expired);
+
+      await eventDb.connectSSE();
+      const stream = eventDb.eventSource as unknown as TestEventSource;
+      expect(stream?.onmessage).toBeDefined();
+      // The stream may have opened before recovery was needed. An in-flight
+      // logout event must still be unable to remove the old credentials.
+      if (recoveryPending) kv.set("backendRecoveryRequired", true);
+      await stream.onmessage?.({
+        data: JSON.stringify({
+          type: "logout",
+          data: JSON.stringify({ reason: "server revoked session" })
+        })
+      });
+
+      expect(reset).not.toHaveBeenCalled();
+      expect(close).toHaveBeenCalledOnce();
+      expect(kv.get("token")).toEqual(recoveryPending ? token : undefined);
+      expect(kv.get("user")).toEqual(local);
+      expect(kv.get("lastSynced")).toBe(811);
+      expect(kv.get("deviceId")).toBe("registered-device");
+      expect(kv.get("cryptoKey")).toBe("local-content-key");
+      expect(kv.get("backendRecoveryRequired")).toBe(
+        recoveryPending ? true : undefined
+      );
+      expect(expired).toHaveBeenCalledOnce();
+    }
+  );
+
   /**
    * The original data-loss path: a foreign token is rejected, the refresh fails
    * invalid_grant, and logout() reaches db.reset(), which drops every table.

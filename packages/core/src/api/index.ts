@@ -455,7 +455,12 @@ class Database {
               break;
             }
             case "logout": {
-              await this.user.logout(true, data.reason || "Unknown.");
+              // A server event can expire a session, but it must never reset
+              // this device's encrypted notes or disturb recovery quarantine.
+              this.disconnectSSE();
+              await this.user.logout(false, data.reason || "Unknown.", {
+                userInitiated: false
+              });
               break;
             }
             case "emailConfirmed": {

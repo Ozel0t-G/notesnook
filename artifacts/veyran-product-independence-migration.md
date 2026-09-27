@@ -50,3 +50,13 @@ Claude resumed all three isolated worktrees with delegated agents. A new quota l
 - **Theme:** the four earlier signed commits remain. Claude's follow-up has uncommitted picker, upstream-call, metadata, migration, and test edits. It also left incidental package-lock, font, and TypeScript build-info changes that must be classified and cleaned before commits. No integration or visual/device validation occurred.
 
 The dedicated disposable VeyraN test inbox needed for live registration and sync has been requested from the user. Until one is available, production account-flow results remain unverified. The next same-thread continuation is scheduled after the reported quota reset.
+
+## Review checkpoint after the 2026-09-27 3:40 a.m. quota reset
+
+The theme and backend Claude tasks completed; branding stopped on Claude's subscription session limit, now reported to reset at 9 a.m. Europe/Oslo. No separate model-capacity failure was observed in the returned session results. All worktrees and signed commits remain intact; no application branch has been integrated into `test`.
+
+- **Theme:** five additional signed commits (`53d21c79b`, `d35dc5ea7`, `04dc1ac96`, `bbe763acc`, `c3efa05fa`) correct metadata, local built-in selection/update behavior, and one-launch settings migration. The worktree is clean. Codex independently reran the 310-assertion validator, 13 Web tests, and 14 mobile tests; all passed. Independent diff review still blocks integration: Web hides built-ins while the remote theme query is initially loading, and mobile search hides all built-ins for nonempty text. No simulator/desktop visual QA occurred.
+- **Backend:** two additional signed commits (`3c9e99466`, `e48bbae54`) verify the remote user before saving identity and refuse unknown/mismatched affinity. The worktree is clean. Codex independently reran 75 focused core tests and 6 Web host tests; all passed. Independent diff review still blocks integration: email/MFA steps replace the original token before the password-step rollback snapshot, later failures can leave sync checkpoint/device-ID side effects, and explicit adoption can override mismatched persisted server settings. No adoption UI or live account/sync test exists.
+- **Branding:** Claude stopped with uncommitted edits to feature policy, mobile paywall paths, and editor permission presentation. A targeted inspection of the editor-adjacent diff found only gate/toast handling and restoration of silent Web denial behavior; no editor save, schema, or loading lifecycle change was observed in those files. The branch still requires completion, tests, commits, and review.
+
+The dedicated test-inbox request remains pending. The next same-thread continuation is scheduled after the 9 a.m. reset.

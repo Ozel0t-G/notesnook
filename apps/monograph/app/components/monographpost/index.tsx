@@ -36,14 +36,12 @@ import { NNCrypto } from "../../utils/nncrypto.client";
 import { hashNavigate } from "../../utils/use-hash-location";
 import { Icon } from "@notesnook/ui";
 import {
-  mdiAlertCircleOutline,
   mdiArrowUp,
   mdiClose,
   mdiListBoxOutline,
   mdiLockOutline
 } from "@mdi/js";
 import { Footer } from "../footer";
-import ReportDialog from "./report-modal";
 
 type TableOfContent = {
   title: string;
@@ -114,7 +112,6 @@ export const MonographPage = ({
   encodedKey?: string;
   pixel?: string;
 }) => {
-  const [reportDialogVisible, setReportDialogVisible] = useState(false);
   const [tableOfContents, setTableOfContents] = useState<TableOfContent[]>([]);
   const [content, setContent] = useState(monograph.content);
   const [showTableOfContents, setShowTableOfContents] = useState(false);
@@ -202,31 +199,7 @@ export const MonographPage = ({
                 End-to-end encrypted
               </Text>
             </Flex>
-          ) : (
-            <Button
-              title="Report"
-              onClick={() => {
-                setReportDialogVisible(true);
-              }}
-              variant="anchor"
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                gap: 1,
-                borderRadius: "default",
-                textDecoration: "none"
-              }}
-            >
-              <Icon
-                path={mdiAlertCircleOutline}
-                color="var(--paragraph-secondary)"
-                size={16}
-              />
-              <Text variant="error" sx={{ color: "paragraph-secondary" }}>
-                Report
-              </Text>
-            </Button>
-          )}
+          ) : null}
           {pixel ? <Image sx={{ display: "none" }} src={pixel} /> : null}
         </Flex>
       </Box>
@@ -360,15 +333,7 @@ export const MonographPage = ({
           </Flex>
         ) : null}
       </Flex>
-      <Footer subtitle="Published via Notesnook" />
-      {reportDialogVisible ? (
-        <ReportDialog
-          monograph={monograph}
-          setVisible={(visible) => {
-            setReportDialogVisible(visible);
-          }}
-        />
-      ) : null}
+      <Footer subtitle="Published with VeyraN" />
     </Flex>
   );
 };

@@ -42,8 +42,8 @@ import { useLoaderData } from "@remix-run/react";
 
 export const meta: MetaFunction = () => {
   return generateMetaDescriptors({
-    titleShort: "Monograph",
-    titleFull: "Monograph",
+    titleShort: "VeyraN Sharing",
+    titleFull: "VeyraN Sharing",
     type: "website",
     url: PUBLIC_URL,
     imageUrl: `${PUBLIC_URL}/social.png`,
@@ -64,7 +64,7 @@ const ButtonLink = Button as ForwardRef<
 const features = [
   {
     name: "Share notes",
-    body: `Share a note with anyone on the internet even if they do not use Notesnook using a private sharable url.`,
+    body: `Share a note with anyone on the internet, even if they do not use VeyraN, using a private share link.`,
     Icon: mdiShareOutline
   },
   {
@@ -129,22 +129,10 @@ export default function Monograph() {
           <ButtonLink
             as="a"
             variant="accent"
-            href="https://app.notesnook.com/"
+            href="https://veyran.northcore.space/"
             target="_blank"
           >
             Publish a note
-          </ButtonLink>
-          <ButtonLink
-            as="a"
-            variant="secondary"
-            sx={{
-              bg: "background-secondary",
-              border: "1px solid var(--border)"
-            }}
-            href="https://notesnook.com/help/publish-notes-with-monographs"
-            target="_blank"
-          >
-            How it works
           </ButtonLink>
         </Flex>
 

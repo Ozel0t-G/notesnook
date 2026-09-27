@@ -55,17 +55,15 @@ export function generateMetaDescriptors(
     });
   if (props.url) descriptors.push({ name: "og:url", content: props.url });
   descriptors.push({ name: "og:type", content: props.type });
-  descriptors.push({ name: "og:site_name", content: "Monograph" });
+  descriptors.push({ name: "og:site_name", content: "VeyraN Sharing" });
   if (props.publishedAt)
     descriptors.push({
       name: "article:published_time",
       content: props.publishedAt
     });
 
-  descriptors.push({ name: "author", content: "Monograph" });
+  descriptors.push({ name: "author", content: "VeyraN" });
   descriptors.push({ name: "twitter:card", content: "summary_large_image" });
-  descriptors.push({ name: "twitter:site", content: "@notesnook" });
-  descriptors.push({ name: "twitter:creator", content: "@notesnook" });
   descriptors.push({ name: "twitter:title", content: props.titleShort });
   descriptors.push({ name: "twitter:description", content: props.description });
   if (props.imageUrl)
@@ -172,7 +170,7 @@ export function buildMonographMeta(
   }).toString()}`;
 
   return generateMetaDescriptors({
-    titleFull: data.metadata.title + " - Monograph",
+    titleFull: data.metadata.title + " - VeyraN Sharing",
     titleShort: data.metadata.title,
     description: data.metadata.shortDescription,
     imageAlt: data.metadata.fullDescription,

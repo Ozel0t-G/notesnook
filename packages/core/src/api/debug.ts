@@ -17,26 +17,18 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import hosts from "../utils/constants.js";
-
 export type IssueReportResponse =
   | { error: string }
   | { url: string; type: "issue" | "discussion" }
   | { type: "email" };
 export class Debug {
-  static async report(reportData: {
+  static async report(_reportData: {
     title: string;
     body: string;
     userId?: string;
   }): Promise<IssueReportResponse | undefined> {
-    const { title, body, userId } = reportData;
-    const response = await fetch(`${hosts.ISSUES_HOST}/create/notesnook`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, body, userId })
-    });
-    const json = await response.json();
-    if (!response.ok) return json;
-    return json;
+    // There is no verified VeyraN issue-reporting service. Never send issue
+    // content or account identifiers to the upstream Notesnook service.
+    return { error: "VeyraN issue reporting is unavailable." };
   }
 }

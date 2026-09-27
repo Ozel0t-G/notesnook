@@ -17,26 +17,16 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { Flex, Text } from "@theme-ui/components";
+import { afterEach, expect, it, vi } from "vitest";
+import { Debug } from "../debug.js";
 
-export function Footer({ subtitle }: { subtitle?: string }) {
-  return (
-    <Flex
-      as="footer"
-      sx={{
-        flexDirection: "column",
-        paddingY: 50,
-        px: [10, "15%"],
-        gap: 2,
-        backgroundColor: "background-secondary",
-        borderTop: "1px solid var(--border)"
-      }}
-    >
-      <Text sx={{ fontFamily: "monospace", fontSize: 22 }}>VeyraN</Text>
-      <Text variant="subBody">{subtitle || "Shared with VeyraN"}</Text>
-      <Text variant="subBody" color="info">
-        Open-source components © 2023 Streetwriters (Private) Limited
-      </Text>
-    </Flex>
-  );
-}
+afterEach(() => vi.restoreAllMocks());
+
+it("does not send issue reports to an upstream service", async () => {
+  const fetch = vi.spyOn(globalThis, "fetch");
+
+  await expect(
+    Debug.report({ title: "Issue", body: "Private account details", userId: "id" })
+  ).resolves.toEqual({ error: "VeyraN issue reporting is unavailable." });
+  expect(fetch).not.toHaveBeenCalled();
+});

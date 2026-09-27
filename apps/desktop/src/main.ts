@@ -261,9 +261,6 @@ async function createWindow() {
       callback(permission === "geolocation" ? false : true);
     }
   );
-  mainWindow.webContents.session.setSpellCheckerDictionaryDownloadURL(
-    "http://dictionaries.notesnook.com/"
-  );
   mainWindow.webContents.session.setProxy({ proxyRules: config.proxyRules });
 
   mainWindow.on("show", () =>

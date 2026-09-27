@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 const p = "process" in globalThis ? globalThis.process : ({ env: {} } as any);
 export const API_HOST =
-  import.meta.env.API_HOST || p.env.API_HOST || `https://api.notesnook.com`;
+  import.meta.env.API_HOST || p.env.API_HOST || `https://api.veyran.northcore.space`;
 export const PUBLIC_URL =
   import.meta.env.PUBLIC_URL ||
   p.env.PUBLIC_URL ||

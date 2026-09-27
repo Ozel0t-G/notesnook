@@ -48,8 +48,6 @@ export function template(data: TemplateData) {
         ? `<meta name="tags" content="${escapeUTF8(data.tags.join(", "))}" />`
         : ""
     }
-    <link rel="stylesheet" href="https://app.notesnook.com/assets/editor-styles.css?d=1690887574068">
-
     <style>
 
     .image-container {

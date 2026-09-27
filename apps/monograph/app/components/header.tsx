@@ -43,7 +43,7 @@ export function Header() {
         as="a"
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore
-        href="https://app.notesnook.com/"
+        href="https://veyran.northcore.space/"
         target="_blank"
         variant="accent"
       >

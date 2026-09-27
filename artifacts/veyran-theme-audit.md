@@ -203,6 +203,40 @@ Library/Tasks/Search/New Note navigation are all out of scope and were not
 touched — confirmed by keeping this session's diff scoped to `packages/theme`
 and the two theme-store files noted above (see final commit list).
 
+## Codex offline and network gate — 2026-09-27
+
+The subsequent independent diff review found that the Web picker showed only
+a loader while its initial remote query was loading and that mobile's
+nonempty search excluded all bundled themes. Both pickers now derive their
+visible list from the active theme pair plus the four locally bundled themes.
+The local list is deduplicated and filtered by name and light/dark choice.
+This is the actual picker data source, so VeyraN Light and Dark remain visible
+and selectable when offline, while a request hangs, or after a failed remote
+request. The mobile test covers nonempty search with neither VeyraN theme
+active; the Web test covers the fresh, custom, and filtered local states.
+
+The review also found a broader production-network defect: simply opening a
+theme picker queried `themes-api.notesnook.com`; an installed custom theme
+could trigger an update request on startup or appearance change. Because no
+VeyraN theme marketplace exists, the normal product now uses only local
+bundled themes and locally imported custom-theme files. The Web theme router
+was removed, both picker queries and remote install paths were removed, and
+the Web/mobile startup update calls were disabled. Previously selected
+custom theme definitions remain stored and selectable in their active slot.
+The old marketplace catalog is no longer browseable; restoring a catalog
+requires a verified VeyraN-owned service. The invalid custom-file error no
+longer links to Notesnook support documentation. Theme previews are computed
+locally from the theme definitions and do not fetch remote assets.
+
+Verification in this worktree: the VeyraN validator passed 310 assertions;
+Web's focused Vitest suite passed 15 tests; mobile theme and settings
+migration Jest suites passed 16 tests. A repository-wide TypeScript check
+could not pass because several workspace packages, including
+`@notesnook/intl`, are not built in this worktree, and the Web production
+build stopped resolving that package. No simulator/device visual inspection
+or live system-appearance switch was performed here. The integrated build
+and visual gates remain open.
+
 ## 5. Contrast/restraint validation
 
 `packages/theme/scripts/validate-veyran.mjs` is a dependency-free Node script
@@ -263,7 +297,8 @@ four are fixed on this same branch, as additional commits:
    whose `id` is one of the four bundled built-ins (`veyran-light`,
    `veyran-dark`, and the two original defaults, which are equally updated
    by shipping a new app build rather than a live fetch), via a shared
-   `BUILT_IN_THEME_IDS` set on each platform.
+   `BUILT_IN_THEME_IDS` set on each platform. The later Codex gate above
+   removed marketplace update calls for all themes.
 3. **Theme pickers couldn't reliably select VeyraN.** Both pickers built
    their item list as `[activeDark, activeLight, ...remoteMarketplaceResults]`
    only -- mobile went further and rendered *nothing at all* while the
@@ -278,8 +313,9 @@ four are fixed on this same branch, as additional commits:
    (deduplicated against the active pair and any remote duplicate),
    independent of network state, and applying a built-in now resolves it
    locally from the bundled `ThemeDefinition` instead of calling the
-   marketplace. Existing/custom themes are unaffected -- they still come
-   from, and are still applied via, the marketplace exactly as before.
+   marketplace. This was the intermediate behavior; the later Codex gate
+   above removed marketplace browsing while preserving locally stored
+   custom themes and file import.
 4. **Mobile's version-gated migration needed two launches.** `migrateSettings()`
    captured `settings.settingsVersion` once into a local `version` const
    before running any step, so a profile still at version 0 would run the
@@ -313,7 +349,7 @@ four are fixed on this same branch, as additional commits:
   change (simulating what `BaseThemeProvider`'s effect does) correctly
   landing on VeyraN Dark rather than the old default, (e) built-ins never
   triggering a marketplace update-check on `init()` or a scheme switch,
-  while a real custom/marketplace theme still does, and (f) the picker's
+  and (f) the picker's
   `uniqueById`/`BUILT_IN_THEMES`/`BUILT_IN_THEMES_BY_ID` helpers
   (`apps/web/src/common/veyran-built-in-themes.ts`) correctly keep VeyraN
   selectable alongside an active custom theme with an empty/offline remote

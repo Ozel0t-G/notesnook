@@ -2,7 +2,7 @@
 
 **Branch:** `agent/claude-backend-auth` · **Worktree:** `agents/claude-backend-auth`
 **Date opened:** 2026-09-26
-**Status:** Audit complete; implementation revised after review round 2; live E2E unverified (§10); two architectural findings open (§11.6, §11.7). NOT integration-complete.
+**Status:** Audit complete; implementation revised after review rounds 2 and 3; live E2E unverified (§10); open items: host singleton (§11.6), NODE_ENV=test hosts (§11.7), adoption UI (§12.7). NOT integration-complete.
 
 > **Evidence convention used throughout this document**
 >
@@ -864,3 +864,103 @@ integration-complete until a human runs a real login and sync against VeyraN wit
 account.**
 
 ---
+
+---
+
+## 12. Review round 3 — defects in the round-2 implementation
+
+A further review of `160418209`/`b96d1e3de` found two more critical defects. Both were real, and both
+sat in code I had written to fix the previous round. Recorded in full, because the pattern is
+instructive: each fix was correct in isolation and wrong in its _order of operations_.
+
+### 12.1 CRITICAL — the fetched account was written before the boundary was checked (fixed)
+
+`fetchUserInternal()` called `setUser(user)` as part of fetching. Login called it and _then_ checked
+affinity. So a rejected cross-backend login restored the token but left the **other backend's
+identity cached over this profile's own**.
+
+This is worse than a stale field. The cached user carries `salt`, and
+`deriveCryptoKey({password, salt: user.salt})` keys all local content from it (§4.3). Overwriting it
+silently replaced the profile's identity and its key-derivation input.
+
+Fixed by separating reading from committing:
+
+- `fetchRemoteUser()` — a **pure** read. No writes, no events, and it reads the token via
+  `getToken(false, false)` so it cannot trigger a renewal while affinity is still undetermined.
+- `commitFetchedUser()` — the write plus the subscription, email-confirmation and `userFetched`
+  events, called only _after_ the boundary check passes.
+- `fetchUserInternal()` keeps its previous behaviour for background callers.
+
+Order in both login and signup is now: obtain token → **verify (pure read)** → **bind affinity** →
+**commit identity** → derive keys.
+
+A latent second bug died with this: `fetchUserInternal`'s subscription-change branch calls
+`_refreshToken(true)`, which is now guarded. On a legacy profile with a differing subscription that
+would have thrown a confusing refresh error mid-login, after the identity was already clobbered.
+
+### 12.2 CRITICAL — `record()` ignored persisted-config evidence (fixed)
+
+`record()` consulted only `get()` (the stored record), not the full evidence chain from `check()`. A
+profile that predates affinity tracking has no record, so a fresh login **rebound it**, even when the
+user had explicitly saved Notesnook hosts. The §11.2 evidence mechanism existed but the write path
+walked straight past it.
+
+`record()` now switches on `check()`:
+
+| `check()` status                      | `record()`                                                                    |
+| ------------------------------------- | ----------------------------------------------------------------------------- |
+| `no-user`                             | writes — nothing server-derived exists to endanger                            |
+| `match` (evidence `record`)           | no-op                                                                         |
+| `match` (evidence `persisted-config`) | promotes to a durable record, so attribution survives a later settings change |
+| `mismatch`                            | refuses, record untouched                                                     |
+| `unknown`                             | **refuses** — an unattributable profile is never adopted by logging in        |
+
+That last row is the explicit answer to "do not silently adopt an unknown profile". A profile holding
+notes it cannot attribute can no longer be bound by authenticating; it needs
+`adoptCurrentBackend()` with explicit user intent. `recordVerified()` was deleted: verification is
+now enforced structurally, because `fetchRemoteUser()` must return an account before `record()` is
+reachable at all.
+
+### 12.3 Signup had no rollback (fixed)
+
+Signup persisted a token, then the user, before binding, with nothing to undo it. `signup()` now
+snapshots and delegates to `signupInternal()`, restoring on any failure.
+
+### 12.4 Transactional rollback
+
+Both flows snapshot **all three** account-scoped KV keys — `user`, `token`, `backendAffinity` — and
+restore them exactly on rejection, deleting keys that were absent rather than leaving stale values.
+The key cache is cleared on restore.
+
+### 12.5 Tests added this round
+
+Every case is asserted against actual KV state, not just the thrown error:
+
+- cached identity **and its salt** unchanged after a rejected login
+- pre-login token restored
+- existing affinity record untouched
+- `isBlocked()` still true afterwards, so **no note data can sync** following a rejection
+- `setLastSynced` never called — the sync checkpoint is not reset by a rejected login
+- `deriveCryptoKey` never called — no key derived from the foreign salt
+- saved Notesnook configuration blocks a VeyraN login and preserves state
+- an unattributable profile is not adopted by logging in
+- signup rollback restores user, token and affinity together
+- signup on a profile with no prior account still binds and commits
+
+### 12.6 Guards from round 2 preserved
+
+The review confirmed the sync preflight, token-refresh, and SSE guards were well placed. All five
+guard points are unchanged and verified present: `Sync.start` preflight,
+`TokenManager._refreshToken`, `TokenManager.revokeToken`, `Database.connectSSE`,
+`UserManager.fetchUser`, plus the non-destructive automatic `logout`.
+
+### 12.7 Integration status
+
+The round-3 defects are closed with regression tests. Still open and unchanged: the host singleton
+(§11.6) and `NODE_ENV=test` resolving production hosts (§11.7). Live end-to-end auth and sync remain
+unverified (§10).
+
+**Consequence of §12.2 worth stating plainly:** a legacy Notesnook profile can no longer log in to
+VeyraN at all without an explicit adoption step. That is intended — it is the conservative reading of
+"preserve local access" — but it means the adoption path now needs UI before this is usable for
+existing users. No such UI exists in this branch.

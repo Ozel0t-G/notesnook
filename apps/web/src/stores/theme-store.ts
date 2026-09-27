@@ -112,12 +112,23 @@ class ThemeStore extends BaseStore<ThemeStore> {
   };
 
   setTheme = (theme: ThemeDefinition) => {
-    changeDesktopTheme(theme, this.get().followSystemTheme);
-    Config.set("colorScheme", theme.colorScheme);
+    const { colorScheme, darkTheme, lightTheme, followSystemTheme } = this.get();
+    // Selecting a theme updates its light or dark slot. In System mode the
+    // OS still owns the active color scheme, even when the other slot is
+    // selected in the picker.
+    const activeTheme = followSystemTheme
+      ? colorScheme === theme.colorScheme
+        ? theme
+        : colorScheme === "dark"
+        ? darkTheme
+        : lightTheme
+      : theme;
+    changeDesktopTheme(activeTheme, followSystemTheme);
     Config.set(`theme:${theme.colorScheme}`, theme);
+    if (!followSystemTheme) Config.set("colorScheme", theme.colorScheme);
     this.set({
       [getKey(theme)]: theme,
-      colorScheme: theme.colorScheme
+      colorScheme: followSystemTheme ? colorScheme : theme.colorScheme
     });
   };
 

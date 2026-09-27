@@ -181,6 +181,39 @@ describe("ThemeStore bootstrap", () => {
     expect(useStore.getState().darkTheme.id).toBe("veyran-dark");
   });
 
+  it("keeps the OS color scheme active when choosing a theme for the other slot in System mode", async () => {
+    mockMatchMedia(false /* OS is light */);
+    const { useStore } = await import("../src/stores/theme-store");
+    const customDark = { ...ThemeVeyranDark, id: "my-dark-theme" };
+    await useStore.getState().init();
+
+    expect(useStore.getState().followSystemTheme).toBe(true);
+    expect(useStore.getState().colorScheme).toBe("light");
+    useStore.getState().setTheme(customDark);
+
+    expect(useStore.getState().darkTheme.id).toBe("my-dark-theme");
+    expect(useStore.getState().colorScheme).toBe("light");
+    expect(useStore.getState().followSystemTheme).toBe(true);
+    expect(JSON.parse(window.localStorage.getItem("colorScheme")!)).toBe("light");
+
+    await useStore.getState().setColorScheme("dark");
+    expect(useStore.getState().colorScheme).toBe("dark");
+    expect(useStore.getState().darkTheme.id).toBe("my-dark-theme");
+  });
+
+  it("switches to the selected theme's scheme when System mode is off", async () => {
+    mockMatchMedia(false);
+    window.localStorage.setItem("followSystemTheme", JSON.stringify(false));
+    window.localStorage.setItem("colorScheme", JSON.stringify("light"));
+    const { useStore } = await import("../src/stores/theme-store");
+
+    useStore.getState().setTheme(ThemeVeyranDark);
+
+    expect(useStore.getState().colorScheme).toBe("dark");
+    expect(useStore.getState().followSystemTheme).toBe(false);
+    expect(JSON.parse(window.localStorage.getItem("colorScheme")!)).toBe("dark");
+  });
+
   it("never sends a marketplace update-check for a built-in theme, on init() or on a scheme switch", async () => {
     const network = vi.spyOn(globalThis, "fetch");
     mockMatchMedia(false);

@@ -4,7 +4,6 @@
   "version": 1,
   "compatibilityVersion": 1,
   "license": "GPL-3.0-or-later",
-  "homepage": "https://notesnook.com",
   "description": "The official VeyraN light theme: a calm, neutral surface with a restrained slate-teal accent and AA-checked contrast throughout.",
   "colorScheme": "light",
   "tags": [
@@ -14,9 +13,7 @@
   ],
   "authors": [
     {
-      "name": "Streetwriters",
-      "email": "support@streetwriters.co",
-      "url": "https://streetwriters.co"
+      "name": "VeyraN"
     }
   ],
   "scopes": {

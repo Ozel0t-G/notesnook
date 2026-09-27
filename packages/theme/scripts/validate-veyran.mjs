@@ -138,6 +138,34 @@ function validateStructure(theme, expectScheme) {
   check(theme.colorScheme === expectScheme, `${t}: colorScheme === ${expectScheme}`);
   check(typeof theme.codeBlockCSS === "string", `${t}: codeBlockCSS present`);
 
+  // VeyraN has no owned, verified domain or support channel (see
+  // docs/veyran-branding.md). The theme metadata below is shown directly in
+  // theme pickers/details dialogs, so it must never claim Streetwriters'
+  // own notesnook.com/support@streetwriters.co as VeyraN's, and must never
+  // invent a homepage/support URL VeyraN doesn't actually have.
+  check(
+    !theme.homepage,
+    `${t}: no homepage claimed (VeyraN has no owned, verified domain yet)`,
+    theme.homepage
+  );
+  for (const author of theme.authors || []) {
+    check(
+      !/streetwriters/i.test(author.name || ""),
+      `${t}: theme author isn't attributed to Streetwriters`,
+      author.name
+    );
+    check(
+      !author.email,
+      `${t}: no invented support email in theme metadata`,
+      author.email
+    );
+    check(
+      !author.url,
+      `${t}: no invented support URL in theme metadata`,
+      author.url
+    );
+  }
+
   // base scope must be 100% specified -- it is the fallback for every scope.
   for (const v of VARIANTS)
     for (const c of COLORS)

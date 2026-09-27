@@ -108,6 +108,7 @@ function harness(options: {
   const storageRemove = vi.fn(async (key: string) => {
     kv.delete(key);
   });
+  const storageRead = vi.fn(async (key: string) => kv.get(key));
   const unregister = vi.fn(async () => void kv.delete("deviceId"));
   const register = vi.fn(async () => void kv.set("deviceId", "new-device"));
 
@@ -157,7 +158,7 @@ function harness(options: {
       encrypt: async () => ({ cipher: "c", iv: "i", salt: "s", length: 1 }),
       encryptMulti: async () => [],
       clear: async () => kv.clear(),
-      read: async (key: string) => kv.get(key),
+      read: storageRead,
       write: storageWrite,
       remove: storageRemove
     }),
@@ -181,6 +182,7 @@ function harness(options: {
     restoreSessionState,
     storageWrite,
     storageRemove,
+    storageRead,
     kvRead
   };
 }
@@ -827,6 +829,122 @@ describe("three-step login preserves the original session", () => {
       refresh_token: "final-refresh"
     });
     expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("marker removal failure before deletion rolls back the committed login", async () => {
+    const local = serverUser("same-account");
+    const oldAffinity = affinityRecord(VEYRAN.api, VEYRAN.auth);
+    const { user, kv, storageRemove } = harness({
+      storedUser: local,
+      affinity: oldAffinity,
+      token: originalToken,
+      lastSynced: 730,
+      deviceId: "old-device",
+      cryptoKey: "old-key"
+    });
+    arrangeGrants();
+    storageRemove.mockRejectedValueOnce(new Error("marker removal failed"));
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow("marker removal failed");
+
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("backendAffinity")).toEqual(oldAffinity);
+    expect(kv.get("lastSynced")).toBe(730);
+    expect(kv.get("deviceId")).toBe("old-device");
+    expect(kv.get("cryptoKey")).toBe("old-key");
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("marker removal failure after deletion accepts the verified login", async () => {
+    const { user, kv, storageRemove } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "old-key"
+    });
+    arrangeGrants();
+    storageRemove.mockImplementationOnce(async (key: string) => {
+      kv.delete(key);
+      throw new Error("acknowledgment lost after marker deletion");
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).resolves.toBeUndefined();
+
+    expect(kv.get("token")).toMatchObject({ access_token: "final-access" });
+    expect(kv.get("cryptoKey")).toBe("new-derived-key");
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("marker readback failure accepts a fully verified login", async () => {
+    const { user, db, kv, storageRead, storageRemove } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "old-key"
+    });
+    arrangeGrants();
+    let failedReadback = false;
+    storageRead.mockImplementation(async (key: string) => {
+      if (
+        key === "backendRecoveryRequired" &&
+        storageRemove.mock.calls.length &&
+        !failedReadback
+      ) {
+        failedReadback = true;
+        throw new Error("marker readback failed");
+      }
+      return kv.get(key);
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).resolves.toBeUndefined();
+
+    expect(kv.get("token")).toMatchObject({ access_token: "final-access" });
+    expect(kv.get("cryptoKey")).toBe("new-derived-key");
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+    const reopened = new UserManager(db);
+    (db as unknown as { user: UserManager }).user = reopened;
+    expect(await reopened.backendAffinity.isBlocked()).toBe(false);
+  });
+
+  test("ambiguous marker cleanup preserves the durable guard after verified login", async () => {
+    const { user, db, kv, storageRead, storageRemove } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "old-key"
+    });
+    arrangeGrants();
+    storageRemove.mockRejectedValueOnce(new Error("marker deletion failed"));
+    storageRead.mockImplementation(async (key: string) => {
+      if (key === "backendRecoveryRequired" && storageRemove.mock.calls.length)
+        throw new Error("marker readback failed");
+      return kv.get(key);
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).resolves.toBeUndefined();
+
+    expect(kv.get("token")).toMatchObject({ access_token: "final-access" });
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    const reopened = new UserManager(db);
+    (db as unknown as { user: UserManager }).user = reopened;
+    expect(await reopened.backendAffinity.isBlocked()).toBe(true);
   });
 
   test("a server change during MFA stops before presenting the temporary credential", async () => {

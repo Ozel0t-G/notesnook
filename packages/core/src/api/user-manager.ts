@@ -196,7 +196,12 @@ class UserManager {
     );
 
     await this.db.syncer.devices.register(grantedToken.access_token);
-    await this.finishSessionMutation(snapshot);
+    await this.finishSessionMutation(snapshot, {
+      userId: user.id,
+      accessToken: grantedToken.access_token,
+      requiresDevice: true,
+      resetSync: true
+    });
 
     return user;
   }
@@ -351,7 +356,12 @@ class UserManager {
           salt: user.salt
         });
       }
-      await this.finishSessionMutation(snapshot);
+      await this.finishSessionMutation(snapshot, {
+        userId: user.id,
+        accessToken: grantedToken.access_token,
+        requiresDevice: !sessionExpired,
+        resetSync: !sessionExpired
+      });
       this.pendingLogin = undefined;
       authenticatedUser = user;
     } catch (e) {
@@ -690,15 +700,67 @@ class UserManager {
   }
 
   private async finishSessionMutation(
-    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>,
+    expected: {
+      userId: string;
+      accessToken: string;
+      requiresDevice: boolean;
+      resetSync: boolean;
+    }
   ) {
     this.assertConfigurationUnchanged(snapshot);
-    // The account and key are committed. A failed marker cleanup must not
-    // initiate a second, fallible rollback after the durable guard is removed.
+    await this.verifyCommittedSession(expected);
+
+    // All account state is now known to be committed. An interrupted marker
+    // delete is resolved by reading the marker: still present means rollback;
+    // absent means commit. A failed read cannot undo a verified commit.
+    let cleanupError: unknown;
+    try {
+      await this.db.storage().remove("backendRecoveryRequired");
+    } catch (error) {
+      cleanupError = error;
+    }
+    let markerPresent: boolean;
+    try {
+      markerPresent =
+        (await this.db.storage().read<boolean>("backendRecoveryRequired")) ===
+        true;
+    } catch (error) {
+      logger.error(error, "Could not confirm recovery-intent cleanup");
+      snapshot.mutationStarted = false;
+      return;
+    }
+    if (markerPresent)
+      throw (
+        cleanupError || new Error("Could not clear account recovery intent.")
+      );
     snapshot.mutationStarted = false;
-    await this.db.storage().remove("backendRecoveryRequired");
-    if (await this.db.storage().read<boolean>("backendRecoveryRequired"))
-      throw new Error("Could not clear account recovery intent.");
+  }
+
+  private async verifyCommittedSession(expected: {
+    userId: string;
+    accessToken: string;
+    requiresDevice: boolean;
+    resetSync: boolean;
+  }) {
+    const kv = this.db.kv();
+    const user = await kv.read("user");
+    const token = await kv.read("token");
+    const affinity = await this.backendAffinity.get();
+    const current = this.backendAffinity.current();
+    if (
+      user?.id !== expected.userId ||
+      token?.access_token !== expected.accessToken ||
+      affinity?.api !== current.api ||
+      affinity?.auth !== current.auth
+    )
+      throw new Error("Could not verify committed account identity.");
+    if (expected.resetSync && (await kv.read("lastSynced")) !== 0)
+      throw new Error("Could not verify committed sync checkpoint.");
+    if (expected.requiresDevice && !(await kv.read("deviceId")))
+      throw new Error("Could not verify committed device registration.");
+    if ((await this.db.storage().snapshotCryptoKeyState()) == null)
+      throw new Error("Could not verify committed encryption key.");
   }
 
   private async rollbackSession(

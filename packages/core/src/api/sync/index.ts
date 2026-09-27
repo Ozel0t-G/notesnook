@@ -104,6 +104,7 @@ export default class SyncManager {
 
   async start(options: SyncOptions) {
     try {
+      await this.db.user.backendAffinity.assertAllowed("Sync");
       if (await checkSyncStatus(this.db.eventManager, SYNC_CHECK_IDS.autoSync))
         await this.sync.autoSync.start();
       await this.sync.start(options);
@@ -141,7 +142,11 @@ export default class SyncManager {
       this.sync.autoSync.stop();
       await callback();
     } finally {
-      await this.sync.autoSync.start();
+      if (
+        !this.sync.autoSync.sessionEnded &&
+        !(await this.db.user.backendAffinity.isBlocked())
+      )
+        await this.sync.autoSync.start();
     }
   }
 
@@ -160,6 +165,7 @@ export class Sync {
   devices;
   private conflictedNoteIds: string[] = [];
   private uncachedAttachments: DownloadableFile[] = [];
+  private sessionEnded = false;
 
   constructor(private readonly db: Database) {
     this.collector = new Collector(db);
@@ -167,9 +173,17 @@ export class Sync {
     this.autoSync = new AutoSync(db, 1000);
     this.devices = new SyncDevices(db.kv, db.tokenManager);
 
-    db.eventManager.subscribe(EVENTS.userLoggedOut, async () => {
-      await this.connection?.stop();
+    const stopForSessionEnd = () => {
+      this.sessionEnded = true;
       this.autoSync.stop();
+      void this.closeConnection();
+    };
+    db.eventManager.subscribe(EVENTS.userLoggedOut, () => stopForSessionEnd());
+    db.eventManager.subscribe(EVENTS.userSessionExpired, () =>
+      stopForSessionEnd()
+    );
+    db.eventManager.subscribe(EVENTS.userLoggedIn, () => {
+      this.sessionEnded = false;
     });
   }
 
@@ -184,7 +198,7 @@ export class Sync {
     if (!this.connection) return;
 
     if (!(await checkSyncStatus(this.db.eventManager, SYNC_CHECK_IDS.sync))) {
-      await this.connection.stop();
+      await this.connection?.stop();
       return;
     }
     if (!(await this.db.user.getUser())) return;
@@ -192,9 +206,12 @@ export class Sync {
     this.logger.info("Starting sync", options);
 
     this.connection.onclose((error = new Error("Connection closed.")) => {
+      // Intentional teardown during expiry or recovery is not a new sync
+      // failure. Throwing from this asynchronous callback cannot reject the
+      // caller and instead risks an unhandled exception.
+      if (this.sessionEnded || !this.connection) return;
       this.db.eventManager.publish(EVENTS.syncAborted);
       this.logger.error(error);
-      throw new Error("Connection closed.");
     });
 
     const { deviceId } = await this.init(options.force);
@@ -216,7 +233,7 @@ export class Sync {
     if (
       !(await checkSyncStatus(this.db.eventManager, SYNC_CHECK_IDS.autoSync))
     ) {
-      await this.connection.stop();
+      await this.connection?.stop();
       this.autoSync.stop();
     }
   }
@@ -226,13 +243,27 @@ export class Sync {
    * and stops auto-sync so it does not retry in a loop.
    */
   private async assertBackendAllowed() {
-    if (!(await this.db.user.getUser())) return;
     const affinity = await this.db.user.backendAffinity.check();
-    if (affinity.status !== "mismatch" && affinity.status !== "unknown") return;
+    if (affinity.status !== "mismatch" && affinity.status !== "unknown") {
+      if (this.sessionEnded) throw new Error("Sync session has expired.");
+      return;
+    }
 
     this.autoSync.stop();
+    await this.closeConnection();
     this.db.eventManager.publish(EVENTS.syncAborted);
     throw new BackendMismatchError(affinity, "Sync");
+  }
+
+  private async closeConnection() {
+    const connection = this.connection;
+    this.connection = undefined;
+    if (!connection) return;
+    try {
+      await connection.stop();
+    } catch (error) {
+      this.logger.error(error, "Could not close blocked sync connection");
+    }
   }
 
   async init(isForceSync?: boolean) {
@@ -258,6 +289,7 @@ export class Sync {
     await this.checkConnection();
 
     try {
+      await this.assertBackendAllowed();
       await this.connection?.invoke("RequestFetchV4", deviceId);
     } catch (error) {
       if (
@@ -267,6 +299,7 @@ export class Sync {
         this.logger.warn(
           "RequestFetchV4 failed, falling back to RequestFetchV3"
         );
+        await this.assertBackendAllowed();
         await this.connection?.invoke("RequestFetchV3", deviceId);
       } else throw error;
     }
@@ -292,11 +325,13 @@ export class Sync {
   }
 
   async send(deviceId: string, isForceSync?: boolean) {
+    await this.assertBackendAllowed();
     await this.uploadAttachments();
 
     let done = 0;
     let total = 0;
     for await (const item of this.collector.collect(100, isForceSync)) {
+      await this.assertBackendAllowed();
       total += item.items.length;
       const result = await this.pushItem(deviceId, item);
       this.logger.info(`Batch sent for type ${item.type}`, {
@@ -322,11 +357,13 @@ export class Sync {
         `Failed to send all items. Sent ${done} out of ${total}.`
       );
     if (total === 0) return false;
+    await this.assertBackendAllowed();
     await this.connection?.send("PushCompletedV2", deviceId);
     return true;
   }
 
   async stop(options: SyncOptions) {
+    await this.assertBackendAllowed();
     if (
       (options.type === "send" || options.type === "full") &&
       (await this.collector.hasUnsyncedChanges())
@@ -354,6 +391,7 @@ export class Sync {
    * @private
    */
   async uploadAttachments() {
+    await this.assertBackendAllowed();
     const attachments = await this.db.attachments.pending.items();
     this.logger.info("Uploading attachments...", { total: attachments.length });
 
@@ -370,6 +408,7 @@ export class Sync {
    * @private
    */
   async onPushCompleted(deviceId: string) {
+    await this.assertBackendAllowed();
     this.db.eventManager.publish(
       EVENTS.databaseSyncRequested,
       true,
@@ -386,6 +425,7 @@ export class Sync {
     }[],
     options: SyncOptions
   ) {
+    await this.assertBackendAllowed();
     const itemType = chunk.type;
     const decrypted: string[] = [];
 
@@ -498,6 +538,7 @@ export class Sync {
 
   private async pushItem(deviceId: string, item: SyncTransferItem) {
     await this.checkConnection();
+    await this.assertBackendAllowed();
     return (await this.connection?.invoke("PushItems", deviceId, item)) === 1;
   }
 
@@ -545,6 +586,7 @@ export class Sync {
     );
     this.connection.on("SendVaultKey", async (vaultKey) => {
       if (this.connection?.state !== HubConnectionState.Connected) return false;
+      if (await this.db.user.backendAffinity.isBlocked()) return false;
 
       if (
         vaultKey &&
@@ -568,6 +610,7 @@ export class Sync {
 
     this.connection.on("SendItems", async (chunk) => {
       if (this.connection?.state !== HubConnectionState.Connected) return false;
+      if (await this.db.user.backendAffinity.isBlocked()) return false;
 
       const keys = await this.db.user.getDataEncryptionKeys();
       if (!keys || !keys.length) {
@@ -592,6 +635,7 @@ export class Sync {
 
     this.connection.on("SendMonographs", async (monographs: Monograph[]) => {
       if (this.connection?.state !== HubConnectionState.Connected) return false;
+      if (await this.db.user.backendAffinity.isBlocked()) return false;
 
       const ids = monographs.map((m) => m.id);
       await this.db.monographsCollection.collection.put(
@@ -612,6 +656,7 @@ export class Sync {
         if (this.connection?.state !== HubConnectionState.Connected) {
           return false;
         }
+        if (await this.db.user.backendAffinity.isBlocked()) return false;
 
         await handleInboxItems(inboxItems, this.db);
 
@@ -621,7 +666,9 @@ export class Sync {
   }
 
   private async checkConnection() {
+    await this.assertBackendAllowed();
     await this.syncConnectionMutex.runExclusive(async () => {
+      await this.assertBackendAllowed();
       try {
         if (
           this.connection &&

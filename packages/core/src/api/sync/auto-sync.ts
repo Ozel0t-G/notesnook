@@ -25,15 +25,28 @@ import { logger } from "../../logger.js";
 export class AutoSync {
   timeout = 0;
   isAutoSyncing = false;
+  sessionEnded = false;
   logger = logger.scope("AutoSync");
   databaseUpdatedEvent?: { unsubscribe: () => boolean };
 
   constructor(
     private readonly db: Database,
     private readonly interval: number
-  ) {}
+  ) {
+    const endSession = () => {
+      this.sessionEnded = true;
+      this.stop();
+    };
+    db.eventManager.subscribe(EVENTS.userSessionExpired, () => endSession());
+    db.eventManager.subscribe(EVENTS.userLoggedOut, () => endSession());
+    db.eventManager.subscribe(EVENTS.userLoggedIn, () => {
+      this.sessionEnded = false;
+    });
+  }
 
   async start() {
+    await this.db.user.backendAffinity.assertAllowed("Starting automatic sync");
+    if (this.sessionEnded) throw new Error("Sync session has expired.");
     this.logger.info(`Auto sync requested`);
     if (this.isAutoSyncing) return;
     if (this.databaseUpdatedEvent) this.databaseUpdatedEvent.unsubscribe();

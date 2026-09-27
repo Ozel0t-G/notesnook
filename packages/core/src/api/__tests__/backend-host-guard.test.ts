@@ -25,7 +25,8 @@ import {
   BackendMismatchError,
   StoredAffinity
 } from "../backend-affinity.js";
-import { Sync } from "../sync/index.js";
+import SyncManager, { Sync } from "../sync/index.js";
+import { EVENTS } from "../../common.js";
 import EventManager from "../../utils/event-manager.js";
 import type { User } from "../../types.js";
 
@@ -154,7 +155,9 @@ describe("sync preflight", () => {
         write: async (k: string, v: unknown) => void kv.set(k, v),
         delete: async (k: string) => void kv.delete(k)
       }),
-      storage: () => ({ read: async () => undefined }),
+      storage: () => ({
+        read: async (key: string) => kv.get(key)
+      }),
       eventManager: new EventManager(),
       user: { getUser: async () => kv.get("user") },
       tokenManager: { getAccessToken: async () => "token" }
@@ -203,5 +206,117 @@ describe("sync preflight", () => {
     // connection. Reaching that point proves the preflight allowed it through.
     await expect(sync.start({ type: "full" })).resolves.toBeUndefined();
     expect(createConnection).toHaveBeenCalledTimes(1);
+  });
+
+  test("session expiry closes an active connection and blocks later fetch/push traffic", async () => {
+    const { sync, db, kv } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    const stop = vi.fn(async () => undefined);
+    const invoke = vi.fn(async () => 1);
+    const send = vi.fn(async () => undefined);
+    sync.connection = { state: "Connected", stop, invoke, send } as never;
+    await sync.autoSync.start();
+    expect(sync.autoSync.isAutoSyncing).toBe(true);
+
+    kv.set("backendRecoveryRequired", true);
+    (db as unknown as { eventManager: EventManager }).eventManager.publish(
+      EVENTS.userSessionExpired
+    );
+    expect(stop).toHaveBeenCalledOnce();
+    expect(sync.connection).toBeUndefined();
+    expect(sync.autoSync.isAutoSyncing).toBe(false);
+
+    await expect(sync.fetch("device", { type: "fetch" })).rejects.toThrow(
+      BackendMismatchError
+    );
+    await expect(
+      (
+        sync as unknown as {
+          pushItem: (id: string, item: unknown) => Promise<boolean>;
+        }
+      ).pushItem("device", { type: "note", items: [] })
+    ).rejects.toThrow(BackendMismatchError);
+    await expect(sync.send("device")).rejects.toThrow(BackendMismatchError);
+    await expect(sync.stop({ type: "send" })).rejects.toThrow(
+      BackendMismatchError
+    );
+    expect(invoke).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  test("session expiry blocks active sync even before a recovery marker is written", async () => {
+    const { sync, db } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    const stop = vi.fn(async () => undefined);
+    const invoke = vi.fn(async () => 1);
+    sync.connection = { state: "Connected", stop, invoke } as never;
+    await sync.autoSync.start();
+
+    (db as unknown as { eventManager: EventManager }).eventManager.publish(
+      EVENTS.userSessionExpired
+    );
+    expect(stop).toHaveBeenCalledOnce();
+    await expect(sync.fetch("device", { type: "fetch" })).rejects.toThrow(
+      "Sync session has expired"
+    );
+    await expect(sync.autoSync.start()).rejects.toThrow(
+      "Sync session has expired"
+    );
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  test("a recovery marker stops an already-running send loop before the next batch", async () => {
+    const { sync, kv } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    const stop = vi.fn(async () => undefined);
+    const invoke = vi.fn(async () => {
+      kv.set("backendRecoveryRequired", true);
+      return 1;
+    });
+    sync.connection = { state: "Connected", stop, invoke } as never;
+    (
+      sync as unknown as { uploadAttachments: () => Promise<void> }
+    ).uploadAttachments = vi.fn(async () => undefined);
+    (
+      sync.collector as unknown as { collect: () => AsyncGenerator<unknown> }
+    ).collect = async function* () {
+      yield { type: "note", items: [{ id: "one" }] };
+      yield { type: "note", items: [{ id: "two" }] };
+    };
+
+    await expect(sync.send("device")).rejects.toThrow(BackendMismatchError);
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(stop).toHaveBeenCalledOnce();
+    expect(sync.connection).toBeUndefined();
+  });
+
+  test("acquireLock does not restart automatic sync after recovery intent appears", async () => {
+    const { db, kv } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    const manager = new SyncManager(db);
+    await manager.sync.autoSync.start();
+    await manager.acquireLock(async () => {
+      kv.set("backendRecoveryRequired", true);
+    });
+    expect(manager.sync.autoSync.isAutoSyncing).toBe(false);
+    await expect(manager.sync.autoSync.start()).rejects.toThrow(
+      BackendMismatchError
+    );
   });
 });

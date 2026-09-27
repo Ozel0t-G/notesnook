@@ -23,6 +23,15 @@ import { databaseTest } from "./utils/index.ts";
 
 test("db.host should change HOST", () =>
   databaseTest().then((db) => {
-    db.host({ API_HOST: "hello world" });
-    expect(Constants.API_HOST).toBe("hello world");
+    const original = Constants.API_HOST;
+    try {
+      expect(() => db.host({ API_HOST: "hello world" })).toThrow(
+        /Invalid backend host configuration/
+      );
+      expect(Constants.API_HOST).toBe(original);
+      db.host({ API_HOST: "https://api.example.test" });
+      expect(Constants.API_HOST).toBe("https://api.example.test");
+    } finally {
+      db.host({ API_HOST: original });
+    }
   }));

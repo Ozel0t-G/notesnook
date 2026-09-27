@@ -18,7 +18,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { describe, expect, test, vi } from "vitest";
-import { databaseTest, loginFakeUser } from "./utils/index.js";
+import {
+  databaseTest,
+  loginFakeUser,
+  bindFakeUserToConfiguredBackend
+} from "./utils/index.js";
 import {
   isTaskOverdue,
   taskReminderSchedule,
@@ -822,6 +826,7 @@ describe("standalone Tasks", () => {
     const first = await databaseTest();
     await loginFakeUser(first);
     const second = await databaseTest();
+    await bindFakeUserToConfiguredBackend(second);
     const user = await first.user.getUser();
     expect(user).toBeDefined();
     await second.user.setUser(user!);

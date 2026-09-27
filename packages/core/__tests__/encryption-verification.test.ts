@@ -18,7 +18,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { test, expect, describe, vi } from "vitest";
-import { databaseTest, loginFakeUser } from "./utils/index.ts";
+import {
+  databaseTest,
+  loginFakeUser,
+  bindFakeUserToConfiguredBackend
+} from "./utils/index.ts";
 import { KeyManager } from "../src/api/key-manager.js";
 import { randomBytes } from "../src/utils/random.js";
 
@@ -207,6 +211,7 @@ describe("UserManager.verifyEncryptionKey", () => {
       const mockGet = vi.spyOn(http, "get").mockResolvedValue(undefined);
 
       await databaseTest().then(async (db) => {
+        await bindFakeUserToConfiguredBackend(db);
         const password = "mypassword";
         const salt = randomBytes(16).toString("base64");
         await db.user.setUser({
@@ -241,6 +246,7 @@ describe("UserManager.verifyEncryptionKey", () => {
       const http = (await import("../src/utils/http.js")).default;
 
       await databaseTest().then(async (db) => {
+        await bindFakeUserToConfiguredBackend(db);
         const password = "mypassword";
         const salt = randomBytes(16).toString("base64");
         await db.user.setUser({
@@ -281,6 +287,7 @@ describe("UserManager.verifyEncryptionKey", () => {
       const http = (await import("../src/utils/http.js")).default;
 
       await databaseTest().then(async (db) => {
+        await bindFakeUserToConfiguredBackend(db);
         const salt = randomBytes(16).toString("base64");
         await db.user.setUser({
           id: "user-123", email: "test@example.com", isEmailConfirmed: true,

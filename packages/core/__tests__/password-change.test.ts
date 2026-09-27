@@ -18,7 +18,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { test, expect, describe, vi } from "vitest";
-import { databaseTest } from "./utils/index.ts";
+import {
+  databaseTest,
+  bindFakeUserToConfiguredBackend
+} from "./utils/index.ts";
 import { KeyManager } from "../src/api/key-manager.js";
 import { randomBytes } from "../src/utils/random.js";
 
@@ -41,6 +44,7 @@ vi.mock("../src/utils/http.js", () => ({
 }));
 
 async function setupLoggedInUser(db: any, password: string = "oldpassword") {
+  await bindFakeUserToConfiguredBackend(db);
   const salt = randomBytes(16).toString("base64");
   const user = { ...FULL_USER, salt };
   await db.user.setUser(user);
@@ -279,6 +283,7 @@ describe("UserManager._updatePassword (reset)", () => {
 describe("Key migration during password change", () => {
   test("legacy user (no DEK, no legacy DEK) gets new DEK and legacy DEK created", async () => {
     await databaseTest().then(async (db) => {
+      await bindFakeUserToConfiguredBackend(db);
       const password = "oldpassword";
       const salt = randomBytes(16).toString("base64");
       await db.user.setUser({ ...FULL_USER, salt });
@@ -322,6 +327,7 @@ describe("Key migration during password change", () => {
 
   test("user with only DEK (no legacy): password change succeeds verification", async () => {
     await databaseTest().then(async (db) => {
+      await bindFakeUserToConfiguredBackend(db);
       const password = "oldpassword";
       const salt = randomBytes(16).toString("base64");
       await db.user.setUser({ ...FULL_USER, salt });

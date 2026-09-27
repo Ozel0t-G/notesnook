@@ -108,6 +108,7 @@ function delay(ms: number) {
 }
 
 async function loginFakeUser(db) {
+  await bindFakeUserToConfiguredBackend(db);
   const email = "johndoe@example.com";
   const password = "password";
   const userSalt = randomBytes(16).toString("base64");
@@ -128,6 +129,12 @@ async function loginFakeUser(db) {
   });
 }
 
+/** Attribute synthetic test accounts before any user data is cached. */
+async function bindFakeUserToConfiguredBackend(db) {
+  const result = await db.user.backendAffinity.record();
+  if (!result.ok) throw new Error("Could not bind synthetic test account.");
+}
+
 export {
   databaseTest,
   notebookTest,
@@ -139,5 +146,6 @@ export {
   TEST_NOTE,
   LONG_TEXT,
   delay,
-  loginFakeUser
+  loginFakeUser,
+  bindFakeUserToConfiguredBackend
 };

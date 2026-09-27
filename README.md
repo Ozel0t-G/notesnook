@@ -55,22 +55,8 @@ Notesnook is built using the following technologies:
 
 ### Contributing guidelines
 
-If you are interested in contributing to Notesnook, I highly recommend checking out the [contributing guidelines](/CONTRIBUTING.md). You'll find all the relevant information such as [style guideline](/CONTRIBUTING.md#style-guidelines), [how to make a PR](/CONTRIBUTING.md#opening--submitting-a-pull-request), [how to commit](/CONTRIBUTING.md#commit-guidelines) etc., there.
+The inherited [contributing guidelines](/CONTRIBUTING.md) describe upstream Notesnook development. They are retained as an upstream reference and do not define VeyraN support or release channels.
 
-### Support & help
+### Open source attribution
 
-You can reach out to us via:
-
-1. [Email](mailto:support@streetwriters.co)
-2. [Discord](https://discord.gg/5davZnhw3V)
-3. [Twitter](https://twitter.com/notesnook)
-4. [Create an issue](https://github.com/streetwriters/notesnook/issues/new)
-
-We take all queries, issues and bug reports that you might have. Feel free to ask.
-
-## Additional Resources
-
-- [Migrating & Importing your data from other apps — Importer](https://notesnook.com/help/importing-notes)
-- [Privacy policy](https://notesnook.com/privacy) & [Terms of service](https://notesnook.com/terms)
-- [Verify Notesnook encryption claims yourself — Vericrypt](https://vericrypt.notesnook.com/)
-- [Why Notesnook requires an email address?](https://blog.notesnook.com/why-notesnook-requires-an-email-address/)
+VeyraN retains the upstream license and copyright notices. See [LICENSE](LICENSE) and [NOTICE](NOTICE.md) for the source attribution. Upstream Notesnook support channels serve the upstream product; they are not VeyraN support channels.

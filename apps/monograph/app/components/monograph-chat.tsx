@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { mdiTimerOutline } from "@mdi/js";
 import { Icon } from "@notesnook/ui";
-import { Flex, Image, Link, Text } from "@theme-ui/components";
+import { Flex, Image, Text } from "@theme-ui/components";
 import { SxProp } from "@theme-ui/core";
 
 type Props = SxProp & { publicUrl: string };
@@ -70,18 +70,7 @@ export function MonographChat({ sx, publicUrl }: Props) {
             px="12px"
             sx={{ fontSize: "13px", color: "paragraph" }}
           >
-            Yes, here&apos;s the link:{" "}
-            <Link
-              sx={{
-                fontSize: "13px",
-                color: "accent",
-                overflowWrap: "anywhere"
-              }}
-              href={`${publicUrl}/62db75572020209c36f9f9fb`}
-              target="_blank"
-            >
-              {publicUrl}/62db75572020209c36f9f9fb
-            </Link>
+            Yes, I sent you a private VeyraN share link.
           </Text>
           <Timer time={"5m ago"} sx={{ mb: 1, mr: 1, alignSelf: "end" }} />
         </Flex>

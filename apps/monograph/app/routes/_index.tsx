@@ -108,7 +108,7 @@ export default function Monograph() {
             fontSize: 42
           }}
         >
-          <span style={{ color: "var(--accent)" }}>Mono</span>graph
+          VeyraN Sharing
         </Text>
         <Text
           sx={{

@@ -118,13 +118,14 @@ function useAuthenticateUser({
         }
 
         const accessToken = await db.tokenManager.getAccessToken();
-        if (!accessToken) {
-          await db.tokenManager.getAccessTokenFromAuthorizationCode(
-            userId,
-            code.replace(/ /gm, "+")
-          );
-        }
-        const user = await db.user.fetchUser();
+        const user = accessToken
+          ? await db.user.fetchUser()
+          : await db.user.authenticateRecoveryCode(
+              userId,
+              code.replace(/ /gm, "+")
+            );
+        if (!user || user.id !== userId)
+          throw new Error("The recovery link belongs to another account.");
         setUser(user);
       } catch (e) {
         console.error(e);

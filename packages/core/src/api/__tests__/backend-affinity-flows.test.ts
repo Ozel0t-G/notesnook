@@ -88,6 +88,7 @@ function harness(options: {
   deviceId?: string;
   cryptoKey?: string;
   syncActivity?: { autoSyncActive: boolean; connectionActive: boolean };
+  localContent?: boolean;
 }) {
   const kv = new Map<string, unknown>();
   if (options.storedUser) kv.set("user", options.storedUser);
@@ -143,9 +144,12 @@ function harness(options: {
   });
 
   const kvRead = vi.fn(async (key: string) => kv.get(key));
+  const kvWrite = vi.fn(async (key: string, value: unknown) => {
+    kv.set(key, value);
+  });
   const kvAccessor = () => ({
     read: kvRead,
-    write: async (key: string, value: unknown) => void kv.set(key, value),
+    write: kvWrite,
     delete: async (key: string) => void kv.delete(key),
     restoreSessionState,
     clear: async () => kv.clear()
@@ -181,6 +185,34 @@ function harness(options: {
     }
   } as unknown as Database;
 
+  const emptyCollection = { collection: { count: async () => 0 } };
+  for (const name of [
+    "notes",
+    "notebooks",
+    "content",
+    "attachments",
+    "tags",
+    "colors",
+    "shortcuts",
+    "reminders",
+    "relations",
+    "vaults",
+    "noteHistory",
+    "monographsCollection",
+    "inboxItemsHistory"
+  ] as const) {
+    (db as any)[name] =
+      name === "notes" && options.localContent
+        ? { collection: { count: async () => 1 } }
+        : emptyCollection;
+  }
+  (db as any).tasks = { listSync: () => [] };
+  (db as any).taskLists = { listSync: () => [] };
+  (db as any).noteHistory.sessionContent = emptyCollection;
+  (db as any).legacyNotes = { count: () => 0 };
+  (db as any).legacyTags = { count: () => 0 };
+  (db as any).legacyColors = { count: () => 0 };
+
   const user = new UserManager(db);
   // BackendAffinity reads the account through db.user.
   (db as unknown as { user: UserManager }).user = user;
@@ -200,7 +232,8 @@ function harness(options: {
     storageWrite,
     storageRemove,
     storageRead,
-    kvRead
+    kvRead,
+    kvWrite
   };
 }
 
@@ -1774,4 +1807,134 @@ test("a failed local device write attempts to remove its remote registration", a
   await expect(devices.register()).rejects.toThrow("device write failed");
   const url = mockPost.mock.calls[0][0];
   expect(http.delete).toHaveBeenCalledWith(url, "access-token");
+});
+
+describe("verified recovery-code session", () => {
+  test("a fresh empty VeyraN profile verifies the remote account before saving its token", async () => {
+    const { user, kv } = harness({});
+    mockPost.mockResolvedValue({
+      access_token: "recovery-access",
+      refresh_token: "recovery-refresh",
+      expires_in: 3600
+    });
+    mockGet.mockResolvedValue(serverUser("recovered"));
+
+    await expect(
+      user.authenticateRecoveryCode("recovered", "code")
+    ).resolves.toMatchObject({ id: "recovered" });
+
+    expect(mockPost.mock.calls[0][0]).toBe(`${VEYRAN.auth}/account/token`);
+    expect(mockGet.mock.calls[0][0]).toBe(`${VEYRAN.api}/users`);
+    expect(mockGet.mock.calls[0][1]).toBe("recovery-access");
+    expect(kv.get("token")).toMatchObject({
+      access_token: "recovery-access",
+      refresh_token: "recovery-refresh"
+    });
+    expect(kv.get("backendAffinity")).toMatchObject(VEYRAN);
+    expect(kv.get("backendRecoveryRequired")).toBeUndefined();
+  });
+
+  test("wrong remote account leaves the previous token and profile untouched", async () => {
+    const previous = { access_token: "old", refresh_token: "old-refresh" };
+    const { user, kv } = harness({
+      storedUser: serverUser("old"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: previous
+    });
+    await expect(
+      user.authenticateRecoveryCode("different", "code")
+    ).rejects.toThrow(/another account|already has a session/);
+    expect(kv.get("token")).toEqual(previous);
+    expect(kv.get("user")).toMatchObject({ id: "old" });
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("stored legacy affinity and local data refuse fresh recovery without relabeling", async () => {
+    const legacy = harness({
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth)
+    });
+    await expect(
+      legacy.user.authenticateRecoveryCode("recovered", "code")
+    ).rejects.toThrow(/different server/);
+    expect(legacy.kv.get("backendAffinity")).toMatchObject(NOTESNOOK);
+
+    const local = harness({ localContent: true });
+    await expect(
+      local.user.authenticateRecoveryCode("recovered", "code")
+    ).rejects.toThrow(/local account data/);
+    expect(local.kv.get("backendAffinity")).toBeUndefined();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("orphaned key or device state cannot be claimed as a fresh profile", async () => {
+    for (const state of [
+      { cryptoKey: "old-key" },
+      { deviceId: "old-device" }
+    ]) {
+      const profile = harness(state);
+      await expect(
+        profile.user.authenticateRecoveryCode("recovered", "code")
+      ).rejects.toThrow(/local account data/);
+      expect(profile.kv.get("backendAffinity")).toBeUndefined();
+    }
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("host change during code exchange rejects before account fetch or persistence", async () => {
+    const { user, kv } = harness({});
+    mockPost.mockImplementationOnce(async () => {
+      hosts.API_HOST = NOTESNOOK.api;
+      return {
+        access_token: "recovery-exchange-host",
+        refresh_token: "new-refresh"
+      };
+    });
+    await expect(
+      user.authenticateRecoveryCode("recovered", "code")
+    ).rejects.toThrow(/Server settings changed/);
+    expect(mockGet).not.toHaveBeenCalled();
+    expect(kv.get("token")).toBeUndefined();
+    expect(kv.get("backendAffinity")).toBeUndefined();
+  });
+
+  test("host change during account fetch rejects before local commit", async () => {
+    const { user, kv } = harness({});
+    mockPost.mockResolvedValue({ access_token: "recovery-fetch-host" });
+    mockGet.mockImplementationOnce(async () => {
+      hosts.API_HOST = NOTESNOOK.api;
+      return serverUser("recovered");
+    });
+    await expect(
+      user.authenticateRecoveryCode("recovered", "code")
+    ).rejects.toThrow(/Server settings changed/);
+    expect(kv.get("token")).toBeUndefined();
+    expect(kv.get("backendAffinity")).toBeUndefined();
+  });
+
+  test("failed local recovery commit restores the original account state", async () => {
+    const oldUser = serverUser("recovered");
+    const { user, kv, kvWrite } = harness({
+      storedUser: oldUser,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      lastSynced: 42,
+      deviceId: "old-device"
+    });
+    mockPost.mockResolvedValue({
+      access_token: "recovery-local-fault",
+      refresh_token: "new-refresh"
+    });
+    mockGet.mockResolvedValue(serverUser("recovered"));
+    kvWrite.mockImplementation(async (key: string, value: unknown) => {
+      if (key === "token") throw new Error("token write failed");
+      kv.set(key, value);
+    });
+    await expect(
+      user.authenticateRecoveryCode("recovered", "code")
+    ).rejects.toThrow("token write failed");
+    expect(kv.get("token")).toBeUndefined();
+    expect(kv.get("user")).toEqual(oldUser);
+    expect(kv.get("lastSynced")).toBe(42);
+    expect(kv.get("deviceId")).toBe("old-device");
+    expect(kv.get("backendRecoveryRequired")).toBeUndefined();
+  });
 });

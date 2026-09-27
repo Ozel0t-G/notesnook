@@ -421,6 +421,103 @@ class UserManager {
     await http.get(`${constants.AUTH_HOST}/account/sessions`, token);
   }
 
+  /** Verify a recovery-code account before adding its token to this profile. */
+  async authenticateRecoveryCode(userId: string, authCode: string) {
+    if (!userId || !authCode)
+      throw new Error("Recovery code and account are required.");
+    const expected = this.captureConfiguration();
+    await this.backendAffinity.assertAllowed("Recovering your account");
+    this.assertConfigurationUnchanged(expected);
+    const snapshot = await this.snapshotSession();
+    this.assertConfigurationUnchanged(expected);
+
+    if (snapshot.token)
+      throw new Error(
+        "This profile already has a session. Sign in normally or use a new profile."
+      );
+    if (snapshot.user && snapshot.user.id !== userId)
+      throw new Error(
+        "This profile belongs to another account. Local notes were not changed."
+      );
+    if (
+      !snapshot.user &&
+      (snapshot.affinity ||
+        snapshot.cryptoKeyState != null ||
+        snapshot.deviceId ||
+        snapshot.lastSynced ||
+        (await this.hasLocalAccountData()))
+    )
+      throw new Error(
+        "This profile contains local account data. Open a new profile for recovery; local notes were not changed."
+      );
+
+    const grantedToken = await this.tokenManager.exchangeAuthorizationCode(
+      userId,
+      authCode
+    );
+    this.assertConfigurationUnchanged(expected);
+    const remoteUser = await this.fetchRemoteUser(
+      grantedToken.access_token,
+      expected
+    );
+    this.assertConfigurationUnchanged(expected);
+    if (!remoteUser || remoteUser.id !== userId)
+      throw new Error(
+        "The recovery account could not be verified against this server. Local notes were not changed."
+      );
+    if (snapshot.user && snapshot.user.salt !== remoteUser.salt)
+      throw new Error(
+        "The recovery account has a different encryption identity. Local notes were not changed."
+      );
+
+    try {
+      await this.beginSessionMutation(snapshot);
+      await this.bindProfileToConfiguredBackend();
+      await this.tokenManager.saveToken(grantedToken);
+      await this.commitFetchedUser(remoteUser, snapshot.user, false);
+      await this.finishSessionMutation(snapshot, {
+        userId: remoteUser.id,
+        accessToken: grantedToken.access_token,
+        requiresDevice: false,
+        resetSync: false,
+        requiresCryptoKey: false
+      });
+    } catch (error) {
+      if (snapshot.mutationStarted) await this.rollbackSession(snapshot);
+      throw error;
+    }
+    await this.publishFetchedUserSafely(remoteUser, snapshot.user);
+    return remoteUser;
+  }
+
+  private async hasLocalAccountData() {
+    const collections = [
+      this.db.notes.collection,
+      this.db.notebooks.collection,
+      this.db.content.collection,
+      this.db.attachments.collection,
+      this.db.tags.collection,
+      this.db.colors.collection,
+      this.db.shortcuts.collection,
+      this.db.reminders.collection,
+      this.db.relations.collection,
+      this.db.vaults.collection,
+      this.db.noteHistory.collection,
+      this.db.noteHistory.sessionContent.collection,
+      this.db.monographsCollection.collection,
+      this.db.inboxItemsHistory.collection
+    ];
+    for (const collection of collections)
+      if ((await collection.count()) > 0) return true;
+    return (
+      this.db.legacyNotes.count() > 0 ||
+      this.db.legacyTags.count() > 0 ||
+      this.db.legacyColors.count() > 0 ||
+      this.db.tasks.listSync().length > 0 ||
+      this.db.taskLists.listSync().length > 0
+    );
+  }
+
   async clearSessions(all = false) {
     const token = await this.tokenManager.getToken();
     if (!token) return;
@@ -769,6 +866,7 @@ class UserManager {
       accessToken: string;
       requiresDevice: boolean;
       resetSync: boolean;
+      requiresCryptoKey?: boolean;
     }
   ) {
     this.assertConfigurationUnchanged(snapshot);
@@ -805,6 +903,7 @@ class UserManager {
     accessToken: string;
     requiresDevice: boolean;
     resetSync: boolean;
+    requiresCryptoKey?: boolean;
   }) {
     const kv = this.db.kv();
     const user = await kv.read("user");
@@ -822,7 +921,10 @@ class UserManager {
       throw new Error("Could not verify committed sync checkpoint.");
     if (expected.requiresDevice && !(await kv.read("deviceId")))
       throw new Error("Could not verify committed device registration.");
-    if ((await this.db.storage().snapshotCryptoKeyState()) == null)
+    if (
+      expected.requiresCryptoKey !== false &&
+      (await this.db.storage().snapshotCryptoKeyState()) == null
+    )
       throw new Error("Could not verify committed encryption key.");
   }
 

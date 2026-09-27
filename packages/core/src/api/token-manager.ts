@@ -203,7 +203,19 @@ class TokenManager {
     return this.storage().write("token", token);
   }
 
-  async getAccessTokenFromAuthorizationCode(userId: string, authCode: string) {
+  /** @deprecated Direct persistence skips remote account verification. */
+  async getAccessTokenFromAuthorizationCode(
+    _userId: string,
+    _authCode: string
+  ) {
+    if (this.guard) await this.guard("Completing your sign in");
+    throw new Error(
+      "Use verified account recovery before saving an authorization-code session."
+    );
+  }
+
+  /** Exchange only; the caller must verify the account before persisting it. */
+  async exchangeAuthorizationCode(userId: string, authCode: string) {
     const expected = this.captureHosts();
     if (this.guard) await this.guard("Completing your sign in");
     this.assertHostsUnchanged(expected);
@@ -215,9 +227,12 @@ class TokenManager {
         client_id: "notesnook"
       }
     );
-    if (this.guard) await this.guard("Saving your session");
+    if (this.guard) await this.guard("Verifying your recovery account");
     this.assertHostsUnchanged(expected);
-    return await this.saveToken(grantedToken);
+    if (!grantedToken?.access_token)
+      throw new Error("The recovery code did not grant an account session.");
+    bindCredential(grantedToken.access_token, expected);
+    return grantedToken;
   }
 }
 export default TokenManager;

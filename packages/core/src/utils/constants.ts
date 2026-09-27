@@ -40,9 +40,9 @@ function isProduction() {
  * There is deliberately no files host: attachment traffic is presigned through
  * `API_HOST/s3` and the object store is never addressed directly by the client.
  *
- * Subscriptions, issue reporting and the marketing/pricing host below have no
- * VeyraN equivalent and are intentionally left pointing upstream. See
- * artifacts/veyran-backend-audit.md §8.1.
+ * Legacy billing, issue reporting, and marketing host keys are retained only
+ * for API compatibility. Production values are inert, and their call sites
+ * fail closed before any network request.
  */
 export const hosts = {
   API_HOST: isProduction()

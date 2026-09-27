@@ -1,5 +1,44 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
+## September 27 internal TestFlight candidates — latest handoff
+
+This section supersedes the older no-TestFlight instruction below. The user
+authorized **internal beta uploads**, not production App Store release or a
+`main` merge. Universal iPhone/iPad VeyraN **3.4.16 (18)** was archived with
+release Xcode and uploaded at 22:24:30 CEST from signed application commit
+`c1273982b`; ARM64 host, Widget, and Make Note signatures and entitlements
+passed. Mobile TypeScript, 795 Core tests, 222 focused mobile tests, and the
+New/Existing Note editor save/reopen Detox checks passed. Apple accepted the
+upload for processing; internal group assignment and tester availability
+still need App Store Connect reauthentication to verify. The recurring Hermes
+VM dSYM warning limits crash symbolication.
+
+The signed macOS MAS/TestFlight candidate is **3.4.8 (1790539967)** from
+`1559b18e5`. Transporter delivered it at 22:23 CEST and reports processing
+finished with sanitized ASC state `processingState: VALID`. Its app and installer signatures, ARM64 native modules, sandbox,
+Team ID, and existing profile identity passed local validation. The packaged
+renderer contains local VeyraN Light/Dark and no hosted Notesnook theme URL;
+signed `2a03477e2` restricts Electron external URL schemes. Native TestFlight
+still offers only the stale `1790322785` build, so the new build has **not**
+been installed or used for Mac↔Web QA. App Store Connect needs Apple
+reauthentication to inspect internal access. The optional Skiff image-import
+dependency still contains a `cors.notesnook.com` call in the Mac renderer;
+this is separate from normal built-in theme use.
+
+Production Sync now uses isolated signed source `c7734b9`, which removes the
+legacy Kestrel HTTPS 2.2 restore dependency, and healthy image
+`veyran/sync:c7734b9`. The previous `86547b47` image and rollback Compose
+file remain available. Public service health, protected-route rejection,
+Compose, exposure, Linux publish, and guard tests passed; authenticated
+post-deploy UI QA remains pending. Private signed infra commits `6f3d657` and
+`467aa98` document rollback and pin future deployments to the new source.
+No-key/keyed recovery remain 410, and normal password/email change remain
+503 while their cross-service contracts lack safe atomic or repeatable writes.
+Natural token refresh remains unverified. The [physical-device checklist]
+(artifacts/VEYRAN_TESTFLIGHT_PHYSICAL_QA.md) is ready for the user's
+iPhone/iPad/Apple Pencil testing. Final production readiness remains **FAIL**
+until those and the remaining security/function gates are resolved.
+
 ## September 27 late production QA — current status
 
 **Migration status remains FAIL; no client release is authorized.** This

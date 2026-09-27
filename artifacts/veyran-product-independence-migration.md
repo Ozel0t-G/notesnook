@@ -1,5 +1,29 @@
 # VeyraN product independence migration — release gate open
 
+## TestFlight candidate and server hardening — 2026-09-27, late evening
+
+**Candidate uploads: PASS; final production readiness: FAIL.** This section
+supersedes the earlier instruction below not to upload TestFlight. The user
+authorized internal beta uploads for this run, while physical iPhone/iPad,
+Apple Pencil, and two-client Task behavior remain post-TestFlight gates. No
+App Store production submission or `main` merge occurred.
+
+| Gate | Status | Evidence / limit |
+| --- | --- | --- |
+| iOS/iPadOS TestFlight | **PARTIAL PASS** | Universal VeyraN 3.4.16 (18) was archived and uploaded at 22:24:30 CEST from signed application commit `c1273982b`. Release Xcode ARM64 host, Widget, and Make Note signatures passed, with existing bundle/App Group/Keychain identity and `get-task-allow=false`. Apple accepted the upload for processing; internal group assignment and processing completion require ASC reauthentication to verify. The known Hermes VM dSYM warning affects crash symbolication. |
+| iOS pre-upload validation | **PASS with baseline Jest limitation** | Mobile TypeScript, 795 Core tests (1 todo), 222 focused mobile tests, and current editor save/reopen Detox cases passed. The older `App-test.js` collection failure is an unchanged React Native Flow/Jest transform issue. The focused existing-Note E2E test is signed at `bd4e922b6`; physical mobile QA is pending. |
+| macOS TestFlight upload | **PARTIAL PASS** | MAS VeyraN 3.4.8 (`1790539967`) from signed `1559b18e5` was arm64, App Sandbox and Mac App Distribution signed, installer signed, and delivered by Transporter at 22:23 CEST. Transporter finished processing and its sanitized delivery state says `processingState: VALID`. Native TestFlight still lists only previous build `1790322785`; the new build's internal assignment/installability has not been established because ASC needs Apple reauthentication. No manual package is being substituted for TestFlight QA. |
+| Mac content/security | **PASS static/package** | Packaged VeyraN Light/Dark are local; `themes-api.notesnook.com` is absent from the renderer/ASAR. The old `app.notesnook.com` origin is the intercepted local Electron asset origin, preserved with the encrypted profile path. A focused signed desktop URL-scheme guard (`2a03477e2`) restricts external handlers; desktop TypeScript and 2 guard tests passed. A packed optional Skiff image-import branch still contains `cors.notesnook.com`; it is not the built-in theme path and has not been exercised in this beta. |
+| Server hardening | **PARTIAL PASS** | Isolated signed Sync source `c7734b9` removes legacy Kestrel HTTPS 2.2 from the .NET 9 restore graph; the production Sync-only image `veyran/sync:c7734b9` (`sha256:da4ea495ba0653d2dd4331accf24d2a17ba706aa1d9fc8bdab144dcb44f9cbb0`) is healthy. API build, self-contained Linux publish, guard tests, Compose/exposure validation, public Web/Auth/API/Events/Share 200, and anonymous/invalid-token 401 checks passed. Prior `86547b47` image and `/srv/infra/veyran/compose.pre-kestrel-20260927.yaml` remain for rollback. Private signed infra commits `6f3d657` and `467aa98` update the runbook and future source/image pins. Authenticated post-deploy Note/guard QA remains pending. |
+| Account security | **PARTIAL PASS / guarded availability** | No-key and keyed recovery remain 410; authenticated password change and email change remain 503 before non-atomic mutations. Existing password/key and email contracts are not safe to enable. OIDC discovery uses HTTPS VeyraN endpoints, and anonymous/invalid bearer API and Events requests return 401; natural refresh remains unobserved. No destructive recovery test was run. |
+| Remaining dependency work | **DEFERRED** | The legacy Kestrel restore finding is removed. API MessagePack, MailKit/MimeKit on the MFA mail path, Scriban on repository-controlled templates, and IdentityServer4 need compatible parent-package upgrades and focused integration QA. No broad package churn was deployed. |
+| New Mac TestFlight ↔ Web UI QA | **NOT TESTED** | Begins only after the actual new macOS build is internally installable and installed. The authenticated production Web session is available; the previous Mac↔Web results below used the stale September 25 build and do not prove this candidate. |
+| Physical iPhone/iPad QA | **DEFERRED TO PHYSICAL QA** | The exact-build checklist is [VEYRAN_TESTFLIGHT_PHYSICAL_QA.md](VEYRAN_TESTFLIGHT_PHYSICAL_QA.md). Device widgets, Urgent alarm/Dynamic Island behavior, mobile two-client Task sync, and Pencil drawing remain for the user. |
+
+The private [release runbook](/Users/ozel0t/Documents/VeyraN/infra/RELEASE_2026-09-27.md)
+contains the new Sync rollback and source-pin details. No raw QA password,
+MFA code, token, or signed storage URL is retained here.
+
 ## Live production QA continuation — 2026-09-27, 21:10 CEST
 
 **Verdict: FAIL / release gate open.** This section supersedes the earlier

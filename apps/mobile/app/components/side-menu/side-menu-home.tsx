@@ -16,7 +16,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-import { SubscriptionPlan } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import dayjs from "dayjs";
@@ -25,10 +24,8 @@ import { FlatList, Platform, View } from "react-native";
 import { DraxProvider, DraxScrollView } from "react-native-drax";
 import { db } from "../../common/database";
 import Navigation from "../../services/navigation";
-import SettingsService from "../../services/settings";
 import { useMenuStore } from "../../stores/use-menu-store";
 import { useSettingStore } from "../../stores/use-setting-store";
-import { useUserStore } from "../../stores/use-user-store";
 import { MenuItemsList } from "../../utils/menu-items";
 import { DefaultAppStyles } from "../../utils/styles";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
@@ -39,17 +36,6 @@ import { ColorSection } from "./color-section";
 import { MenuItem } from "./menu-item";
 import { PinnedSection } from "./pinned-section";
 import { SideMenuHeader } from "./side-menu-header";
-
-const pro = {
-  title: strings.upgradePlan(),
-  icon: "crown",
-  id: "pro",
-  onPress: () => {
-    Navigation.navigate("PayWall", {
-      context: "logged-in"
-    });
-  }
-};
 
 export function SideMenuHome() {
   const { colors, isDark } = useThemeColors();
@@ -62,10 +48,6 @@ export function SideMenuHome() {
     state.order["routes"],
     state.hiddenItems["routes"]
   ]);
-  const subscriptionType = useUserStore(
-    (state) => state.user?.subscription?.plan
-  );
-  const user = useUserStore.getState().user;
 
   return (
     <View
@@ -149,23 +131,7 @@ export function SideMenuHome() {
             paddingVertical: DefaultAppStyles.GAP_VERTICAL
           }}
         >
-          {dayjs().month() !== 11 ? (
-            <>
-              {(subscriptionType === SubscriptionPlan.FREE ||
-                !subscriptionType ||
-                !user) &&
-              !SettingsService.getProperty("serverUrls") ? (
-                <Button
-                  title={pro.title}
-                  style={{
-                    width: "100%"
-                  }}
-                  type="accent"
-                  onPress={pro.onPress}
-                />
-              ) : null}
-            </>
-          ) : (
+          {dayjs().month() === 11 ? (
             <Button
               title={`Wrapped ${dayjs().year()} 🎉`}
               style={{
@@ -177,7 +143,7 @@ export function SideMenuHome() {
                 Navigation.navigate("Wrapped");
               }}
             />
-          )}
+          ) : null}
         </View>
       )}
     </View>

@@ -40,7 +40,6 @@ import { useSideBarDraggingStore } from "../../side-menu/dragging-store";
 import AppIcon from "../../ui/AppIcon";
 import { Pressable } from "../../ui/pressable";
 import Paragraph from "../../ui/typography/paragraph";
-import PaywallSheet from "../paywall";
 import { presentDialog } from "../../dialog/functions";
 import { db } from "../../../common/database";
 import { useTrashStore } from "../../../stores/use-trash-store";
@@ -76,11 +75,7 @@ export const MenuItemProperties = ({ item }: { item: SideMenuItem }) => {
               ToastManager.show({
                 message: featuresAvailable?.customHomepage.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  PaywallSheet.present(featuresAvailable?.customHomepage);
-                }
+                context: "local"
               });
               return;
             }
@@ -102,11 +97,7 @@ export const MenuItemProperties = ({ item }: { item: SideMenuItem }) => {
               ToastManager.show({
                 message: featuresAvailable?.customizableSidebar.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  PaywallSheet.present(featuresAvailable?.customizableSidebar);
-                }
+                context: "local"
               });
               return;
             }

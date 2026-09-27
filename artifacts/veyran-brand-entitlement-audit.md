@@ -274,3 +274,54 @@ full completion:
   billing/Circle screens are candidates for eventual removal or rewording, but
   that wasn't done here (see §4) to avoid `.po` churn without that owner's
   input.
+
+## Codex completion pass (2026-09-27)
+
+This section supersedes the earlier "not done" list above where noted. The
+signed Claude commits remain intact; this pass continues their work.
+
+- The VeyraN feature policy now has explicit client-supported, unavailable
+  service, and service-managed-limit buckets. `storage` and `fileSize` no longer
+  use Notesnook FREE/PRO/legacy subscription tiers. The client attempts an
+  attachment upload and lets the configured service accept or reject it; no
+  unverified numeric limit or unlimited server capacity is promised.
+- Core `UserManager.activateTrial` now rejects before token access or HTTP. The
+  existing subscription, pricing, offers and Circle guards still reject before
+  HTTP. Mobile StoreKit product loading/receipt verification is disabled, and
+  purchase listeners are not registered in normal app startup.
+- Normal mobile account creation and login no longer navigate to the PayWall.
+  Mobile settings, user sheet, side menu, notebook/link and attachment paths no
+  longer present upgrades or check a legacy plan to grant functionality. The
+  Web promo announcement CTA is removed, and both clients reject remote
+  announcements with upstream/commercial-plan content. Error and migration
+  surfaces preserve local diagnostics without forwarding to upstream support.
+- Upstream support, docs, terms, privacy, community, store, rating and update
+  links were removed from normal mobile/Web flows where VeyraN-owned
+  destinations are not configured. The mobile update sheet is inert and its
+  historic store link is unset. Legal license and upstream source links remain.
+  Deep-link recognizers and local backup folder names are compatibility data.
+- Core host display labels are neutral service labels so diagnostics do not
+  call the VeyraN API a Notesnook sync server after backend integration.
+  Commercial/issue production host defaults use inert `.invalid` domains.
+  The remaining explicit client overrides must be reviewed in the backend
+  integration branch; guards still block all billing calls before HTTP.
+- Focused validation: common feature/announcement-policy Vitest 191/191, Core billing
+  Vitest 19/19, common `tsc --noEmit` pass, Prettier parse/format checks and
+  `git diff --check` pass. Mobile TypeScript was blocked in this worktree by
+  absent Detox/Jest/@react-native/typescript-config types. End-to-end account,
+  UI, device and network tests remain integration gates.
+
+### Remaining classified references
+
+- **Legal attribution:** license headers, About/License upstream source and
+  copyright references remain by design.
+- **Internal compatibility:** `notesnookCircle` feature identifier,
+  `@notesnook/*` packages, old deep-link formats, storage locations, and
+  bundle/App Group/Keychain identifiers remain by design.
+- **Unregistered legacy UI:** original billing and paywall component files
+  remain in the repository for compatibility, but normal navigation no longer
+  invokes them. Core billing entry points fail closed even if called directly.
+- **Other workstreams:** default auth/sync/issue/CORS hosts and theme service
+  routing are owned by backend/network/theme branches. They must be reviewed
+  after integration; this branch alone does not pass the production network
+  gate.

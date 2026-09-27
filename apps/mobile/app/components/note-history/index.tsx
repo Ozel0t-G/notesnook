@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import React, { RefObject, useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 
 import { LegendList } from "@legendapp/list";
 import { getFormattedDate, getTimeAgo } from "@notesnook/common";
@@ -30,7 +30,6 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
 import { useDBItem } from "../../hooks/use-db-item";
 import { presentSheet, ToastManager } from "../../services/event-manager";
-import { openLinkInBrowser } from "../../utils/functions";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import DialogHeader from "../dialog/dialog-header";
@@ -245,20 +244,7 @@ export default function NoteHistory({
           alignSelf: "center"
         }}
       >
-        {strings.noteHistoryNotice[0]()}{" "}
-        <Text
-          onPress={() => {
-            openLinkInBrowser(
-              "https://notesnook.com/help/note-version-history"
-            );
-          }}
-          style={{
-            color: colors.primary.accent,
-            textDecorationLine: "underline"
-          }}
-        >
-          {strings.noteHistoryNotice[1]()}
-        </Text>
+        {strings.noteHistoryNotice[0]()}
       </Paragraph>
     </View>
   );

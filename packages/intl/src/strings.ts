@@ -160,7 +160,7 @@ export const strings = {
   create: () => t`Create`,
   lock: () => t`Lock`,
   analyticsPermissionText: {
-    0: () => t`Help improve Notesnook by sending completely anonymized`,
+    0: () => t`Help improve VeyraN by sending completely anonymized`,
     1: () => t`private analytics and bug reports.`
   },
   deletedOn: (date: string) => t`Deleted on ${date}`,
@@ -1107,15 +1107,13 @@ $day$: Current day (eg. Monday)`,
     t`Open the two-factor authentication (TOTP) app to view your authentication code.`,
   mfaAuthAppSelector: () => t`Don't have access to your authenticator app?`,
   mfaEmailTitle: () => t`Setup using email`,
-  mfaEmailDesc: () =>
-    t`Notesnook will send you a 2FA code on your email when prompted`,
+  mfaEmailDesc: () => t`VeyraN will send you a 2FA code by email when prompted`,
   mfaEmailSubtitle: () =>
     t`Please confirm your identity by entering the authentication code sent to your email address.`,
   mfaEmailInstructions: () => t`It may take a minute to receive your code.`,
   mfaEmailSelector: () => t`Don't have access to your email address?`,
   mfaSmsTitle: () => t`Setup using SMS`,
-  mfaSmsDesc: () =>
-    t`Notesnook will send you an SMS with a 2FA code when prompted`,
+  mfaSmsDesc: () => t`SMS-based 2FA is unavailable in VeyraN`,
   mfaSmsSubtitle: (phoneNumber?: string) =>
     t`Please confirm your identity by entering the authentication code sent to ${
       phoneNumber ? phoneNumber : "your registered phone number."
@@ -1222,16 +1220,16 @@ $day$: Current day (eg. Monday)`,
     [
       t`Use this if changes from other devices are not appearing on this device. This will overwrite the data on this device with the latest data from the server.`,
       "",
-      t`This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co.`
+      t`This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying.`
     ].join("\n"),
   forceSyncNotice: () =>
-    `This must only be used for troubleshooting. Using this regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co.`,
+    `This must only be used for troubleshooting. Using this regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying.`,
   forcePushChanges: () => t`Force push changes`,
   forcePushChangesDesc: () =>
     [
       t`Use this if changes made on this device are not appearing on other devices. This will overwrite the data on the server with the data from this device.`,
       "",
-      t`This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co.`
+      t`This must only be used for troubleshooting. Using it regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying.`
     ].join("\n"),
   start: () => t`Start`,
   customization: () => t`Customization`,
@@ -1382,8 +1380,7 @@ $day$: Current day (eg. Monday)`,
   reportAnIssueDesc: () =>
     t`Faced an issue or have a suggestion? Click here to create a bug report`,
   emailSupport: () => t`Email support`,
-  emailSupportDesc: () =>
-    t`Contact us directly via support@streetwriters.co for any help or support`,
+  emailSupportDesc: () => t`VeyraN support contact is not configured yet`,
   documentation: () => t`Documentation`,
   documentationDesc: () =>
     t`Read the documentation to learn more about Notesnook`,
@@ -1417,7 +1414,7 @@ $day$: Current day (eg. Monday)`,
   roadmap: () => t`Roadmap`,
   roadmapDesc: () => t`See what the future of Notesnook is going to be like.`,
   checkForUpdates: () => t`Check for updates`,
-  checkForUpdatesDesc: () => t`Check for new version of Notesnook`,
+  checkForUpdatesDesc: () => t`Check for a new version of VeyraN`,
   autoUpdateCheck: () => t`Check for updates automatically`,
   autoUpdateCheckDesc: () =>
     t`Check for new version of the app available on app launch`,
@@ -1712,7 +1709,7 @@ For example:
   noteTitle: () => t`Note title`,
   changesNotSaved: () => t`Your changes could not be saved`,
   savingNoteTakingTooLong: () =>
-    t`Saving this note is taking too long. Copy your changes and restart the app to prevent data loss. If the problem persists, please report it to us at support@streetwriters.co.`,
+    t`Saving this note is taking too long. Copy your changes and restart the app to prevent data loss. If the problem persists, copy your changes and keep diagnostic logs.`,
   changesNotSavedDesc: () =>
     t`It seems that your changes could not be saved. What to do next:`,
   changesNotSavedStep1: () =>
@@ -2007,7 +2004,7 @@ All attachments will be downloaded & cached again on access.
 
 ---
 
-**Only use this for troubleshooting purposes. If you are having persistent issues, it is recommended that you reach out to us via support@streetwriters.co so we can help you resolve it permanently.**`,
+**Only use this for troubleshooting purposes. If problems continue, preserve a local backup and diagnostic logs before retrying.**`,
   cacheCleared: () => t`Attachments cache cleared!`,
   gettingEncryptionKey: () => t`Getting encryption key...`,
   keyBackedUp: () => t`I have saved my key`,
@@ -2285,7 +2282,7 @@ Please note that we will respond to your feature request on the link above. **We
   installUpdate: () => t`Install update`,
   sourceCode: () => t`Source code`,
   sourceCodeDescription: () =>
-    t`All the source code for Notesnook is available & open for everyone on GitHub.`,
+    t`The upstream Notesnook source is available on GitHub. See Licenses for attribution.`,
   viewSourceCode: () => t`View source code`,
   checkRoadmap: () => t`Check roadmap`,
   availableOnIOS: () => t`Available on iOS`,
@@ -2352,7 +2349,7 @@ Use this if changes made on this device are not appearing on other devices. This
 Force pull:
 Use this if changes from other devices are not appearing on this device. This will overwrite the data on this device with the latest data from the server.
 
-**These must only be used for troubleshooting. Using them regularly for sync is not recommended and will lead to unexpected data loss and other issues. If you are having persistent issues with sync, please report them to us at support@streetwriters.co.**`,
+**These must only be used for troubleshooting. Using them regularly for sync is not recommended and will lead to unexpected data loss and other issues. If problems continue, preserve a local backup before retrying.**`,
   checkingAttachments: () => `Checking attachments`,
   orderId: () => t`Order ID`,
   amount: () => t`Amount`,
@@ -2749,8 +2746,7 @@ Use this if changes from other devices are not appearing on this device. This wi
   goBack: () => t`Go back`,
   clickToDirectlyClaimPromo: () =>
     t`Click here to directly claim the promotion.`,
-  loginToUploadAttachments: () =>
-    t`Login to upload attachments. [Read more](https://notesnook.com/help/faqs/login-to-upload-attachments)`,
+  loginToUploadAttachments: () => t`Log in to upload attachments.`,
   views: () => t`Views`,
   clickToUpdate: () => t`Click to update`,
   noPassword: () => t`No password`,
@@ -2866,7 +2862,7 @@ Use this if changes from other devices are not appearing on this device. This wi
   currentPasswordRequired: () => t`Current password required`,
   loginToRestoreAttachments: () => t`Login required to restore attachments`,
   loginToRestoreAttachmentsDesc: () =>
-    t`You need to login to restore attachments from a backup file. [Read more](https://notesnook.com/help/faqs/login-to-restore-attachments-in-backup).
+    t`You need to log in to restore attachments from a backup file.
   
 Continue without attachments?`,
   pleaseLoginToDownloadAttachments: () =>

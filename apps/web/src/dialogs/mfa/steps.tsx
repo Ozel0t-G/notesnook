@@ -37,8 +37,7 @@ import {
   Print,
   Copy,
   Refresh,
-  Checkmark,
-  Pro
+  Checkmark
 } from "../../components/icons";
 import Field from "../../components/field";
 import { exportToPDF } from "../../common/export";
@@ -286,7 +285,9 @@ function ChooseAuthenticator(props: ChooseAuthenticatorProps) {
             <Flex sx={{ alignItems: "center", gap: 2 }}>
               {auth.title}{" "}
               {sms2FAFeature?.isAllowed === false && auth.type === "sms" && (
-                <Pro size={16} color="orange" />
+                <Text as="span" variant="subBody">
+                  Unavailable
+                </Text>
               )}
             </Flex>
             {auth.recommended ? (

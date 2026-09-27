@@ -26,8 +26,6 @@ export async function getContentFromData(type: ContentType, data: string) {
       return new Tiptap(data);
     }
     default:
-      throw new Error(
-        `Unknown content type: "${type}". Please report this error at support@streetwriters.co.`
-      );
+      throw new Error(`Unknown content type: "${type}".`);
   }
 }

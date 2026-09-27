@@ -37,7 +37,6 @@ import {
   eSendEvent,
   presentSheet
 } from "../../services/event-manager";
-import PremiumService from "../../services/premium";
 import { useAttachmentStore } from "../../stores/use-attachment-store";
 import {
   eCloseAttachmentDialog,
@@ -99,14 +98,6 @@ const Actions = ({
     {
       name: strings.network.reupload(),
       onPress: async () => {
-        if (!PremiumService.get()) {
-          ToastManager.show({
-            heading: strings.upgradeToPro(),
-            type: "error",
-            context: "local"
-          });
-          return;
-        }
         await picker.pick({
           reupload: true,
           hash: attachment.hash,

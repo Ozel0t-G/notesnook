@@ -24,6 +24,7 @@ import Config from "../utils/config";
 import { isUserSubscribed } from "../hooks/use-is-user-premium";
 import { appVersion } from "../utils/version";
 import { findItemAndDelete, SubscriptionStatus } from "@notesnook/core";
+import { isVeyranAnnouncementAllowed } from "@notesnook/common";
 
 /**
  * @extends {BaseStore<AnnouncementStore>}
@@ -82,6 +83,8 @@ export const allowedPlatforms = [
 ];
 
 async function shouldShowAnnouncement(announcement) {
+  // Remote marketing content cannot reopen legacy paid-plan UX.
+  if (!isVeyranAnnouncementAllowed(announcement)) return false;
   if (Config.get(announcement.id) === "removed") return false;
 
   let show = announcement.platforms.some(

@@ -40,8 +40,6 @@ import { Button } from "../../ui/button";
 import Input from "../../ui/input";
 import { Pressable } from "../../ui/pressable";
 import Paragraph from "../../ui/typography/paragraph";
-import Navigation from "../../../services/navigation";
-import { useUserStore } from "../../../stores/use-user-store";
 
 const ListNoteItem = ({
   id,
@@ -120,8 +118,8 @@ const ListBlockItem = ({
           {item?.content.length > 200
             ? item?.content.slice(0, 200) + "..."
             : !item.content || item.content.trim() === ""
-              ? strings.linkNoteEmptyBlock()
-              : item.content}
+            ? strings.linkNoteEmptyBlock()
+            : item.content}
         </Paragraph>
 
         <View
@@ -353,23 +351,6 @@ export default function LinkNote(props: {
                 <Paragraph color={colors.secondary.paragraph}>
                   {blockLinking?.error}
                 </Paragraph>
-                <Button
-                  title={strings.upgradePlan()}
-                  style={{
-                    width: "100%"
-                  }}
-                  type="accent"
-                  onPress={() => {
-                    Navigation.navigate("PayWall", {
-                      context: useUserStore.getState().user
-                        ? "logged-in"
-                        : "logged-out",
-                      canGoBack: true
-                    });
-
-                    props.close?.();
-                  }}
-                />
               </View>
             ) : null
           }

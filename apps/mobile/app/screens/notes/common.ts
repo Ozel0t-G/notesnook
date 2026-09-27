@@ -26,7 +26,6 @@ import { useMenuStore } from "../../stores/use-menu-store";
 import { useRelationStore } from "../../stores/use-relation-store";
 import { useTagStore } from "../../stores/use-tag-store";
 import { eOnLoadNote, eOnNotebookUpdated } from "../../utils/events";
-import { openLinkInBrowser } from "../../utils/functions";
 import { fluidTabsRef } from "../../utils/global-refs";
 import { editorState } from "../editor/tiptap/utils";
 
@@ -41,16 +40,6 @@ export const PLACEHOLDER_DATA = {
 export function toCamelCase(title: string) {
   if (!title) return "";
   return title.slice(0, 1).toUpperCase() + title.slice(1);
-}
-
-export function openMonographsWebpage() {
-  try {
-    openLinkInBrowser(
-      "https://notesnook.com/help/publish-notes-with-monographs"
-    );
-  } catch (e) {
-    console.error(e);
-  }
 }
 
 export function openEditor() {

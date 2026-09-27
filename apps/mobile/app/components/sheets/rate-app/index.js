@@ -70,6 +70,7 @@ const RateAppSheet = () => {
   };
 
   const rateApp = async () => {
+    if (!STORE_LINK) return;
     await Linking.openURL(STORE_LINK);
     SettingsService.set({
       rateApp: false

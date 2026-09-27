@@ -40,7 +40,6 @@ import { refreshNotesPage } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import ColorPicker from "../dialogs/color-picker";
-import PaywallSheet from "../sheets/paywall";
 import { Button } from "../ui/button";
 import { Pressable } from "../ui/pressable";
 
@@ -121,12 +120,7 @@ export const ColorTags = ({ item }: { item: Note }) => {
       ToastManager.show({
         message: colorFeature.error,
         type: "info",
-        context: "local",
-        actionText: strings.upgrade(),
-        func: () => {
-          PaywallSheet.present(colorFeature);
-          ToastManager.hide();
-        }
+        context: "local"
       });
       return;
     }

@@ -28,10 +28,9 @@ export const IMAGE_SIZE_LIMIT = 50 * 1024 * 1024;
 
 export const BETA = getVersion().includes("beta");
 
-export const STORE_LINK =
-  Platform.OS === "ios"
-    ? "https://apps.apple.com/us/app/notesnook/id1544027013"
-    : "https://play.google.com/store/apps/details?id=com.streetwriters.notesnook";
+// No VeyraN store listing is configured. Old Notesnook listing URLs must
+// never be used for VeyraN update or rating actions.
+export const STORE_LINK: string | undefined = undefined;
 
 export const GROUP = {
   default: "default",

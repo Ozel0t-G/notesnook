@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { describe, expect, it, vi } from "vitest";
 import { SubscriptionPlan } from "../../types.js";
+import hosts from "../../utils/constants.js";
 import { BillingUnavailableError } from "../veyran-billing-policy.js";
 import Subscriptions from "../subscriptions.js";
 import { Circle } from "../circle.js";
@@ -77,6 +78,11 @@ function expectNoHttpCalls() {
 }
 
 describe("VeyraN billing policy: Subscriptions", () => {
+  it("uses inert production commercial and issue hosts", () => {
+    expect(new URL(hosts.SUBSCRIPTIONS_HOST).hostname).toMatch(/\.invalid$/);
+    expect(new URL(hosts.ISSUES_HOST).hostname).toMatch(/\.invalid$/);
+    expect(new URL(hosts.NOTESNOOK_HOST).hostname).toMatch(/\.invalid$/);
+  });
   it.each([
     ["cancel", () => new Subscriptions(untouchableDb()).cancel()],
     ["pause", () => new Subscriptions(untouchableDb()).pause()],

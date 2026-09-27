@@ -38,7 +38,6 @@ import { store as appStore } from "../../stores/app-store";
 import { createBackup } from "../../common";
 import { allowedPlatforms } from "../../stores/announcement-store";
 import { alpha } from "@theme-ui/color";
-import { BuyDialog } from "../../dialogs/buy-dialog/buy-dialog";
 import { DialogManager } from "../../common/dialog-manager";
 
 var margins = [0, 2];
@@ -222,10 +221,12 @@ function CalltoActions({ item, dismissAnnouncement }) {
       }}
     >
       {actions
-        ?.filter((cta) =>
-          cta.platforms.some(
-            (platform) => allowedPlatforms.indexOf(platform) > -1
-          )
+        ?.filter(
+          (cta) =>
+            cta.type !== "promo" &&
+            cta.platforms.some(
+              (platform) => allowedPlatforms.indexOf(platform) > -1
+            )
         )
         .map((action, index) => (
           <CalltoAction
@@ -250,10 +251,12 @@ function InlineCalltoActions({ item, dismissAnnouncement }) {
   return (
     <Flex px={2} sx={mapStyle(style)}>
       {actions
-        ?.filter((cta) =>
-          cta.platforms.some(
-            (platform) => allowedPlatforms.indexOf(platform) > -1
-          )
+        ?.filter(
+          (cta) =>
+            cta.type !== "promo" &&
+            cta.platforms.some(
+              (platform) => allowedPlatforms.indexOf(platform) > -1
+            )
         )
         .map((action, index) => (
           <CalltoAction
@@ -291,11 +294,6 @@ function CalltoAction({ action, variant, sx, dismissAnnouncement }) {
                 ? "_self"
                 : "_blank";
             window.open(action.data, target, "noopener noreferrer");
-            break;
-          }
-          case "promo": {
-            const [coupon, plan] = action.data.split(":");
-            await BuyDialog.show({ plan, coupon });
             break;
           }
           case "force-sync": {

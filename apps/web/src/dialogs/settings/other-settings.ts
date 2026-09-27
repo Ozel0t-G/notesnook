@@ -26,10 +26,8 @@ import {
   desktopUpdatesConfigured,
   downloadUpdate
 } from "../../utils/updater";
-import { isMacStoreApp } from "../../utils/platform";
 import { clearLogs, downloadLogs } from "../../utils/logger";
 import { useAutoUpdateStore } from "../../hooks/use-auto-updater";
-import { IssueDialog } from "../issue-dialog";
 import { strings } from "@notesnook/intl";
 import { desktop } from "../../common/desktop-bridge";
 import { TaskManager } from "../../common/task-manager";
@@ -179,108 +177,6 @@ export const AboutSettings: SettingsGroup[] = [
             variant: "secondary"
           }
         ]
-      },
-      {
-        key: "roadmap",
-        title: strings.roadmap(),
-        description: strings.roadmapDesc(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open("https://notesnook.com/roadmap", "_blank"),
-            title: strings.checkRoadmap(),
-            variant: "secondary"
-          }
-        ]
-      },
-      {
-        key: "available-on-mobile",
-        title: isMacStoreApp()
-          ? strings.availableOnIOS()
-          : strings.availableOnIOSAndAndroid(),
-        description: isMacStoreApp()
-          ? strings.availableOnIOSDescription()
-          : strings.availableOnIOSAndAndroidDescription(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open(
-                isMacStoreApp()
-                  ? "https://apps.apple.com/us/app/notesnook-take-private-notes/id1544027013"
-                  : "https://notesnook.com/downloads",
-                "_blank"
-              ),
-            title: strings.network.download(),
-            variant: "secondary"
-          }
-        ]
-      }
-    ]
-  },
-  {
-    key: "community",
-    section: "about",
-    header: strings.community(),
-    settings: [
-      {
-        key: "telegram",
-        title: strings.joinTelegram(),
-        description: strings.joinTelegramDesc(),
-        components: [
-          {
-            type: "button",
-            action: () => void window.open("https://t.me/notesnook", "_blank"),
-            title: strings.joinTelegram(),
-            variant: "secondary"
-          }
-        ]
-      },
-      {
-        key: "mastodon",
-        title: strings.joinMastodon(),
-        description: strings.joinMastodonDesc(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open("https://fosstodon.org/@notesnook", "_blank"),
-            title: strings.follow(),
-            variant: "secondary"
-          }
-        ]
-      },
-      {
-        key: "twitter",
-        title: strings.followOnX(),
-        description: strings.followOnXDesc(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open("https://twitter.com/notesnook", "_blank"),
-            title: strings.follow(),
-            variant: "secondary"
-          }
-        ]
-      },
-      {
-        key: "discord",
-        title: strings.joinDiscord(),
-        description: strings.joinDiscordDesc(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open(
-                "https://discord.com/invite/zQBK97EE22",
-                "_blank"
-              ),
-            title: strings.joinCommunity(),
-            variant: "secondary"
-          }
-        ]
       }
     ]
   }
@@ -292,34 +188,6 @@ export const LegalSettings: SettingsGroup[] = [
     section: "legal",
     header: strings.legal(),
     settings: [
-      {
-        key: "privacy-policy",
-        title: strings.privacyPolicy(),
-        description: strings.privacyPolicyDesc(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open("https://notesnook.com/privacy", "_blank"),
-            title: strings.open(),
-            variant: "secondary"
-          }
-        ]
-      },
-      {
-        key: "tos",
-        title: strings.tos(),
-        description: strings.tosDesc(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open("https://notesnook.com/terms", "_blank"),
-            title: strings.open(),
-            variant: "secondary"
-          }
-        ]
-      },
       {
         key: "license",
         title: strings.license(),
@@ -342,64 +210,6 @@ export const LegalSettings: SettingsGroup[] = [
 ];
 
 export const SupportSettings: SettingsGroup[] = [
-  {
-    key: "support",
-    section: "support",
-    header: strings.helpAndSupport(),
-    settings: [
-      {
-        key: "report-issue",
-        title: strings.reportAnIssue(),
-        description: strings.reportAnIssueDesc(),
-        components: [
-          {
-            type: "button",
-            action: () => IssueDialog.show({}),
-            title: strings.report(),
-            variant: "secondary"
-          }
-        ]
-      },
-      {
-        key: "email-us",
-        title: strings.emailSupport(),
-        description: strings.emailSupportDesc(),
-        components: [
-          {
-            type: "button",
-            action: async () => {
-              await navigator.clipboard.writeText("support@streetwriters.co");
-              showToast("info", strings.copied());
-            },
-            title: strings.copy(),
-            variant: "secondary"
-          },
-          {
-            type: "button",
-            action: () => {
-              window.open("mailto:support@streetwriters.co", "_blank");
-            },
-            title: strings.send(),
-            variant: "secondary"
-          }
-        ]
-      },
-      {
-        key: "docs",
-        title: strings.documentation(),
-        description: strings.documentationDesc(),
-        components: [
-          {
-            type: "button",
-            action: () =>
-              void window.open("https://notesnook.com/help/", "_blank"),
-            title: strings.open(),
-            variant: "secondary"
-          }
-        ]
-      }
-    ]
-  },
   {
     key: "troubleshooting",
     section: "support",

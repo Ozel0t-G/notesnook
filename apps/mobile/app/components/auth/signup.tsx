@@ -19,7 +19,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
-import { RouteProp, useRoute } from "@react-navigation/native";
 import React, { useRef, useState } from "react";
 import {
   TextInput,
@@ -31,9 +30,7 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view
 import { db } from "../../common/database";
 import { DDS } from "../../services/device-detection";
 import { clearMessage, setEmailVerifyMessage } from "../../services/message";
-import Navigation from "../../services/navigation";
 import { useUserStore } from "../../stores/use-user-store";
-import { openLinkInBrowser } from "../../utils/functions";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { Loading } from "../loading";
@@ -43,8 +40,6 @@ import Heading from "../ui/typography/heading";
 import Paragraph from "../ui/typography/paragraph";
 import { AuthHeader } from "./header";
 import { SignupContext } from "./signup-context";
-import { RouteParams } from "../../stores/use-navigation-store";
-import SettingsService from "../../services/settings";
 import AppIcon from "../ui/AppIcon";
 
 const SignupSteps = {
@@ -78,7 +73,6 @@ export const Signup = ({
   const setLastSynced = useUserStore((state) => state.setLastSynced);
   const { width, height } = useWindowDimensions();
   const isTablet = width > 600;
-  const route = useRoute<RouteProp<RouteParams, "Auth">>();
 
   const signup = async () => {
     setErrorMessage(undefined);
@@ -96,13 +90,6 @@ export const Signup = ({
       setLastSynced(await db.lastSynced());
       clearMessage();
       setEmailVerifyMessage();
-      if (!SettingsService.getProperty("serverUrls")) {
-        Navigation.navigate("PayWall", {
-          canGoBack: false,
-          state: route.params.state,
-          context: "signup"
-        });
-      }
       return true;
     } catch (e) {
       setCurrentStep(SignupSteps.signup);
@@ -333,53 +320,6 @@ export const Signup = ({
                     {errorMessage}
                   </Paragraph>
                 ) : null}
-              </View>
-
-              <View
-                style={{
-                  paddingHorizontal: DefaultAppStyles.GAP,
-                  width: DDS.isTab ? "50%" : "100%",
-                  alignSelf: "center"
-                }}
-              >
-                <Paragraph
-                  style={{
-                    marginBottom: 25,
-                    textAlign: "center"
-                  }}
-                  size={AppFontSize.xxs}
-                  color={colors.secondary.paragraph}
-                >
-                  {strings.signupAgreement[0]()}
-                  <Paragraph
-                    size={AppFontSize.xxs}
-                    onPress={() => {
-                      openLinkInBrowser("https://notesnook.com/tos");
-                    }}
-                    style={{
-                      textDecorationLine: "underline"
-                    }}
-                    color={colors.primary.accent}
-                  >
-                    {" "}
-                    {strings.signupAgreement[1]()}
-                  </Paragraph>{" "}
-                  {strings.signupAgreement[2]()}
-                  <Paragraph
-                    size={AppFontSize.xxs}
-                    onPress={() => {
-                      openLinkInBrowser("https://notesnook.com/privacy");
-                    }}
-                    style={{
-                      textDecorationLine: "underline"
-                    }}
-                    color={colors.primary.accent}
-                  >
-                    {" "}
-                    {strings.signupAgreement[3]()}
-                  </Paragraph>{" "}
-                  {strings.signupAgreement[4]()}
-                </Paragraph>
               </View>
             </View>
           </KeyboardAwareScrollView>

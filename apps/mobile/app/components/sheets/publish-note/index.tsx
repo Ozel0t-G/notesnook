@@ -497,27 +497,6 @@ const PublishNoteSheet = ({
           </View>
         </>
       )}
-
-      <Paragraph
-        color={colors.secondary.paragraph}
-        size={AppFontSize.xs}
-        style={{
-          textAlign: "center",
-          marginTop: DefaultAppStyles.GAP_VERTICAL,
-          textDecorationLine: "underline"
-        }}
-        onPress={async () => {
-          try {
-            await openLinkInBrowser(
-              "https://notesnook.com/help/publish-notes-with-monographs"
-            );
-          } catch (e) {
-            console.error(e);
-          }
-        }}
-      >
-        {strings.monographLearnMore()}
-      </Paragraph>
     </View>
   );
 };

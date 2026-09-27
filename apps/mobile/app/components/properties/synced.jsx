@@ -17,16 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import { useUserStore } from "../../stores/use-user-store";
-import { openLinkInBrowser } from "../../utils/functions";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
-import { sleep } from "../../utils/time";
 import { Button } from "../ui/button";
-export const Synced = ({ item, close }) => {
-  const { colors } = useThemeColors();
+export const Synced = ({ item }) => {
   const user = useUserStore((state) => state.user);
   const lastSynced = useUserStore((state) => state.lastSynced);
   return user && lastSynced >= item.dateModified ? (
@@ -45,18 +41,7 @@ export const Synced = ({ item, close }) => {
       icon="shield-key-outline"
       type="shade"
       title="Encrypted and synced"
-      onPress={async () => {
-        try {
-          close();
-          await sleep(300);
-          await openLinkInBrowser(
-            "https://notesnook.com/help/how-is-my-data-encrypted",
-            colors
-          );
-        } catch (e) {
-          console.error(e);
-        }
-      }}
+      disabled={true}
     />
   ) : null;
 };

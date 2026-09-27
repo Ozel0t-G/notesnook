@@ -24,11 +24,7 @@ import { Platform, View } from "react-native";
 import { db } from "../../../common/database";
 import { MMKV } from "../../../common/database/mmkv";
 import BackupService from "../../../services/backup";
-import {
-  ToastManager,
-  eSendEvent,
-  presentSheet
-} from "../../../services/event-manager";
+import { ToastManager, eSendEvent } from "../../../services/event-manager";
 import SettingsService from "../../../services/settings";
 import { ReminderWidget } from "../../../services/reminder-widget";
 import { useUserStore } from "../../../stores/use-user-store";
@@ -41,14 +37,8 @@ import { Button } from "../../ui/button";
 import Seperator from "../../ui/seperator";
 import { ProgressBarComponent } from "../../ui/svg/lazy";
 import Paragraph from "../../ui/typography/paragraph";
-import { Issue } from "../github/issue";
 import { strings } from "@notesnook/intl";
 import { DefaultAppStyles } from "../../../utils/styles";
-
-export const makeError = (stack: string, component: string) => `
-
-_______________________________
-Stacktrace: In ${component}::${stack}`;
 
 type Progress = {
   collection: string;
@@ -77,16 +67,6 @@ export default function Migrate() {
 
   const reportError = React.useCallback((error: Error) => {
     _setError(error);
-    presentSheet({
-      context: "local",
-      component: (
-        <Issue
-          issueTitle={"Database migration failed"}
-          defaultBody={makeError(error.stack || "", "Migration")}
-          defaultTitle={error.message}
-        />
-      )
-    });
   }, []);
 
   const startMigration = useCallback(async () => {

@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Flex, Link, Text } from "@theme-ui/components";
+import { Button, Flex, Text } from "@theme-ui/components";
 import {
   CheckCircle,
   Loading,
@@ -392,30 +392,6 @@ function Signup(props: BaseAuthComponentProps<"signup">) {
             defaultValue={form?.["confirm-password"]}
           />
           <SubmitButton text={strings.createAccount()} />
-          <Text
-            mt={4}
-            variant="subBody"
-            sx={{ fontSize: "subBody", textAlign: "center" }}
-          >
-            {strings.signupAgreement[0]()}{" "}
-            <Link
-              target="_blank"
-              rel="noreferrer"
-              href="https://notesnook.com/tos"
-              sx={{ color: "accent" }}
-            >
-              {strings.signupAgreement[1]()}
-            </Link>{" "}
-            {strings.signupAgreement[2]()}{" "}
-            <Link
-              rel="noreferrer"
-              href="https://notesnook.com/privacy"
-              sx={{ color: "accent" }}
-            >
-              {strings.signupAgreement[3]()}
-            </Link>
-            . {strings.signupAgreement[4]()}
-          </Text>
         </>
       )}
     </AuthForm>

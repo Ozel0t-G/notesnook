@@ -25,9 +25,7 @@ import Config from "../utils/config";
 import { hashNavigate } from "../navigation";
 import { AuthenticatorType, User } from "@notesnook/core";
 import { ConfirmDialog } from "../dialogs/confirm";
-import { OnboardingDialog } from "../dialogs/onboarding-dialog";
 import { strings } from "@notesnook/intl";
-import { isUserSubscribed } from "../hooks/use-is-user-premium";
 import { resetFeatures } from "../common";
 
 class UserStore extends BaseStore<UserStore> {
@@ -62,13 +60,15 @@ class UserStore extends BaseStore<UserStore> {
     db.eventManager.subscribe(
       EVENTS.userSubscriptionUpdated,
       (subscription) => {
-        const wasSubscribed = isUserSubscribed();
         this.refreshUser();
         this.set((state) => {
           if (!state.user) return;
           state.user.subscription = subscription;
         });
-        if (!wasSubscribed && isUserSubscribed()) OnboardingDialog.show({});
+        // VeyraN does not sell or manage a Notesnook subscription, so a
+        // subscription-updated event no longer shows a "Welcome to your
+        // plan" purchase-thank-you dialog — see
+        // artifacts/veyran-brand-entitlement-audit.md.
         resetFeatures();
       }
     );

@@ -43,9 +43,7 @@ import downloadAttachment from "../../../common/filesystem/download-attachment";
 import { AuthMode } from "../../../components/auth/common";
 import { Properties } from "../../../components/properties";
 import EditorTabs from "../../../components/sheets/editor-tabs";
-import { Issue } from "../../../components/sheets/github/issue";
 import LinkNote from "../../../components/sheets/link-note";
-import PaywallSheet from "../../../components/sheets/paywall";
 import TableOfContents from "../../../components/sheets/toc";
 import { DDS } from "../../../services/device-detection";
 import {
@@ -473,11 +471,7 @@ export const useEditorEvents = (
               if (!reminderFeature.isAllowed) {
                 ToastManager.show({
                   type: "info",
-                  message: reminderFeature.error,
-                  actionText: strings.upgrade(),
-                  func: () => {
-                    PaywallSheet.present(reminderFeature);
-                  }
+                  message: reminderFeature.error
                 });
                 return;
               }
@@ -665,9 +659,18 @@ export const useEditorEvents = (
               message: strings.loginRequired()
             });
           } else {
-            PaywallSheet.present(
-              await isFeatureAvailable(editorMessage.value.feature)
+            // VeyraN does not sell or manage a Notesnook subscription, so a
+            // denied editor feature is reported honestly via a toast rather
+            // than opening the purchase sheet — see
+            // artifacts/veyran-brand-entitlement-audit.md.
+            const deniedFeature = await isFeatureAvailable(
+              editorMessage.value.feature
             );
+            ToastManager.show({
+              type: "info",
+              message: deniedFeature.error,
+              context: "local"
+            });
           }
 
           break;
@@ -746,14 +749,10 @@ export const useEditorEvents = (
           break;
         }
         case EditorEvents.error: {
-          presentSheet({
-            component: (
-              <Issue
-                defaultBody={editorMessage.value.stack}
-                defaultTitle={editorMessage.value.message}
-                issueTitle={editorMessage.value.message}
-              />
-            )
+          ToastManager.show({
+            type: "error",
+            message: editorMessage.value.message,
+            context: "local"
           });
           break;
         }

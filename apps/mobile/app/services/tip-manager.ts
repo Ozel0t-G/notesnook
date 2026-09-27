@@ -153,7 +153,7 @@ const placeholderTips = [
   "Privacy is power. What people don't know they cant ruin",
   "If you read someone else's diary, you get what you deserve. - David Sedaris",
   "Take quick notes from notifications. Enable the option in Settings to try",
-  "Get Notesnook on all your devices. Or even open it in browser by going to https://app.notesnook.com to access all your notes",
+  "Use VeyraN Web to access your notes from another device.",
   "With note history, you can restore back to an older version of the note if you accidentally deleted something.",
   "When your heart speaks, take good notes. - Judith Campbell",
   "You can publish a note and share it with anyone. Even if they don't use VeyraN!",

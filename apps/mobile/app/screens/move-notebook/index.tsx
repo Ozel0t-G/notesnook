@@ -54,7 +54,6 @@ import { useNavigationFocus } from "../../hooks/use-navigation-focus";
 import { eSendEvent, ToastManager } from "../../services/event-manager";
 import { eUpdateNotebookRoute } from "../../utils/events";
 import { isFeatureAvailable } from "@notesnook/common";
-import PaywallSheet from "../../components/sheets/paywall";
 
 const {
   useNotebookExpandedStore,
@@ -136,14 +135,14 @@ export const MoveNotebook = (props: NavigationProps<"MoveNotebook">) => {
         excludedItems.push(notebook.id);
       }
       // Exclude and disable items as needed
-      const filtered = tree.filter(item => !excludedItems.includes(item.notebook.id)).map(
-        (treeItem) => {
+      const filtered = tree
+        .filter((item) => !excludedItems.includes(item.notebook.id))
+        .map((treeItem) => {
           return {
             ...treeItem,
             disabled: disabledItems.includes(treeItem.notebook.id)
-          }
-        }
-      );
+          };
+        });
       return filtered;
     }
     filterNotebooks().then((filtered) => {
@@ -158,12 +157,12 @@ export const MoveNotebook = (props: NavigationProps<"MoveNotebook">) => {
           index={index}
           item={item}
           onPress={async () => {
-             if (item.disabled) {
-                        ToastManager.show({
-                          type: "info",
-                          "message": "You cannot move the selected notebook(s) here"
-                        })
-            return;
+            if (item.disabled) {
+              ToastManager.show({
+                type: "info",
+                message: "You cannot move the selected notebook(s) here"
+              });
+              return;
             }
             const selectedNotebook = item.notebook;
             presentDialog({
@@ -266,12 +265,7 @@ export const MoveNotebook = (props: NavigationProps<"MoveNotebook">) => {
                     ToastManager.show({
                       message: notebooksFeature.error,
                       type: "info",
-                      context: "local",
-                      actionText: strings.upgrade(),
-                      func: () => {
-                        ToastManager.hide();
-                        PaywallSheet.present(notebooksFeature);
-                      }
+                      context: "local"
                     });
                     return;
                   }
@@ -428,12 +422,7 @@ const NotebookItemWrapper = React.memo(
               ToastManager.show({
                 message: notebooksFeature.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  ToastManager.hide();
-                  PaywallSheet.present(notebooksFeature);
-                }
+                context: "local"
               });
               return;
             }

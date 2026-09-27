@@ -55,16 +55,16 @@ export const hosts = {
     ? "https://events.veyran.northcore.space"
     : "http://localhost:7264",
   SUBSCRIPTIONS_HOST: isProduction()
-    ? "https://subscriptions.streetwriters.co"
+    ? "https://billing-disabled.veyran.invalid"
     : "http://localhost:9264",
   ISSUES_HOST: isProduction()
-    ? "https://issues.streetwriters.co"
+    ? "https://issues-disabled.veyran.invalid"
     : "http://localhost:2624",
   MONOGRAPH_HOST: isProduction()
     ? "https://share.veyran.northcore.space"
     : "http://localhost:6264",
   NOTESNOOK_HOST: isProduction()
-    ? "https://notesnook.com"
+    ? "https://commerce-disabled.veyran.invalid"
     : "http://localhost:8787"
 };
 
@@ -98,13 +98,12 @@ export function getPersistedHostOverrides() {
 }
 
 const HOSTNAMES = {
-  [extractHostname(hosts.API_HOST)]: "Notesnook Sync Server",
-  [extractHostname(hosts.AUTH_HOST)]: "Authentication Server",
-  [extractHostname(hosts.SSE_HOST)]: "Eventing Server",
-  [extractHostname(hosts.SUBSCRIPTIONS_HOST)]:
-    "Subscriptions Management Server",
-  [extractHostname(hosts.ISSUES_HOST)]: "Bug Reporting Server",
-  [extractHostname(hosts.MONOGRAPH_HOST)]: "Monograph Server"
+  [extractHostname(hosts.API_HOST)]: "Sync service",
+  [extractHostname(hosts.AUTH_HOST)]: "Authentication service",
+  [extractHostname(hosts.SSE_HOST)]: "Events service",
+  [extractHostname(hosts.SUBSCRIPTIONS_HOST)]: "Legacy billing service",
+  [extractHostname(hosts.ISSUES_HOST)]: "Legacy issue service",
+  [extractHostname(hosts.MONOGRAPH_HOST)]: "Sharing service"
 };
 
 export const getServerNameFromHost = (host: string) => {

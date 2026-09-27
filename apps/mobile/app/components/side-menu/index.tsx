@@ -48,7 +48,6 @@ import { useSideBarDraggingStore } from "./dragging-store";
 import { Button } from "../ui/button";
 import SettingsService from "../../services/settings";
 import { isFeatureAvailable } from "@notesnook/common";
-import PaywallSheet from "../sheets/paywall";
 import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 
@@ -444,7 +443,10 @@ const TabBar = (props: SimpleTabBarProps) => {
                             "notebooks"
                           );
                           if (!notebooksFeature.isAllowed) {
-                            PaywallSheet.present(notebooksFeature);
+                            ToastManager.show({
+                              message: notebooksFeature.error,
+                              type: "info"
+                            });
                             return;
                           }
 
@@ -452,7 +454,10 @@ const TabBar = (props: SimpleTabBarProps) => {
                         } else {
                           const tagsFeature = await isFeatureAvailable("tags");
                           if (!tagsFeature.isAllowed) {
-                            PaywallSheet.present(tagsFeature);
+                            ToastManager.show({
+                              message: tagsFeature.error,
+                              type: "info"
+                            });
                             return;
                           }
                           presentDialog({

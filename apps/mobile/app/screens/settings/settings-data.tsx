@@ -18,21 +18,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { formatBytes } from "@notesnook/common";
-import {
-  SubscriptionPlan,
-  SubscriptionProvider,
-  SubscriptionStatus,
-  User
-} from "@notesnook/core";
+import { User } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import notifee from "@notifee/react-native";
-import Clipboard from "@react-native-clipboard/clipboard";
-import dayjs from "dayjs";
 import React from "react";
-import { Alert, Appearance, Linking, Platform } from "react-native";
+import { Alert, Appearance, Platform } from "react-native";
 import { getVersion } from "react-native-device-info";
-import { TextInput } from "react-native-gesture-handler";
-import * as RNIap from "react-native-iap";
 import { DatabaseLogger, db } from "../../common/database";
 import { MMKV } from "../../common/database/mmkv";
 import filesystem from "../../common/filesystem";
@@ -40,13 +31,7 @@ import { presentDialog } from "../../components/dialog/functions";
 import { AppLockPassword } from "../../components/dialogs/applock-password";
 import { endProgress, startProgress } from "../../components/dialogs/progress";
 import ExportNotesSheet from "../../components/sheets/export-notes";
-import { Issue } from "../../components/sheets/github/issue";
 import { Progress } from "../../components/sheets/progress";
-import { Update } from "../../components/sheets/update";
-import {
-  createFormRef,
-  validators
-} from "../../components/ui/input/form-input";
 import { VaultStatusType, useVaultStatus } from "../../hooks/use-vault-status";
 import { BackgroundSync } from "../../services/background-sync";
 import BackupService from "../../services/backup";
@@ -56,8 +41,7 @@ import {
   VaultRequestType,
   eSendEvent,
   eSubscribeEvent,
-  openVault,
-  presentSheet
+  openVault
 } from "../../services/event-manager";
 import Navigation from "../../services/navigation";
 import { openAppNotificationSettings } from "../../services/notification-settings";
@@ -84,7 +68,6 @@ import { useDragState } from "./editor/state";
 import { verifyUser, verifyUserWithApplock } from "./functions";
 import { logoutUser } from "./logout";
 import { SettingSection } from "./types";
-import { getTimeLeft } from "./user-section";
 
 export const settingsGroups: SettingSection[] = [
   {
@@ -132,144 +115,6 @@ export const settingsGroups: SettingSection[] = [
     useHook: () => useUserStore((state) => state.user),
     hidden: (current) => !current,
     sections: [
-      {
-        id: "subscription-status",
-        useHook: () => useUserStore((state) => state.user),
-        hidden: (current) => {
-          const user = current as User;
-          return (
-            !user ||
-            !user.subscription ||
-            user.subscription.provider === undefined ||
-            !strings.subscriptionProviderInfo[user?.subscription?.provider] ||
-            user.subscription?.plan === SubscriptionPlan.FREE
-          );
-        },
-        name: (current) => {
-          const user = (current as User) || useUserStore.getState().user;
-          return (
-            strings.subscriptionProviderInfo[
-              user?.subscription?.provider
-            ]?.title() || `Unknown provider id: ${user?.subscription?.provider}`
-          );
-        },
-        icon: "credit-card",
-        modifer: () => {
-          const user = useUserStore.getState().user;
-          if (!user) return;
-          const subscriptionProviderInfo =
-            strings.subscriptionProviderInfo[user?.subscription?.provider];
-
-          if (!subscriptionProviderInfo) return;
-
-          const isCurrentPlatform =
-            (user.subscription?.provider === SubscriptionProvider.APPLE &&
-              Platform.OS === "ios") ||
-            (user.subscription?.provider === SubscriptionProvider.GOOGLE &&
-              Platform.OS === "android");
-
-          if (
-            (user.subscription?.provider === SubscriptionProvider.GOOGLE ||
-              user.subscription?.provider === SubscriptionProvider.APPLE) &&
-            isCurrentPlatform &&
-            user?.subscription?.productId
-          ) {
-            RNIap.deepLinkToSubscriptions({
-              sku: user?.subscription.productId
-            });
-          } else {
-            presentSheet({
-              title: subscriptionProviderInfo.title(),
-              paragraph: subscriptionProviderInfo.desc()
-            });
-          }
-        },
-        description: (current) => {
-          const user = current as User;
-          if (!user) return strings.neverHesitate();
-          const subscriptionDaysLeft =
-            user && getTimeLeft(user.subscription?.expiry);
-          const expiryDate = dayjs(user?.subscription?.expiry).format(
-            "dddd, MMMM D, YYYY h:mm A"
-          );
-          const startDate = dayjs(user?.subscription?.start).format(
-            "dddd, MMMM D, YYYY h:mm A"
-          );
-
-          const trialEndDate = dayjs(user?.subscription?.start)
-            .add(
-              user?.subscription?.productId?.includes("monthly") ? 7 : 14,
-              "day"
-            )
-            .format("dddd, MMMM D, YYYY h:mm A");
-
-          if (
-            user.subscription?.plan !== SubscriptionPlan.FREE &&
-            user.subscription?.productId
-          ) {
-            const status = user.subscription?.status;
-            return status === SubscriptionStatus.TRIAL
-              ? strings.trialOnGoing(trialEndDate)
-              : status === SubscriptionStatus.ACTIVE
-                ? strings.subRenewOn(expiryDate)
-                : status === SubscriptionStatus.CANCELED ||
-                    status === SubscriptionStatus.PAUSED
-                  ? strings.subEndsOn(expiryDate)
-                  : status === SubscriptionStatus.EXPIRED
-                    ? subscriptionDaysLeft.time < -3
-                      ? strings.subEnded()
-                      : strings.accountDowngradedIn(3)
-                    : strings.neverHesitate();
-          }
-
-          return strings.neverHesitate();
-        }
-      },
-      {
-        id: "redeem-gift-code",
-        name: strings.redeemGiftCode(),
-        description: strings.redeemGiftCodeDesc(),
-        // VeyraN does not sell or manage a Notesnook subscription (billing is
-        // disabled, see packages/core/src/api/veyran-billing-policy.ts), so a
-        // gift code can never be redeemed here. Always hidden rather than
-        // left reachable to fail with a billing-unavailable error. See
-        // artifacts/veyran-brand-entitlement-audit.md.
-        hidden: () => true,
-        useHook: () =>
-          useUserStore(
-            (state) => state.user?.subscription?.plan === SubscriptionPlan.FREE
-          ),
-        icon: "gift",
-        modifer: () => {
-          presentDialog({
-            title: strings.redeemGiftCode(),
-            paragraph: strings.redeemGiftCodeDesc(),
-            form: {
-              formRef: createFormRef({
-                code: ""
-              }),
-              items: [
-                {
-                  name: "code",
-                  placeholder: strings.code(),
-                  ref: React.createRef<TextInput | null>(),
-                  validators: [validators.required(strings.giftCodeRequired())]
-                }
-              ],
-              onFormSubmit: async (form) => {
-                try {
-                  await db.subscriptions.redeemCode(form.getValue("code"));
-                  return true;
-                } catch (e) {
-                  form.setError("code", (e as Error).message);
-                  return false;
-                }
-              }
-            },
-            positiveText: strings.redeem()
-          });
-        }
-      },
       {
         id: "account-settings",
         type: "screen",
@@ -432,67 +277,6 @@ export const settingsGroups: SettingSection[] = [
                 description: strings.viewRecoveryCodesDesc()
               }
             ]
-          },
-          {
-            id: "subscription-not-active",
-            name: strings.subscriptionNotActivated(),
-            useHook: () => useUserStore((state) => state.user),
-            hidden: (user) =>
-              Platform.OS !== "ios" ||
-              (user as User)?.subscription?.plan !== SubscriptionPlan.FREE,
-            modifer: async () => {
-              if (Platform.OS === "android") return;
-              try {
-                presentSheet({
-                  title: strings.loadingSubscription(),
-                  paragraph: strings.loadingSubscriptionDesc(),
-                  progress: true
-                });
-                const subscriptions = await RNIap.getPurchaseHistory();
-                subscriptions.sort(
-                  (a, b) => b.transactionDate - a.transactionDate
-                );
-                const currentSubscription = subscriptions[0];
-
-                if (
-                  !currentSubscription ||
-                  dayjs(currentSubscription.transactionDate).isBefore(
-                    dayjs().subtract(30, "day")
-                  )
-                ) {
-                  ToastManager.show({
-                    message: "No active subscription found",
-                    type: "info"
-                  });
-                  eSendEvent(eCloseSheet);
-                  return;
-                }
-
-                presentSheet({
-                  title: strings.notesnookPro(),
-                  paragraph: strings.subscribedOnVerify(
-                    new Date(
-                      currentSubscription.transactionDate
-                    ).toLocaleString()
-                  ),
-                  action: async () => {
-                    presentSheet({
-                      title: strings.verifySubscription(),
-                      paragraph: strings.subscriptionVerifyWait()
-                    });
-                    await PremiumService.subscriptions.verify(
-                      currentSubscription
-                    );
-                    eSendEvent(eCloseSheet);
-                  },
-                  icon: "information-outline",
-                  actionText: strings.verify()
-                });
-              } catch (e) {
-                eSendEvent(eCloseSheet);
-              }
-            },
-            description: strings.verifySubDesc()
           },
           {
             id: "clear-cache",
@@ -959,14 +743,6 @@ export const settingsGroups: SettingSection[] = [
             },
             disabled: () => !db.settings.getDefaultNotebook(),
             icon: "notebook-minus"
-          },
-          {
-            id: "disable-update-check",
-            type: "switch",
-            name: strings.autoUpdateCheck(),
-            description: strings.autoUpdateCheckDesc(),
-            property: "checkForUpdates",
-            icon: "update"
           },
           {
             id: "keep-screen-on",
@@ -1673,47 +1449,6 @@ export const settingsGroups: SettingSection[] = [
     name: strings.helpAndSupport(),
     sections: [
       {
-        id: "report-issue",
-        name: strings.reportAnIssue(),
-        icon: "bug",
-        modifer: () => {
-          presentSheet({
-            //@ts-ignore Migrate to TS
-            component: <Issue />
-          });
-        },
-        description: strings.reportAnIssueDesc(),
-        hidden: () => Platform.OS === "ios"
-      },
-      {
-        id: "email-support",
-        name: strings.emailSupport(),
-        icon: "email",
-        modifer: () => {
-          Clipboard.setString("support@streetwriters.co");
-          ToastManager.show({
-            heading: strings.emailCopied(),
-            type: "success",
-            icon: "content-copy"
-          });
-          setTimeout(() => {
-            Linking.openURL("mailto:support@streetwriters.co");
-          }, 1000);
-        },
-        description: strings.emailSupportDesc(),
-        hidden: () => Platform.OS === "ios"
-      },
-      {
-        id: "docs-link",
-        name: strings.documentation(),
-        modifer: async () => {
-          Linking.openURL("https://notesnook.com/help/");
-        },
-        description: strings.documentationDesc(),
-        icon: "file-document",
-        hidden: () => Platform.OS === "ios"
-      },
-      {
         id: "debugging",
         name: strings.debugging(),
         description: strings.debuggingDesc(),
@@ -1732,90 +1467,9 @@ export const settingsGroups: SettingSection[] = [
     ]
   },
   {
-    id: "community",
-    name: strings.community(),
-    hidden: () => Platform.OS === "ios",
-    sections: [
-      {
-        id: "join-telegram",
-        name: strings.joinTelegram(),
-        description: strings.joinTelegramDesc(),
-        icon: "sc-telegram",
-        iconFamily: "evilicons",
-        iconSize: 35,
-        modifer: () => {
-          Linking.openURL("https://t.me/notesnook").catch(() => {
-            /* empty */
-          });
-        }
-      },
-      {
-        id: "join-mastodon",
-        name: strings.joinMastodon(),
-        description: strings.joinMastodonDesc(),
-        icon: "mastodon",
-        modifer: () => {
-          Linking.openURL("https://fosstodon.org/@notesnook").catch(
-            console.log
-          );
-        }
-      },
-      {
-        id: "join-twitter",
-        name: strings.followOnX(),
-        description: strings.followOnXDesc(),
-        icon: "twitter",
-        modifer: () => {
-          Linking.openURL("https://twitter.com/notesnook").catch(() => {
-            /* empty */
-          });
-        }
-      },
-      {
-        id: "join-discord",
-        name: strings.joinDiscord(),
-        icon: "discord",
-        modifer: async () => {
-          Linking.openURL("https://discord.gg/zQBK97EE22").catch(() => {
-            /* empty */
-          });
-        },
-        description: strings.joinDiscordDesc()
-      }
-    ]
-  },
-  {
     id: "legal",
     name: strings.legal(),
     sections: [
-      {
-        id: "tos",
-        name: strings.tos(),
-        icon: "briefcase-outline",
-        hidden: () => Platform.OS === "ios",
-        modifer: async () => {
-          try {
-            await Linking.openURL("https://notesnook.com/tos");
-          } catch (e) {
-            console.error(e);
-          }
-        },
-        description: strings.tosDesc()
-      },
-      {
-        id: "privacy-policy",
-        name: strings.privacyPolicy(),
-        icon: "shield-outline",
-        hidden: () => Platform.OS === "ios",
-        modifer: async () => {
-          try {
-            await Linking.openURL("https://notesnook.com/privacy");
-          } catch (e) {
-            console.error(e);
-          }
-        },
-        description: strings.privacyPolicyDesc()
-      },
       {
         id: "licenses",
         name: strings.licenses(),
@@ -1830,47 +1484,6 @@ export const settingsGroups: SettingSection[] = [
     id: "about",
     name: "About VeyraN",
     sections: [
-      {
-        id: "download",
-        name: strings.downloadOnDesktop(),
-        icon: "monitor",
-        modifer: async () => {
-          try {
-            await Linking.openURL("https://notesnook.com/downloads");
-          } catch (e) {
-            console.error(e);
-          }
-        },
-        description: strings.downloadOnDesktopDesc(),
-        hidden: () => Platform.OS === "ios"
-      },
-      {
-        id: "roadmap",
-        name: strings.roadmap(),
-        icon: "chart-timeline",
-        modifer: async () => {
-          try {
-            await Linking.openURL("https://notesnook.com/roadmap/");
-          } catch (e) {
-            console.error(e);
-          }
-        },
-        description: strings.roadmapDesc(),
-        hidden: () => Platform.OS === "ios"
-      },
-      {
-        id: "check-for-updates",
-        name: strings.checkForUpdates(),
-        icon: "cellphone-arrow-down",
-        description: strings.checkForUpdatesDesc(),
-        hidden: () => Platform.OS === "ios",
-        modifer: async () => {
-          presentSheet({
-            //@ts-ignore // Migrate to ts
-            component: (ref) => <Update fwdRef={ref} />
-          });
-        }
-      },
       {
         id: "app-version",
         name: strings.appVersion(),

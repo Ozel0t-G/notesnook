@@ -19,9 +19,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import React from "react";
 import RNBootSplash from "react-native-bootsplash";
+import { Text } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Dialog } from "../dialog";
-import { Issue } from "../sheets/github/issue";
 
 const error = (stack: string, component: string) => `
 
@@ -60,14 +60,12 @@ class ExceptionHandler extends React.Component<{
             paddingTop: 10
           }}
         >
-          <Issue
-            defaultBody={error(
-              this.state.error?.stack || "",
-              this.props.component
-            )}
-            defaultTitle={this.state.error?.message}
-            issueTitle="An exception occurred"
-          />
+          <Text selectable>
+            An exception occurred: {this.state.error?.message}
+          </Text>
+          <Text selectable>
+            {error(this.state.error?.stack || "", this.props.component)}
+          </Text>
           <Dialog />
         </SafeAreaView>
       </SafeAreaProvider>

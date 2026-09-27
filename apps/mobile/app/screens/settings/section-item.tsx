@@ -28,7 +28,6 @@ import { ActivityIndicator, TextInput, View } from "react-native";
 import { FeatureResult, useIsFeatureAvailable } from "@notesnook/common";
 //@ts-ignore
 import ToggleSwitch from "toggle-switch-react-native";
-import PaywallSheet from "../../components/sheets/paywall";
 import AppIcon from "../../components/ui/AppIcon";
 import { IconButton } from "../../components/ui/icon-button";
 import Input from "../../components/ui/input";
@@ -36,6 +35,7 @@ import { Pressable } from "../../components/ui/pressable";
 import Seperator from "../../components/ui/seperator";
 import Heading from "../../components/ui/typography/heading";
 import Paragraph from "../../components/ui/typography/paragraph";
+import { ToastManager } from "../../services/event-manager";
 import SettingsService from "../../services/settings";
 import useNavigationStore from "../../stores/use-navigation-store";
 import { SettingStore, useSettingStore } from "../../stores/use-setting-store";
@@ -133,7 +133,13 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
   const checkIsFeatureAvailable = React.useCallback(() => {
     if (!isFeatureAvailable) return false;
     if (isFeatureAvailable && !isFeatureAvailable?.isAllowed) {
-      PaywallSheet.present(isFeatureAvailable);
+      // VeyraN does not sell or manage a Notesnook subscription, so this is
+      // reported honestly instead of opening the purchase sheet — see
+      // artifacts/veyran-brand-entitlement-audit.md.
+      ToastManager.show({
+        message: isFeatureAvailable.error,
+        type: "info"
+      });
       return false;
     }
 

@@ -42,7 +42,6 @@ import { presentDialog } from "../components/dialog/functions";
 import NoteHistory from "../components/note-history";
 import { AddNotebookSheet } from "../components/sheets/add-notebook";
 import ExportNotesSheet from "../components/sheets/export-notes";
-import PaywallSheet from "../components/sheets/paywall";
 import PublishNoteSheet from "../components/sheets/publish-note";
 import { ReferencesList } from "../components/sheets/references";
 import { useSideBarDraggingStore } from "../components/side-menu/dragging-store";
@@ -153,11 +152,7 @@ export const Default_Drag_Action: Action = {
       ToastManager.show({
         message: feature.error,
         type: "info",
-        context: "local",
-        actionText: strings.upgrade(),
-        func: () => {
-          PaywallSheet.present(feature);
-        }
+        context: "local"
       });
       return;
     }
@@ -311,11 +306,7 @@ export const useActions = ({
           ToastManager.show({
             message: features?.shortcuts.error,
             type: "info",
-            context: "local",
-            actionText: strings.upgrade(),
-            func: () => {
-              PaywallSheet.present(features?.shortcuts);
-            }
+            context: "local"
           });
           return;
         }
@@ -579,11 +570,7 @@ export const useActions = ({
               ToastManager.show({
                 message: features.defaultNotebookAndTag.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  PaywallSheet.present(features.defaultNotebookAndTag);
-                }
+                context: "local"
               });
               return;
             }
@@ -610,12 +597,7 @@ export const useActions = ({
             ToastManager.show({
               message: features.notebooks.error,
               type: "info",
-              context: "local",
-              actionText: strings.upgrade(),
-              func: () => {
-                ToastManager.hide();
-                PaywallSheet.present(features.notebooks);
-              }
+              context: "local"
             });
             return;
           }
@@ -652,11 +634,7 @@ export const useActions = ({
               ToastManager.show({
                 message: features.defaultNotebookAndTag.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  PaywallSheet.present(features.defaultNotebookAndTag);
-                }
+                context: "local"
               });
               return;
             }
@@ -727,11 +705,7 @@ export const useActions = ({
           ToastManager.show({
             message: features?.customHomepage.error,
             type: "info",
-            context: "local",
-            actionText: strings.upgrade(),
-            func: () => {
-              PaywallSheet.present(features?.customHomepage);
-            }
+            context: "local"
           });
           return;
         }
@@ -827,11 +801,7 @@ export const useActions = ({
         ToastManager.show({
           message: features?.pinNoteInNotification.error,
           type: "info",
-          actionText: strings.upgrade(),
-          context: "local",
-          func: () => {
-            PaywallSheet.present(features?.pinNoteInNotification);
-          }
+          context: "local"
         });
         return;
       }
@@ -1185,11 +1155,7 @@ export const useActions = ({
               ToastManager.show({
                 message: features?.expiringNotes.error,
                 type: "info",
-                actionText: strings.upgrade(),
-                context: "local",
-                func: () => {
-                  PaywallSheet.present(features?.expiringNotes);
-                }
+                context: "local"
               });
               return;
             }
@@ -1265,11 +1231,7 @@ export const useActions = ({
           ToastManager.show({
             message: features?.androidLauncherShortcuts.error,
             type: "info",
-            actionText: strings.upgrade(),
-            context: "local",
-            func: () => {
-              PaywallSheet.present(features?.androidLauncherShortcuts);
-            }
+            context: "local"
           });
           return;
         }

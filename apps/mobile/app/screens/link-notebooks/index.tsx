@@ -49,7 +49,6 @@ import {
   sendItemUpdateEvent,
   ToastManager
 } from "../../services/event-manager";
-import PaywallSheet from "../../components/sheets/paywall";
 
 const {
   useNotebookExpandedStore,
@@ -220,11 +219,11 @@ const LinkNotebooks = (props: NavigationProps<"LinkNotebooks">) => {
         rightButton={
           hasSelection
             ? {
-              name: "restore",
-              onPress: () => {
-                updateInitialSelectionState(noteIds);
+                name: "restore",
+                onPress: () => {
+                  updateInitialSelectionState(noteIds);
+                }
               }
-            }
             : undefined
         }
       />
@@ -254,18 +253,14 @@ const LinkNotebooks = (props: NavigationProps<"LinkNotebooks">) => {
               button={{
                 icon: "plus",
                 onPress: async () => {
-                  const notebooksFeature =
-                    await isFeatureAvailable("notebooks");
+                  const notebooksFeature = await isFeatureAvailable(
+                    "notebooks"
+                  );
                   if (!notebooksFeature.isAllowed) {
                     ToastManager.show({
                       message: notebooksFeature.error,
                       type: "info",
-                      context: "local",
-                      actionText: strings.upgrade(),
-                      func: () => {
-                        ToastManager.hide();
-                        PaywallSheet.present(notebooksFeature);
-                      }
+                      context: "local"
                     });
                     return;
                   }
@@ -404,8 +399,8 @@ const NotebookItemWrapper = React.memo(
                 !selected
                   ? "selected"
                   : !state.initialState[item.notebook.id]
-                    ? undefined
-                    : "deselected"
+                  ? undefined
+                  : "deselected"
               );
           }}
           canDisableSelectionMode={false}
@@ -422,12 +417,7 @@ const NotebookItemWrapper = React.memo(
               ToastManager.show({
                 message: notebooksFeature.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  ToastManager.hide();
-                  PaywallSheet.present(notebooksFeature);
-                }
+                context: "local"
               });
               return;
             }

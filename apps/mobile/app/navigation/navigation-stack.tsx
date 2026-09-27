@@ -363,7 +363,6 @@ let Settings: any = null;
 let ManageTags: any = null;
 let AddReminder: any = null;
 let RelationsList: any = null;
-let PayWall: any = null;
 let Wrapped: any = null;
 let Tasks: any = null;
 let TaskDetail: any = null;
@@ -401,9 +400,12 @@ export const RootNavigation = () => {
       );
     };
     const subscription = eSubscribeEvent(eOnExitEditor, returnFromCompose);
-    const fullscreenSubscription = eSubscribeEvent(eCloseFullscreenEditor, () => {
-      if (DDS.isTab) returnFromCompose();
-    });
+    const fullscreenSubscription = eSubscribeEvent(
+      eCloseFullscreenEditor,
+      () => {
+        if (DDS.isTab) returnFromCompose();
+      }
+    );
     return () => {
       subscription?.unsubscribe();
       fullscreenSubscription?.unsubscribe();
@@ -662,13 +664,6 @@ export const RootNavigation = () => {
               RelationsList =
                 RelationsList || require("../screens/relations-list").default;
               return RelationsList;
-            }}
-          />
-          <RootStack.Screen
-            name="PayWall"
-            getComponent={() => {
-              PayWall = PayWall || require("../components/paywall").default;
-              return PayWall;
             }}
           />
 

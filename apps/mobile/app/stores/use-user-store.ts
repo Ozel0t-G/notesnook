@@ -23,9 +23,6 @@ import { create } from "zustand";
 import SettingsService from "../services/settings";
 import { presentDialog } from "../components/dialog/functions";
 import { strings } from "@notesnook/intl";
-import { eSendEvent } from "../services/event-manager";
-import { eCloseSimpleDialog } from "../utils/events";
-import Navigation from "../services/navigation";
 
 export enum SyncStatus {
   Passed,
@@ -71,18 +68,14 @@ export const useUserStore = create<UserStore>((set) => ({
         if (!feature.isAllowed) {
           SettingsService.setProperty("appLockEnabled", false);
           setTimeout(() => {
+            // VeyraN does not sell or manage a Notesnook subscription, so
+            // this is reported honestly instead of offering an "Upgrade"
+            // action that would navigate to the purchase flow — see
+            // artifacts/veyran-brand-entitlement-audit.md.
             presentDialog({
               title: "App Lock Disabled",
               paragraph: feature?.error,
-              positiveText: strings.upgrade(),
-              negativeText: strings.cancel(),
-              positivePress: async () => {
-                eSendEvent(eCloseSimpleDialog);
-                if (SettingsService.getProperty("serverUrls")) return;
-                Navigation.navigate("PayWall", {
-                  context: "logged-in"
-                });
-              }
+              positiveText: strings.okay()
             });
           }, 1000);
         }

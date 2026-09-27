@@ -22,17 +22,13 @@ import NotesPage from ".";
 import { db } from "../../common/database";
 import Navigation, { NavigationProps } from "../../services/navigation";
 import { NotesScreenParams } from "../../stores/use-navigation-store";
-import { openMonographsWebpage } from "./common";
 import { strings } from "@notesnook/intl";
 
 export const MONOGRAPH_PLACEHOLDER_DATA = {
   title: strings.yourMonographs(),
   paragraph: strings.monographsEmpty(),
-  button: strings.learnMoreMonographs(),
-  action: openMonographsWebpage,
   loading: strings.loadingMonographs(),
-  type: "monograph",
-  buttonIcon: "information-outline"
+  type: "monograph"
 };
 
 export const Monographs = ({
@@ -45,7 +41,6 @@ export const Monographs = ({
       route={route}
       get={Monographs.get}
       placeholder={MONOGRAPH_PLACEHOLDER_DATA}
-      onPressFloatingButton={openMonographsWebpage}
       canGoBack={route.params?.canGoBack}
       focusControl={true}
     />

@@ -36,7 +36,6 @@ import React, { useCallback, useEffect, useRef } from "react";
 import {
   AppState,
   AppStateStatus,
-  EmitterSubscription,
   Keyboard,
   Linking,
   NativeEventEmitter,
@@ -44,9 +43,7 @@ import {
   NativeModules,
   Platform
 } from "react-native";
-import { checkVersion } from "react-native-check-version";
 import Config from "react-native-config";
-import * as RNIap from "react-native-iap";
 import { DatabaseLogger, db, initializeDatabaseOnce } from "../common/database";
 import { initializeLogger } from "../common/database/logger";
 import { MMKV } from "../common/database/mmkv";
@@ -73,9 +70,7 @@ import {
   clearMessage,
   setEmailVerifyMessage,
   setLoginMessage,
-  setRateAppMessage,
-  setRecoveryKeyMessage,
-  setUpdateAvailableMessage
+  setRecoveryKeyMessage
 } from "../services/message";
 import Navigation from "../services/navigation";
 import { NotePreviewWidget } from "../services/note-preview-widget";
@@ -100,7 +95,6 @@ import { useRelationStore } from "../stores/use-relation-store";
 import { useSettingStore } from "../stores/use-setting-store";
 import { SyncStatus, useUserStore } from "../stores/use-user-store";
 import { updateStatusBarColor } from "../utils/colors";
-import { BETA } from "../utils/constants";
 import {
   eAfterSync,
   eCloseSheet,
@@ -112,7 +106,6 @@ import {
   eUserLoggedIn,
   refreshNotesPage
 } from "../utils/events";
-import { getGithubVersion } from "../utils/github-version";
 import { fluidTabsRef } from "../utils/global-refs";
 import { sleep } from "../utils/time";
 import useFeatureManager from "./use-feature-manager";
@@ -456,23 +449,6 @@ async function checkForShareExtensionLaunchedInBackground() {
   }
 }
 
-const onSuccessfulSubscription = async (
-  subscription: RNIap.ProductPurchase | RNIap.SubscriptionPurchase
-) => {
-  if (Platform.OS === "android") return;
-  await PremiumService.subscriptions.set(subscription);
-  await PremiumService.subscriptions.verify(subscription);
-};
-
-const onSubscriptionError = async (error: RNIap.PurchaseError) => {
-  ToastManager.show({
-    heading: strings.failedToSubscribe(),
-    type: "error",
-    message: error.message,
-    context: "local"
-  });
-};
-
 const SodiumEventEmitter = new NativeEventEmitter(NativeModules.Sodium);
 
 const setAppMessage = async () => {
@@ -485,7 +461,6 @@ const setAppMessage = async () => {
     setEmailVerifyMessage();
     return;
   }
-  if (await checkForRateAppRequest()) return;
   if (
     user?.isEmailConfirmed &&
     !SettingsService.get().recoveryKeySaved &&
@@ -495,7 +470,6 @@ const setAppMessage = async () => {
     return;
   }
   useMessageStore.getState().setAnnouncement();
-  checkAppUpdateAvailable();
 };
 
 const doAppLoadActions = async () => {
@@ -513,43 +487,6 @@ const doAppLoadActions = async () => {
       }
     });
   }
-};
-
-const checkAppUpdateAvailable = async () => {
-  if (
-    __DEV__ ||
-    Config.isTesting === "true" ||
-    Config.FDROID_BUILD ||
-    BETA ||
-    !SettingsService.getProperty("checkForUpdates")
-  )
-    return;
-
-  try {
-    const version =
-      Config.GITHUB_RELEASE === "true"
-        ? await getGithubVersion()
-        : await checkVersion();
-    if (!version || !version?.needsUpdate) return false;
-
-    setUpdateAvailableMessage(version);
-    return true;
-  } catch (e) {
-    return false;
-  }
-};
-
-const checkForRateAppRequest = async () => {
-  const rateApp = SettingsService.get().rateApp as number;
-  if (
-    rateApp &&
-    rateApp < Date.now() &&
-    !useMessageStore.getState().message?.visible
-  ) {
-    setRateAppMessage();
-    return true;
-  }
-  return false;
 };
 
 const IsDatabaseMigrationRequired = () => {
@@ -645,8 +582,6 @@ export const useAppEvents = () => {
   const syncedOnLaunch = useRef(false);
   const refValues = useRef<
     Partial<{
-      subsriptionSuccessListener: EmitterSubscription;
-      subsriptionErrorListener: EmitterSubscription;
       prevState: AppStateStatus;
       removeInternetStateListener: NetInfoSubscription;
       initialUrl: string;
@@ -742,31 +677,6 @@ export const useAppEvents = () => {
       .catch(() => {});
   }, [initialUrl, isAppLoading]);
 
-  const subscribeToPurchaseListeners = useCallback(async () => {
-    if (Platform.OS === "android") {
-      try {
-        await RNIap.flushFailedPurchasesCachedAsPendingAndroid();
-      } catch (e) {
-        e;
-      }
-    }
-    refValues.current.subsriptionSuccessListener =
-      RNIap.purchaseUpdatedListener(onSuccessfulSubscription);
-    refValues.current.subsriptionErrorListener =
-      RNIap.purchaseErrorListener(onSubscriptionError);
-  }, []);
-
-  const unsubscribePurchaseListeners = () => {
-    if (refValues.current?.subsriptionSuccessListener) {
-      refValues.current.subsriptionSuccessListener?.remove();
-      refValues.current.subsriptionSuccessListener = undefined;
-    }
-    if (refValues.current?.subsriptionErrorListener) {
-      refValues.current.subsriptionErrorListener?.remove();
-      refValues.current.subsriptionErrorListener = undefined;
-    }
-  };
-
   const checkAutoBackup = useCallback(async () => {
     const { appLocked, syncing } = useUserStore.getState();
 
@@ -775,7 +685,7 @@ export const useAppEvents = () => {
       return;
     }
     const user = await db.user.getUser();
-    if (PremiumService.get() && user) {
+    if (user) {
       if (
         SettingsService.get().backupDirectoryAndroid ||
         Platform.OS !== "android"
@@ -833,7 +743,6 @@ export const useAppEvents = () => {
           syncedOnLaunch.current = true;
           return;
         }
-        subscribeToPurchaseListeners();
         if (!isLogin) {
           user = await db.user.fetchUser();
           setUser(user);
@@ -866,7 +775,7 @@ export const useAppEvents = () => {
         checkAutoBackup();
       }
     },
-    [subscribeToPurchaseListeners, setLastSynced, setUser, checkAutoBackup]
+    [setLastSynced, setUser, checkAutoBackup]
   );
 
   useEffect(() => {
@@ -1069,7 +978,6 @@ export const useAppEvents = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
         refValues.current?.removeInternetStateListener();
       sub?.remove();
-      unsubscribePurchaseListeners();
     };
   }, [isAppLoading, appLocked, checkAutoBackup]);
 

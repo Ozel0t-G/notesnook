@@ -19,17 +19,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
-import { RouteProp, useRoute } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import { TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { DDS } from "../../services/device-detection";
 import { eSendEvent, presentSheet } from "../../services/event-manager";
-import Navigation from "../../services/navigation";
-import PremiumService from "../../services/premium";
-import SettingsService from "../../services/settings";
 import Sync from "../../services/sync";
-import { RouteParams } from "../../stores/use-navigation-store";
 import { useUserStore } from "../../stores/use-user-store";
 import { eUserLoggedIn } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
@@ -60,7 +55,6 @@ export const Login = ({
 }) => {
   const { colors } = useThemeColors();
   const [focused, setFocused] = useState(false);
-  const route = useRoute<RouteProp<RouteParams, "Auth">>();
   const {
     step,
     setStep,
@@ -81,15 +75,7 @@ export const Login = ({
       }
     }, 5000);
 
-    if (!PremiumService.get() && !SettingsService.getProperty("serverUrls")) {
-      Navigation.navigate("PayWall", {
-        context: "signup",
-        state: route.params?.state,
-        canGoBack: false
-      });
-    } else {
-      Progress.present();
-    }
+    Progress.present();
   });
   const { width, height } = useWindowDimensions();
   const isTablet = width > 600;
@@ -195,8 +181,8 @@ export const Login = ({
                   ? "50%"
                   : "49.99%"
                 : focused
-                  ? "100%"
-                  : "99.9%",
+                ? "100%"
+                : "99.9%",
               backgroundColor: colors.primary.background,
               alignSelf: "center",
               paddingHorizontal: DDS.isTab ? 0 : DefaultAppStyles.GAP,

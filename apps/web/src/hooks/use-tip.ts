@@ -174,19 +174,7 @@ const DEFAULT_TIPS: Record<TipContext, Omit<Tip, "contexts">> = {
     text: "You have no attachments."
   },
   favorites: { text: "Notes you favorite will appear here." },
-  monographs: {
-    text: "You haven't published any notes yet.",
-    button: {
-      title: "What are monographs?",
-      icon: ArrowTopRight,
-      onClick() {
-        window.open(
-          "https://notesnook.com/help/publish-notes-with-monographs",
-          "_blank"
-        );
-      }
-    }
-  },
+  monographs: { text: "You haven't published any notes yet." },
   notebooks: {
     text: "You haven't created any notebooks.",
     button: { ...CREATE_BUTTON_MAP.notebooks, icon: Plus }

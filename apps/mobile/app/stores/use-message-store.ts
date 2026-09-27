@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { isVeyranAnnouncementAllowed } from "@notesnook/common";
 import { SubscriptionStatus, User } from "@notesnook/core";
 import { Platform } from "react-native";
 import { getVersion } from "react-native-device-info";
@@ -171,6 +172,8 @@ export const allowedPlatforms = ["all", "mobile", Platform.OS];
 
 async function shouldShowAnnouncement(announcement: Announcement) {
   if (!announcement) return false;
+  // Remote marketing content cannot reopen legacy paid-plan UX.
+  if (!isVeyranAnnouncementAllowed(announcement)) return false;
   const removed = (await MMKV.getStringAsync(announcement.id)) === "removed";
   if (removed) return false;
   let show = announcement.platforms.some(

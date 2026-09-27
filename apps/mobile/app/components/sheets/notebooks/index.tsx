@@ -46,7 +46,6 @@ import { IconButton } from "../../ui/icon-button";
 import Paragraph from "../../ui/typography/paragraph";
 import { AddNotebookSheet } from "../add-notebook";
 import { isFeatureAvailable } from "@notesnook/common";
-import PaywallSheet from "../paywall";
 
 const {
   useNotebookExpandedStore,
@@ -176,12 +175,7 @@ export const Notebooks = (props: {
               ToastManager.show({
                 message: notebooksFeature.error,
                 type: "info",
-                context: "local",
-                actionText: strings.upgrade(),
-                func: () => {
-                  ToastManager.hide();
-                  PaywallSheet.present(notebooksFeature);
-                }
+                context: "local"
               });
               return;
             }

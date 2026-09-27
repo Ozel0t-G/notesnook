@@ -31,8 +31,6 @@ import { AppFontSize } from "../../utils/size";
 import { useSideBarDraggingStore } from "../side-menu/dragging-store";
 import { IconButton } from "../ui/icon-button";
 import { useIsFeatureAvailable } from "@notesnook/common";
-import PaywallSheet from "../sheets/paywall";
-import { strings } from "@notesnook/intl";
 import { ToastManager } from "../../services/event-manager";
 
 interface ReorderableListProps<T extends { id: string }>
@@ -173,9 +171,7 @@ function ReorderableList<T extends { id: string }>({
           ) {
             ToastManager.show({
               message: customizableSidebarFeature?.error,
-              type: "info",
-              actionText: strings.upgrade(),
-              func: () => PaywallSheet.present(customizableSidebarFeature)
+              type: "info"
             });
             return;
           }
@@ -192,10 +188,8 @@ function ReorderableList<T extends { id: string }>({
             !customizableSidebarFeature?.isAllowed
           ) {
             ToastManager.show({
-              message: customizableSidebarFeature.error,
-              type: "info",
-              actionText: strings.upgrade(),
-              func: () => PaywallSheet.present(customizableSidebarFeature)
+              message: customizableSidebarFeature?.error,
+              type: "info"
             });
             return;
           }

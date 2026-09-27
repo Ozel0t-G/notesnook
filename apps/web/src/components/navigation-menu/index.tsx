@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Box, Button, Flex, Image, Text } from "@theme-ui/components";
 import {
   Note,
@@ -36,7 +36,6 @@ import {
   TableOfContents,
   Reminders,
   User,
-  Documentation,
   Logout,
   Reset,
   Rename,
@@ -93,7 +92,7 @@ import { usePersistentState } from "../../hooks/use-persistent-state";
 import { MenuItem } from "@notesnook/ui";
 import { Color, createInternalLink, Notebook, Tag } from "@notesnook/core";
 import { handleDrop } from "../../common/drop-handler";
-import { Menu, useMenuStore, useMenuTrigger } from "../../hooks/use-menu";
+import { Menu, useMenuStore } from "../../hooks/use-menu";
 import { RenameColorDialog } from "../../dialogs/item-dialog";
 import { ConfirmDialog } from "../../dialogs/confirm";
 import { showToast } from "../../utils/toast";
@@ -122,7 +121,14 @@ import { shouldShowWrapped } from "../../utils/should-show-wrapped";
 import { writeToClipboard } from "../../utils/clipboard";
 
 type Route = {
-  id: "notes" | "favorites" | "tasks" | "reminders" | "monographs" | "trash" | "archive";
+  id:
+    | "notes"
+    | "favorites"
+    | "tasks"
+    | "reminders"
+    | "monographs"
+    | "trash"
+    | "archive";
   title: string;
   path: string;
   icon: Icon;
@@ -138,17 +144,19 @@ const routes: Route[] = [
     path: "/favorites",
     icon: StarOutline
   },
-  IS_DESKTOP_APP ? {
-    id: "tasks",
-    title: strings.tasksTitle(),
-    path: "/tasks",
-    icon: TableOfContents
-  } : {
-    id: "reminders",
-    title: strings.routes.Reminders(),
-    path: "/reminders",
-    icon: Reminders
-  },
+  IS_DESKTOP_APP
+    ? {
+        id: "tasks",
+        title: strings.tasksTitle(),
+        path: "/tasks",
+        icon: TableOfContents
+      }
+    : {
+        id: "reminders",
+        title: strings.routes.Reminders(),
+        path: "/reminders",
+        icon: Reminders
+      },
   {
     id: "monographs",
     title: strings.routes.Monographs(),
@@ -920,15 +928,6 @@ function NavigationDropdown() {
               icon: settings.icon.path,
               onClick: () => {
                 hashNavigate(settings.path);
-              }
-            },
-            {
-              type: "button",
-              title: strings.helpAndSupport(),
-              icon: Documentation.path,
-              key: "help-and-support",
-              onClick: () => {
-                window.open("https://notesnook.com/help/", "_blank");
               }
             },
             {

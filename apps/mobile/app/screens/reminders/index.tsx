@@ -32,7 +32,6 @@ import { useReminders } from "../../stores/use-reminder-store";
 import AddReminder from "../add-reminder";
 import { isFeatureAvailable } from "@notesnook/common";
 import { ToastManager } from "../../services/event-manager";
-import PaywallSheet from "../../components/sheets/paywall";
 
 export const Reminders = ({
   navigation,
@@ -74,11 +73,7 @@ export const Reminders = ({
           if (!reminderFeature.isAllowed) {
             ToastManager.show({
               type: "info",
-              message: reminderFeature.error,
-              actionText: strings.upgrade(),
-              func: () => {
-                PaywallSheet.present(reminderFeature);
-              }
+              message: reminderFeature.error
             });
             return;
           }
@@ -99,16 +94,13 @@ export const Reminders = ({
             paragraph: strings.remindersEmpty(),
             button: strings.setReminder(),
             action: async () => {
-              const reminderFeature =
-                await isFeatureAvailable("activeReminders");
+              const reminderFeature = await isFeatureAvailable(
+                "activeReminders"
+              );
               if (!reminderFeature.isAllowed) {
                 ToastManager.show({
                   type: "info",
-                  message: reminderFeature.error,
-                  actionText: strings.upgrade(),
-                  func: () => {
-                    PaywallSheet.present(reminderFeature);
-                  }
+                  message: reminderFeature.error
                 });
                 return;
               }
@@ -124,11 +116,7 @@ export const Reminders = ({
             if (!reminderFeature.isAllowed) {
               ToastManager.show({
                 type: "info",
-                message: reminderFeature.error,
-                actionText: strings.upgrade(),
-                func: () => {
-                  PaywallSheet.present(reminderFeature);
-                }
+                message: reminderFeature.error
               });
               return;
             }

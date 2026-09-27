@@ -24,7 +24,6 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import { DraxProvider, DraxScrollView } from "react-native-drax";
 import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
-import PaywallSheet from "../../../components/sheets/paywall";
 import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
 import Paragraph from "../../../components/ui/typography/paragraph";
@@ -107,10 +106,7 @@ export const ConfigureToolbar = () => {
                     if (!customToolbarPresetFeature.isAllowed) {
                       ToastManager.show({
                         message: customToolbarPresetFeature.error,
-                        type: "info",
-                        actionText: strings.upgrade(),
-                        func: () =>
-                          PaywallSheet.present(customToolbarPresetFeature)
+                        type: "info"
                       });
                       return;
                     }

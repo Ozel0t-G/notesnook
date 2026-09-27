@@ -131,6 +131,7 @@ export const withTheme = (
           useThemeStore.setState({
             colorScheme: colorScheme as "light" | "dark"
           });
+          changeSystemBarColors();
         }
       });
       return () => {

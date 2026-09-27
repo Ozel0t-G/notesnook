@@ -3,6 +3,7 @@ import http from "../../utils/http.js";
 import hosts from "../../utils/constants.js";
 import Database from "../index.js";
 import {
+  assertBearerDestination,
   assertCredentialDestination,
   bindCredential
 } from "../../utils/credential-host-binding.js";
@@ -80,4 +81,33 @@ test("an explicit server URL trailing slash keeps the same backend identity", ()
       "https://api.veyran.northcore.space/users"
     )
   ).not.toThrow();
+});
+
+test("platform adapters cannot dispatch a bound bearer after a host switch", () => {
+  hosts.API_HOST = "https://api.veyran.northcore.space";
+  hosts.AUTH_HOST = "https://auth.veyran.northcore.space";
+  bindCredential("adapter-file-token", {
+    api: hosts.API_HOST,
+    auth: hosts.AUTH_HOST
+  });
+  const headers = { Authorization: "Bearer adapter-file-token" };
+  expect(() =>
+    assertBearerDestination(headers, `${hosts.API_HOST}/s3/multipart`)
+  ).not.toThrow();
+  hosts.API_HOST = "https://api.notesnook.com";
+  expect(() =>
+    assertBearerDestination(headers, `${hosts.API_HOST}/s3/multipart`)
+  ).toThrow(/Server settings changed/);
+});
+
+test("platform adapters reject absent and unverified bearers", () => {
+  expect(() =>
+    assertBearerDestination({}, "https://api.veyran.northcore.space/s3")
+  ).toThrow(/no verified account credential/);
+  expect(() =>
+    assertBearerDestination(
+      { Authorization: "Bearer unknown-adapter-token" },
+      "https://api.veyran.northcore.space/s3"
+    )
+  ).toThrow(/no verified server binding/);
 });

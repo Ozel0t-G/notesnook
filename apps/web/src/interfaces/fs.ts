@@ -21,7 +21,7 @@ import axios from "axios";
 import { AppEventManager, AppEvents } from "../common/app-events";
 import { StreamableFS } from "@notesnook/streamable-fs";
 import { NNCrypto } from "./nncrypto";
-import { hosts } from "@notesnook/core";
+import { hosts, assertBearerDestination } from "@notesnook/core";
 import { saveAs } from "file-saver";
 import { showToast } from "../utils/toast";
 import { db } from "../common/db";
@@ -50,6 +50,11 @@ import {
 import { logger } from "../utils/logger";
 import { newQueue } from "@henrygd/queue";
 import { strings } from "@notesnook/intl";
+import {
+  completeMultipartRequest,
+  headFileSizeRequest,
+  initiateMultipartRequest
+} from "./file-requests";
 
 export const ABYTES = 17;
 const CHUNK_SIZE = 512 * 1024;
@@ -300,6 +305,8 @@ async function singlePartUploadFile(
 ) {
   console.log("Streaming file upload!");
   const { url, headers, signal } = requestOptions;
+  const data = await fileHandle.toBlob();
+  assertBearerDestination(headers, url);
 
   const response = await axios.request({
     url,
@@ -308,7 +315,7 @@ async function singlePartUploadFile(
       ...headers,
       "Content-Type": ""
     },
-    data: await fileHandle.toBlob(),
+    data,
     signal,
     onUploadProgress: (ev) =>
       reportProgress(
@@ -341,17 +348,14 @@ async function multiPartUploadFile(
   const { uploadedChunks = [] } = additionalData;
   let { uploadedBytes = 0, uploadId = "" } = additionalData;
 
-  const initiateMultiPartUpload = await axios
-    .get(
-      `${hosts.API_HOST}/s3/multipart?name=${filename}&parts=${TOTAL_PARTS}&uploadId=${uploadId}`,
-      {
-        headers,
-        signal
-      }
-    )
-    .catch((e) => {
-      throw new WrappedError("Could not initiate multi-part upload.", e);
-    });
+  const initiateUrl = `${hosts.API_HOST}/s3/multipart?name=${filename}&parts=${TOTAL_PARTS}&uploadId=${uploadId}`;
+  const initiateMultiPartUpload = await initiateMultipartRequest(
+    initiateUrl,
+    headers,
+    signal
+  ).catch((e) => {
+    throw new WrappedError("Could not initiate multi-part upload.", e);
+  });
 
   if (initiateMultiPartUpload.data.error)
     throw new Error(initiateMultiPartUpload.data.error);
@@ -421,23 +425,20 @@ async function multiPartUploadFile(
   }
   await queue.done();
 
-  await axios
-    .post(
-      `${hosts.API_HOST}/s3/multipart`,
-      {
-        Key: filename,
-        UploadId: uploadId,
-        PartETags: uploadedChunks.sort((a, b) => a.PartNumber - b.PartNumber)
-      },
-      {
-        headers,
-        signal
-      }
-    )
-    .catch(async (e) => {
-      await resetUpload(fileHandle);
-      throw new WrappedError("Could not complete multi-part upload.", e);
-    });
+  const completeUrl = `${hosts.API_HOST}/s3/multipart`;
+  await completeMultipartRequest(
+    completeUrl,
+    {
+      Key: filename,
+      UploadId: uploadId,
+      PartETags: uploadedChunks.sort((a, b) => a.PartNumber - b.PartNumber)
+    },
+    headers,
+    signal
+  ).catch(async (e) => {
+    await resetUpload(fileHandle);
+    throw new WrappedError("Could not complete multi-part upload.", e);
+  });
 
   return true;
 }
@@ -501,6 +502,7 @@ async function downloadFile(
       { type: "download", hash: filename }
     );
 
+    assertBearerDestination(headers, url);
     const signedUrlResponse = await axios
       .get(url, { headers, responseType: "text" })
       .catch((e) => {
@@ -664,6 +666,7 @@ async function deleteFile(
 
   try {
     const { url, headers } = requestOptions;
+    assertBearerDestination(headers, url);
     const response = await axios.delete(url, {
       headers: headers
     });
@@ -688,6 +691,7 @@ async function bulkDeleteFiles(
 
   try {
     const { url, headers } = requestOptions;
+    assertBearerDestination(headers, url);
     const response = await axios.post(url, { names: filenames }, { headers });
 
     const result = isSuccessStatusCode(response.status);
@@ -710,10 +714,7 @@ export async function getUploadedFileSize(filename: string) {
   try {
     const url = `${hosts.API_HOST}/s3?name=${filename}`;
     const token = await db.tokenManager.getAccessToken();
-
-    const attachmentInfo = await axios.head(url, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const attachmentInfo = await headFileSizeRequest(url, token);
 
     const contentLength = parseInt(
       attachmentInfo.headers["x-object-size"] ??

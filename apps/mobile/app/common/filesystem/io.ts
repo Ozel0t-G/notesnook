@@ -22,7 +22,8 @@ import {
   FileEncryptionMetadataWithHash,
   FileEncryptionMetadataWithOutputType,
   Output,
-  RequestOptions
+  RequestOptions,
+  assertBearerDestination
 } from "@notesnook/core";
 import { DataFormat, SerializedKey } from "@notesnook/crypto";
 import { Platform } from "react-native";
@@ -84,7 +85,10 @@ export async function readEncrypted<TOutputFormat extends DataFormat>(
         );
       }
     } catch (lookupError) {
-      DatabaseLogger.error(lookupError, "Could not check if attachment is uploaded");
+      DatabaseLogger.error(
+        lookupError,
+        "Could not check if attachment is uploaded"
+      );
     }
     DatabaseLogger.error(e);
   }
@@ -166,6 +170,7 @@ export async function deleteFile(
   const { url, headers } = requestOptions;
 
   try {
+    assertBearerDestination(headers, url);
     const response = await RNFetchBlob.fetch("DELETE", url, headers);
     const status = response.info().status;
     const ok = status >= 200 && status < 300;
@@ -195,6 +200,7 @@ export async function bulkDeleteFiles(
 
   try {
     const { url, headers } = requestOptions;
+    assertBearerDestination(headers, url);
     const response = await fetch(url, {
       method: "POST",
       headers: {

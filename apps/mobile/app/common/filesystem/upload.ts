@@ -17,7 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { isImage, RequestOptions, hosts } from "@notesnook/core";
+import {
+  isImage,
+  RequestOptions,
+  hosts,
+  assertBearerDestination
+} from "@notesnook/core";
 import { PermissionsAndroid, Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import { ToastManager } from "../../services/event-manager";
@@ -37,6 +42,10 @@ import { useUserStore } from "../../stores/use-user-store";
 import { sleep } from "../../utils/time";
 import { isFeatureAvailable } from "@notesnook/common";
 import { strings } from "@notesnook/intl";
+import {
+  completeMultipartRequest,
+  initiateMultipartRequest
+} from "./file-requests";
 
 // Upload constants
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -56,7 +65,7 @@ async function initiateMultipartUpload(
   const totalParts = Math.ceil(fileSize / CHUNK_SIZE);
 
   const url = `${hosts.API_HOST}/s3/multipart?name=${filename}&parts=${totalParts}&uploadId=`;
-  const response = await fetch(url, { headers });
+  const response = await initiateMultipartRequest(url, headers);
 
   if (!response.ok) {
     throw new Error(
@@ -142,18 +151,19 @@ async function multipartUploadFile(
       `Multipart upload completed for ${filename} with upload ID: ${uploadId}`
     );
 
-    const response = await fetch(`${hosts.API_HOST}/s3/multipart`, {
-      method: "POST",
-      body: JSON.stringify({
+    const completeUrl = `${hosts.API_HOST}/s3/multipart`;
+    const response = await completeMultipartRequest(
+      completeUrl,
+      {
         Key: filename,
         UploadId: uploadId,
         PartETags: result.etags.map((etag, index) => ({
           partNumber: index + 1,
           etag: etag
         }))
-      }),
-      headers: { ...headers, "Content-Type": "application/json" }
-    });
+      },
+      headers
+    );
 
     return response;
   } catch (error) {
@@ -278,6 +288,7 @@ export async function uploadFile(
       DatabaseLogger.info(
         `Using single-part upload for file: ${filename} (${fileInfo.size} bytes)`
       );
+      assertBearerDestination(headers, url);
       const upload = Upload.create({
         customUploadId: filename,
         path: Platform.OS === "ios" ? "file://" + fileInfo.path : fileInfo.path,

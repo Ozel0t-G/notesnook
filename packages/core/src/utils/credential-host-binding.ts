@@ -56,3 +56,15 @@ export function assertCredentialDestination(
       "Server settings changed while using account credentials. Start again."
     );
 }
+
+/** Guard a platform adapter request that carries the Core-issued bearer. */
+export function assertBearerDestination(
+  headers: { Authorization?: string; authorization?: string } | undefined,
+  url: string
+) {
+  const authorization = headers?.Authorization ?? headers?.authorization;
+  const token = /^Bearer (\S+)$/i.exec(authorization || "")?.[1];
+  if (!token)
+    throw new Error("File request has no verified account credential.");
+  assertCredentialDestination(token, url);
+}

@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 export * from "./types.js";
 export * from "./interfaces.js";
 export * from "./utils/index.js";
+export { assertBearerDestination } from "./utils/credential-host-binding.js";
 export * from "./content-types/index.js";
 export * from "./common.js";
 export { default as Database } from "./api/index.js";

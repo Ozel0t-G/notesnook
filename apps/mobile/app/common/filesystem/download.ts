@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { RequestOptions } from "@notesnook/core";
+import { RequestOptions, assertBearerDestination } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import NetInfo from "@react-native-community/netinfo";
 import RNFetchBlob from "react-native-blob-util";
@@ -82,6 +82,7 @@ export async function downloadFile(
       throw new Error(error);
     }
 
+    assertBearerDestination(headers, url);
     const resolveUrlResponse = await fetch(url, {
       method: "GET",
       headers

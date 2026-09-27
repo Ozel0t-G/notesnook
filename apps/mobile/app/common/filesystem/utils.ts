@@ -22,6 +22,7 @@ import { Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import * as ScopedStorage from "react-native-scoped-storage";
 import { DatabaseLogger, db } from "../database";
+import { headFileSizeRequest } from "./file-requests";
 
 export const ABYTES = 17;
 export const cacheDirOld = RNFetchBlob.fs.dirs.CacheDir;
@@ -123,10 +124,7 @@ export async function getUploadedFileSize(hash: string, retry = 0) {
   try {
     const url = `${hosts.API_HOST}/s3?name=${hash}`;
     const token = await db.tokenManager.getAccessToken();
-    const attachmentInfo = await fetch(url, {
-      method: "HEAD",
-      headers: { Authorization: `Bearer ${token}` }
-    });
+    const attachmentInfo = await headFileSizeRequest(url, token);
 
     const fileSize = getFileSizeFromHeaders(attachmentInfo.headers);
 
@@ -162,10 +160,10 @@ export async function checkUpload(
     size === 0
       ? `File size is 0.`
       : size === -1
-        ? `File verification check failed.`
-        : expectedSize !== decryptedLength
-          ? `File size mismatch. Expected ${size} bytes but got ${decryptedLength} bytes.`
-          : undefined;
+      ? `File verification check failed.`
+      : expectedSize !== decryptedLength
+      ? `File size mismatch. Expected ${size} bytes but got ${decryptedLength} bytes.`
+      : undefined;
   if (error) throw new Error(error);
 }
 

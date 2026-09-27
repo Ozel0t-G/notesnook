@@ -16,7 +16,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-import React from "react";
 import { strings } from "@notesnook/intl";
 import { AuthMode } from "../components/auth/common";
 import { verifyUser } from "../screens/settings/functions";
@@ -26,13 +25,12 @@ import {
   useMessageStore
 } from "../stores/use-message-store";
 import { eOpenRecoveryKeyDialog } from "../utils/events";
-import { eSendEvent, presentSheet } from "./event-manager";
+import { eSendEvent } from "./event-manager";
 import Navigation from "./navigation";
 import PremiumService from "./premium";
 import SettingsService from "./settings";
-import { Update } from "../components/sheets/update";
-import { GithubVersionInfo } from "../utils/github-version";
-import { CheckVersionResponse } from "react-native-check-version";
+import type { GithubVersionInfo } from "../utils/github-version";
+import type { CheckVersionResponse } from "react-native-check-version";
 
 const APP_MESSAGES: Message[] = [
   {
@@ -117,26 +115,10 @@ export function clearMessage() {
   });
 }
 
-const updateAvailableMessage = (
-  version: GithubVersionInfo | CheckVersionResponse
-) =>
-  ({
-    visible: true,
-    message: strings.newUpdateMessage(),
-    actionText: strings.newUpdateActionText(),
-    onPress: () => {
-      presentSheet({
-        component: (ref) => <Update version={version} fwdRef={ref} />
-      });
-    },
-    data: {},
-    icon: "update",
-    type: "normal",
-    id: "app-update"
-  } as Message);
-
 export function setUpdateAvailableMessage(
   version: GithubVersionInfo | CheckVersionResponse
 ) {
-  useMessageStore.getState().setMessage(updateAvailableMessage(version));
+  // Until VeyraN has an owned release channel, neither advertise nor open an
+  // upstream app update. Keep this entry point inert for older callers.
+  void version;
 }

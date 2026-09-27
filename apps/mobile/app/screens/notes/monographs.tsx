@@ -41,6 +41,7 @@ export const Monographs = ({
       route={route}
       get={Monographs.get}
       placeholder={MONOGRAPH_PLACEHOLDER_DATA}
+      onPressFloatingButton={() => {}}
       canGoBack={route.params?.canGoBack}
       focusControl={true}
     />

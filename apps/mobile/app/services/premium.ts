@@ -42,7 +42,10 @@ async function setPremiumStatus() {
   }
 }
 
-async function loadProductsAndSubs() {
+async function loadProductsAndSubs(): Promise<{
+  subs: RNIap.Subscription[];
+  products: RNIap.Product[];
+}> {
   return { subs: [], products: [] };
 }
 

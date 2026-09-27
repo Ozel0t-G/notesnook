@@ -1148,9 +1148,33 @@ describe("standalone Tasks", () => {
     expect(await db.tasks.list()).toEqual([]);
   });
 
+  test("opening Tasks keeps the default list virtual until a mutation", async () => {
+    const db = await databaseTest();
+    const defaultList = await db.taskLists.default();
+    expect(
+      (await db.taskLists.list()).some((list) => list.id === defaultList.id)
+    ).toBe(true);
+    expect(db.taskLists.getSync(defaultList.id)?.id).toBe(defaultList.id);
+    expect(db.settings.collection.items()).toEqual([]);
+    expect((await db.user.backendAffinity.check()).status).toBe("no-user");
+    await expect(
+      db.user.backendAffinity.assertAllowed("Creating an account")
+    ).resolves.toMatchObject({ status: "no-user" });
+    await expect(
+      db.user.backendAffinity.assertAllowed("Signing in")
+    ).resolves.toMatchObject({ status: "no-user" });
+
+    const task = await db.tasks.create({ title: "First Task" });
+    expect(task.listId).toBe(defaultList.id);
+    expect(
+      db.taskLists.listSync().some((list) => list.id === defaultList.id)
+    ).toBe(true);
+    expect((await db.user.backendAffinity.check()).status).toBe("unknown");
+  });
+
   test("future default-list schema is not overwritten by this client", async () => {
     const db = await databaseTest();
-    const list = await db.taskLists.default();
+    const list = await db.taskLists.ensureDefaultPersisted();
     const carrier = db.settings.collection
       .items()
       .find((item) => item.key === `appleTasks:v1:list:${list.id}`)!;

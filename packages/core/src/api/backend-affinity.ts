@@ -432,6 +432,11 @@ export class BackendAffinity {
     // credentials issued by another backend.
     const token = await this.db.kv().read("token");
     const stored = await this.get();
+    // A host record proves where traffic used to go, not which account owns
+    // orphaned local records. Never let a new account claim them after a
+    // partial logout or cache loss, even when the endpoint still matches.
+    if (!user && (token || (await this.hasLocalAccountData())))
+      return { status: "unknown", configured, evidence: "none" };
     if (stored) {
       const identity = { api: stored.api, auth: stored.auth };
       const fields = diff(identity, configured);
@@ -458,10 +463,7 @@ export class BackendAffinity {
 
     // Even a persisted interim MFA token has an unknown issuing server when
     // there is no affinity record. Fresh MFA credentials stay only in memory.
-    if (!user && !token)
-      return (await this.hasLocalAccountData())
-        ? { status: "unknown", configured, evidence: "none" }
-        : { status: "no-user", configured, evidence: "none" };
+    if (!user) return { status: "no-user", configured, evidence: "none" };
 
     // An account with no record and no persisted configuration. Fail safe.
     return { status: "unknown", configured, evidence: "none" };

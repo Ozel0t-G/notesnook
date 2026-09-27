@@ -729,10 +729,10 @@ describe("token refresh is blocked across a boundary", () => {
     const tokenManager = (user as unknown as { tokenManager: TokenManager })
       .tokenManager;
     await expect(tokenManager.getToken(false, false)).rejects.toThrow(
-      /different server/
+      /cannot be attributed/
     );
     await expect(tokenManager._refreshToken(true)).rejects.toThrow(
-      /different server/
+      /cannot be attributed/
     );
     expect(mockPost).not.toHaveBeenCalled();
   });
@@ -1035,11 +1035,7 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
   });
 
   test("a failed intent write prevents every local account mutation", async () => {
-    const priorToken = { access_token: "original", refresh_token: "prior" };
-    const { user, kv, storageWrite, register } = harness({
-      token: priorToken,
-      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
-    });
+    const { user, kv, storageWrite, register } = harness({});
     mockPost.mockResolvedValue({ access_token: "signup-access" });
     mockGet.mockResolvedValue(serverUser("brand-new"));
     storageWrite.mockRejectedValueOnce(new Error("intent storage unavailable"));
@@ -1047,11 +1043,9 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
       "intent storage unavailable"
     );
-    expect(kv.get("token")).toEqual(priorToken);
+    expect(kv.get("token")).toBeUndefined();
     expect(kv.has("user")).toBe(false);
-    expect(kv.get("backendAffinity")).toEqual(
-      affinityRecord(VEYRAN.api, VEYRAN.auth)
-    );
+    expect(kv.get("backendAffinity")).toBeUndefined();
     expect(register).not.toHaveBeenCalled();
   });
 
@@ -1074,13 +1068,8 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     expect(await reopened.backendAffinity.isBlocked()).toBe(true);
   });
 
-  test("a late signup failure restores the original sync and device state", async () => {
-    const { user, kv, register, unregister } = harness({
-      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
-      lastSynced: 789,
-      deviceId: "previous-device",
-      cryptoKey: "original-key"
-    });
+  test("a late signup failure restores an empty local session", async () => {
+    const { user, kv, register, unregister } = harness({});
     mockPost.mockResolvedValue({
       access_token: "signup-token",
       refresh_token: "signup-refresh",
@@ -1097,14 +1086,12 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
       "device registration interrupted"
     );
     expect(unregister).toHaveBeenCalledOnce();
-    expect(kv.get("lastSynced")).toBe(789);
-    expect(kv.get("deviceId")).toBe("previous-device");
-    expect(kv.get("cryptoKey")).toBe("original-key");
+    expect(kv.get("lastSynced")).toBeUndefined();
+    expect(kv.get("deviceId")).toBeUndefined();
+    expect(kv.get("cryptoKey")).toBeUndefined();
     expect(kv.has("user")).toBe(false);
     expect(kv.has("token")).toBe(false);
-    expect(kv.get("backendAffinity")).toEqual(
-      affinityRecord(VEYRAN.api, VEYRAN.auth)
-    );
+    expect(kv.get("backendAffinity")).toBeUndefined();
   });
 });
 
@@ -1408,6 +1395,7 @@ describe("three-step login preserves the original session", () => {
 
   test("a server change during MFA stops before presenting the temporary credential", async () => {
     const { user, kv } = harness({
+      storedUser: serverUser("same-account"),
       token: originalToken,
       affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
     });
@@ -1731,6 +1719,7 @@ describe("three-step login preserves the original session", () => {
 
   test("can retry after failure without carrying a temporary identity", async () => {
     const { user, kv } = harness({
+      storedUser: serverUser("same-account"),
       token: originalToken,
       affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
     });
@@ -1752,6 +1741,7 @@ describe("three-step login preserves the original session", () => {
 
   test("an incorrect password can be retried without repeating MFA or replacing the old session", async () => {
     const { user, kv } = harness({
+      storedUser: serverUser(),
       token: originalToken,
       affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
     });
@@ -1961,6 +1951,34 @@ describe("uncached local data cannot be silently bound by signup or login", () =
       user.authenticatePassword("someone@example.test", "password")
     ).rejects.toThrow(/cannot be attributed/);
     expect(kv.get("backendAffinity")).toBeUndefined();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("matching host affinity still refuses signup and login for orphaned notes", async () => {
+    const signup = harness({
+      localContent: true,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
+    await expect(
+      signup.user.signup("someone@example.test", "password")
+    ).rejects.toThrow(/cannot be attributed/);
+    const login = harness({
+      localContent: true,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
+    await expect(
+      login.user.authenticateEmail("someone@example.test")
+    ).rejects.toThrow(/cannot be attributed/);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("matching saved server hosts still refuse uncached local data", async () => {
+    setPersistedHostOverrides({ API_HOST: VEYRAN.api, AUTH_HOST: VEYRAN.auth });
+    const profile = harness({ localContent: true });
+    await expect(
+      profile.user.signup("someone@example.test", "password")
+    ).rejects.toThrow(/cannot be attributed/);
+    expect(profile.kv.get("backendAffinity")).toBeUndefined();
     expect(mockPost).not.toHaveBeenCalled();
   });
 });

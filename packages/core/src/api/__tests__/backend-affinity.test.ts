@@ -234,7 +234,7 @@ describe("check", () => {
     expect(kv.get("backendAffinity")).toBeUndefined();
   });
 
-  test("a token without cached user still obeys stored backend affinity", async () => {
+  test("a token without cached user cannot establish account identity even with stored affinity", async () => {
     const { db, kv } = fakeDb({
       affinity: record(NOTESNOOK.api, NOTESNOOK.auth)
     });
@@ -243,8 +243,7 @@ describe("check", () => {
       refresh_token: "legacy-refresh"
     });
     const result = await new BackendAffinity(db).check();
-    expect(result.status).toBe("mismatch");
-    expect(result.stored).toEqual(NOTESNOOK);
+    expect(result.status).toBe("unknown");
   });
 
   test("a token without cached user or provenance fails closed", async () => {
@@ -257,6 +256,26 @@ describe("check", () => {
     const { db, kv } = fakeDb({});
     kv.set("token", { refresh_token: "unattributed-refresh" });
     expect((await new BackendAffinity(db).check()).status).toBe("unknown");
+  });
+
+  test("matching host affinity cannot claim orphaned local notes", async () => {
+    const { db, kv } = fakeDb({
+      affinity: record(VEYRAN.api, VEYRAN.auth),
+      localRow: "notes"
+    });
+    const boundary = new BackendAffinity(db);
+    expect((await boundary.check()).status).toBe("unknown");
+    expect((await boundary.record()).ok).toBe(false);
+    expect(kv.get("backendAffinity")).toEqual(record(VEYRAN.api, VEYRAN.auth));
+  });
+
+  test("matching saved server configuration cannot claim orphaned settings", async () => {
+    setPersistedHostOverrides({ API_HOST: VEYRAN.api, AUTH_HOST: VEYRAN.auth });
+    const { db, kv } = fakeDb({ localRow: "settings" });
+    const boundary = new BackendAffinity(db);
+    expect((await boundary.check()).status).toBe("unknown");
+    expect((await boundary.record()).ok).toBe(false);
+    expect(kv.get("backendAffinity")).toBeUndefined();
   });
 
   test("a persisted MFA challenge without provenance also fails closed", async () => {

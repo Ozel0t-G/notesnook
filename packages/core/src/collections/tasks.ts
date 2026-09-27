@@ -529,7 +529,12 @@ export class TaskLists extends TaskRecordStore {
   }
 
   getSync(id: string): TaskList | undefined {
-    return this.getRecord<TaskList>("list", id);
+    const existing = this.getRecord<TaskList>("list", id);
+    if (existing || id !== DEFAULT_LIST_ID) return existing;
+    const recordKey = settingId(key("list", DEFAULT_LIST_ID));
+    return this.db.settings.collection.records([recordKey])[recordKey]
+      ? undefined
+      : this.virtualDefault();
   }
 
   async list(): Promise<TaskList[]> {
@@ -552,19 +557,32 @@ export class TaskLists extends TaskRecordStore {
       throw new Error(
         "The default Task list has an unsupported schema version."
       );
-    const now = Date.now();
-    const value: TaskList = {
+    return this.virtualDefault();
+  }
+
+  private virtualDefault(): TaskList {
+    return {
       id: DEFAULT_LIST_ID,
       name: strings.reminders(),
       sortOrder: 0,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: 0,
+      updatedAt: 0,
       schemaVersion: VERSION,
       symbol: DEFAULT_TASK_LIST_SYMBOL,
       color: DEFAULT_TASK_LIST_COLOR
     };
-    await this.save("list", value);
-    return value;
+  }
+
+  /** A read of Tasks never writes; actual mutations can materialize the list. */
+  async ensureDefaultPersisted(): Promise<TaskList> {
+    const value = await this.default();
+    if (!this.getRecord<TaskList>("list", DEFAULT_LIST_ID))
+      await this.save("list", {
+        ...value,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+    return this.getRecord<TaskList>("list", DEFAULT_LIST_ID)!;
   }
 
   async create(input: TaskListInput | string): Promise<TaskList> {
@@ -591,7 +609,7 @@ export class TaskLists extends TaskRecordStore {
   }
 
   async update(id: string, patch: Partial<TaskListInput>): Promise<TaskList> {
-    const old = this.getRecord<TaskList>("list", id);
+    const old = this.getSync(id);
     if (!old) throw new Error("Task list not found.");
     const name = patch.name === undefined ? old.name : patch.name.trim();
     if (!name) throw new Error("Task list name is required.");
@@ -712,6 +730,8 @@ export class Tasks extends TaskRecordStore {
     return this.createMutex.runExclusive(async () => {
       if (this.recordExists(id))
         throw new Error("A Task with this ID already exists or was deleted.");
+      if (listId === DEFAULT_LIST_ID)
+        await this.db.taskLists.ensureDefaultPersisted();
       await this.save("task", value);
       return value;
     });
@@ -809,6 +829,8 @@ export class Tasks extends TaskRecordStore {
     )
       value.reminderLeadMinutes = reminderLeadMinutes(value);
     validateTask(value);
+    if (patch.listId === DEFAULT_LIST_ID)
+      await this.db.taskLists.ensureDefaultPersisted();
     await this.save("task", value);
     return value;
   }
@@ -1006,7 +1028,10 @@ export class Tasks extends TaskRecordStore {
   private async repairListReferencesUnsafe(): Promise<void> {
     const tasks = this.listSync();
     if (!tasks.length) return;
-    const lists = new Set(this.db.taskLists.listSync().map((list) => list.id));
+    const lists = new Set([
+      DEFAULT_LIST_ID,
+      ...this.db.taskLists.listSync().map((list) => list.id)
+    ]);
     if (tasks.every((task) => lists.has(task.listId))) return;
     const fallback = await this.db.taskLists.default();
     for (const task of tasks) {

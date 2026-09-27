@@ -524,7 +524,6 @@ function AccountRecovery(props: BaseAuthComponentProps<"recover">) {
         }
 
         const url = await db.user.recoverAccount(form.email.toLowerCase());
-        console.log(url);
         if (IS_TESTING) {
           window.open(url, "_self");
           return;

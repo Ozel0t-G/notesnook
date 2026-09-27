@@ -1,5 +1,46 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
+## September 27 late production QA — current status
+
+**Migration status remains FAIL; no client release is authorized.** This
+section supersedes the older production continuation immediately below. The
+correct mailbox is `ozel0t31820@gmail.com`; the user approved a disposable
+plus alias in that inbox. The alias account was created remotely once. An
+initial signup/login failure was traced to Sync's missing
+`NOTESNOOK_SENDER_EMAIL`, which broke authenticated `GET /users`. Private infra
+commit `d5dd185` and a Sync-only root-only environment repair fixed the issue;
+the existing Sync image was reused, the old environment and generator were
+preserved for rollback, and no account reset was performed.
+
+Fresh Web and macOS VeyraN email-MFA/password logins now work. Web reload and
+full macOS process quit/relaunch preserve the sessions. Web-created QA Note,
+Notebook, and Tag appeared on the authenticated Mac. Mac title/body edits
+appeared in the open Web client without manual reload. Mac archive, Web
+restore, Web Trash, and Mac restore propagated in both directions. Mac Tag
+removal required Web reload before the editor reflected it. A 50-byte file
+uploaded through the Mac editor, appeared in Web, and downloaded there with
+matching SHA-256. A **new** post-rollout Share opened anonymously with VeyraN
+branding and OG metadata; after unpublish it returned a VeyraN 404. Two new
+VeyraN MFA messages arrived in Apple Mail. Mac Tasks UI created a QA List and
+Task, edited flag/priority/title, and completed it. A second Tasks UI client
+was not available: current Web has no standalone Tasks UI and the existing
+iPhone simulator is headless to Computer Use. These QA items were disposable;
+the Note was restored from Trash, and the public link was revoked.
+
+Current production images are Web `92fcae4f`, Share `686cf848`, Identity
+`19c6c51`, Sync `86547b47`, Events `a06ecfaa`; final container/TLS health
+checks passed. The no-key/keyed recovery routes remain 410, normal password
+change 503, and Identity email change 503 before unsafe mutations. Natural
+token refresh, complete authenticated network-domain audit, two-client UI
+Task sync, final existing-browser upgrade, mobile authenticated UI, physical
+Pencil, and real Skiff-image import remain unverified. NuGet advisory
+remediation remains open; no packages were changed during QA. See the current
+[migration report](artifacts/veyran-product-independence-migration.md) for
+per-gate evidence and the private [production runbook]
+(/Users/ozel0t/Documents/VeyraN/infra/RELEASE_2026-09-27.md) for the exact
+Sync config rollback. No Notesnook `main` merge, TestFlight upload, App Store
+release, or credential disclosure occurred.
+
 ## September 27 production continuation — current handoff
 
 The user's private VeyraN Web `92fcae4f`, Share `db901ee0`, Identity/Events `a06ecfaa`, and Sync `86547b47` images are deployed on the actual OVH/Tailscale production VPS. All five are healthy; public Auth/API/Events/Share/Web health is 200, the Docker exposure allowlist passed, and OIDC discovery advertises HTTPS VeyraN Auth endpoints. A fresh Safari Web client showed local VeyraN Light/Dark and Classic Light/Dark; its theme switch produced zero network requests in Web Inspector. The existing Chrome profile advanced from the pre-rollout asset to `index-D43kZFAW.js` without clearing local storage; the latest Web HTML serves `index-BTsT9Rzk.js`. An isolated fresh Chrome profile installed all 56 current service-worker assets and made only VeyraN Web/API requests on startup. The optional Skiff image importer no longer sends images through `cors.notesnook.com` in the built chunk; it uses direct HTTPS without credentials, so source-host CORS denial can omit an imported image. Recovery, MFA, and failed-login-warning messages in the previously authorized Apple Mail inbox displayed VeyraN sender, text, and links. Public Share returns a real HTTP 404 with VeyraN branding; its OG JPEG and HTTPS redirect work. The full production evidence and exact source commits are at the top of [the migration report](artifacts/veyran-product-independence-migration.md).

@@ -1,5 +1,73 @@
 # VeyraN product independence migration — release gate open
 
+## Live production QA continuation — 2026-09-27, 21:10 CEST
+
+**Verdict: FAIL / release gate open.** This section supersedes the earlier
+production follow-up below. The corrected mailbox is
+`ozel0t31820@gmail.com`; the user approved a Gmail plus alias for disposable
+QA, `ozel0t31820+veyranqa20260927@gmail.com`, delivered into that mailbox.
+No password, MFA code, token, or token-bearing network capture is retained.
+
+The first alias signup created a remote account, but both signup and login
+failed before local session commit. Sanitized Sync logs identified the exact
+fault: `GET /users` initialized `Streetwriters.Common.Clients`, which threw
+`Sender email is required.` The Sync role lacked `NOTESNOOK_SENDER_EMAIL`.
+Private infra commit `d5dd185` adds the public VeyraN sender to the reusable
+Sync environment generator and documents the rollout. On production, the old
+root-only generator and Sync env were preserved, exactly one Sync env key was
+added, Compose validation passed, and only Sync was recreated with the same
+`veyran/sync:86547b47` image. The new Sync container became healthy; no app
+image, database, object store, or account credential changed. The [runbook]
+(/Users/ozel0t/Documents/VeyraN/infra/RELEASE_2026-09-27.md) gives the
+rollback files and command. The account was **not** signed up twice.
+
+| Acceptance gate | Result | Live evidence / exact limit |
+| --- | --- | --- |
+| Web login, fresh token, profile | **PASS** | Fresh alias email MFA and password login reached `/notes` after the Sync fix. The previously failing authenticated profile fetch succeeded and data calls worked. Raw tokens were neither exported nor stored. |
+| Session continuity | **PASS** | Web reload remained authenticated. The configured macOS VeyraN client was fully quit and relaunched; it remained logged in with the same QA account and synced Note. Physical-device reboot was not tested. |
+| Two real UI clients: Note and Notebook | **PASS** | Production Chrome Web created a uniquely marked Note and Notebook. The authenticated macOS app downloaded title, body, Notebook, and Tag. Mac title/body edits appeared in the already open Web client without manual reload. |
+| Tag round trip | **PARTIAL PASS** | Web-created Tag appeared on Mac; removing it on Mac reached Web after Web reload, but the Web editor showed the old tag until then. This path is refresh-required. |
+| Archive/restore/trash | **PASS** | Mac archive appeared in Web; Web restore appeared in Mac. Web moved only the QA Note to Trash; Mac showed it and restored it. Both then showed one active Note and empty Trash. No permanent deletion occurred. |
+| UI attachment | **PASS** | Mac editor uploaded a disposable 50-byte text file. Web displayed its filename/size and downloaded it through the UI. Original and download SHA-256: `29477aa919ce5749fe43a1f43dda662938d84cf0a4c286cc02e3d8dbbd64f8dd`. The final storage destination host was not independently captured. |
+| New public share | **PASS** | A new link on `share.veyran.northcore.space` opened anonymously, displayed the QA Note with VeyraN branding, and supplied VeyraN OG site name/image URL. After unpublishing, the same URL showed VeyraN 404 without content. Streetwriters appears only as Open Source copyright attribution. |
+| Tasks UI | **PARTIAL PASS** | macOS UI created a QA List and flagged high-priority Task, changed its title/priority to Medium, and completed it. No second compatible *UI* client was available: current Web has no standalone Tasks UI and the booted iPhone simulator is headless to Computer Use. Earlier Core-to-Core sync remains a baseline, not this product gate. |
+| Events/realtime | **PARTIAL PASS** | The Web Note title/body and archive state updated while the Mac changed them, without manual Web reload. Tag removal required reload. Transport-level events versus another automatic refresh mechanism was not captured, so no blanket realtime PASS is claimed. |
+| Authenticated runtime domains | **PARTIAL PASS** | Web/Mac login and sync used configured VeyraN Auth/API/Events/Share URLs; the new share and OG image used the VeyraN Share host. No Notesnook hosted request was observed in the tested UI, but a complete sanitized network-domain capture for token refresh, attachment presign/storage, and Events frames is still absent. The desktop `app.notesnook.com` URL identifies packaged local Electron assets. |
+| OIDC/refresh | **PARTIAL PASS** | Public OIDC discovery advertises HTTPS VeyraN issuer/endpoints; fresh Web and Mac logins and session persistence worked. A natural token-refresh event was not observed, and raw token claims were not inspected. Legacy `client_id=notesnook` is internal protocol compatibility. |
+| Email/Share branding | **PASS for tested paths** | Two new alias MFA messages arrived in Apple Mail with VeyraN sender, subject, body, and VeyraN link. New share/view/revocation branding passed. Identity logs record an optional OpenPGP private-key lookup warning; source catches it and sends unsigned mail, and both tested messages arrived. Signing remains unresolved. |
+| Recovery, normal password change, email change | **FAIL: guarded availability** | Sync no-key/keyed reset remains 410, authenticated normal password change remains 503, and Identity email change is guarded at 503. These fail before known non-atomic cross-service key/account mutations. No destructive reset or password/email change was performed. An atomic or safely repeatable E2EE-aware contract is still required. |
+| Mobile UI, Pencil, upgrade, optional Skiff | **NOT TESTED in this continuation** | VeyraN 3.4.16 (17) was installed and launched on a booted iOS 27 simulator, showing first-run onboarding, but this Xcode beta exposes only a headless simulator to Computer Use. The existing-browser final Web asset/service-worker upgrade and real Skiff image import were not observed. No physical iPad/Pencil was available. Existing builds and local theme tests remain prior evidence. |
+
+**Production status after repair.** Web `92fcae4f`, Share `686cf848`, Identity
+`19c6c51`, Sync `86547b47`, and Events `a06ecfaa` were healthy in the final
+read-only VPS audit; Mongo, MinIO, and Traefik were healthy. Public Web,
+Share, Auth/API health, Events version, and MinIO health returned 200 with
+valid TLS. Protected API/SSE routes returned 401 without credentials. OIDC
+issuer is `https://auth.veyran.northcore.space`. The optional email signing
+warning and one canceled Events task were observed; neither invalidates the
+delivered QA messages or demonstrated Note sync.
+
+**Security assessment.** The NuGet audit found reachable legacy package risk,
+including API MessagePack 2.5.187 on the authenticated SignalR hub (multiple
+advisories, including [GHSA-vh6j-jc39-fggf](https://github.com/advisories/GHSA-vh6j-jc39-fggf)),
+MailKit/MimeKit 4.9.0 on Identity email
+([MailKit](https://github.com/advisories/GHSA-9j88-vvj5-vhgr),
+[MimeKit](https://github.com/advisories/GHSA-g7hc-96xr-gvvx)), and Scriban
+5.12.1 parsing repository-controlled templates. AngleSharp 1.3.0 is flagged,
+but its Monograph sanitizer path returns before parsing under this production
+`SELF_HOSTED=1` configuration. Legacy Kestrel.Core 2.2.0 is flagged; the
+loaded server assembly in the running .NET 9 image was not confirmed. A
+compatibility-tested package/SDK upgrade and deployed-image inventory are
+separate remediation work; no dependency was blindly changed during QA.
+
+**Release recommendation.** Do not merge to Notesnook `main`, upload
+TestFlight, or publish a client. Authenticated Note/Notebook, archive/trash,
+attachment, and new-share paths now have real two-client or anonymous UI
+proof. Product readiness remains blocked by unavailable safe account-change
+contracts and lacks two-client UI Task proof, complete refresh/domain evidence,
+and mobile hardware/runtime QA. Keep the migration marked FAIL until those
+gates are resolved or explicitly accepted as non-release-blocking.
+
 ## Production follow-up, 2026-09-27 (current)
 
 **Overall: FAIL / release gate remains open.** The production Web, Auth/API/Events, and public Share services were changed under the user's explicit VeyraN deployment authorization. Keyed/no-key recovery and normal password change are now fail-closed at the server boundary because the existing cross-service password/key write order can strand encrypted data. This protects against the known partial-write paths but makes those functions unavailable until a durable replacement exists. Full authenticated two-client end-to-end proof is also incomplete. This section supersedes the pre-rollout production assertions below. The migration heartbeat remains active.

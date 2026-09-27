@@ -349,3 +349,22 @@ signed Claude commits remain intact; this pass continues their work.
   dependency artifacts in this isolated worktree; those temporary links were
   removed. Prettier and `git diff --check` pass. Runtime browser screenshots,
   account flows and backend affinity remain integration gates.
+
+## Reachable legacy copy follow-up (2026-09-27)
+
+- The Web import Settings label and heading now say `Import notes`; existing
+  provider names, imported formats and data paths are unchanged. The importer
+  error and provider selector no longer direct VeyraN users to the upstream
+  issue tracker, since no VeyraN support destination is configured.
+- Web and mobile Wrapped surfaces use VeyraN copy. The Web beta welcome,
+  insecure-context error and newly exported 2FA recovery files use VeyraN.
+  Existing saved recovery data and authenticator state are unaffected.
+- The English and pseudo-locale catalogs were extracted and compiled again;
+  manually added Apple navigation messages remain. The compiled English
+  catalog contains `Import notes` and no `Notesnook Importer` message.
+  Intl and Web production Vite builds pass. Temporary links to existing
+  dependency build output were removed afterward.
+- The active mobile invalid-theme-file help action still opens an upstream
+  Notesnook help URL in `apps/mobile/app/screens/settings/theme-selector.tsx`.
+  That file belongs to the separate theme worktree; the integration lead was
+  notified and this branch does not modify it.

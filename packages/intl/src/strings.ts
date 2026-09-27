@@ -1887,7 +1887,7 @@ For example:
   importerHelpText: () => [
     t`Please refer to the`,
     t`import guide`,
-    t`for help regarding how to use the Notesnook Importer.`
+    t`for help using the VeyraN importer.`
   ],
   dropFilesHere: () => t`Drop the files here`,
   dragAndDropFiles: () => t`Drag & drop files here, or click to select files`,
@@ -2268,7 +2268,7 @@ Please note that we will respond to your feature request on the link above. **We
   serversConfiguration: () => t`Servers configuration`,
   importExport: () => t`Import & export`,
   backupExport: () => t`Backup & export`,
-  notesnookImporter: () => t`Notesnook Importer`,
+  notesnookImporter: () => t`Import notes`,
   securityPrivacy: () => t`Security & privacy`,
   privacy: () => t`Privacy`,
   other: () => t`Other`,

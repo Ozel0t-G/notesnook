@@ -3322,10 +3322,6 @@ msgstr ""
 msgid "For a monthly subscription, you can get a refund within 7 days of purchase. For a yearly subscription, we offer a full refund within 14 days of purchase. For a 5 year subscription, you can request a refund within 30 days of purchase."
 msgstr ""
 
-#: src/strings.ts:1881
-msgid "for help regarding how to use the Notesnook Importer."
-msgstr ""
-
 #: src/strings.ts:2658
 msgid "for locking your notes as soon as app enters background"
 msgstr ""
@@ -4784,10 +4780,6 @@ msgstr ""
 
 #: src/strings.ts:2730
 msgid "Notesnook Circle brings together trusted partners who share our commitment to privacy, transparency, and user freedom."
-msgstr ""
-
-#: src/strings.ts:2266
-msgid "Notesnook Importer"
 msgstr ""
 
 #: src/strings.ts:1179
@@ -8523,4 +8515,12 @@ msgstr ""
 
 #: src/strings.ts:1909
 msgid "Your VeyraN email is confirmed. You can now sync your encrypted notes across your devices."
+msgstr ""
+
+#: src/strings.ts:1890
+msgid "for help using the VeyraN importer."
+msgstr ""
+
+#: src/strings.ts:2271
+msgid "Import notes"
 msgstr ""

@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { useEffect, useRef, useState } from "react";
 import { CREATE_BUTTON_MAP } from "../common";
-import { ArrowTopRight, Icon, Plus } from "../components/icons";
+import { Icon, Plus } from "../components/icons";
 import Config from "../utils/config";
 import { strings } from "@notesnook/intl";
 
@@ -152,16 +152,6 @@ const tips: Tip[] = [
   {
     text: "Pin your most important Notebooks to the top from Notebook properties.",
     contexts: ["notebooks"]
-  },
-  {
-    text: "We value your feedback so join us on Discord and share your experiences and ideas.",
-    contexts: ["notes", "notebooks", "tags"],
-    button: {
-      title: strings.joinCommunity(),
-      icon: ArrowTopRight,
-      onClick: () =>
-        window.open("https://discord.gg/notesnook-796015620436787241", "_blank")
-    }
   },
   {
     text: "You can adjust how long items live in your trash from Settings -> Trash settings.",

@@ -150,7 +150,7 @@ async function fetchWrapped(input: string, init: RequestInit, timeoutMs = 30000)
     const serverName = getServerNameFromHost(host);
     if (serverName)
       throw new Error(
-        `${serverName} is not responding. Please check your internet connection. If the problem persists, feel free email us at support@streetwriters.co. (Reference error: ${
+        `${serverName} is not responding. Please check your internet connection and try again. (Reference error: ${
           (e as Error).message
         })`
       );

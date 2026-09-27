@@ -2174,13 +2174,9 @@ All attachments will be downloaded & cached again on access.
     t`Your support request has been forwarded`,
   bugReportMessage: (
     url: string
-  ) => t`You can track your bug report at [${url}](${url}).
-
-Please note that we will respond to your bug report on the link above. **We recommend that you save the above link for later reference.**
-
-If your issue is critical (e.g. notes not syncing, crashes etc.), please [join our Discord community](https://go.notesnook.com/discord) for one-to-one support.`,
+  ) => t`Your issue report is available at [${url}](${url}). Save this link if you need to revisit it.`,
   supportEmailMessage: () =>
-    t`Your support request has been forwarded to our support team. We will get back to you via email as soon as possible. If you don't receive an email from us within 24-48 hours, please send us an email directly at support@notesnook.com.`,
+    t`Your request was submitted. Keep a copy of its details for your records.`,
   featureRequestMessage: (
     url: string
   ) => t`You can track your feature request at [${url}](${url}).

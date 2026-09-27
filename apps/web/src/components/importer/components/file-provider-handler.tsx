@@ -216,16 +216,6 @@ export function FileProviderHandler(props: FileProviderHandlerProps) {
   return (
     <Flex sx={{ flexDirection: "column", alignItems: "stretch" }}>
       <Text variant="subtitle">Select {provider.name} files</Text>
-      <Text
-        variant="body"
-        as={"div"}
-        sx={{ mt: 1, color: "paragraph", whiteSpace: "pre-wrap" }}
-      >
-        Check out our step-by-step guide on{" "}
-        <a href={provider.helpLink} target="_blank" rel="noreferrer">
-          how to import from {provider?.name}.
-        </a>
-      </Text>
       <Flex
         {...getRootProps()}
         sx={{

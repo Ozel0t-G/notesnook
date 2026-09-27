@@ -114,14 +114,14 @@ Recovery codes are single-use codes that log you in when no 2FA method is reacha
 
 1. Go to `{{settings}}` → `{{authentication}}`.
 2. Press `{{viewRecoveryCodes}}` and confirm the `{{verifyItsYou}}` prompt.
-3. Use `{{print}}`, `{{copy}}` or `Download` to keep a copy. `Download` saves a `notesnook-recovery-codes.txt` file.
+3. Use `{{print}}`, `{{copy}}` or `Download` to keep a copy. `Download` saves a `veyran-recovery-codes.txt` file.
 4. Press `{{regenerate}}` to replace the current set with a new one.
 
 == Mobile
 
 1. Go to `{{settings}}` → `{{account}}` → `{{manageAccount}}` → `{{twoFactorAuth}}`.
 2. Tap `{{viewRecoveryCodes}}` and confirm your identity.
-3. Use `{{copyCodes}}` or `{{saveToFile}}` — the file is saved as `notesnook_recoverycodes.txt`.
+3. Use `{{copyCodes}}` or `{{saveToFile}}` — the file is saved as `veyran_recoverycodes.txt`.
 
 Regenerating codes is available on the desktop and web apps.
 

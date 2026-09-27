@@ -185,30 +185,18 @@ function harness(options: {
     }
   } as unknown as Database;
 
-  const emptyCollection = { collection: { count: async () => 0 } };
-  for (const name of [
-    "notes",
-    "notebooks",
-    "content",
-    "attachments",
-    "tags",
-    "colors",
-    "shortcuts",
-    "reminders",
-    "relations",
-    "vaults",
-    "noteHistory",
-    "monographsCollection",
-    "inboxItemsHistory"
-  ] as const) {
-    (db as any)[name] =
-      name === "notes" && options.localContent
-        ? { collection: { count: async () => 1 } }
-        : emptyCollection;
-  }
-  (db as any).tasks = { listSync: () => [] };
-  (db as any).taskLists = { listSync: () => [] };
-  (db as any).noteHistory.sessionContent = emptyCollection;
+  (db as any).sql = () => ({
+    selectFrom: (table: string) => ({
+      select: () => ({
+        limit: () => ({
+          executeTakeFirst: async () =>
+            options.localContent && table === "notes"
+              ? { id: "local" }
+              : undefined
+        })
+      })
+    })
+  });
   (db as any).legacyNotes = { count: () => 0 };
   (db as any).legacyTags = { count: () => 0 };
   (db as any).legacyColors = { count: () => 0 };

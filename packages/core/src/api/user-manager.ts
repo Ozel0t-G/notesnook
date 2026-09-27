@@ -491,30 +491,41 @@ class UserManager {
   }
 
   private async hasLocalAccountData() {
-    const collections = [
-      this.db.notes.collection,
-      this.db.notebooks.collection,
-      this.db.content.collection,
-      this.db.attachments.collection,
-      this.db.tags.collection,
-      this.db.colors.collection,
-      this.db.shortcuts.collection,
-      this.db.reminders.collection,
-      this.db.relations.collection,
-      this.db.vaults.collection,
-      this.db.noteHistory.collection,
-      this.db.noteHistory.sessionContent.collection,
-      this.db.monographsCollection.collection,
-      this.db.inboxItemsHistory.collection
-    ];
-    for (const collection of collections)
-      if ((await collection.count()) > 0) return true;
+    // Collection.count() deliberately excludes soft-deleted records. A
+    // trashed note or a deleted Task is still account data and must never be
+    // silently claimed by a new backend. Read the raw SQL tables instead.
+    const tables = [
+      "notes",
+      "notebooks",
+      "content",
+      "attachments",
+      "tags",
+      "colors",
+      "shortcuts",
+      "reminders",
+      "relations",
+      "vaults",
+      "notehistory",
+      "sessioncontent",
+      "monographs",
+      "inboxitemshistory",
+      "settings"
+    ] as const;
+    for (const table of tables)
+      if (
+        await this.db
+          .sql()
+          .selectFrom(table)
+          .select("id")
+          .limit(1)
+          .executeTakeFirst()
+      )
+        return true;
     return (
       this.db.legacyNotes.count() > 0 ||
       this.db.legacyTags.count() > 0 ||
       this.db.legacyColors.count() > 0 ||
-      this.db.tasks.listSync().length > 0 ||
-      this.db.taskLists.listSync().length > 0
+      !!(await this.db.storage().read("settings"))
     );
   }
 

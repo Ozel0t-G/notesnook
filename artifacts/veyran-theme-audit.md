@@ -438,3 +438,25 @@ actually installed and built enough of the monorepo to run real checks:
   `git checkout --` before committing. A stray `apps/web/tsconfig.tsbuildinfo`
   (an incremental-build cache, never meant to be tracked) was deleted
   rather than committed for the same reason.
+
+## Final picker branding follow-up — 2026-09-27
+
+Simulator visual QA found that the preserved legacy default themes were
+still shown as “Notesnook Light/Dark” with “By Streetwriters” in the mobile
+theme picker. The same metadata reached Web cards and both clients' detail
+views. The two themes remain selectable under their unchanged
+`default-light`/`default-dark` IDs. A shared presentation helper now calls
+them “Classic Light” and “Classic Dark” in the normal picker, search,
+details, and apply toast. It hides only their product-facing author line and
+upstream homepage link, and uses a neutral description. Their source JSON,
+stored selected-theme definitions, GPL license, and legal attribution remain
+unchanged. Imported custom theme names, author, description, and homepage
+are returned verbatim, including if a custom theme uses a legacy ID with a
+different name.
+
+Focused verification after this change: `@notesnook/theme` built; its clean
+offline-build test passed; Web theme suite passed 20 tests; mobile theme and
+settings suites passed 19 tests. Web/mobile TypeScript still reports the
+unbuilt `@notesnook/intl` workspace package in these files. No new error on
+the changed theme logic appeared in the filtered TypeScript output. Final
+visual acceptance belongs to the integrated simulator/browser run.

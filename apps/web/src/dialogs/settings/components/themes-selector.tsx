@@ -22,6 +22,7 @@ import { CheckCircleOutline, Loading } from "../../../components/icons";
 import {
   ThemeDefinition,
   getPreviewColors,
+  getThemePresentation,
   validateTheme
 } from "@notesnook/theme";
 import { debounce } from "@notesnook/common";
@@ -78,7 +79,7 @@ function ThemesList() {
       const builtIn = BUILT_IN_THEMES_BY_ID.get(theme.id);
       setIsApplying(true);
       try {
-        setCurrentTheme(builtIn || (theme as ThemeDefinition));
+        setCurrentTheme(builtIn || (theme as unknown as ThemeDefinition));
       } catch (e) {
         console.error(e);
         if (e instanceof Error)
@@ -192,6 +193,7 @@ type ThemeItemProps = {
 };
 function ThemeItem(props: ThemeItemProps) {
   const { theme, isApplied, isApplying, setTheme } = props;
+  const presentation = getThemePresentation(theme);
 
   return (
     <Flex
@@ -216,9 +218,11 @@ function ThemeItem(props: ThemeItemProps) {
     >
       <ThemePreview theme={theme} />
       <Text variant="title" sx={{ mt: 1 }}>
-        {theme.name}
+        {presentation.name}
       </Text>
-      <Text variant="body">{theme.authors[0].name}</Text>
+      {presentation.author ? (
+        <Text variant="body">{presentation.author}</Text>
+      ) : null}
       <Flex sx={{ justifyContent: "space-between", alignItems: "center" }}>
         <Text variant="subBody">
           {theme.colorScheme === "dark" ? "Dark" : "Light"}

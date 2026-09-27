@@ -36,7 +36,8 @@ import {
   ThemeDark,
   ThemeLight,
   ThemeVeyranDark,
-  ThemeVeyranLight
+  ThemeVeyranLight,
+  getThemePresentation
 } from "@notesnook/theme";
 import { migrateLegacyDefaultTheme } from "../src/stores/theme-store";
 import {
@@ -194,7 +195,9 @@ describe("ThemeStore bootstrap", () => {
     expect(useStore.getState().darkTheme.id).toBe("my-dark-theme");
     expect(useStore.getState().colorScheme).toBe("light");
     expect(useStore.getState().followSystemTheme).toBe(true);
-    expect(JSON.parse(window.localStorage.getItem("colorScheme")!)).toBe("light");
+    expect(JSON.parse(window.localStorage.getItem("colorScheme")!)).toBe(
+      "light"
+    );
 
     await useStore.getState().setColorScheme("dark");
     expect(useStore.getState().colorScheme).toBe("dark");
@@ -211,7 +214,9 @@ describe("ThemeStore bootstrap", () => {
 
     expect(useStore.getState().colorScheme).toBe("dark");
     expect(useStore.getState().followSystemTheme).toBe(false);
-    expect(JSON.parse(window.localStorage.getItem("colorScheme")!)).toBe("dark");
+    expect(JSON.parse(window.localStorage.getItem("colorScheme")!)).toBe(
+      "dark"
+    );
   });
 
   it("never sends a marketplace update-check for a built-in theme, on init() or on a scheme switch", async () => {
@@ -242,6 +247,39 @@ describe("ThemeStore bootstrap", () => {
 });
 
 describe("themes-selector built-ins", () => {
+  it("aliases only the original built-in names in product UI", () => {
+    const light = getThemePresentation(ThemeLight);
+    const dark = getThemePresentation(ThemeDark);
+    expect(light).toMatchObject({
+      name: "Classic Light",
+      description: "A classic light appearance."
+    });
+    expect(dark.name).toBe("Classic Dark");
+    expect(light.author).toBeUndefined();
+    expect(light.homepage).toBeUndefined();
+    expect(ThemeLight.name).toBe("Notesnook Light");
+    expect(ThemeLight.authors[0].name).toBe("Streetwriters");
+  });
+
+  it("preserves imported custom theme presentation and metadata", () => {
+    const custom = {
+      ...ThemeLight,
+      id: "my-custom-light",
+      name: "Notesnook Light",
+      description: "My chosen description",
+      homepage: "https://example.test/theme"
+    };
+    expect(getThemePresentation(custom)).toMatchObject({
+      name: "Notesnook Light",
+      description: "My chosen description",
+      author: "Streetwriters",
+      homepage: "https://example.test/theme"
+    });
+    expect(
+      getThemePresentation({ ...ThemeLight, name: "My renamed theme" }).name
+    ).toBe("My renamed theme");
+  });
+
   it("lists every built-in theme, including both VeyraN themes", () => {
     const ids = BUILT_IN_THEMES.map((theme) => theme.id);
     expect(ids).toEqual(
@@ -309,5 +347,13 @@ describe("themes-selector built-ins", () => {
         "light"
       ).map((theme) => theme.id)
     ).toEqual(["veyran-light"]);
+  });
+
+  it("finds classic built-ins by their VeyraN display aliases offline", () => {
+    expect(
+      visibleLocalThemes(ThemeVeyranDark, ThemeVeyranLight, "classic").map(
+        (theme) => theme.id
+      )
+    ).toEqual(["default-light", "default-dark"]);
   });
 });

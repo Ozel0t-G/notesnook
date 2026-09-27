@@ -23,6 +23,7 @@ import { Flex, Link, Text } from "@theme-ui/components";
 import { BaseDialogProps, DialogManager } from "../common/dialog-manager";
 import Dialog from "../components/dialog";
 import { ThemePreview } from "../components/theme-preview";
+import { getThemePresentation } from "@notesnook/theme";
 import { useStore as useThemeStore } from "../stores/theme-store";
 
 export type ThemeDetailsDialogProps = BaseDialogProps<boolean> & {
@@ -32,6 +33,7 @@ export type ThemeDetailsDialogProps = BaseDialogProps<boolean> & {
 export const ThemeDetailsDialog = DialogManager.register(
   function ThemeDetailsDialog(props: ThemeDetailsDialogProps) {
     const { onClose, theme } = props;
+    const presentation = getThemePresentation(theme);
     const isThemeCurrentlyApplied = useThemeStore(
       (store) => store.isThemeCurrentlyApplied
     );
@@ -53,17 +55,19 @@ export const ThemeDetailsDialog = DialogManager.register(
         <ThemePreview theme={theme} />
         <Flex sx={{ flexDirection: "column", mt: 2 }}>
           <Text variant="heading">
-            {theme.name}{" "}
+            {presentation.name}{" "}
             <Text variant="subBody" sx={{ fontSize: "subtitle" }}>
               v{theme.version}
             </Text>
           </Text>
           <Text variant="body" sx={{ fontSize: "title" }}>
-            {theme.description}
+            {presentation.description}
           </Text>
-          <Text variant="subBody" sx={{ fontSize: "subtitle" }}>
-            {theme.authors.map((author) => author.name).join(", ")}
-          </Text>
+          {presentation.author ? (
+            <Text variant="subBody" sx={{ fontSize: "subtitle" }}>
+              {presentation.author}
+            </Text>
+          ) : null}
           {theme.totalInstalls && theme.totalInstalls > 0 ? (
             <Text variant="subBody" sx={{ fontSize: "subtitle" }}>
               {theme.totalInstalls} {strings.installs()}
@@ -73,9 +77,9 @@ export const ThemeDetailsDialog = DialogManager.register(
             {strings.licenseUnder(theme.license)}
           </Text>
           <Flex sx={{ gap: 1, mt: 1 }}>
-            {theme.homepage && (
+            {presentation.homepage && (
               <Link
-                href={theme.homepage}
+                href={presentation.homepage}
                 target="_blank"
                 variant="text.subBody"
                 sx={{ fontSize: "subtitle", color: "accent" }}

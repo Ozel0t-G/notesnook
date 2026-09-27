@@ -21,6 +21,7 @@ import { strings } from "@notesnook/intl";
 import {
   ThemeDefinition,
   getPreviewColors,
+  getThemePresentation,
   useThemeColors,
   validateTheme
 } from "@notesnook/theme";
@@ -77,6 +78,7 @@ function ThemeSelector() {
 
   const renderItem = React.useCallback(
     ({ item, index }: { item: ThemeMetadata; index: number }) => {
+      const presentation = getThemePresentation(item);
       const colors =
         item.previewColors ||
         getPreviewColors(item as unknown as ThemeDefinition);
@@ -258,14 +260,16 @@ function ThemeSelector() {
             </View>
 
             <Heading size={AppFontSize.sm} color={themeColors.primary.heading}>
-              {item.name}
+              {presentation.name}
             </Heading>
-            <Paragraph
-              size={AppFontSize.xs}
-              color={themeColors.secondary?.paragraph}
-            >
-              {strings.by()} {item.authors?.[0].name}
-            </Paragraph>
+            {presentation.author ? (
+              <Paragraph
+                size={AppFontSize.xs}
+                color={themeColors.secondary?.paragraph}
+              >
+                {strings.by()} {presentation.author}
+              </Paragraph>
+            ) : null}
           </TouchableOpacity>
         </>
       );
@@ -490,6 +494,8 @@ const ThemeSetter = ({
   theme: Partial<CompiledThemeDefinition>;
   close?: (ctx?: string) => void;
 }) => {
+  const presentation = getThemePresentation(theme);
+  const homepage = presentation.homepage;
   const [darkTheme, lightTheme] = useThemeStore((state) => [
     state.darkTheme,
     state.lightTheme
@@ -511,7 +517,7 @@ const ThemeSetter = ({
         ? useThemeStore.getState().setDarkTheme(fullTheme)
         : useThemeStore.getState().setLightTheme(fullTheme);
       ToastManager.show({
-        heading: `${theme.name} applied successfully`,
+        heading: `${presentation.name} applied successfully`,
         type: "success",
         context: "global"
       });
@@ -668,18 +674,20 @@ const ThemeSetter = ({
             size={AppFontSize.md}
             color={themeColors.colors.primary.heading}
           >
-            {theme.name}
+            {presentation.name}
           </Heading>
           <Paragraph color={themeColors.colors.primary.paragraph}>
-            {theme.description}
+            {presentation.description}
           </Paragraph>
 
-          <Paragraph
-            size={AppFontSize.xs}
-            color={themeColors.colors.secondary.paragraph}
-          >
-            {strings.by()} {theme.authors?.[0]?.name}
-          </Paragraph>
+          {presentation.author ? (
+            <Paragraph
+              size={AppFontSize.xs}
+              color={themeColors.colors.secondary.paragraph}
+            >
+              {strings.by()} {presentation.author}
+            </Paragraph>
+          ) : null}
           <View
             style={{
               marginTop: DefaultAppStyles.GAP_VERTICAL_SMALL,
@@ -701,7 +709,7 @@ const ThemeSetter = ({
               {theme.license}
             </Paragraph>
 
-            {theme.homepage ? (
+            {homepage ? (
               <View
                 style={{
                   flexDirection: "row"
@@ -711,7 +719,7 @@ const ThemeSetter = ({
                   size={AppFontSize.xs}
                   color={themeColors.colors.secondary.accent}
                   onPress={() => {
-                    Linking.openURL(theme.homepage as string);
+                    Linking.openURL(homepage);
                   }}
                 >
                   {strings.visitHomePage()}

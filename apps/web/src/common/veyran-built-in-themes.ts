@@ -22,7 +22,8 @@ import {
   ThemeDefinition,
   ThemeLight,
   ThemeVeyranDark,
-  ThemeVeyranLight
+  ThemeVeyranLight,
+  getThemePresentation
 } from "@notesnook/theme";
 
 /**
@@ -68,6 +69,7 @@ export function visibleLocalThemes(
   return uniqueById([activeDark, activeLight, ...BUILT_IN_THEMES]).filter(
     (theme) =>
       (colorScheme === "all" || theme.colorScheme === colorScheme) &&
-      (!term || theme.name.toLocaleLowerCase().includes(term))
+      (!term ||
+        getThemePresentation(theme).name?.toLocaleLowerCase().includes(term))
   );
 }

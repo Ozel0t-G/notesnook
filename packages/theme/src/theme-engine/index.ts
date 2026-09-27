@@ -108,4 +108,5 @@ export {
   type ThemeEngineState
 };
 export { getPreviewColors, themeToCSS } from "./utils.js";
+export { getThemePresentation } from "./theme-presentation.js";
 export { validateTheme } from "./validator.js";

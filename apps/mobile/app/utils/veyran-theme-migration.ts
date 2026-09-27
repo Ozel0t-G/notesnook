@@ -22,7 +22,8 @@ import {
   ThemeDefinition,
   ThemeLight,
   ThemeVeyranDark,
-  ThemeVeyranLight
+  ThemeVeyranLight,
+  getThemePresentation
 } from "@notesnook/theme";
 
 /**
@@ -58,7 +59,8 @@ export function visibleLocalThemes(
     seen.add(theme.id);
     return (
       (colorScheme === "all" || theme.colorScheme === colorScheme) &&
-      (!term || theme.name.toLocaleLowerCase().includes(term))
+      (!term ||
+        getThemePresentation(theme).name?.toLocaleLowerCase().includes(term))
     );
   });
 }

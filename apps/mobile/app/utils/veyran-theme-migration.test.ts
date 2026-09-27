@@ -28,7 +28,8 @@ import {
   ThemeDark,
   ThemeLight,
   ThemeVeyranDark,
-  ThemeVeyranLight
+  ThemeVeyranLight,
+  getThemePresentation
 } from "@notesnook/theme";
 import {
   BUILT_IN_THEMES,
@@ -90,6 +91,28 @@ describe("migrateLegacyDefaultThemes", () => {
 });
 
 describe("built-in theme bookkeeping", () => {
+  test("shows legacy bundled themes with product aliases without rewriting them", () => {
+    expect(getThemePresentation(ThemeLight)).toMatchObject({
+      name: "Classic Light",
+      description: "A classic light appearance."
+    });
+    expect(getThemePresentation(ThemeDark).name).toBe("Classic Dark");
+    expect(getThemePresentation(ThemeDark).author).toBeUndefined();
+    expect(getThemePresentation(ThemeDark).homepage).toBeUndefined();
+    expect(ThemeLight.name).toBe("Notesnook Light");
+  });
+
+  test("retains imported custom theme names and metadata", () => {
+    const custom = {
+      ...ThemeLight,
+      id: "my-custom",
+      name: "My imported theme"
+    };
+    expect(getThemePresentation(custom).name).toBe("My imported theme");
+    expect(getThemePresentation(custom).author).toBe("Streetwriters");
+    expect(getThemePresentation(custom).homepage).toBe(ThemeLight.homepage);
+  });
+
   test("lists every built-in theme, including both VeyraN themes", () => {
     const ids = BUILT_IN_THEMES.map((theme) => theme.id);
     expect(ids).toEqual(
@@ -127,6 +150,14 @@ describe("built-in theme bookkeeping", () => {
         (theme) => theme.id
       )
     ).toEqual(["veyran-dark"]);
+  });
+
+  test("offline search finds legacy themes by display alias", () => {
+    expect(
+      visibleLocalThemes(ThemeVeyranDark, ThemeVeyranLight, "classic").map(
+        (theme) => theme.id
+      )
+    ).toEqual(["default-light", "default-dark"]);
   });
 
   test("fresh offline picker includes both VeyraN built-ins and an active custom theme", () => {

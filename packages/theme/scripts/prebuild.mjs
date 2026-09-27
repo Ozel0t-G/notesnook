@@ -16,11 +16,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-import "isomorphic-fetch";
-import { mkdir, writeFile } from "fs/promises";
+import { readFile } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { existsSync } from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -31,28 +29,23 @@ const THEMES_DIRECTORY = path.resolve(
   path.join(__dirname, "..", "src", "theme-engine", "themes")
 );
 
-const THEME_COMPATIBILITY_VERSION = 1;
-
 async function main() {
-  await mkdir(THEMES_DIRECTORY, { recursive: true });
-
   for (const themeId of DEFAULT_THEMES) {
     const themePath = path.join(THEMES_DIRECTORY, `${themeId}.json`);
-    if (existsSync(themePath)) continue;
-    console.log("Getting", themeId);
-
-    const BASE_URL = `https://raw.githubusercontent.com/streetwriters/notesnook-themes/main/themes/${themeId}/v${THEME_COMPATIBILITY_VERSION}`;
-    const theme = await fetch(`${BASE_URL}/theme.json`).then((r) => r.json());
-    const codeBlockCSS = await fetch(`${BASE_URL}/code-block.css`).then((r) =>
-      r.text()
-    );
-    if (!theme) continue;
-
-    await writeFile(
-      path.join(THEMES_DIRECTORY, `${themeId}.json`),
-      JSON.stringify({ ...theme, $schema: undefined, codeBlockCSS })
-    );
+    // These upstream themes remain selectable for existing users. Their
+    // GPL-licensed JSON and CSS are committed with their original metadata,
+    // so a clean VeyraN build never needs to download them from upstream.
+    const theme = JSON.parse(await readFile(themePath, "utf8"));
+    if (
+      theme.id !== themeId ||
+      theme.compatibilityVersion !== 1 ||
+      theme.license !== "GPL-3.0-or-later" ||
+      !theme.scopes ||
+      !theme.codeBlockCSS
+    ) {
+      throw new Error(`Invalid bundled theme: ${themeId}`);
+    }
   }
 }
 
-main();
+await main();

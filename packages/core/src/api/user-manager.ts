@@ -814,6 +814,10 @@ class UserManager {
         verificationError = error;
       }
     }
+    if (!snapshot.syncTeardownConfirmed && !verificationError)
+      verificationError = new Error(
+        "Active sync traffic could not be confirmed stopped."
+      );
     if (!deviceError && !kvError && !keyError && !verificationError) {
       try {
         await this.db.storage().remove("backendRecoveryRequired");
@@ -831,6 +835,10 @@ class UserManager {
         deviceError || kvError || keyError || verificationError,
         "Account rollback failed; durable recovery intent retained"
       );
+      if (!snapshot.syncTeardownConfirmed)
+        throw new Error(
+          "Account recovery could not safely stop active sync traffic. Local notes and prior credentials were preserved, and network access is blocked until this profile is repaired."
+        );
       throw new Error(
         "Account rollback could not be completed. Local note records were not deleted, and network access is blocked until the profile is repaired."
       );

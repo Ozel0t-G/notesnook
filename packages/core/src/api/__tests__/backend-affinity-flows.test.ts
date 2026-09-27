@@ -1007,6 +1007,45 @@ describe("three-step login preserves the original session", () => {
     expect(kv.get("token")).toMatchObject({ access_token: "final-access" });
   });
 
+  test("failed upload cancellation retains the durable quarantine and original session", async () => {
+    const local = serverUser("same-account");
+    const oldSession = { ...originalToken, t: Date.now() };
+    const { user, db, kv, register, resumeAfterRecovery } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: oldSession,
+      cryptoKey: "old-key",
+      deviceId: "old-device",
+      lastSynced: 51,
+      syncActivity: { autoSyncActive: true, connectionActive: true }
+    });
+    arrangeGrants();
+    const cancelUploads = vi.fn(async () => {
+      throw new Error("upload cancel failed");
+    });
+    db.eventManager.subscribe(EVENTS.backendRecoveryStarted, cancelUploads);
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow(/could not safely stop active sync traffic/);
+
+    expect(cancelUploads).toHaveBeenCalledOnce();
+    expect(register).not.toHaveBeenCalled();
+    expect(resumeAfterRecovery).not.toHaveBeenCalled();
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("token")).toEqual(oldSession);
+    expect(kv.get("cryptoKey")).toBe("old-key");
+    expect(kv.get("deviceId")).toBe("old-device");
+    expect(kv.get("lastSynced")).toBe(51);
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    expect(await user.backendAffinity.isBlocked()).toBe(true);
+    const reopened = new UserManager(db);
+    (db as unknown as { user: UserManager }).user = reopened;
+    expect(await reopened.backendAffinity.isBlocked()).toBe(true);
+  });
+
   test("marker removal failure before deletion rolls back the committed login", async () => {
     const local = serverUser("same-account");
     const oldAffinity = affinityRecord(VEYRAN.api, VEYRAN.auth);

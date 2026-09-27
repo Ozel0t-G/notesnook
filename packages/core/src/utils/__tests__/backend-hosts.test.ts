@@ -63,15 +63,14 @@ describe("production backend hosts", () => {
     }
   });
 
-  // Billing, pricing and issue reporting have no VeyraN deployment. They are
-  // deliberately left upstream and are owned by the brand/entitlement branch;
-  // this test documents that as intent so a future repoint is a conscious act.
-  test("ancillary hosts remain upstream by design", () => {
+  // Legacy billing, pricing and issue reporting have no VeyraN deployment.
+  // These compatibility keys must be inert even if a caller bypasses policy.
+  test("ancillary legacy hosts cannot reach upstream production services", () => {
     expect(hosts.SUBSCRIPTIONS_HOST).toBe(
-      "https://subscriptions.streetwriters.co"
+      "https://billing-disabled.veyran.invalid"
     );
-    expect(hosts.ISSUES_HOST).toBe("https://issues.streetwriters.co");
-    expect(hosts.NOTESNOOK_HOST).toBe("https://notesnook.com");
+    expect(hosts.ISSUES_HOST).toBe("https://issues-disabled.veyran.invalid");
+    expect(hosts.NOTESNOOK_HOST).toBe("https://commerce-disabled.veyran.invalid");
   });
 
   // The live VeyraN sync and events servers both report version 1.

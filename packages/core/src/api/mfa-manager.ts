@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import http from "../utils/http.js";
 import constants from "../utils/constants.js";
 import TokenManager from "./token-manager.js";
+import { assertCredentialDestination } from "../utils/credential-host-binding.js";
 
 const ENDPOINTS = {
   setup: "/mfa",
@@ -30,7 +31,12 @@ const ENDPOINTS = {
 };
 
 class MFAManager {
-  constructor(private readonly tokenManager: TokenManager) {}
+  constructor(
+    private readonly tokenManager: TokenManager,
+    private readonly pendingLoginCredential?: () => Promise<
+      { accessToken: string; authHost: string } | undefined
+    >
+  ) {}
 
   async setup(type: "app" | "sms" | "email", phoneNumber?: string) {
     const token = await this.tokenManager.getAccessToken();
@@ -92,14 +98,23 @@ class MFAManager {
   }
 
   async sendCode(method: "sms" | "email") {
+    // The email grant is intentionally kept only in memory until the account
+    // has been verified. A fresh profile has no persisted token to read here.
+    const pending = await this.pendingLoginCredential?.();
+    if (pending) {
+      const url = `${pending.authHost}${ENDPOINTS.send}`;
+      assertCredentialDestination(pending.accessToken, url);
+      return await http.post(url, { type: method }, pending.accessToken);
+    }
     const token = await this.tokenManager.getAccessToken([
       "IdentityServerApi",
       "auth:grant_types:mfa"
     ]);
     if (!token) throw new Error("Unauthorized.");
-
+    const url = `${constants.AUTH_HOST}${ENDPOINTS.send}`;
+    assertCredentialDestination(token, url);
     return await http.post(
-      `${constants.AUTH_HOST}${ENDPOINTS.send}`,
+      url,
       {
         type: method
       },

@@ -251,16 +251,36 @@ class UserManager {
     return result.additional_data;
   }
 
+  /** Return only the in-memory email challenge for MFA code delivery. */
+  async getPendingMfaSendCredential() {
+    const pending = this.pendingLogin;
+    if (!pending) return undefined;
+    if (!pending.token.scope?.split(" ").includes("auth:grant_types:mfa"))
+      throw new Error(
+        "The verification challenge has ended. Start sign in again."
+      );
+    await this.backendAffinity.assertAllowed("Sending a sign-in code");
+    if (this.pendingLogin !== pending)
+      throw new Error("The sign-in challenge changed. Start again.");
+    this.assertConfigurationUnchanged(pending);
+    return {
+      accessToken: pending.token.access_token,
+      authHost: pending.backend.auth
+    };
+  }
+
   async authenticateMultiFactorCode(code: string, method: string) {
     if (!code || !method) throw new Error("code & method are required.");
 
-    const token = this.pendingLogin?.token;
+    const pending = this.pendingLogin;
+    const token = pending?.token;
     if (!token || token.scope !== "auth:grant_types:mfa")
       throw new Error("No token found.");
+    await this.backendAffinity.assertAllowed("Verifying your sign in");
     this.assertPendingLoginConfiguration();
 
     const response = await http.post(
-      `${this.pendingLogin!.backend.auth}${ENDPOINTS.token}`,
+      `${pending.backend.auth}${ENDPOINTS.token}`,
       {
         grant_type: "mfa",
         client_id: "notesnook",
@@ -269,10 +289,11 @@ class UserManager {
       },
       token.access_token
     );
+    if (this.pendingLogin !== pending)
+      throw new Error("The sign-in challenge changed. Start again.");
     this.assertPendingLoginConfiguration();
-    bindCredential(response.access_token, this.pendingLogin!.backend);
-    if (this.pendingLogin)
-      this.pendingLogin.token = { ...response, t: Date.now() } as Token;
+    bindCredential(response.access_token, pending.backend);
+    pending.token = { ...response, t: Date.now() } as Token;
     return true;
   }
 

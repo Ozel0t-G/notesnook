@@ -42,6 +42,7 @@ import hosts, { setPersistedHostOverrides } from "../../utils/constants.js";
 import UserManager from "../user-manager.js";
 import { SyncDevices } from "../sync/devices.js";
 import TokenManager from "../token-manager.js";
+import MFAManager from "../mfa-manager.js";
 import { StoredAffinity } from "../backend-affinity.js";
 import { EVENTS, EV } from "../../common.js";
 import EventManager from "../../utils/event-manager.js";
@@ -1104,6 +1105,187 @@ describe("three-step login preserves the original session", () => {
     t: 123
   };
 
+  function mfaFor(user: UserManager) {
+    const tokenManager = (user as unknown as { tokenManager: TokenManager })
+      .tokenManager;
+    return new MFAManager(tokenManager, () =>
+      user.getPendingMfaSendCredential()
+    );
+  }
+
+  test("fresh email MFA sends a code and completes login without persisting interim grants", async () => {
+    const { user, kv } = harness({});
+    const mfa = mfaFor(user);
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "fresh-email-grant",
+        scope: "auth:grant_types:mfa",
+        expires_in: 600,
+        additional_data: { primaryMethod: "email" }
+      })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({
+        access_token: "fresh-mfa-grant",
+        scope: "auth:grant_types:mfa_password",
+        expires_in: 600
+      })
+      .mockResolvedValueOnce({
+        access_token: "fresh-final-grant",
+        refresh_token: "fresh-final-refresh",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600
+      });
+    mockGet.mockResolvedValue(serverUser("fresh-account"));
+
+    await user.authenticateEmail("someone@example.test");
+    expect(kv.get("token")).toBeUndefined();
+    await mfa.sendCode("email");
+    expect(mockPost.mock.calls[1]).toEqual([
+      `${VEYRAN.auth}/mfa/send`,
+      { type: "email" },
+      "fresh-email-grant"
+    ]);
+    expect(kv.get("token")).toBeUndefined();
+    await user.authenticateMultiFactorCode("123456", "email");
+    expect(kv.get("token")).toBeUndefined();
+    await user.authenticatePassword("someone@example.test", "password");
+    expect(kv.get("token")).toMatchObject({
+      access_token: "fresh-final-grant",
+      refresh_token: "fresh-final-refresh"
+    });
+    expect(kv.get("backendAffinity")).toMatchObject(VEYRAN);
+  });
+
+  test("rejected MFA code leaves the original session intact", async () => {
+    const { user, kv } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken
+    });
+    const mfa = mfaFor(user);
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "retry-email-grant",
+        scope: "auth:grant_types:mfa",
+        expires_in: 600
+      })
+      .mockResolvedValueOnce({ ok: true })
+      .mockRejectedValueOnce(new Error("Invalid verification code"));
+    await user.authenticateEmail("someone@example.test");
+    await mfa.sendCode("email");
+    await expect(
+      user.authenticateMultiFactorCode("wrong", "email")
+    ).rejects.toThrow("Invalid verification code");
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("user")).toMatchObject({ id: "same-account" });
+  });
+
+  test("MFA code delivery refuses a host change without sending its challenge", async () => {
+    const { user, kv } = harness({});
+    const mfa = mfaFor(user);
+    mockPost.mockResolvedValueOnce({
+      access_token: "host-email-grant",
+      scope: "auth:grant_types:mfa",
+      expires_in: 600
+    });
+    await user.authenticateEmail("someone@example.test");
+    hosts.AUTH_HOST = NOTESNOOK.auth;
+    await expect(mfa.sendCode("email")).rejects.toThrow(
+      /Server settings changed/
+    );
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(kv.get("token")).toBeUndefined();
+  });
+
+  test("MFA delivery rechecks the host after retrieving a pending challenge", async () => {
+    const { user } = harness({});
+    const tokenManager = (user as unknown as { tokenManager: TokenManager })
+      .tokenManager;
+    const mfa = new MFAManager(tokenManager, async () => {
+      const challenge = await user.getPendingMfaSendCredential();
+      hosts.AUTH_HOST = NOTESNOOK.auth;
+      return challenge;
+    });
+    mockPost.mockResolvedValueOnce({
+      access_token: "race-email-grant",
+      scope: "auth:grant_types:mfa",
+      expires_in: 600
+    });
+    await user.authenticateEmail("someone@example.test");
+    await expect(mfa.sendCode("email")).rejects.toThrow(
+      /Server settings changed/
+    );
+    expect(mockPost).toHaveBeenCalledTimes(1);
+  });
+
+  test("settings-level code delivery still uses the bound existing session", async () => {
+    const { user } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: { ...originalToken, t: Date.now() }
+    });
+    const mfa = mfaFor(user);
+    mockPost.mockResolvedValue({ ok: true });
+    await mfa.sendCode("email");
+    expect(mockPost.mock.calls[0]).toEqual([
+      `${VEYRAN.auth}/mfa/send`,
+      { type: "email" },
+      originalToken.access_token
+    ]);
+  });
+
+  test("an advanced challenge cannot fall back to another stored session", async () => {
+    const { user, kv } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken
+    });
+    const mfa = mfaFor(user);
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "advanced-email-grant",
+        scope: "auth:grant_types:mfa",
+        expires_in: 600
+      })
+      .mockResolvedValueOnce({
+        access_token: "advanced-password-grant",
+        scope: "auth:grant_types:mfa_password",
+        expires_in: 600
+      });
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "email");
+    await expect(mfa.sendCode("email")).rejects.toThrow(/challenge has ended/);
+    expect(mockPost).toHaveBeenCalledTimes(2);
+    expect(kv.get("token")).toEqual(originalToken);
+  });
+
+  test("a superseded MFA response cannot replace the current challenge or stored session", async () => {
+    const { user, kv } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken
+    });
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "superseded-email-grant",
+        scope: "auth:grant_types:mfa",
+        expires_in: 600
+      })
+      .mockImplementationOnce(async () => {
+        (user as any).pendingLogin = undefined;
+        return {
+          access_token: "stale-password-grant",
+          scope: "auth:grant_types:mfa_password",
+          expires_in: 600
+        };
+      });
+    await user.authenticateEmail("someone@example.test");
+    await expect(
+      user.authenticateMultiFactorCode("123456", "email")
+    ).rejects.toThrow(/challenge changed/);
+    expect(kv.get("token")).toEqual(originalToken);
+  });
+
   function arrangeGrants(remoteUser = serverUser("same-account")) {
     mockPost
       .mockResolvedValueOnce({
@@ -1409,7 +1591,7 @@ describe("three-step login preserves the original session", () => {
 
     await expect(
       user.authenticateMultiFactorCode("123456", "app")
-    ).rejects.toThrow(/Server settings changed/);
+    ).rejects.toThrow(/Server settings changed|different server/);
     expect(mockPost).toHaveBeenCalledTimes(1);
     expect(kv.get("token")).toEqual(originalToken);
   });

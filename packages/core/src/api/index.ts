@@ -205,7 +205,9 @@ class Database {
   tokenManager = new TokenManager(this.kv, this.eventManager, (op) =>
     this.user.backendAffinity.assertAllowed(op)
   );
-  mfa = new MFAManager(this.tokenManager);
+  mfa = new MFAManager(this.tokenManager, () =>
+    this.user.getPendingMfaSendCredential()
+  );
   subscriptions = new Subscriptions(this);
   circle = new Circle(this);
   offers = Offers;

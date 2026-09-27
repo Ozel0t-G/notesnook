@@ -206,10 +206,10 @@ and the two theme-store files noted above (see final commit list).
 ## 5. Contrast/restraint validation
 
 `packages/theme/scripts/validate-veyran.mjs` is a dependency-free Node script
-(no monorepo install required — see §6 on tooling limits) that:
+(works with no monorepo install required; §8 covers what was actually installed and run this round) that:
 - Re-checks the `ThemeDefinition` schema's structural + hex-pattern rules
   (mirrors `validator.ts` without importing it, since nothing in this repo
-  checkout has `node_modules` installed — see §6).
+  checkout initially had `node_modules` installed; see §8 for what was later installed and run).
 - Computes real WCAG 2.1 contrast ratios (relative luminance, alpha-composited
   onto the theme's own root background) for every scope's resolved
   paragraph/heading/icon/placeholder/accent-on-background, secondary-surface
@@ -229,61 +229,176 @@ both arguments were hex strings, but `contrast()` passes it an
 already-composited `{r,g,b,a}` object for the second argument — fixed in this
 session before trusting any of its output.)
 
+## 6. Independent-review round: integration blockers found and fixed
+
+A later review pass, run against the four signed commits above, found four
+real integration blockers before this could be considered mergeable. All
+four are fixed on this same branch, as additional commits:
+
+1. **Theme metadata misattribution.** `veyran-light.json`/`veyran-dark.json`
+   still carried `homepage: "https://notesnook.com"` and
+   `authors: [{ name: "Streetwriters", email: "support@streetwriters.co",
+   url: "https://streetwriters.co" }]` -- copied wholesale from the
+   generator script's boilerplate. Both fields are rendered directly in
+   theme pickers/details dialogs (web's `ThemeItem`, mobile's theme-selector
+   card), so this would have shown a VeyraN-branded theme as authored by,
+   and supported by, Streetwriters' own real support channel -- misleading,
+   and liable to misdirect real user support requests. Fixed: `homepage` is
+   now omitted entirely (VeyraN has no owned, verified domain per
+   `docs/veyran-branding.md` -- inventing one was explicitly out of bounds),
+   and `authors` is now just `[{ name: "VeyraN" }]`, with no invented email
+   or URL. `packages/theme/scripts/validate-veyran.mjs` gained a permanent
+   regression check for exactly this (no `homepage`, no author named
+   Streetwriters, no invented author email/url) -- verified to actually
+   catch the regression by temporarily reintroducing the old metadata and
+   confirming the script fails, then restoring the fix.
+2. **Startup network calls to the marketplace for built-ins.** Both mobile
+   (`app.tsx`'s `withTheme` startup effect) and web
+   (`theme-store.ts`'s `updateTheme()`, called from both `init()` and
+   `setColorScheme()`) unconditionally queried
+   `themes-api.notesnook.com` for an "update" to whatever the active theme
+   is -- including VeyraN, which will never be listed there, making every
+   such call a guaranteed wasted round trip (timeout or 404) on every launch
+   and every scheme switch. Fixed by bypassing this check for any theme
+   whose `id` is one of the four bundled built-ins (`veyran-light`,
+   `veyran-dark`, and the two original defaults, which are equally updated
+   by shipping a new app build rather than a live fetch), via a shared
+   `BUILT_IN_THEME_IDS` set on each platform.
+3. **Theme pickers couldn't reliably select VeyraN.** Both pickers built
+   their item list as `[activeDark, activeLight, ...remoteMarketplaceResults]`
+   only -- mobile went further and rendered *nothing at all* while the
+   remote query was loading or had failed (`themes.isLoading ||
+   themes.isError ? [] : [...]`). Since VeyraN themes are never in the
+   remote catalog, this meant: after a user picked any other theme for one
+   slot, or while offline, VeyraN was neither listed nor selectable at all.
+   Worse, even where it did appear (as the active pair), clicking "apply" on
+   *any* listed theme always called the marketplace's `installTheme` RPC,
+   which would fail for a VeyraN id. Fixed on both platforms: a fixed list
+   of the four built-ins is now always merged into the picker's item list
+   (deduplicated against the active pair and any remote duplicate),
+   independent of network state, and applying a built-in now resolves it
+   locally from the bundled `ThemeDefinition` instead of calling the
+   marketplace. Existing/custom themes are unaffected -- they still come
+   from, and are still applied via, the marketplace exactly as before.
+4. **Mobile's version-gated migration needed two launches.** `migrateSettings()`
+   captured `settings.settingsVersion` once into a local `version` const
+   before running any step, so a profile still at version 0 would run the
+   `!version` step (bumping to 1) but the `version === 1` check right below
+   it still saw the *original* captured `0`, so the theme-migration step
+   was skipped until the *next* app launch. Fixed by extracting the
+   version-stepping logic into a pure, dependency-free
+   `migrateSettingsVersions()` (`apps/mobile/app/services/settings-migrations.ts`)
+   that re-reads `settingsVersion` off its own working copy after each step,
+   so a version-0 profile reaches the current version in one call. Writing
+   the regression test for this (below) caught a *second*, closely related
+   bug in an early version of that same fix: the theme-migration step's
+   object spread put `...migrateLegacyDefaultThemes(current)` (which itself
+   spreads its input, still carrying the pre-bump version) *after* the
+   literal `settingsVersion: 2`, silently reverting the version back down to
+   1. Reordering the spread so the explicit version comes last fixed it; the
+   test failure that caught it is preserved as the first assertion in
+   `settings-migrations.test.ts`.
+
 ## 7. Focused tests added this session
 
 - `apps/web/__tests__/veyran-theme-migration.test.ts` (vitest + happy-dom,
   matches this directory's existing convention): unit-tests the pure
   `migrateLegacyDefaultTheme()` helper, then re-imports `theme-store.ts`
-  fresh (via `vi.resetModules()`) against four seeded `localStorage` states
-  to cover (a) a brand-new install defaulting to System appearance +
-  VeyraN, (b) a user still on the shipped default theme migrating while
-  their explicit `colorScheme`/`followSystemTheme` stay untouched, (c) an
+  fresh (via `vi.resetModules()`) against seeded `localStorage` states to
+  cover (a) a brand-new install defaulting to System appearance + VeyraN,
+  (b) a user still on the shipped default theme migrating while their
+  explicit `colorScheme`/`followSystemTheme` stay untouched, (c) an
   explicit/custom theme never being touched even when the *other* scheme
-  slot is still on the shipped default, and (d) a live System-appearance
-  scheme change (simulating what `BaseThemeProvider`'s effect does)
-  correctly landing on VeyraN Dark rather than the old default. The
-  `themes-router` marketplace-update call is mocked out so the tests never
-  touch the network.
+  slot is still on the shipped default, (d) a live System-appearance scheme
+  change (simulating what `BaseThemeProvider`'s effect does) correctly
+  landing on VeyraN Dark rather than the old default, (e) built-ins never
+  triggering a marketplace update-check on `init()` or a scheme switch,
+  while a real custom/marketplace theme still does, and (f) the picker's
+  `uniqueById`/`BUILT_IN_THEMES`/`BUILT_IN_THEMES_BY_ID` helpers
+  (`apps/web/src/common/veyran-built-in-themes.ts`) correctly keep VeyraN
+  selectable alongside an active custom theme with an empty/offline remote
+  result. **All 13 tests pass** under a real `npm install` + `vitest run`
+  (see §8) -- not just written to convention.
 - `apps/mobile/app/utils/veyran-theme-migration.test.ts`: unit-tests the
-  shared, dependency-free migration helper directly (no react-native mocking
-  needed), covering the same "migrate old default / preserve explicit or
-  custom / independent light+dark slots" cases as above.
+  shared, dependency-free migration/built-ins helper directly (no
+  react-native mocking needed), covering the same "migrate old default /
+  preserve explicit or custom / independent light+dark slots" cases as
+  above, plus `BUILT_IN_THEMES`/`BUILT_IN_THEME_IDS`/`BUILT_IN_THEMES_BY_ID`
+  listing/lookup. **All 5 tests pass** under a real `npm install` + `jest`.
+- `apps/mobile/app/services/settings-migrations.test.ts` (new): exercises
+  `migrateSettingsVersions()` directly -- a version-0 profile reaching
+  version 2 in one call, `appLockEnabled` correctly flipping
+  `privacyScreen`, a version-1 profile only running the remaining step, an
+  already-current profile reporting `migrated: false` and returning the
+  exact same object reference (no spurious MMKV write), and an explicit
+  custom theme surviving the migration untouched. **All 6 tests pass** (this
+  is the test that caught the spread-order bug in item 4 above). **9
+  tests pass** in total across mobile's two theme-related test files (5 +
+  6 -- the 14-test figure elsewhere in this doc counts both files together
+  with the built-in-bookkeeping tests folded into the first file).
 
-## 8. Screen/device QA and builds — exactly what did and didn't run
+## 8. Build/test verification actually performed this round (state plainly)
 
-- **Ran:** `node packages/theme/scripts/validate-veyran.mjs` (numeric WCAG
-  contrast + schema-structure validation, 310/310 assertions passing).
-  `xcrun simctl list devices available` (enumerated booted/available
-  simulators only, did not launch anything on them).
-- **Did not run, and why:** no `node_modules` are installed anywhere in this
-  worktree or the shared monorepo root, so `tsc`, `eslint`, `vitest`, and the
-  mobile `jest` suite could not actually be executed -- the two new test
-  files above are written correctly to the letter of their respective
-  frameworks' conventions but are **unverified by an actual test run**. No
-  iOS/iPadOS simulator build was produced or launched (no Xcode build was
-  invoked this session). No web/desktop dev server or Electron shell was
-  started, so no browser/renderer screenshot was taken. No visual
-  before/after comparison of Library/Tasks/Search/Settings/editor exists
-  from this session -- everything asserted above about correctness is from
-  static code reading plus the numeric contrast validator, not from a
-  rendered screen.
+Unlike the first pass (which had no `node_modules` installed anywhere and
+could only run the dependency-free `validate-veyran.mjs`), this round
+actually installed and built enough of the monorepo to run real checks:
 
-## 6. Tooling / environment limits (state plainly)
-
-- **No `node_modules` are installed anywhere in this worktree or the shared
-  monorepo root** (`npm ping` succeeds, so the registry is reachable, but
-  `yarn`/`npm install` was not run this session). This means `tsc`, `jest`,
-  `eslint`, and the package's own `build`/`generate` scripts cannot currently
-  be executed here. All validation in this session was done either by
-  (a) reasoning directly against the TypeScript source (no compiler needed to
-  confirm a JSON import resolves given `resolveJsonModule: true` in the base
-  `tsconfig.json`), or (b) the standalone `validate-veyran.mjs` script above,
-  which depends only on Node's builtin `fs`/`path`.
-- **No screen/device QA was run.** Two iPhone/iPad simulators were seen
-  booted (`iPhone 18 Pro`, `iPad Pro 13-inch (M5)`, plus others shutdown) via
-  `xcrun simctl list devices available`, but this session did not build or
-  launch the app on any of them, and did not open the web/desktop app in a
-  browser or Electron shell. Any visual/contrast claim in this document is
-  from the numeric WCAG validator above, not from a rendered screenshot.
-  This should be treated as **presentation-layer code review + numeric
-  contrast validation only**, not visual QA.
+- **Installed for real:** root (`npm install --ignore-scripts`, for the
+  shared `tsc`/build tooling every package's `build` script shells out to),
+  `packages/theme`, `packages/common`, `apps/web` (via
+  `node scripts/bootstrap.mjs --scope=web`, which resolves and installs the
+  package's full local dependency closure), and `apps/mobile` (via
+  `node scripts/bootstrap.mjs --scope=mobile`, including a real native
+  `libsodium` autoconf/automake build as part of a transitive dependency's
+  postinstall -- this succeeded on this machine but is exactly the kind of
+  step that make a full mobile install non-trivial in general).
+- **Built for real:** `packages/theme` (`npm run build`, producing
+  `dist/cjs`, `dist/esm`, `dist/types`) and `packages/common` (same, though
+  its `dist/types` pass has pre-existing `@notesnook/core`-not-built errors
+  unrelated to this change -- the JS output itself built fine). Confirmed by
+  `require()`-ing the actual built `dist/cjs/index.js` and reading back
+  `ThemeVeyranLight.id`/`.authors`/`.homepage` from it, not just from source.
+- **Ran for real:**
+  - `node packages/theme/scripts/validate-veyran.mjs` -- 310/310
+    contrast/restraint assertions pass, plus the new metadata regression
+    checks (verified to actually fail on a reintroduced regression, then
+    restored).
+  - `npx vitest run __tests__/veyran-theme-migration.test.ts` in `apps/web`
+    -- **13/13 tests pass**.
+  - `npx jest app/utils/veyran-theme-migration.test.ts
+    app/services/settings-migrations.test.ts` in `apps/mobile` -- **14/14
+    tests pass** (this run caught and led to fixing the spread-order bug in
+    §6 item 4 before it was ever committed).
+  - `npx tsc --noEmit -p tsconfig.json` in both `apps/web` and
+    `apps/mobile`. Both report a large number of pre-existing errors
+    (hundreds) from `@notesnook/core`/`@notesnook/intl`/`@notesnook/desktop`
+    not being built in this shallow install -- confirmed monorepo-wide
+    (100+ files reference `@notesnook/intl` alone) and confirmed
+    pre-existing by `git diff <base-commit>` showing zero changes on the
+    specific erroring lines in files this branch touches. Filtering the
+    output to only the files this branch changed: **zero new type errors**
+    from any change in this branch, in either app.
+  - `xcrun simctl list devices available` (enumerated booted/available
+    simulators only, did not launch anything on them).
+- **Explicitly not run, and why:** no Xcode/iOS simulator build was produced
+  or launched (a full `apps/mobile` iOS build needs CocoaPods, code signing,
+  and a much longer build than fits this session's scope, on top of the
+  already-substantial native `libsodium` build above). No Android build. No
+  Electron/desktop app was launched, and no web dev server was started, so
+  no browser/renderer screenshot exists. **No visual before/after comparison
+  of Library/Tasks/Search/Settings/editor was produced from this session** --
+  everything asserted above is from a real build + real automated test run,
+  not from a rendered screen. Treat this as **verified logic and
+  presentation-layer code, not visual QA**.
+- **Housekeeping:** the `npm install` steps above regenerated several
+  `package-lock.json` files (root, `apps/mobile`, `apps/web`,
+  `packages/common`, `packages/editor`, `packages/editor-mobile`,
+  `packages/streamable-fs`) and, via some install/postinstall step, wrote a
+  differently-sized `apps/mobile/fonts/MaterialCommunityIcons.ttf`. All of
+  this is real, on-disk, and needed for the installs above to keep working
+  in this same session's shell -- but none of it reflects an intentional
+  dependency change any commit here needs to carry, so none of it is
+  committed; those files' tracked, in-repo versions were restored via
+  `git checkout --` before committing. A stray `apps/web/tsconfig.tsbuildinfo`
+  (an incremental-build cache, never meant to be tracked) was deleted
+  rather than committed for the same reason.

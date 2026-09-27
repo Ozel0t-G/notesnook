@@ -21,6 +21,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // so the interactive and the headless paths race for the same encrypted
 // database by design.
 
+export {};
+
 const mockState = {
   keyExists: true,
   keyRequests: [] as (boolean | undefined)[],
@@ -54,6 +56,15 @@ jest.mock(
   { virtual: true }
 );
 jest.mock("@notesnook/core", () => ({
+  hosts: {
+    API_HOST: "https://api.veyran.northcore.space",
+    AUTH_HOST: "https://auth.veyran.northcore.space",
+    SSE_HOST: "https://events.veyran.northcore.space",
+    SUBSCRIPTIONS_HOST: "https://legacy-billing.invalid",
+    ISSUES_HOST: "https://legacy-issues.invalid",
+    MONOGRAPH_HOST: "https://share.veyran.northcore.space",
+    NOTESNOOK_HOST: "https://veyran.northcore.space"
+  },
   logger: { scope: () => ({ info: () => {}, error: () => {} }) }
 }));
 jest.mock("@notesnook/intl", () => ({

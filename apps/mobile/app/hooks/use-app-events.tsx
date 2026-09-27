@@ -22,7 +22,6 @@ import {
   EVENTS,
   EventManagerSubscription,
   SYNC_CHECK_IDS,
-  SubscriptionPlan,
   SyncStatusEvent,
   User,
   isInternalLink,
@@ -98,7 +97,6 @@ import { updateStatusBarColor } from "../utils/colors";
 import {
   eAfterSync,
   eCloseSheet,
-  eCloseSimpleDialog,
   eEditorReset,
   eLoginSessionExpired,
   eOnLoadNote,
@@ -357,26 +355,9 @@ const onUserEmailVerified = async () => {
   }
 };
 
-const onUserSubscriptionStatusChanged = async (
-  subscription: User["subscription"]
-) => {
-  if (
-    subscription &&
-    subscription.plan !== SubscriptionPlan.FREE &&
-    subscription.plan !== useUserStore.getState().user?.subscription?.plan
-  ) {
-    PremiumService.subscriptions.clear();
-    useUserStore.setState({
-      user: {
-        ...(useUserStore.getState().user as User),
-        subscription: subscription
-      }
-    });
-    eSendEvent(eCloseSimpleDialog);
-    setTimeout(() => {
-      Walkthrough.present("prouser", false, true);
-    }, 500);
-  }
+const onUserSubscriptionStatusChanged = async () => {
+  // A legacy subscription update does not grant VeyraN capabilities or
+  // trigger the old paid-plan celebration/StoreKit cleanup flow.
   await PremiumService.setPremiumStatus();
   useMessageStore.getState().setAnnouncement();
   useUserStore.getState().setUser(await db.user.fetchUser());

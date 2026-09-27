@@ -891,7 +891,7 @@ export const settingsGroups: SettingSection[] = [
         name: strings.corsBypass(),
         description: strings.corsBypassDesc(),
         inputProperties: {
-          defaultValue: "https://cors.notesnook.com",
+          defaultValue: "",
           autoCorrect: false,
           keyboardType: "url"
         },

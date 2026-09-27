@@ -17,8 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { getVersion } from "react-native-device-info";
-
 export interface GithubRelease {
   url: string;
   assets_url: string;
@@ -53,37 +51,7 @@ export type GithubVersionInfo = {
   current: string;
 };
 export const getGithubVersion = async (): Promise<GithubVersionInfo | null> => {
-  const url = `https://api.github.com/repos/streetwriters/notesnook/releases`;
-  let res;
-  try {
-    res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.96 Mobile Safari/537.36",
-        "sec-fetch-site": "same-origin"
-      }
-    });
-  } catch (e) {
-    console.warn(e);
-  }
-
-  if (!res?.ok) return null;
-  const data = (await res?.json()) as GithubRelease[];
-
-  const versions = data?.filter(
-    (tag) =>
-      tag.tag_name.endsWith("android") && !tag.tag_name.endsWith("beta-android")
-  );
-  const latestVersion = versions[0];
-  const version = latestVersion.tag_name.replace("-android", "");
-  return {
-    version: version || null,
-    releasedAt: new Date(latestVersion.published_at).toISOString(),
-    notes: "",
-    body: latestVersion.body,
-    url: latestVersion.url,
-    lastChecked: new Date().toISOString(),
-    needsUpdate: getVersion() !== version,
-    current: getVersion()
-  };
+  // No VeyraN-owned mobile release feed is configured. An upstream release
+  // must never be offered as an update to this product.
+  return null;
 };

@@ -29,6 +29,7 @@ import { scale, updateSize } from "../utils/size";
 import { useUserStore } from "../stores/use-user-store";
 import ScreenGuardModule from "react-native-screenguard";
 import { migrateSettingsVersions } from "./settings-migrations";
+import { normalizeCorsProxy } from "../utils/cors-proxy";
 
 let isScreenGuardModuleReady = false;
 async function callScreenGuard(callback: () => void) {
@@ -125,6 +126,14 @@ function init() {
       ...settings,
       ...settingsParsed
     };
+    // Older profiles inherited the Notesnook CORS service as a default.
+    // Keep other explicit proxy choices, but stop routing VeyraN content
+    // through that upstream service.
+    const corsProxy = normalizeCorsProxy(settings.corsProxy);
+    if (settings.corsProxy !== corsProxy) {
+      settings.corsProxy = corsProxy;
+      MMKV.setString("appSettings", JSON.stringify(settings));
+    }
   }
   if (settings.fontScale) {
     scale.fontScale = settings.fontScale;
@@ -159,6 +168,9 @@ function setPrivacyScreen(enabled?: boolean) {
 
 function set(next: Partial<SettingStore["settings"]>) {
   let settings = get();
+  if (next.corsProxy !== undefined) {
+    next = { ...next, corsProxy: normalizeCorsProxy(next.corsProxy) };
+  }
   settings = {
     ...settings,
     ...next

@@ -29,6 +29,7 @@ import { db, setupDatabase } from "../common/database";
 import { MMKV } from "../common/database/mmkv";
 import { SettingStore } from "../stores/use-setting-store";
 import { migrateLegacyDefaultTheme } from "../utils/veyran-theme-migration";
+import { normalizeCorsProxy } from "../utils/cors-proxy";
 
 export async function initDatabase() {
   if (!db.isInitialized) {
@@ -120,5 +121,5 @@ export const useShareStore = create<ShareStore>((set) => ({
 }));
 
 export const Config = {
-  corsProxy: appSettings?.corsProxy
+  corsProxy: normalizeCorsProxy(appSettings?.corsProxy)
 };

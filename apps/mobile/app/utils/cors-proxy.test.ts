@@ -17,8 +17,17 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-export async function getChangelog(_tag: string) {
-  // The service worker can announce a VeyraN update, but there is no
-  // VeyraN-owned release-notes feed to query yet.
-  return "No release notes available.";
-}
+import { normalizeCorsProxy } from "./cors-proxy";
+
+describe("VeyraN CORS proxy", () => {
+  it("disables a saved Notesnook CORS endpoint", () => {
+    expect(normalizeCorsProxy("https://cors.notesnook.com/")).toBe("");
+    expect(normalizeCorsProxy("http://cors.notesnook.com")).toBe("");
+  });
+
+  it("preserves another explicit proxy", () => {
+    expect(normalizeCorsProxy("https://proxy.example.test")).toBe(
+      "https://proxy.example.test"
+    );
+  });
+});

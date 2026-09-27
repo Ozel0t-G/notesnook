@@ -116,10 +116,7 @@ export const PrivacySettings: SettingsGroup[] = [
               const result = await PromptDialog.show({
                 title: strings.corsBypass(),
                 description: strings.corsBypassDesc(),
-                defaultValue: Config.get(
-                  "corsProxy",
-                  "https://cors.notesnook.com"
-                )
+                defaultValue: Config.get("corsProxy", "")
               });
               if (!result) return;
               try {

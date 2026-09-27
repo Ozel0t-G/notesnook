@@ -202,7 +202,7 @@ export const defaultSettings: SettingStore["settings"] = {
   doubleSpacedLines: true,
   reminderNotifications: true,
   defaultSnoozeTime: "5",
-  corsProxy: "https://cors.notesnook.com",
+  corsProxy: "",
   reminderNotificationMode: "urgent",
   notificationSound: undefined,
   defaultFontFamily: "sans-serif",

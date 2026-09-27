@@ -19,15 +19,31 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { tryParse } from "./parse";
 
-function set<T>(key: string, value: T) {
-  window.localStorage.setItem(key, JSON.stringify(value));
+function withoutUpstreamCorsProxy<T>(key: string, value: T): T {
+  if (key !== "corsProxy" || typeof value !== "string") return value;
+  try {
+    if (new URL(value).hostname.toLowerCase() === "cors.notesnook.com") {
+      return "" as T;
+    }
+  } catch {
+    // The settings UI validates newly entered proxy URLs.
+  }
   return value;
+}
+
+function set<T>(key: string, value: T) {
+  const safeValue = withoutUpstreamCorsProxy(key, value);
+  window.localStorage.setItem(key, JSON.stringify(safeValue));
+  return safeValue;
 }
 
 function get<T>(key: string, def?: T): T {
   const value = window.localStorage.getItem(key);
   if (!value && def !== undefined) return def;
-  return value ? tryParse(value) : def;
+  const parsed = value ? tryParse(value) : def;
+  // The former Notesnook CORS proxy was saved as a default in old profiles.
+  // Do not silently send VeyraN editor URLs through that upstream service.
+  return withoutUpstreamCorsProxy(key, parsed);
 }
 
 function remove(key: string) {

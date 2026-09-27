@@ -17,8 +17,19 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-export async function getChangelog(_tag: string) {
-  // The service worker can announce a VeyraN update, but there is no
-  // VeyraN-owned release-notes feed to query yet.
-  return "No release notes available.";
-}
+import { afterEach, expect, it } from "vitest";
+import Config from "../src/utils/config";
+
+afterEach(() => window.localStorage.clear());
+
+it("does not use the previously saved Notesnook CORS default", () => {
+  window.localStorage.setItem("corsProxy", '"https://cors.notesnook.com/"');
+  expect(Config.get("corsProxy", "")).toBe("");
+  Config.set("corsProxy", "http://cors.notesnook.com");
+  expect(window.localStorage.getItem("corsProxy")).toBe('""');
+});
+
+it("preserves an explicitly configured non-upstream proxy", () => {
+  Config.set("corsProxy", "https://proxy.example.test");
+  expect(Config.get("corsProxy", "")).toBe("https://proxy.example.test");
+});

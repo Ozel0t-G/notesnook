@@ -559,7 +559,7 @@ export function Editor(props: EditorProps) {
         spellcheck={spellcheck}
         content={content}
         downloadOptions={{
-          corsHost: Config.get("corsProxy", "https://cors.notesnook.com")
+          corsHost: Config.get("corsProxy", "")
         }}
         onLoad={(editor) => {
           editor = editor || useEditorManager.getState().getEditor(id)?.editor;

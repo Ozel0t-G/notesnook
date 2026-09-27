@@ -117,8 +117,7 @@ class UserManager {
 
     await this.backendAffinity.assertAllowed("Creating an account");
 
-    // Signup writes a token before it can verify anything, so the prior state
-    // has to be recoverable if the backend boundary rejects what follows.
+    // Account proof stays in memory until it is ready to commit locally.
     const snapshot = await this.snapshotSession();
     if (snapshot.user)
       throw new Error(
@@ -128,7 +127,7 @@ class UserManager {
     try {
       user = await this.signupInternal(email, password, snapshot);
     } catch (e) {
-      await this.rollbackSession(snapshot);
+      if (snapshot.mutationStarted) await this.rollbackSession(snapshot);
       throw e;
     }
     this.db.eventManager.publish(EVENTS.userLoggedIn, user);
@@ -141,17 +140,18 @@ class UserManager {
     snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
   ) {
     const hashedPassword = await this.db.storage().hash(password, email);
-    await this.tokenManager.saveToken(
-      await http.post(`${constants.API_HOST}${ENDPOINTS.signup}`, {
+    const grantedToken = await http.post(
+      `${constants.API_HOST}${ENDPOINTS.signup}`,
+      {
         email,
         password: hashedPassword,
         client_id: "notesnook"
-      })
+      }
     );
 
     // Verify without writing, so a profile that cannot be bound keeps its own
     // cached identity and salt.
-    const user = await this.fetchRemoteUser();
+    const user = await this.fetchRemoteUser(grantedToken.access_token);
     if (!user)
       throw new Error(
         "Could not confirm the new account against the configured server, so nothing on this device was changed. Please check your connection and try again."
@@ -163,7 +163,9 @@ class UserManager {
         "This profile belongs to a different account. Its local notes were not changed or uploaded. Start a new profile to create another account."
       );
 
+    await this.beginSessionMutation(snapshot);
     await this.bindProfileToConfiguredBackend();
+    await this.tokenManager.saveToken(grantedToken);
     await this.commitFetchedUser(user, snapshot.user, false);
     await this.db.setLastSynced(0);
 
@@ -175,22 +177,26 @@ class UserManager {
 
     const masterKey = await this.getMasterKey();
     if (!masterKey) throw new Error("User encryption key not generated.");
-    await this.updateUser({
-      dataEncryptionKey: await this.keyManager.wrapKey(
-        await this.db.crypto().generateRandomKey(),
-        masterKey
-      ),
-      attachmentsKey: await this.keyManager.wrapKey(
-        await this.db.crypto().generateRandomKey(),
-        masterKey
-      ),
-      monographPasswordsKey: await this.keyManager.wrapKey(
-        await this.db.crypto().generateRandomKey(),
-        masterKey
-      )
-    });
+    await this.updateUser(
+      {
+        dataEncryptionKey: await this.keyManager.wrapKey(
+          await this.db.crypto().generateRandomKey(),
+          masterKey
+        ),
+        attachmentsKey: await this.keyManager.wrapKey(
+          await this.db.crypto().generateRandomKey(),
+          masterKey
+        ),
+        monographPasswordsKey: await this.keyManager.wrapKey(
+          await this.db.crypto().generateRandomKey(),
+          masterKey
+        )
+      },
+      grantedToken.access_token
+    );
 
-    await this.db.syncer.devices.register();
+    await this.db.syncer.devices.register(grantedToken.access_token);
+    await this.finishSessionMutation(snapshot);
 
     return user;
   }
@@ -321,6 +327,7 @@ class UserManager {
 
       // Only now, with the account verified and the boundary checked, is it safe
       // to replace the cached identity.
+      await this.beginSessionMutation(snapshot);
       await this.bindProfileToConfiguredBackend();
       await this.tokenManager.saveToken(grantedToken);
       await this.commitFetchedUser(user, snapshot.user, false);
@@ -329,7 +336,8 @@ class UserManager {
         await this.db.setLastSynced(0);
       }
 
-      if (!sessionExpired) await this.db.syncer.devices.register();
+      if (!sessionExpired)
+        await this.db.syncer.devices.register(grantedToken.access_token);
 
       snapshot.cryptoKeyTouched = true;
       if (usesFallback) {
@@ -343,13 +351,14 @@ class UserManager {
           salt: user.salt
         });
       }
+      await this.finishSessionMutation(snapshot);
       this.pendingLogin = undefined;
       authenticatedUser = user;
     } catch (e) {
       // Put the profile back exactly as it was: cached identity, token and
       // affinity record. Leaving any of the three half-updated is what would
       // let local notes become eligible to sync to the wrong backend.
-      await this.rollbackSession(snapshot);
+      if (snapshot.mutationStarted) await this.rollbackSession(snapshot);
       if (!(e instanceof Error && e.message === "Password is incorrect."))
         this.pendingLogin = undefined;
       throw e;
@@ -436,7 +445,9 @@ class UserManager {
    * separately via `backendAffinity.adoptCurrentBackend`.
    */
   private async bindProfileToConfiguredBackend() {
-    const outcome = await this.backendAffinity.record();
+    const outcome = await this.backendAffinity.record({
+      pendingLocalMutation: true
+    });
     if (!outcome.ok) {
       const { stored, configured, status } = outcome.conflict;
       if (status === "unknown")
@@ -476,11 +487,11 @@ class UserManager {
     return true;
   }
 
-  private async updateUser(partial: Partial<User>) {
+  private async updateUser(partial: Partial<User>, accessToken?: string) {
     const user = await this.getUser();
     if (!user) return;
 
-    const token = await this.tokenManager.getAccessToken();
+    const token = accessToken || (await this.tokenManager.getAccessToken());
     await http.patch.json(
       `${constants.API_HOST}${ENDPOINTS.user}`,
       partial,
@@ -639,6 +650,7 @@ class UserManager {
       deviceId: await this.db.kv().read("deviceId"),
       cryptoKeyState: await this.db.storage().snapshotCryptoKeyState(),
       cryptoKeyTouched: false,
+      mutationStarted: false,
       backend: this.backendAffinity.current(),
       serverSettings: JSON.stringify(getPersistedHostOverrides() || {})
     };
@@ -664,22 +676,46 @@ class UserManager {
     if (this.pendingLogin) this.assertConfigurationUnchanged(this.pendingLogin);
   }
 
+  /** A durable intent must exist before the first local account write. */
+  private async beginSessionMutation(
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+  ) {
+    await this.db.storage().write("backendRecoveryRequired", true);
+    if (
+      (await this.db.storage().read<boolean>("backendRecoveryRequired")) !==
+      true
+    )
+      throw new Error("Could not persist account recovery intent.");
+    snapshot.mutationStarted = true;
+  }
+
+  private async finishSessionMutation(
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+  ) {
+    this.assertConfigurationUnchanged(snapshot);
+    // The account and key are committed. A failed marker cleanup must not
+    // initiate a second, fallible rollback after the durable guard is removed.
+    snapshot.mutationStarted = false;
+    await this.db.storage().remove("backendRecoveryRequired");
+    if (await this.db.storage().read<boolean>("backendRecoveryRequired"))
+      throw new Error("Could not clear account recovery intent.");
+  }
+
   private async rollbackSession(
     snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
   ) {
-    const newDeviceId = await this.db.kv().read("deviceId");
-    if (newDeviceId && newDeviceId !== snapshot.deviceId) {
-      try {
+    let deviceError: unknown;
+    try {
+      const newDeviceId = await this.db.kv().read("deviceId");
+      if (newDeviceId && newDeviceId !== snapshot.deviceId)
         await this.db.syncer.devices.unregister();
-      } catch (error) {
-        logger.error(
-          error,
-          "Could not unregister a device after failed sign in"
-        );
-      }
+    } catch (error) {
+      deviceError = error;
+      logger.error(error, "Could not inspect or unregister a failed device");
     }
     let kvError: unknown;
     let keyError: unknown;
+    let verificationError: unknown;
     try {
       await this.restoreSession(snapshot);
     } catch (error) {
@@ -692,18 +728,55 @@ class UserManager {
         keyError = error;
       }
     }
-    this.keyManager.clearCache();
-    if (kvError || keyError) {
-      this.backendAffinity.quarantine();
+    if (!kvError && !keyError) {
       try {
-        await this.db.storage().write("backendRecoveryRequired", true);
+        await this.verifyRestoredSession(snapshot);
       } catch (error) {
-        logger.error(error, "Could not persist the backend recovery block");
+        verificationError = error;
       }
-      logger.error(kvError || keyError, "Account rollback failed");
+    }
+    if (!deviceError && !kvError && !keyError && !verificationError) {
+      try {
+        await this.db.storage().remove("backendRecoveryRequired");
+        if (await this.db.storage().read<boolean>("backendRecoveryRequired"))
+          throw new Error("Could not clear account recovery intent.");
+        snapshot.mutationStarted = false;
+      } catch (error) {
+        verificationError = error;
+      }
+    }
+    this.keyManager.clearCache();
+    if (deviceError || kvError || keyError || verificationError) {
+      this.backendAffinity.quarantine();
+      logger.error(
+        deviceError || kvError || keyError || verificationError,
+        "Account rollback failed; durable recovery intent retained"
+      );
       throw new Error(
         "Account rollback could not be completed. Local note records were not deleted, and network access is blocked until the profile is repaired."
       );
+    }
+  }
+
+  private async verifyRestoredSession(
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+  ) {
+    const kv = this.db.kv();
+    for (const [key, expected] of [
+      ["user", snapshot.user],
+      ["token", snapshot.token],
+      ["backendAffinity", snapshot.affinity],
+      ["lastSynced", snapshot.lastSynced],
+      ["deviceId", snapshot.deviceId]
+    ] as const) {
+      const actual = await kv.read(key);
+      if (JSON.stringify(actual) !== JSON.stringify(expected))
+        throw new Error(`Could not verify restored ${key}.`);
+    }
+    if (snapshot.cryptoKeyTouched) {
+      const actual = await this.db.storage().snapshotCryptoKeyState();
+      if (JSON.stringify(actual) !== JSON.stringify(snapshot.cryptoKeyState))
+        throw new Error("Could not verify restored encryption key.");
     }
   }
 

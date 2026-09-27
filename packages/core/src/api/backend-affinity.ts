@@ -264,7 +264,9 @@ export class BackendAffinity {
    * belong. Changing backends is a migration, not a side effect of logging in,
    * so it must go through `adoptCurrentBackend`.
    */
-  async record(): Promise<
+  async record(options?: {
+    pendingLocalMutation?: boolean;
+  }): Promise<
     | { ok: true; identity: BackendIdentity; changed: boolean }
     | { ok: false; conflict: BackendAffinityResult }
   > {
@@ -278,7 +280,7 @@ export class BackendAffinity {
     // that predates affinity tracking has no record, but may still have
     // explicitly saved server URLs naming a different backend; writing over
     // that would rebind existing data on the strength of a fresh login.
-    const result = await this.check();
+    const result = await this.check(options);
 
     switch (result.status) {
       case "no-user":
@@ -361,14 +363,19 @@ export class BackendAffinity {
     };
   }
 
-  async check(): Promise<BackendAffinityResult> {
+  async check(options?: {
+    pendingLocalMutation?: boolean;
+  }): Promise<BackendAffinityResult> {
     const configured = this.current();
     if (this.quarantined)
       return { status: "unknown", configured, evidence: "none" };
     // A previous local rollback may have failed while SQLite or the key store
     // was unavailable. Keep the network blocked after restart as well.
     try {
-      if (await this.db.storage().read<boolean>("backendRecoveryRequired"))
+      if (
+        !options?.pendingLocalMutation &&
+        (await this.db.storage().read<boolean>("backendRecoveryRequired"))
+      )
         return { status: "unknown", configured, evidence: "none" };
     } catch {
       return { status: "unknown", configured, evidence: "none" };

@@ -29,10 +29,10 @@ export class SyncDevices {
     private readonly tokenManager: TokenManager
   ) {}
 
-  async register() {
+  async register(accessToken?: string) {
     const deviceId = getId();
     const url = `${hosts.API_HOST}/devices?deviceId=${deviceId}`;
-    const token = await this.tokenManager.getAccessToken();
+    const token = accessToken || (await this.tokenManager.getAccessToken());
     await http.post(url, null, token);
     try {
       await this.kv().write("deviceId", deviceId);

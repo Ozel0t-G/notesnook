@@ -102,6 +102,12 @@ function harness(options: {
   const deriveCryptoKey = vi.fn(async () => {
     kv.set("cryptoKey", "new-derived-key");
   });
+  const storageWrite = vi.fn(async (key: string, value: unknown) => {
+    kv.set(key, value);
+  });
+  const storageRemove = vi.fn(async (key: string) => {
+    kv.delete(key);
+  });
   const unregister = vi.fn(async () => void kv.delete("deviceId"));
   const register = vi.fn(async () => void kv.set("deviceId", "new-device"));
 
@@ -124,8 +130,9 @@ function harness(options: {
     for (const [key, value] of staged) kv.set(key, value);
   });
 
+  const kvRead = vi.fn(async (key: string) => kv.get(key));
   const kvAccessor = () => ({
-    read: async (key: string) => kv.get(key),
+    read: kvRead,
     write: async (key: string, value: unknown) => void kv.set(key, value),
     delete: async (key: string) => void kv.delete(key),
     restoreSessionState,
@@ -151,7 +158,8 @@ function harness(options: {
       encryptMulti: async () => [],
       clear: async () => kv.clear(),
       read: async (key: string) => kv.get(key),
-      write: async (key: string, value: unknown) => void kv.set(key, value)
+      write: storageWrite,
+      remove: storageRemove
     }),
     crypto: () => ({ generateRandomKey: async () => ({ key: "k" }) }),
     syncer: { devices: { register, unregister } }
@@ -170,7 +178,10 @@ function harness(options: {
     deriveCryptoKey,
     register,
     unregister,
-    restoreSessionState
+    restoreSessionState,
+    storageWrite,
+    storageRemove,
+    kvRead
   };
 }
 
@@ -700,6 +711,42 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
       auth: VEYRAN.auth
     });
     expect(kv.get("user")).toMatchObject({ id: "brand-new" });
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("a failed intent write prevents every local account mutation", async () => {
+    const priorToken = { access_token: "original", refresh_token: "prior" };
+    const { user, kv, storageWrite, register } = harness({ token: priorToken });
+    mockPost.mockResolvedValue({ access_token: "signup-access" });
+    mockGet.mockResolvedValue(serverUser("brand-new"));
+    storageWrite.mockRejectedValueOnce(new Error("intent storage unavailable"));
+
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "intent storage unavailable"
+    );
+    expect(kv.get("token")).toEqual(priorToken);
+    expect(kv.has("user")).toBe(false);
+    expect(kv.has("backendAffinity")).toBe(false);
+    expect(register).not.toHaveBeenCalled();
+  });
+
+  test("an uncertain intent write blocks the profile after restart", async () => {
+    const { user, db, kv, storageWrite } = harness({});
+    mockPost.mockResolvedValue({ access_token: "signup-access" });
+    mockGet.mockResolvedValue(serverUser("brand-new"));
+    storageWrite.mockImplementationOnce(async (key: string, value: unknown) => {
+      kv.set(key, value);
+      throw new Error("write acknowledgement lost");
+    });
+
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "write acknowledgement lost"
+    );
+    expect(kv.has("user")).toBe(false);
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    const reopened = new UserManager(db);
+    (db as unknown as { user: UserManager }).user = reopened;
+    expect(await reopened.backendAffinity.isBlocked()).toBe(true);
   });
 
   test("a late signup failure restores the original sync and device state", async () => {
@@ -779,6 +826,7 @@ describe("three-step login preserves the original session", () => {
       access_token: "final-access",
       refresh_token: "final-refresh"
     });
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
   });
 
   test("a server change during MFA stops before presenting the temporary credential", async () => {
@@ -796,6 +844,28 @@ describe("three-step login preserves the original session", () => {
     ).rejects.toThrow(/Server settings changed/);
     expect(mockPost).toHaveBeenCalledTimes(1);
     expect(kv.get("token")).toEqual(originalToken);
+  });
+
+  test("a failed recovery-intent write leaves the old login and key untouched", async () => {
+    const local = serverUser("same-account");
+    const { user, kv, storageWrite } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "old-key"
+    });
+    arrangeGrants();
+    storageWrite.mockRejectedValueOnce(new Error("intent write failed"));
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow("intent write failed");
+
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("cryptoKey")).toBe("old-key");
   });
 
   test("rejected remote account restores the entire original session", async () => {
@@ -851,6 +921,48 @@ describe("three-step login preserves the original session", () => {
     expect(kv.get("backendAffinity")).toEqual(stored);
     expect(kv.get("lastSynced")).toBe(456);
     expect(kv.get("deviceId")).toBe("old-device");
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("a failed device-ID read still attempts local rollback and retains the durable block", async () => {
+    const local = serverUser("same-account");
+    const { user, db, kv, register, kvRead, restoreSessionState } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      lastSynced: 366,
+      deviceId: "old-device"
+    });
+    arrangeGrants();
+    let failDeviceRead = false;
+    kvRead.mockImplementation(async (key: string) => {
+      if (key === "deviceId" && failDeviceRead) {
+        failDeviceRead = false;
+        throw new Error("device ID read failed");
+      }
+      return kv.get(key);
+    });
+    register.mockImplementationOnce(async () => {
+      kv.set("deviceId", "new-device");
+      failDeviceRead = true;
+      throw new Error("device registration failed");
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow(/rollback could not be completed/);
+
+    expect(restoreSessionState).toHaveBeenCalledOnce();
+    expect(kv.get("token")).toEqual(originalToken);
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("lastSynced")).toBe(366);
+    expect(kv.get("deviceId")).toBe("old-device");
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    const reopened = new UserManager(db);
+    (db as unknown as { user: UserManager }).user = reopened;
+    expect(await reopened.backendAffinity.isBlocked()).toBe(true);
   });
 
   test("a key-store failure after writing a new key restores the original key and session", async () => {

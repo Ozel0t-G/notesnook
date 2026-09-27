@@ -35,7 +35,12 @@ import type { FeatureId } from "./is-feature-available.js";
  * work, which is false and would fail confusingly at the point of use.
  *
  * Instead this module splits ENTITLEMENT ("is the user allowed to use
- * this") from CAPABILITY ("does this actually work here, in this app"):
+ * this") from CAPABILITY ("does this actually work here, in this app"),
+ * across three explicit, mutually exclusive buckets — every feature id must
+ * land in exactly one, so a newly added feature has to be classified on
+ * purpose instead of silently inheriting a default (`ALL_FEATURE_IDS` plus
+ * the completeness test in `__tests__/veyran-feature-policy.test.ts`
+ * enforce this):
  *
  * - `VEYRAN_CLIENT_SUPPORTED_FEATURES`: the feature is fully implemented by
  *   this client and only ever reads/writes the local on-device database
@@ -44,26 +49,25 @@ import type { FeatureId } from "./is-feature-available.js";
  *   free account from a paid one for these, so VeyraN grants them
  *   unconditionally — equivalent to Notesnook's top "believer" tier —
  *   without ever contacting Notesnook's billing service.
- * - `VEYRAN_BACKEND_DEPENDENT_FEATURES`: the opposite case, listed
- *   explicitly (not just "everything else") so a newly added feature must
- *   be classified on purpose instead of silently inheriting one behavior or
- *   the other. Each depends on a Notesnook-operated backend that VeyraN
- *   does not run, or does not run for a free/unpaid account:
- *     - `storage`, `fileSize`: enforced server-side by Notesnook's
- *       sync/attachment infrastructure regardless of what this client
- *       claims. Unlocking these client-side would let the UI promise
- *       uploads the server will reject, so they keep the real FREE-tier
- *       limit that Notesnook's servers actually enforce for this account.
- *     - `monographAnalytics`, `sms2FA`, `notesnookCircle`: services VeyraN
- *       does not provide at all (monograph view analytics collection, SMS
- *       delivery for 2FA, and Notesnook's own partner-offer marketplace).
- *       These stay unavailable, with an honest "not supported by this app"
- *       message instead of Notesnook's default "upgrade your plan" copy,
- *       since upgrading does nothing here.
+ * - `VEYRAN_SERVICE_MANAGED_LIMITS`: `storage` and `fileSize`. The
+ *   configured service enforces real capacity. The client has no verified
+ *   numeric VeyraN contract, so it permits an upload attempt and handles a
+ *   server rejection. It never derives capacity from a legacy plan or
+ *   promises unlimited capacity.
+ * - `VEYRAN_BACKEND_DEPENDENT_FEATURES`: `monographAnalytics`, `sms2FA`,
+ *   `notesnookCircle` — discrete on/off services VeyraN does not operate at
+ *   all (monograph view-analytics collection, SMS delivery for 2FA, and
+ *   Notesnook's own partner-offer marketplace, the last of which is
+ *   unconditionally blocked at the API layer regardless of plan — see
+ *   `veyran-billing-policy.ts`). Unlike storage/fileSize, a wrong guess here
+ *   fails as a broken half-completed action (e.g. 2FA setup). These always resolve at the FREE tier —
+ *   unavailable — regardless of what `subscription.plan` reports, with an
+ *   honest "not supported by this app" message instead of Notesnook's
+ *   default "upgrade your plan" copy, since upgrading does nothing here.
  *
  * `getFeatureLimitFromPlan` in `is-feature-available.ts` consults
- * `isVeyranClientSupported` before falling back to the plan-derived limit,
- * which is the only integration point this policy needs.
+ * `isVeyranServiceManaged`, `isVeyranClientSupported`, and
+ * `isVeyranBackendDependent`. Legacy plan tiers cannot enable a capability.
  */
 export const VEYRAN_CLIENT_SUPPORTED_FEATURES: ReadonlySet<FeatureId> =
   new Set<FeatureId>([
@@ -99,17 +103,18 @@ export const VEYRAN_CLIENT_SUPPORTED_FEATURES: ReadonlySet<FeatureId> =
     "monographLinksAndEmbeds"
   ]);
 
+export const VEYRAN_SERVICE_MANAGED_LIMITS: ReadonlySet<FeatureId> =
+  new Set<FeatureId>(["storage", "fileSize"]);
+
 export const VEYRAN_BACKEND_DEPENDENT_FEATURES: ReadonlySet<FeatureId> =
-  new Set<FeatureId>([
-    "storage",
-    "fileSize",
-    "monographAnalytics",
-    "sms2FA",
-    "notesnookCircle"
-  ]);
+  new Set<FeatureId>(["monographAnalytics", "sms2FA", "notesnookCircle"]);
 
 export function isVeyranClientSupported(id: FeatureId): boolean {
   return VEYRAN_CLIENT_SUPPORTED_FEATURES.has(id);
+}
+
+export function isVeyranServiceManaged(id: FeatureId): boolean {
+  return VEYRAN_SERVICE_MANAGED_LIMITS.has(id);
 }
 
 export function isVeyranBackendDependent(id: FeatureId): boolean {

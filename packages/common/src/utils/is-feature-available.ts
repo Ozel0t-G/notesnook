@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { SubscriptionPlan } from "@notesnook/core";
 import { database as db } from "../database.js";
 import {
+  isVeyranServiceManaged,
   isVeyranBackendDependent,
   isVeyranClientSupported
 } from "./veyran-feature-policy.js";
@@ -117,17 +118,16 @@ function createLimit<
 export type FeatureId = keyof typeof features;
 type Features = typeof features;
 type Caption<TId extends FeatureId> =
-  Features[TId]["availability"][keyof FeatureAvailability]["caption"];
+  | Features[TId]["availability"][keyof FeatureAvailability]["caption"]
+  | (TId extends "storage" | "fileSize" ? "Service-managed" : never);
 
 const features = {
   storage: createFeature({
     id: "storage",
     title: "Storage",
-    // VeyraN cannot verify or grant storage capacity beyond what Notesnook's
-    // sync/attachment servers actually enforce for this account (see
-    // veyran-feature-policy.ts), so this is stated as a real, currently-used
-    // limit rather than "not available on this plan".
-    error: (limit) => `You have used all of your ${limit.caption} of storage.`,
+    // The service decides storage capacity. Historical plan tiers below are
+    // retained for compatibility only; they are not VeyraN limits.
+    error: () => `The VeyraN service could not accept more storage.`,
     used: async () => {
       const user = await db.user.getUser();
       return user?.storageUsed || 0;
@@ -143,9 +143,8 @@ const features = {
   fileSize: createFeature({
     id: "fileSize",
     title: "Maximum file size",
-    // Same rationale as `storage` above: this is the real limit Notesnook's
-    // attachment server enforces for this account, not a paywall.
-    error: (limit) => `Files up to ${limit.caption} are supported.`,
+    // The attachment service validates uploads. Do not invent a size tier.
+    error: () => `The VeyraN service could not accept this file.`,
     availability: {
       free: createLimit("10MB", 10 * 1024 * 1024),
       essential: createLimit("100MB", 100 * 1024 * 1024),
@@ -477,11 +476,11 @@ const features = {
   }),
   notesnookCircle: createFeature({
     id: "notesnookCircle",
-    title: "Notesnook Circle",
+    title: "Partner marketplace",
     // VeyraN does not operate Notesnook's Circle partner marketplace (its
     // API is blocked in @notesnook/core's veyran-billing-policy.ts) — this
     // is not a paid-plan gate.
-    error: () => `Notesnook Circle isn't available in this app.`,
+    error: () => `The partner marketplace isn't available in VeyraN.`,
     availability: {
       free: createLimit(false),
       essential: createLimit(true),
@@ -547,7 +546,10 @@ export async function isFeatureAvailable<TId extends FeatureId>(
   return {
     id,
     isAllowed,
-    availableOn: isAllowed ? undefined : await availableOn(id, value),
+    availableOn:
+      isAllowed || isVeyranBackendDependent(id)
+        ? undefined
+        : await availableOn(id, value),
     caption: limit.caption,
     error: features[id].error(limit)
   };
@@ -581,7 +583,10 @@ export async function areFeaturesAvailable<TIds extends FeatureId[]>(
     results[id as TIds[number]] = {
       id: id as TIds[number],
       isAllowed,
-      availableOn: isAllowed ? undefined : await availableOn(id, value),
+      availableOn:
+        isAllowed || isVeyranBackendDependent(id)
+          ? undefined
+          : await availableOn(id, value),
       caption: limit.caption as Caption<TIds[number]>,
       error: features[id].error(limit)
     };
@@ -665,20 +670,25 @@ function getFeatureLimitFromPlan<TId extends FeatureId>(
   feature: Feature<TId>,
   plan: SubscriptionPlan
 ): Limit<Caption<TId>> {
-  // VeyraN feature policy (see veyran-feature-policy.ts):
+  // VeyraN feature policy (see veyran-feature-policy.ts) — three cases:
   // - A client-supported feature is granted at the top tier for every
   //   VeyraN account, regardless of the account's Notesnook plan. This is a
   //   per-feature capability decision, not a blanket "isPro = true".
-  // - A backend-dependent feature ALWAYS resolves at the FREE tier, even for
-  //   an account whose `user.subscription.plan` reports a paid or legacy
-  //   plan (e.g. a real pre-existing Notesnook Pro/legacy account signed
-  //   into this app). VeyraN does not verify that such a plan is still
-  //   valid or that the underlying service (Notesnook Circle, monograph
-  //   analytics, SMS 2FA, or a specific storage/file-size tier) actually
-  //   works here, and must not infer capacity or capability it cannot
-  //   confirm. Falling back to the account's real plan for these would let
-  //   a paid/legacy account silently "enable" a service this app does not
+  // - A backend-dependent feature (a discrete service VeyraN does not
+  //   operate at all: Notesnook Circle, monograph analytics, SMS 2FA)
+  //   ALWAYS resolves at the FREE tier, even for an account whose
+  //   `user.subscription.plan` reports a paid or legacy plan (e.g. a real
+  //   pre-existing Notesnook Pro/legacy account signed into this app).
+  //   Falling back to the account's real plan for these would let a
+  //   paid/legacy account silently "enable" a service this app does not
   //   provide.
+  // - Service limits (storage/fileSize) are not inferred from a legacy plan.
+  //   Let the upload reach the configured service, which owns the real limit.
+  //   This does not claim unlimited server capacity.
+  if (isVeyranServiceManaged(feature.id as FeatureId))
+    return createLimit("Service-managed", true) as unknown as Limit<
+      Caption<TId>
+    >;
   const key = isVeyranClientSupported(feature.id as FeatureId)
     ? "believer"
     : isVeyranBackendDependent(feature.id as FeatureId)

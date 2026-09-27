@@ -24,6 +24,7 @@ import Subscriptions from "../subscriptions.js";
 import { Circle } from "../circle.js";
 import { Pricing } from "../pricing.js";
 import { Offers } from "../offers.js";
+import UserManager from "../user-manager.js";
 
 // Every billing/pricing/circle network call must be observable here: if any
 // guarded method reaches into `http`, one of these spies fires and the test
@@ -59,7 +60,9 @@ function untouchableDb() {
     {
       get(_target, prop) {
         throw new Error(
-          `db.${String(prop)} was accessed; billing call was not blocked before touching the database/token manager`
+          `db.${String(
+            prop
+          )} was accessed; billing call was not blocked before touching the database/token manager`
         );
       }
     }
@@ -121,8 +124,17 @@ describe("VeyraN billing policy: Pricing", () => {
 
 describe("VeyraN billing policy: Offers", () => {
   it("getCode rejects and makes no network request", async () => {
+    await expect(Offers.getCode("PROMO", "android")).rejects.toBeInstanceOf(
+      BillingUnavailableError
+    );
+    expectNoHttpCalls();
+  });
+});
+
+describe("VeyraN billing policy: trial activation", () => {
+  it("rejects before reading a token or contacting Notesnook", async () => {
     await expect(
-      Offers.getCode("PROMO", "android")
+      UserManager.prototype.activateTrial.call(untouchableDb())
     ).rejects.toBeInstanceOf(BillingUnavailableError);
     expectNoHttpCalls();
   });

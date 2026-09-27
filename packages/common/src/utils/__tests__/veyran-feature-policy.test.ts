@@ -26,8 +26,10 @@ import {
 } from "../is-feature-available.js";
 import {
   VEYRAN_CLIENT_SUPPORTED_FEATURES,
+  VEYRAN_SERVICE_MANAGED_LIMITS,
   VEYRAN_BACKEND_DEPENDENT_FEATURES,
   isVeyranClientSupported,
+  isVeyranServiceManaged,
   isVeyranBackendDependent
 } from "../veyran-feature-policy.js";
 
@@ -71,30 +73,38 @@ afterEach(() => {
 });
 
 describe("VeyraN feature policy classification", () => {
-  it("classifies every known feature exactly once (no gaps, no overlap)", () => {
+  it("classifies every known feature into exactly one of the three buckets (no gaps, no overlap)", () => {
     const client = new Set(VEYRAN_CLIENT_SUPPORTED_FEATURES);
+    const verified = new Set(VEYRAN_SERVICE_MANAGED_LIMITS);
     const backend = new Set(VEYRAN_BACKEND_DEPENDENT_FEATURES);
+    const buckets = [client, verified, backend];
 
-    for (const id of client) expect(backend.has(id)).toBe(false);
+    for (const id of ALL_FEATURE_IDS) {
+      const memberships = buckets.filter((bucket) => bucket.has(id)).length;
+      expect(memberships).toBe(1);
+    }
 
     const unclassified = ALL_FEATURE_IDS.filter(
-      (id) => !client.has(id) && !backend.has(id)
+      (id) => !client.has(id) && !verified.has(id) && !backend.has(id)
     );
     expect(unclassified).toEqual([]);
 
     // Guard against the classification sets drifting stale if a feature is
     // ever removed from is-feature-available.ts without updating this file.
-    const unknown = [...client, ...backend].filter(
+    const unknown = [...client, ...verified, ...backend].filter(
       (id) => !ALL_FEATURE_IDS.includes(id)
     );
     expect(unknown).toEqual([]);
   });
 
-  it("never treats a feature as both client-supported and backend-dependent", () => {
+  it("never treats a feature as belonging to more than one bucket", () => {
     for (const id of ALL_FEATURE_IDS) {
-      expect(isVeyranClientSupported(id) && isVeyranBackendDependent(id)).toBe(
-        false
-      );
+      const flags = [
+        isVeyranClientSupported(id),
+        isVeyranServiceManaged(id),
+        isVeyranBackendDependent(id)
+      ];
+      expect(flags.filter(Boolean).length).toBe(1);
     }
   });
 });
@@ -134,15 +144,11 @@ describe("VeyraN feature policy: backend-dependent features stay honest", () => 
   });
 });
 
-describe("VeyraN feature policy: a real paid or legacy Notesnook account cannot enable an unsupported service", () => {
-  // A user can sign into VeyraN with an account that already has a genuine,
-  // still-active Notesnook subscription from before VeyraN existed (sync and
-  // auth are untouched here — only billing is disabled). This must not let
+describe("VeyraN feature policy: a real paid or legacy Notesnook account", () => {
+  // An existing local account can retain a legacy paid plan value. It must not let
   // `notesnookCircle`, `monographAnalytics`, or `sms2FA` — none of which
   // VeyraN operates — read as available just because `subscription.plan`
-  // says PRO/BELIEVER/LEGACY_PRO. `storage`/`fileSize` must likewise stay at
-  // the FREE caption: VeyraN cannot verify that a paid tier's capacity still
-  // applies here, so it does not infer it.
+  // says PRO/BELIEVER/LEGACY_PRO.
   const PAID_PLANS = {
     PRO: 2,
     BELIEVER: 3,
@@ -153,7 +159,7 @@ describe("VeyraN feature policy: a real paid or legacy Notesnook account cannot 
   for (const [planName, plan] of Object.entries(PAID_PLANS)) {
     describe(`account plan: ${planName}`, () => {
       it.each([...VEYRAN_BACKEND_DEPENDENT_FEATURES])(
-        "%s still resolves the FREE-tier limit, not the account's real plan",
+        "%s still resolves the FREE-tier limit, not the account's real plan (unsupported service)",
         async (id) => {
           mockUser = { subscription: { plan } };
           const feature = getFeature(id);
@@ -171,8 +177,29 @@ describe("VeyraN feature policy: a real paid or legacy Notesnook account cannot 
           expect(limit).toBe(feature.availability.believer);
         }
       );
+
+      it.each([...VEYRAN_SERVICE_MANAGED_LIMITS])(
+        "%s ignores a legacy plan value and defers numeric limits to the service",
+        async (id) => {
+          mockUser = { subscription: { plan } };
+          const feature = getFeature(id);
+          const limit = await getFeatureLimit(feature);
+          expect(limit.caption).toBe("Service-managed");
+          expect(await limit.isAllowed(100 * 1024 * 1024)).toBe(true);
+          expect(limit).not.toBe(feature.availability.free);
+        }
+      );
     });
   }
+
+  it("service limits do not invent FREE capacity for a new account", async () => {
+    mockUser = { subscription: { plan: 0 /* FREE */ } };
+    for (const id of VEYRAN_SERVICE_MANAGED_LIMITS) {
+      const feature = getFeature(id);
+      const limit = await getFeatureLimit(feature);
+      expect(limit.caption).toBe("Service-managed");
+    }
+  });
 });
 
 describe("VeyraN feature policy: actual UI-facing outcomes (isFeatureAvailable)", () => {
@@ -180,7 +207,10 @@ describe("VeyraN feature policy: actual UI-facing outcomes (isFeatureAvailable)"
     mockUser = { subscription: { plan: 2 /* PRO */ } };
     const result = await isFeatureAvailable("notesnookCircle");
     expect(result.isAllowed).toBe(false);
-    expect(result.error).toBe("Notesnook Circle isn't available in this app.");
+    expect(result.error).toBe(
+      "The partner marketplace isn't available in VeyraN."
+    );
+    expect(result.availableOn).toBeUndefined();
     expect(result.error.toLowerCase()).not.toContain("plan");
   });
 
@@ -202,18 +232,30 @@ describe("VeyraN feature policy: actual UI-facing outcomes (isFeatureAvailable)"
     expect(result.error.toLowerCase()).not.toContain("plan");
   });
 
-  it("storage reports the real FREE-tier caption honestly, never 'not available on this plan'", async () => {
-    mockUser = { subscription: { plan: 2 /* PRO */ } };
+  it("storage uses a service-managed limit, never a legacy plan tier", async () => {
     const result = await isFeatureAvailable("storage");
-    expect(result.caption).toBe("50MB/mo");
+    expect(result.caption).toBe("Service-managed");
+    expect(result.isAllowed).toBe(true);
     expect(result.error.toLowerCase()).not.toContain("plan");
   });
 
-  it("fileSize reports the real FREE-tier caption honestly, never 'on this plan'", async () => {
+  it("fileSize allows a service-validated upload without claiming a client tier", async () => {
+    const result = await isFeatureAvailable("fileSize", 11 * 1024 * 1024);
+    expect(result.caption).toBe("Service-managed");
+    expect(result.isAllowed).toBe(true);
+    expect(result.error.toLowerCase()).not.toContain("plan");
+  });
+
+  it("storage ignores a pre-existing PRO plan as a VeyraN capacity claim", async () => {
+    mockUser = { subscription: { plan: 2 /* PRO */ } };
+    const result = await isFeatureAvailable("storage");
+    expect(result.caption).toBe("Service-managed");
+  });
+
+  it("fileSize ignores a legacy paid plan as a VeyraN capacity claim", async () => {
     mockUser = { subscription: { plan: 5 /* LEGACY_PRO */ } };
     const result = await isFeatureAvailable("fileSize");
-    expect(result.caption).toBe("10MB");
-    expect(result.error.toLowerCase()).not.toContain("plan");
+    expect(result.caption).toBe("Service-managed");
   });
 
   it("a client-supported feature is allowed with no error, for a brand-new FREE account", async () => {

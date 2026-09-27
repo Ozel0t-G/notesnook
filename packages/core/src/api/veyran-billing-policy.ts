@@ -40,9 +40,7 @@ export const VEYRAN_BILLING_DISABLED = true;
 
 export class BillingUnavailableError extends Error {
   constructor(action: string) {
-    super(
-      `${action} is unavailable: this app does not use Notesnook's paid billing service.`
-    );
+    super(`${action} is unavailable in VeyraN.`);
     this.name = "BillingUnavailableError";
   }
 }

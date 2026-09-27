@@ -26,6 +26,7 @@ import { HealthCheck } from "./healthcheck.js";
 import Database from "./index.js";
 import { SerializedKeyPair, SerializedKey, Cipher } from "@notesnook/crypto";
 import { logger } from "../logger.js";
+import { assertBillingEnabled } from "./veyran-billing-policy.js";
 import { KEY_VERSION, KeyVersion } from "./sync/types.js";
 import {
   KeyId,
@@ -399,6 +400,7 @@ class UserManager {
   }
 
   async activateTrial() {
+    assertBillingEnabled("Activating a trial");
     const token = await this.tokenManager.getAccessToken();
     if (!token) return false;
     await http.post(

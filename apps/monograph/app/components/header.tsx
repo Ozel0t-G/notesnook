@@ -37,7 +37,7 @@ export function Header() {
           fontSize: 22
         }}
       >
-        <span style={{ color: "var(--accent)" }}>Mono</span>graph
+        VeyraN
       </Text>
       <Button
         as="a"

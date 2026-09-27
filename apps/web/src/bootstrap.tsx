@@ -165,7 +165,7 @@ function isSessionExpired(path: Routes): RouteWithPath<AuthProps> | null {
 
 function checkPrerequisites() {
   if (!window.isSecureContext)
-    throw new Error("Please run Notesnook in a secure (https) context.");
+    throw new Error("Please run VeyraN in a secure (https) context.");
   if (!navigator.locks)
     throw new Error("Your browser does not support the Web Locks API.");
   if (!crypto.subtle)

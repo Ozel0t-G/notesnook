@@ -134,7 +134,7 @@ function WelcomeSlide({ width }: { width: number }) {
             color: colors.secondary.paragraph
           }}
         >
-          Let's look back at your year in Notesnook
+          Let&apos;s look back at your year in VeyraN
         </Paragraph>
       </View>
     </Slide>
@@ -192,7 +192,7 @@ function TotalNotesSlide({ count, width }: { count: number; width: number }) {
           maxWidth: "80%"
         }}
       >
-        That's{" "}
+        That&apos;s{" "}
         <Heading
           style={{
             fontSize: AppFontSize.lg,
@@ -261,7 +261,7 @@ function TotalWordsSlide({ count, width }: { count: number; width: number }) {
           maxWidth: "80%"
         }}
       >
-        That's almost the length of a short novel!
+        That&apos;s almost the length of a short novel!
       </Paragraph>
     </Slide>
   );
@@ -644,7 +644,7 @@ function SummarySlide({
                 marginTop: 30
               }}
             >
-              Notesnook Wrapped {dayjs().year()}
+              VeyraN Wrapped {dayjs().year()}
             </Heading>
             <View
               style={{

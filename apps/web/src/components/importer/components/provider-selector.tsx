@@ -40,19 +40,6 @@ export function ProviderSelector(props: ProviderSelectorProps) {
     >
       <Flex sx={{ flexDirection: "column", flex: 1 }}>
         <Text variant="subtitle">Select a notes app to import from</Text>
-        <Text
-          variant="body"
-          as="div"
-          sx={{ mt: 1, color: "paragraph", whiteSpace: "pre-wrap" }}
-        >
-          Can&apos;t find your notes app in the list?{" "}
-          <a
-            href="https://github.com/streetwriters/notesnook-importer/issues/new"
-            target="_blank"
-          >
-            Send us a request.
-          </a>
-        </Text>
       </Flex>
       <select
         style={{

@@ -175,7 +175,7 @@ function WelcomeSlide({ loading }: { loading: boolean }) {
               animation: "fadeIn 1s ease-out 0.4s both"
             }}
           >
-            Let&apos;s look back at your year in Notesnook
+            Let&apos;s look back at your year in VeyraN
           </Text>
           <Text
             variant="body"

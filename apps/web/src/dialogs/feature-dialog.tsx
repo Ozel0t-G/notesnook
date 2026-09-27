@@ -17,20 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { Text, Flex, Link } from "@theme-ui/components";
+import { Text, Flex } from "@theme-ui/components";
 import Dialog from "../components/dialog";
 import { getHomeRoute, hardNavigate } from "../navigation";
 import { appVersion } from "../utils/version";
 import Config from "../utils/config";
-import {
-  ArrowRight,
-  Checkmark,
-  Icon,
-  Warn,
-  Inbox,
-  LinkedTo,
-  Plus
-} from "../components/icons";
+import { ArrowRight, Checkmark, Icon, Warn } from "../components/icons";
 import { BaseDialogProps, DialogManager } from "../common/dialog-manager";
 import { strings } from "@notesnook/intl";
 
@@ -64,9 +56,7 @@ const features: Record<FeatureKeys, Feature> = {
     }
   },
   highlights: {
-    title: appVersion.isBeta
-      ? "Welcome to Notesnook Beta!"
-      : "✨ Highlights ✨",
+    title: appVersion.isBeta ? "Welcome to VeyraN Beta!" : "✨ Highlights ✨",
     subtitle: appVersion.isBeta
       ? `v${appVersion.clean}-beta`
       : `Welcome to v${appVersion.clean}`,
@@ -77,10 +67,8 @@ const features: Record<FeatureKeys, Feature> = {
             title: "Notice",
             subtitle: (
               <>
-                This is the beta version and as such will contain bugs. Things
-                are expected to break but should be generally stable. Please use
-                the <Code text="Report an issue" /> button to report all bugs.
-                Thank you!
+                This beta version may contain bugs. Keep a current backup of
+                your notes while testing it.
               </>
             )
           },

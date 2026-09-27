@@ -41,6 +41,17 @@ per-gate evidence and the private [production runbook]
 Sync config rollback. No Notesnook `main` merge, TestFlight upload, App Store
 release, or credential disclosure occurred.
 
+The Mac client used for successful sync QA is the **stale installed TestFlight
+3.4.8 (`1790322785`) package from September 25**. Its live Appearance screen
+still shows Notesnook Dark/Light and Streetwriters; its packaged ASAR predates
+the September 27 VeyraN theme changes. The authenticated production Web
+profile shows VeyraN Dark/Light. No current signed Mac package is available
+locally, and this QA run did not build, upload, or install a replacement.
+The stale Mac theme path has not had a sanitized runtime domain capture, so a
+Notesnook hosted theme request from that package cannot yet be excluded.
+The exact NuGet package/advisory inventory is in the
+[NuGet audit](artifacts/veyran-nuget-advisories-2026-09-27.md).
+
 ## September 27 production continuation — current handoff
 
 The user's private VeyraN Web `92fcae4f`, Share `db901ee0`, Identity/Events `a06ecfaa`, and Sync `86547b47` images are deployed on the actual OVH/Tailscale production VPS. All five are healthy; public Auth/API/Events/Share/Web health is 200, the Docker exposure allowlist passed, and OIDC discovery advertises HTTPS VeyraN Auth endpoints. A fresh Safari Web client showed local VeyraN Light/Dark and Classic Light/Dark; its theme switch produced zero network requests in Web Inspector. The existing Chrome profile advanced from the pre-rollout asset to `index-D43kZFAW.js` without clearing local storage; the latest Web HTML serves `index-BTsT9Rzk.js`. An isolated fresh Chrome profile installed all 56 current service-worker assets and made only VeyraN Web/API requests on startup. The optional Skiff image importer no longer sends images through `cors.notesnook.com` in the built chunk; it uses direct HTTPS without credentials, so source-host CORS denial can omit an imported image. Recovery, MFA, and failed-login-warning messages in the previously authorized Apple Mail inbox displayed VeyraN sender, text, and links. Public Share returns a real HTTP 404 with VeyraN branding; its OG JPEG and HTTPS redirect work. The full production evidence and exact source commits are at the top of [the migration report](artifacts/veyran-product-independence-migration.md).

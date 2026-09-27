@@ -18,7 +18,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import React from "react";
 import { strings } from "@notesnook/intl";
-import { Platform } from "react-native";
 import { AuthMode } from "../components/auth/common";
 import { verifyUser } from "../screens/settings/functions";
 import {
@@ -26,7 +25,7 @@ import {
   MessageId,
   useMessageStore
 } from "../stores/use-message-store";
-import { eOpenRateDialog, eOpenRecoveryKeyDialog } from "../utils/events";
+import { eOpenRecoveryKeyDialog } from "../utils/events";
 import { eSendEvent, presentSheet } from "./event-manager";
 import Navigation from "./navigation";
 import PremiumService from "./premium";
@@ -36,18 +35,6 @@ import { GithubVersionInfo } from "../utils/github-version";
 import { CheckVersionResponse } from "react-native-check-version";
 
 const APP_MESSAGES: Message[] = [
-  {
-    visible: true,
-    message: strings.rateAppMessage(),
-    actionText: strings.rateAppActionText(Platform.OS),
-    onPress: () => {
-      eSendEvent(eOpenRateDialog);
-    },
-    data: {},
-    icon: "star",
-    type: "normal",
-    id: "rate-app"
-  },
   {
     visible: true,
     message: strings.recoveryKeyMessage(),
@@ -108,7 +95,7 @@ function showMessageById(id: MessageId) {
 }
 
 export function setRateAppMessage() {
-  showMessageById("rate-app");
+  // VeyraN has no owned App Store listing to request a review for yet.
 }
 
 export function setRecoveryKeyMessage() {
@@ -146,7 +133,7 @@ const updateAvailableMessage = (
     icon: "update",
     type: "normal",
     id: "app-update"
-  }) as Message;
+  } as Message);
 
 export function setUpdateAvailableMessage(
   version: GithubVersionInfo | CheckVersionResponse

@@ -17,23 +17,18 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { Flex, Image, Progress, Text } from "@theme-ui/components";
+import { Flex, Image, Text } from "@theme-ui/components";
 import { Edit, User as UserIcon } from "../../../components/icons";
 import { useStore as useUserStore } from "../../../stores/user-store";
 import { useStore as useSettingStore } from "../../../stores/setting-store";
 import { getObjectIdTimestamp } from "@notesnook/core";
-import { formatBytes, getFormattedDate } from "@notesnook/common";
+import { getFormattedDate } from "@notesnook/common";
 import { db } from "../../../common/db";
 import { showToast } from "../../../utils/toast";
 import { EditProfilePictureDialog } from "../../edit-profile-picture-dialog";
 import { PromptDialog } from "../../prompt";
 import { strings } from "@notesnook/intl";
-import {
-  SubscriptionPlan,
-  SubscriptionProvider,
-  SubscriptionStatus,
-  User
-} from "@notesnook/core";
+import { User } from "@notesnook/core";
 
 export function getSubscriptionInfo(user?: User): {
   title: string;
@@ -45,53 +40,10 @@ export function getSubscriptionInfo(user?: User): {
   autoRenew?: boolean;
   trialExpiryDate?: string;
 } {
-  user = user || useUserStore.getState().user;
-  const { expiry, plan, status, provider } = user?.subscription || {};
-  if (!expiry) return { title: "Free" };
-
-  const trial = status === SubscriptionStatus.TRIAL;
-  const title =
-    plan === SubscriptionPlan.BELIEVER
-      ? "Believer"
-      : plan === SubscriptionPlan.PRO
-      ? "Pro"
-      : plan === SubscriptionPlan.ESSENTIAL
-      ? "Essential"
-      : plan === SubscriptionPlan.EDUCATION
-      ? "Education"
-      : plan === SubscriptionPlan.LEGACY_PRO
-      ? "Pro (legacy)"
-      : "Free";
-  const autoRenew =
-    (status === SubscriptionStatus.ACTIVE ||
-      status === SubscriptionStatus.TRIAL) &&
-    provider !== SubscriptionProvider.STREETWRITERS;
-  const paused = status === SubscriptionStatus.PAUSED;
-  const canceled = status === SubscriptionStatus.CANCELED;
-
-  const expiryDate =
-    (!!user?.subscription?.expiry &&
-      getFormattedDate(user.subscription.expiry, "date-time")) ||
-    undefined;
-  const trialExpiryDate =
-    (!!user?.subscription?.trialExpiry &&
-      getFormattedDate(user.subscription.trialExpiry, "date-time")) ||
-    undefined;
-  const startDate =
-    (!!user?.subscription?.start &&
-      getFormattedDate(user?.subscription?.start, "date-time")) ||
-    undefined;
-
-  return {
-    title,
-    trial,
-    expiryDate,
-    startDate,
-    trialExpiryDate,
-    autoRenew,
-    paused,
-    canceled
-  };
+  // Preserve the legacy subscription record for account compatibility, but
+  // never present it as a VeyraN entitlement or plan.
+  void user;
+  return { title: "Account" };
 }
 
 type Props = {
@@ -101,8 +53,6 @@ type Props = {
 export function UserProfile({ minimal }: Props) {
   const user = useUserStore((store) => store.user);
   const profile = useSettingStore((store) => store.profile);
-
-  const { title, trial } = getSubscriptionInfo(user);
 
   if (!user || !user.id)
     return (
@@ -195,15 +145,6 @@ export function UserProfile({ minimal }: Props) {
           </Flex>
         </Flex>
         <Flex sx={{ flexDirection: "column", flex: 1 }}>
-          <Text
-            variant="subBody"
-            sx={{
-              color: "accent"
-            }}
-          >
-            {`${title}${trial ? " (trial)" : ""}`}
-          </Text>
-
           <Text variant={minimal ? "body" : "subtitle"}>
             {profile?.fullName || strings.yourFullName()}{" "}
             {minimal ? null : (
@@ -245,22 +186,6 @@ export function UserProfile({ minimal }: Props) {
               </>
             )}
           </Text>
-          {user.totalStorage && !minimal ? (
-            <Flex sx={{ maxWidth: 300, alignItems: "center", gap: 1 }}>
-              <Progress
-                max={user.totalStorage === -1 ? Infinity : user.totalStorage}
-                value={user.storageUsed || 0}
-                color="var(--accent)"
-              />
-              <Text variant="subBody" sx={{ flexShrink: 0 }}>
-                {formatBytes(user.storageUsed || 0)}/
-                {user.totalStorage === -1
-                  ? "Unlimited"
-                  : formatBytes(user.totalStorage)}{" "}
-                used
-              </Text>
-            </Flex>
-          ) : null}
         </Flex>
       </Flex>
       {/* <Button

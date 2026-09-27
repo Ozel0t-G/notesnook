@@ -20,16 +20,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { Text, Flex, Button } from "@theme-ui/components";
 import Dialog from "../components/dialog";
 import { BaseDialogProps, DialogManager } from "../common/dialog-manager";
-import { useStore as useUserStore } from "../stores/user-store";
-import { getSubscriptionInfo } from "./settings/components/user-profile";
 import { strings } from "@notesnook/intl";
 
 type OnboardingDialogProps = BaseDialogProps<boolean>;
 export const OnboardingDialog = DialogManager.register(
   function OnboardingDialog({ onClose }: OnboardingDialogProps) {
-    const user = useUserStore((store) => store.user);
-    const { title } = getSubscriptionInfo(user);
-
     return (
       <Dialog isOpen={true} width={500} onClose={() => onClose(false)}>
         <Flex
@@ -40,7 +35,7 @@ export const OnboardingDialog = DialogManager.register(
           }}
         >
           <Text variant={"heading"} mt={2}>
-            {strings.welcomeToPlan(title + " plan")}
+            {strings.welcomeToVeyran()}
           </Text>
           <Text
             variant={"body"}

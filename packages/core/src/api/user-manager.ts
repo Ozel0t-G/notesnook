@@ -665,6 +665,10 @@ class UserManager {
       cryptoKeyState: await this.db.storage().snapshotCryptoKeyState(),
       cryptoKeyTouched: false,
       mutationStarted: false,
+      syncActivity: undefined as
+        | { autoSyncActive: boolean; connectionActive: boolean }
+        | undefined,
+      syncTeardownConfirmed: false,
       rollbackAccessToken: undefined as string | undefined,
       backend: this.backendAffinity.current(),
       serverSettings: JSON.stringify(getPersistedHostOverrides() || {})
@@ -695,6 +699,7 @@ class UserManager {
   private async beginSessionMutation(
     snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
   ) {
+    snapshot.syncActivity = this.db.syncer.snapshotRecoveryState?.();
     await this.db.storage().write("backendRecoveryRequired", true);
     if (
       (await this.db.storage().read<boolean>("backendRecoveryRequired")) !==
@@ -705,6 +710,7 @@ class UserManager {
     // The durable marker is now in place. Tear down any old sync connection
     // and upload queue before changing identity, token, or encryption state.
     await this.db.eventManager.publishWithResult(EVENTS.backendRecoveryStarted);
+    snapshot.syncTeardownConfirmed = true;
   }
 
   private async finishSessionMutation(
@@ -829,6 +835,34 @@ class UserManager {
         "Account rollback could not be completed. Local note records were not deleted, and network access is blocked until the profile is repaired."
       );
     }
+    if (
+      snapshot.syncTeardownConfirmed &&
+      snapshot.syncActivity &&
+      this.isOriginalSessionUsable(snapshot)
+    ) {
+      try {
+        this.assertConfigurationUnchanged(snapshot);
+        await this.backendAffinity.assertAllowed("Resuming restored sync");
+        await this.db.syncer.resumeAfterRecovery(snapshot.syncActivity);
+      } catch (error) {
+        // Local rollback is complete and verified. A transient reconnect
+        // failure must not relabel it as a failed data restoration.
+        logger.error(error, "Could not resume sync after account rollback");
+      }
+    }
+  }
+
+  private isOriginalSessionUsable(
+    snapshot: Awaited<ReturnType<UserManager["snapshotSession"]>>
+  ) {
+    const token = snapshot.token;
+    return Boolean(
+      snapshot.user &&
+        token?.access_token &&
+        typeof token.t === "number" &&
+        typeof token.expires_in === "number" &&
+        Date.now() < token.t + token.expires_in * 1000
+    );
   }
 
   private async verifyRestoredSession(

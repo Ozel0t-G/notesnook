@@ -102,6 +102,22 @@ export default class SyncManager {
     this.devices = this.sync.devices;
   }
 
+  snapshotRecoveryState() {
+    return {
+      autoSyncActive: this.sync.autoSync.isAutoSyncing,
+      connectionActive:
+        this.sync.connection?.state === HubConnectionState.Connected
+    };
+  }
+
+  async resumeAfterRecovery(
+    state: ReturnType<SyncManager["snapshotRecoveryState"]>
+  ) {
+    await this.db.user.backendAffinity.assertAllowed("Resuming sync");
+    if (state.autoSyncActive) await this.sync.autoSync.start();
+    if (state.connectionActive) await this.sync.start({ type: "full" });
+  }
+
   async start(options: SyncOptions) {
     try {
       await this.db.user.backendAffinity.assertAllowed("Sync");

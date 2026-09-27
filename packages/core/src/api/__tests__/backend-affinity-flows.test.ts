@@ -87,6 +87,7 @@ function harness(options: {
   lastSynced?: number;
   deviceId?: string;
   cryptoKey?: string;
+  syncActivity?: { autoSyncActive: boolean; connectionActive: boolean };
 }) {
   const kv = new Map<string, unknown>();
   if (options.storedUser) kv.set("user", options.storedUser);
@@ -113,6 +114,14 @@ function harness(options: {
   const storageRead = vi.fn(async (key: string) => kv.get(key));
   const unregister = vi.fn(async () => void kv.delete("deviceId"));
   const register = vi.fn(async () => void kv.set("deviceId", "new-device"));
+  const snapshotRecoveryState = vi.fn(
+    () =>
+      options.syncActivity || { autoSyncActive: false, connectionActive: false }
+  );
+  const resumeAfterRecovery = vi.fn(
+    async (_state: { autoSyncActive: boolean; connectionActive: boolean }) =>
+      undefined
+  );
 
   const restoreSessionState = vi.fn(async (state: Record<string, unknown>) => {
     // Match the real KV adapter's transaction: stage the entire write, then
@@ -165,7 +174,11 @@ function harness(options: {
       remove: storageRemove
     }),
     crypto: () => ({ generateRandomKey: async () => ({ key: "k" }) }),
-    syncer: { devices: { register, unregister } }
+    syncer: {
+      devices: { register, unregister },
+      snapshotRecoveryState,
+      resumeAfterRecovery
+    }
   } as unknown as Database;
 
   const user = new UserManager(db);
@@ -181,6 +194,8 @@ function harness(options: {
     deriveCryptoKey,
     register,
     unregister,
+    snapshotRecoveryState,
+    resumeAfterRecovery,
     restoreSessionState,
     storageWrite,
     storageRemove,
@@ -1201,6 +1216,97 @@ describe("three-step login preserves the original session", () => {
     expect(kv.get("lastSynced")).toBe(456);
     expect(kv.get("deviceId")).toBe("old-device");
     expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("verified rollback resumes the original active sync state only after restoration", async () => {
+    const originalSession = { ...originalToken, t: Date.now() };
+    const local = serverUser("same-account");
+    const { user, db, kv, register, resumeAfterRecovery } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalSession,
+      cryptoKey: "old-key",
+      deviceId: "old-device",
+      lastSynced: 745,
+      syncActivity: { autoSyncActive: true, connectionActive: true }
+    });
+    let syncActive = true;
+    db.eventManager.subscribe(EVENTS.backendRecoveryStarted, () => {
+      syncActive = false;
+    });
+    resumeAfterRecovery.mockImplementationOnce(async (state) => {
+      expect(kv.has("backendRecoveryRequired")).toBe(false);
+      expect(kv.get("token")).toEqual(originalSession);
+      expect(kv.get("user")).toEqual(local);
+      expect(kv.get("cryptoKey")).toBe("old-key");
+      expect(kv.get("deviceId")).toBe("old-device");
+      expect(kv.get("lastSynced")).toBe(745);
+      expect(state).toEqual({ autoSyncActive: true, connectionActive: true });
+      syncActive = true;
+    });
+    arrangeGrants();
+    register.mockImplementationOnce(async () => {
+      kv.set("deviceId", "new-device");
+      throw new Error("device write failed");
+    });
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow("device write failed");
+
+    expect(syncActive).toBe(true);
+    expect(resumeAfterRecovery).toHaveBeenCalledOnce();
+  });
+
+  test("failed rollback keeps previously active sync stopped", async () => {
+    const { user, db, kv, register, restoreSessionState, resumeAfterRecovery } =
+      harness({
+        storedUser: serverUser("same-account"),
+        affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+        token: { ...originalToken, t: Date.now() },
+        cryptoKey: "old-key",
+        deviceId: "old-device",
+        syncActivity: { autoSyncActive: true, connectionActive: true }
+      });
+    let syncActive = true;
+    db.eventManager.subscribe(EVENTS.backendRecoveryStarted, () => {
+      syncActive = false;
+    });
+    arrangeGrants();
+    register.mockRejectedValueOnce(new Error("device write failed"));
+    restoreSessionState.mockRejectedValueOnce(new Error("KV recovery failed"));
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow(/rollback could not be completed/);
+
+    expect(syncActive).toBe(false);
+    expect(resumeAfterRecovery).not.toHaveBeenCalled();
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+  });
+
+  test("an expired original session is not reconnected after rollback", async () => {
+    const { user, register, resumeAfterRecovery } = harness({
+      storedUser: serverUser("same-account"),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: originalToken,
+      cryptoKey: "old-key",
+      syncActivity: { autoSyncActive: true, connectionActive: true }
+    });
+    arrangeGrants();
+    register.mockRejectedValueOnce(new Error("device write failed"));
+
+    await user.authenticateEmail("someone@example.test");
+    await user.authenticateMultiFactorCode("123456", "app");
+    await expect(
+      user.authenticatePassword("someone@example.test", "pw")
+    ).rejects.toThrow("device write failed");
+
+    expect(resumeAfterRecovery).not.toHaveBeenCalled();
   });
 
   test("rollback unregisters a newly registered device with the verified token despite quarantine", async () => {

@@ -272,6 +272,38 @@ describe("sync preflight", () => {
     expect(sync.autoSync.isAutoSyncing).toBe(false);
   });
 
+  test("previously active AutoSync and connection resume after a verified recovery rollback", async () => {
+    const { db, kv } = syncHarness({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth,
+      recordedAt: 1
+    });
+    const manager = new SyncManager(db);
+    const stop = vi.fn(async () => undefined);
+    manager.sync.connection = { state: "Connected", stop } as never;
+    await manager.sync.autoSync.start();
+    const original = manager.snapshotRecoveryState();
+    expect(original).toEqual({ autoSyncActive: true, connectionActive: true });
+
+    kv.set("backendRecoveryRequired", true);
+    await (
+      db as unknown as { eventManager: EventManager }
+    ).eventManager.publishWithResult(EVENTS.backendRecoveryStarted);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(manager.sync.autoSync.isAutoSyncing).toBe(false);
+    kv.delete("backendRecoveryRequired");
+
+    const restart = vi.fn(async () => {
+      manager.sync.connection = { state: "Connected" } as never;
+    });
+    manager.sync.start = restart;
+    await manager.resumeAfterRecovery(original);
+    expect(manager.sync.autoSync.isAutoSyncing).toBe(true);
+    expect(restart).toHaveBeenCalledWith({ type: "full" });
+    expect(manager.snapshotRecoveryState()).toEqual(original);
+  });
+
   test("inbound decrypt cannot merge a chunk after recovery begins", async () => {
     const { sync, db, kv } = syncHarness({
       v: 1,

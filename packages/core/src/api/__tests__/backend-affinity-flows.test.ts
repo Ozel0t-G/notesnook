@@ -1076,6 +1076,7 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
 
   test("a late signup failure restores the original sync and device state", async () => {
     const { user, kv, register, unregister } = harness({
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
       lastSynced: 789,
       deviceId: "previous-device",
       cryptoKey: "original-key"
@@ -1101,7 +1102,9 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     expect(kv.get("cryptoKey")).toBe("original-key");
     expect(kv.has("user")).toBe(false);
     expect(kv.has("token")).toBe(false);
-    expect(kv.has("backendAffinity")).toBe(false);
+    expect(kv.get("backendAffinity")).toEqual(
+      affinityRecord(VEYRAN.api, VEYRAN.auth)
+    );
   });
 });
 
@@ -1849,7 +1852,7 @@ describe("verified recovery-code session", () => {
     const local = harness({ localContent: true });
     await expect(
       local.user.authenticateRecoveryCode("recovered", "code")
-    ).rejects.toThrow(/local account data/);
+    ).rejects.toThrow(/cannot be attributed/);
     expect(local.kv.get("backendAffinity")).toBeUndefined();
     expect(mockPost).not.toHaveBeenCalled();
   });
@@ -1862,7 +1865,7 @@ describe("verified recovery-code session", () => {
       const profile = harness(state);
       await expect(
         profile.user.authenticateRecoveryCode("recovered", "code")
-      ).rejects.toThrow(/local account data/);
+      ).rejects.toThrow(/cannot be attributed/);
       expect(profile.kv.get("backendAffinity")).toBeUndefined();
     }
     expect(mockPost).not.toHaveBeenCalled();
@@ -1924,5 +1927,40 @@ describe("verified recovery-code session", () => {
     expect(kv.get("lastSynced")).toBe(42);
     expect(kv.get("deviceId")).toBe("old-device");
     expect(kv.get("backendRecoveryRequired")).toBeUndefined();
+  });
+});
+
+describe("uncached local data cannot be silently bound by signup or login", () => {
+  test("signup and the first login step reject an unattributed note before any credential request", async () => {
+    const signup = harness({ localContent: true });
+    await expect(
+      signup.user.signup("someone@example.test", "password")
+    ).rejects.toThrow(/cannot be attributed/);
+    expect(signup.kv.get("backendAffinity")).toBeUndefined();
+
+    const login = harness({ localContent: true });
+    await expect(
+      login.user.authenticateEmail("someone@example.test")
+    ).rejects.toThrow(/cannot be attributed/);
+    expect(login.kv.get("backendAffinity")).toBeUndefined();
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("the final password step rejects uncached local data without relabeling", async () => {
+    const { user, kv } = harness({ localContent: true });
+    (user as any).pendingLogin = {
+      email: "someone@example.test",
+      token: {
+        access_token: "mfa-stage-local-data",
+        scope: "auth:grant_types:mfa_password"
+      },
+      backend: VEYRAN,
+      serverSettings: "{}"
+    };
+    await expect(
+      user.authenticatePassword("someone@example.test", "password")
+    ).rejects.toThrow(/cannot be attributed/);
+    expect(kv.get("backendAffinity")).toBeUndefined();
+    expect(mockPost).not.toHaveBeenCalled();
   });
 });

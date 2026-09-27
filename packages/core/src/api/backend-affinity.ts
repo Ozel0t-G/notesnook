@@ -322,6 +322,46 @@ export class BackendAffinity {
     await this.db.kv().delete("backendAffinity");
   }
 
+  /** Include tombstones and all persisted local account state. */
+  async hasLocalAccountData() {
+    const tables = [
+      "notes",
+      "notebooks",
+      "content",
+      "attachments",
+      "tags",
+      "colors",
+      "shortcuts",
+      "reminders",
+      "relations",
+      "vaults",
+      "notehistory",
+      "sessioncontent",
+      "monographs",
+      "inboxitemshistory",
+      "settings"
+    ] as const;
+    for (const table of tables)
+      if (
+        await this.db
+          .sql()
+          .selectFrom(table)
+          .select("id")
+          .limit(1)
+          .executeTakeFirst()
+      )
+        return true;
+    return (
+      this.db.legacyNotes.count() > 0 ||
+      this.db.legacyTags.count() > 0 ||
+      this.db.legacyColors.count() > 0 ||
+      !!(await this.db.storage().read("settings")) ||
+      (await this.db.storage().snapshotCryptoKeyState()) != null ||
+      !!(await this.db.kv().read("deviceId")) ||
+      !!(await this.db.kv().read("lastSynced"))
+    );
+  }
+
   /**
    * Derive an identity from the user's own persisted server configuration.
    *
@@ -418,8 +458,10 @@ export class BackendAffinity {
 
     // Even a persisted interim MFA token has an unknown issuing server when
     // there is no affinity record. Fresh MFA credentials stay only in memory.
-    if (!user && !token?.access_token)
-      return { status: "no-user", configured, evidence: "none" };
+    if (!user && !token)
+      return (await this.hasLocalAccountData())
+        ? { status: "unknown", configured, evidence: "none" }
+        : { status: "no-user", configured, evidence: "none" };
 
     // An account with no record and no persisted configuration. Fail safe.
     return { status: "unknown", configured, evidence: "none" };

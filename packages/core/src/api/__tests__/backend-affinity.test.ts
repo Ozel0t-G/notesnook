@@ -52,6 +52,8 @@ function fakeDb(options: {
   user?: Partial<User>;
   affinity?: StoredAffinity | string;
   recoveryRequired?: boolean;
+  localRow?: string;
+  legacySettings?: boolean;
 }) {
   const kv = new Map<string, unknown>();
   if (options.affinity !== undefined)
@@ -67,8 +69,24 @@ function fakeDb(options: {
         read: async (key: string) =>
           key === "backendRecoveryRequired"
             ? options.recoveryRequired
-            : undefined
+            : key === "settings"
+            ? options.legacySettings
+            : undefined,
+        snapshotCryptoKeyState: async () => undefined
       }),
+      sql: () => ({
+        selectFrom: (table: string) => ({
+          select: () => ({
+            limit: () => ({
+              executeTakeFirst: async () =>
+                options.localRow === table ? { id: "local" } : undefined
+            })
+          })
+        })
+      }),
+      legacyNotes: { count: () => 0 },
+      legacyTags: { count: () => 0 },
+      legacyColors: { count: () => 0 },
       user: { getUser: async () => options.user }
     } as unknown as Database,
     kv
@@ -197,6 +215,25 @@ describe("check", () => {
     expect((await new BackendAffinity(db).check()).status).toBe("no-user");
   });
 
+  test.each(["notes", "settings"])(
+    "unattributed local %s rows block direct affinity recording",
+    async (table) => {
+      const { db, kv } = fakeDb({ localRow: table });
+      const boundary = new BackendAffinity(db);
+      expect((await boundary.check()).status).toBe("unknown");
+      expect((await boundary.record()).ok).toBe(false);
+      expect(kv.get("backendAffinity")).toBeUndefined();
+    }
+  );
+
+  test("legacy settings without a user block direct affinity recording", async () => {
+    const { db, kv } = fakeDb({ legacySettings: true });
+    const boundary = new BackendAffinity(db);
+    expect((await boundary.check()).status).toBe("unknown");
+    expect((await boundary.record()).ok).toBe(false);
+    expect(kv.get("backendAffinity")).toBeUndefined();
+  });
+
   test("a token without cached user still obeys stored backend affinity", async () => {
     const { db, kv } = fakeDb({
       affinity: record(NOTESNOOK.api, NOTESNOOK.auth)
@@ -213,6 +250,12 @@ describe("check", () => {
   test("a token without cached user or provenance fails closed", async () => {
     const { db, kv } = fakeDb({});
     kv.set("token", { access_token: "unattributed-access" });
+    expect((await new BackendAffinity(db).check()).status).toBe("unknown");
+  });
+
+  test("a refresh-only token without cached user or provenance fails closed", async () => {
+    const { db, kv } = fakeDb({});
+    kv.set("token", { refresh_token: "unattributed-refresh" });
     expect((await new BackendAffinity(db).check()).status).toBe("unknown");
   });
 

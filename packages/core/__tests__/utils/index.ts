@@ -129,10 +129,14 @@ async function loginFakeUser(db) {
   });
 }
 
-/** Attribute synthetic test accounts before any user data is cached. */
+/** Synthetic fixtures can declare their provenance; production paths cannot. */
 async function bindFakeUserToConfiguredBackend(db) {
-  const result = await db.user.backendAffinity.record();
-  if (!result.ok) throw new Error("Could not bind synthetic test account.");
+  const identity = db.user.backendAffinity.current();
+  await db.kv().write("backendAffinity", {
+    v: 1,
+    ...identity,
+    recordedAt: Date.now()
+  });
 }
 
 export {

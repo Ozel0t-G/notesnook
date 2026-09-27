@@ -34,6 +34,8 @@ Production Sync runs `veyran/sync:c7734b9` from signed source `c7734b9`, removin
 
 No-key/keyed recovery remain HTTP 410; normal password and email change remain HTTP 503 before unsafe cross-service writes. OIDC HTTPS discovery and invalid-token rejection passed; fresh token issuance and natural refresh in the newly installed Mac beta were **NOT TESTED**. Remaining NuGet work includes compatible upgrades for MessagePack, MailKit/MimeKit, Scriban, and IdentityServer4; no broad package churn was deployed.
 
+The Mac Profile screen still advertises “Change email address” despite the server's HTTP 503 guard. The guarded path was not invoked during QA. The visible copy should be corrected before a production release so users are not led into a disabled flow.
+
 Physical iPhone/iPad, Apple Pencil/drawing, Widget cold completion, Urgent/Dynamic Island behavior, and two-client Tasks are **DEFERRED TO PHYSICAL QA**. Use [the checklist](../VEYRAN_TESTFLIGHT_PHYSICAL_QA.md). Final production readiness remains **FAIL**.
 
 Screenshots: [installed Mac build](mac-testflight-build.jpg), [Mac Notes](mac-testflight-notes.jpg), [Mac Appearance](mac-testflight-appearance.jpg), [VeyraN Light](mac-testflight-light.jpg), [Mac Tasks](mac-testflight-tasks.jpg), [revoked Share](share-revoked.jpg), [production Web Appearance](web-appearance.jpg). Screenshots omit credentials and MFA codes.

@@ -61,4 +61,26 @@ describe("VeyraN no-key reset safety", () => {
       expect(requests.delete).not.toHaveBeenCalled();
     }
   );
+
+  it.each([undefined, true, false])(
+    "rejects the legacy destructive reset endpoint for removeAttachments=%j",
+    async (removeAttachments) => {
+      const untouchedDb = new Proxy(
+        {},
+        {
+          get(_target, property) {
+            throw new Error(`Unexpected database access: ${String(property)}`);
+          }
+        }
+      ) as any;
+
+      await expect(
+        UserManager.prototype.resetUser.call(untouchedDb, removeAttachments)
+      ).rejects.toThrow(/Destructive account reset is unavailable in VeyraN/);
+      expect(requests.get).not.toHaveBeenCalled();
+      expect(requests.post).not.toHaveBeenCalled();
+      expect(requests.patch).not.toHaveBeenCalled();
+      expect(requests.delete).not.toHaveBeenCalled();
+    }
+  );
 });

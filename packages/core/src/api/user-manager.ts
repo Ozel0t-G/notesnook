@@ -615,15 +615,12 @@ class UserManager {
     return this.db.storage().read<User>("user");
   }
 
-  async resetUser(removeAttachments = true) {
-    const token = await this.tokenManager.getAccessToken();
-    if (!token) return;
-    await http.post(
-      `${constants.API_HOST}${ENDPOINTS.resetUser}`,
-      { removeAttachments },
-      token
+  async resetUser(_removeAttachments = true): Promise<boolean> {
+    // This legacy endpoint deletes encrypted records before a replacement
+    // password and keyset are committed. Refuse it even when called directly.
+    throw new Error(
+      "Destructive account reset is unavailable in VeyraN. No data was changed."
     );
-    return true;
   }
 
   private async updateUser(

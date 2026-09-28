@@ -32,10 +32,7 @@ const testvars = {
 
 class Element {
   element: Detox.NativeElement;
-  constructor(
-    public type: "id" | "text" | "label",
-    public value: string
-  ) {
+  constructor(public type: "id" | "text" | "label", public value: string) {
     if (type == "id") {
       this.element = element(by.id(value)).atIndex(0);
     } else if (type == "label") {
@@ -139,9 +136,27 @@ const Tests = {
   fromLabel: Element.fromLabel,
   async exitEditor() {
     if (device.getPlatform() === "ios") {
-      if (device.name.includes("iPad")) await Tests.sleep(350);
+      await Tests.sleep(350);
+      try {
+        await expect(
+          web().element(
+            by.web.cssSelector(".active #header > button:first-child")
+          )
+        ).toExist();
+      } catch {
+        // A UUID-selected iPad has no device-name hint. Detect its actual
+        // split editor, whose Fullscreen action exposes the Back control.
+        await web()
+          .element(
+            by.web.cssSelector(
+              ".active #header > div:nth-child(2) > button:first-child"
+            )
+          )
+          .tap();
+        await Tests.sleep(350);
+      }
       await web()
-        .element(by.web.cssSelector("#header button:first-child"))
+        .element(by.web.cssSelector(".active #header > button:first-child"))
         .tap();
       // The editor's keyboard snapshot briefly covers the native tab bar.
       await Tests.sleep(2000);
@@ -153,7 +168,9 @@ const Tests = {
   async waitForEditor() {
     for (let attempt = 0; attempt < 20; attempt++) {
       try {
-        await expect(web().element(by.web.className("ProseMirror"))).toExist();
+        await expect(
+          web().element(by.web.cssSelector(".active .ProseMirror"))
+        ).toExist();
         return;
       } catch (error) {
         if (attempt === 19) throw error;
@@ -162,18 +179,22 @@ const Tests = {
     }
   },
   async createNote(title?: string, _body?: string) {
-    let body =
+    const body =
       _body ||
       "Test note description that is very long and should not fit in text.";
     await Tests.tapNewNote();
     await Tests.sleep(1500);
     if (title) {
-      await web().element(by.web.id("editor-title")).focus();
-      await web().element(by.web.id("editor-title")).typeText(title, false);
+      await web().element(by.web.cssSelector(".active #editor-title")).focus();
+      await web()
+        .element(by.web.cssSelector(".active #editor-title"))
+        .typeText(title, false);
     }
     await Tests.waitForEditor();
-    await web().element(by.web.className("ProseMirror")).focus();
-    await web().element(by.web.className("ProseMirror")).typeText(body, true);
+    await web().element(by.web.cssSelector(".active .ProseMirror")).focus();
+    await web()
+      .element(by.web.cssSelector(".active .ProseMirror"))
+      .typeText(body, true);
     await Tests.exitEditor();
     if (isIOS()) {
       try {
@@ -226,7 +247,11 @@ const Tests = {
     } catch {
       // UIKit does not always expose the selected item's identifier on
       // iPhone. Its visible title remains a tappable fallback.
-      const title = element(by.text(label)).atIndex(1);
+      // Hidden React navigation headers can retain the same text. Scope the
+      // fallback to UIKit's actual tab bar instead of relying on an index.
+      const title = element(
+        by.text(label).withAncestor(by.type("UITabBar"))
+      ).atIndex(0);
       await waitFor(title).toBeVisible().withTimeout(10000);
       await title.tap();
     }
@@ -246,15 +271,23 @@ const Tests = {
    *
    * The old Notes destination maps to Library > All Notes.
    */
-  async navigate(screen: RouteName | ({} & string)) {
+  async navigate(screen: RouteName | string) {
     if (isIOS()) {
       try {
         await expect(element(by.id("library-heading"))).toBeVisible();
       } catch {
         try {
-          const back = element(by.id(notesnook.ids.default.header.buttons.left));
-          await waitFor(back).toBeVisible().withTimeout(10000);
-          await back.tap();
+          const collectionBack = element(by.id("library-collection-back"));
+          try {
+            await waitFor(collectionBack).toBeVisible().withTimeout(1000);
+            await collectionBack.tap();
+          } catch {
+            const back = element(
+              by.id(notesnook.ids.default.header.buttons.left)
+            );
+            await waitFor(back).toBeVisible().withTimeout(10000);
+            await back.tap();
+          }
         } catch {
           await Tests.tapTab(notesnook.tabbar.labels.library);
         }
@@ -275,7 +308,7 @@ const Tests = {
         .withTimeout(10000);
       return;
     }
-    let menu = Tests.fromId(notesnook.ids.default.header.buttons.left);
+    const menu = Tests.fromId(notesnook.ids.default.header.buttons.left);
     await menu.waitAndTap();
     await Tests.fromText(screen as string).waitAndTap();
   },
@@ -318,7 +351,7 @@ const Tests = {
     await Tests.fromText("Add").waitAndTap();
   },
   async matchSnapshot(element: Element, name: string) {
-    let path = await element.element.takeScreenshot(name);
+    const path = await element.element.takeScreenshot(name);
     const bitmapBuffer = readFileSync(path);
     (jestExpect(bitmapBuffer) as any).toMatchImageSnapshot({
       failureThreshold: 200,
@@ -387,7 +420,7 @@ class TestBuilder {
     });
   }
 
-  navigate(screen: RouteName | ({} & string)) {
+  navigate(screen: RouteName | string) {
     return this.addStep(async () => {
       await Tests.navigate(screen);
     });

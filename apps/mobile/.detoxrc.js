@@ -20,9 +20,10 @@ module.exports = {
     "ios.release": {
       type: "ios.app",
       binaryPath:
+        process.env.VEYRAN_QA_APP_PATH ||
         "ios/build/Build/Products/Release-iphonesimulator/Notesnook.app",
       build:
-        "xcodebuild -workspace ios/Notesnook.xcworkspace -scheme YOUR_APP -configuration Release -sdk iphonesimulator -derivedDataPath ios/build"
+        "xcodebuild -workspace ios/Notesnook.xcworkspace -scheme NotesnookRelease -configuration Release -sdk iphonesimulator ARCHS=arm64 -derivedDataPath ios/build CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=-"
     },
     "android.debug": {
       type: "android.apk",
@@ -47,7 +48,9 @@ module.exports = {
     simulator: {
       type: "ios.simulator",
       device: {
-        type: "iPhone 17 Pro Max"
+        ...(process.env.VEYRAN_QA_DEVICE_ID
+          ? { id: process.env.VEYRAN_QA_DEVICE_ID }
+          : { type: "iPhone 17 Pro Max" })
       }
     },
     attached: {

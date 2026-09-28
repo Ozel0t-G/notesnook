@@ -97,12 +97,17 @@ export interface RouteParams extends ParamListBase {
   Archive: GenericRouteParam;
   Monographs: NotesScreenParams;
   Reminders: GenericRouteParam;
-  Tasks: { listId?: string; smartList?: "today" | "scheduled" | "all" | "flagged" | "completed" } | undefined;
+  Tasks:
+    | {
+        listId?: string;
+        smartList?: "today" | "scheduled" | "all" | "flagged" | "completed";
+      }
+    | undefined;
   TaskDetail:
     | { taskId?: string; listId?: string; initialTitle?: string }
     | undefined;
   SettingsGroup: GenericRouteParam;
-  FluidPanelsView: { initialPage?: "editor" | "home" };
+  FluidPanelsView: { initialPage?: "editor" | "home"; screen?: "Library" };
   AppLock: GenericRouteParam;
   Settings: GenericRouteParam;
   Auth: AuthParams;

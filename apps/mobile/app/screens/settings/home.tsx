@@ -27,7 +27,6 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { SectionGroup } from "./section-group";
 import { settingsGroups } from "./settings-data";
 import { RouteParams, SettingSection } from "./types";
-import SettingsUserSection from "./user-section";
 import { LegendList } from "@legendapp/list";
 import { useThemeColors } from "@notesnook/theme";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
@@ -47,12 +46,9 @@ const Home = ({
     focusOnInit: true
   });
 
-  const renderItem = ({ item }: { item: SettingSection; index: number }) =>
-    item.id === "account" ? (
-      <SettingsUserSection item={item} />
-    ) : (
-      <SectionGroup item={item} />
-    );
+  const renderItem = ({ item }: { item: SettingSection; index: number }) => (
+    <SectionGroup item={item} />
+  );
 
   return (
     <>

@@ -1143,6 +1143,44 @@ $day$: Current day (eg. Monday)`,
   enterApplockPin: () => t`Enter app lock pin`,
   enterApplockPinDesc: () => t`Please enter your app lock pin to continue`,
   account: () => t`Account`,
+  veyranAccount: () => t`VeyraN Account`,
+  veyranAccountSession: () => t`Signed in to VeyraN`,
+  signInToVeyran: () => t`Sign in to VeyraN`,
+  signInToVeyranDesc: () =>
+    t`Sign in to restore your encrypted notes and sync with VeyraN`,
+  signOut: () => t`Sign out`,
+  signOutWithBackup: () => t`Back up and sign out`,
+  signOutWithoutBackup: () => t`Sign out without backup`,
+  signOutLocalDataWarning: () =>
+    t`Signing out removes notes and settings from this device. Synced data stays in your VeyraN account. Back up or sync unsynced changes first.`,
+  signOutBackupRequired: () =>
+    t`Save a backup before signing out to protect your local notes and attachments.`,
+  signOutDataChanged: () =>
+    t`Your notes changed while preparing to sign out. Nothing was removed from this device. Please try again.`,
+  backupLocalAttachmentMissing: () =>
+    t`Some local attachments could not be saved in the backup. Your data remains on this device. Try again before signing out.`,
+  deleteLocalData: () => t`Delete local data`,
+  data: () => t`Data`,
+  accountSetupTitle: () => t`Setting up your VeyraN account…`,
+  accountSetupDescription: () =>
+    t`Preparing your encrypted account. Please wait.`,
+  accountSetupFailed: () =>
+    t`VeyraN could not finish setting up your account. Retry to continue, or return to sign in.`,
+  accountSetupTimedOut: () =>
+    t`VeyraN account setup is taking too long. Check your connection and retry when the current attempt has finished.`,
+  accountSetupPending: () =>
+    t`The current setup attempt is still finishing. Keep this screen open before retrying.`,
+  accountSetupRetryLogin: () =>
+    t`If you restarted during setup, sign in with the email and password you used to create your account.`,
+  accountSetupIncomplete: () =>
+    t`Your VeyraN account is not ready. Sign in again to finish setup safely.`,
+  accountSetupNeedsAttention: () => t`Account setup needs attention`,
+  authRequestFailed: () =>
+    t`VeyraN could not complete sign in. Check your connection and try again.`,
+  authMfaFailed: () =>
+    t`VeyraN could not verify this code. Check the code or request a new one, then try again.`,
+  tokenExpiredTryLogin: () =>
+    t`The sign-in request expired. Please sign in again.`,
   subscribeToPro: () => t`Subscribe to Pro`,
   trialStarted: () => t`Your free trial has started`,
   trialStartedDesc: () =>
@@ -2172,9 +2210,8 @@ All attachments will be downloaded & cached again on access.
   thankYouForFeedback: () => t`Thank you for your feedback!`,
   yourSupportRequestHasBeenForwarded: () =>
     t`Your support request has been forwarded`,
-  bugReportMessage: (
-    url: string
-  ) => t`Your issue report is available at [${url}](${url}). Save this link if you need to revisit it.`,
+  bugReportMessage: (url: string) =>
+    t`Your issue report is available at [${url}](${url}). Save this link if you need to revisit it.`,
   supportEmailMessage: () =>
     t`Your request was submitted. Keep a copy of its details for your records.`,
   featureRequestMessage: (

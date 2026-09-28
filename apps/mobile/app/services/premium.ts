@@ -28,18 +28,8 @@ import { presentSheet, ToastManager } from "./event-manager";
 import SettingsService from "./settings";
 
 async function setPremiumStatus() {
-  const userstore = useUserStore.getState();
-  try {
-    const user = await db.user.getUser();
-    if (!user) {
-      userstore.setPremium(get());
-    } else {
-      userstore.setPremium(get());
-      userstore.setUser(user);
-    }
-  } catch {
-    // Legacy subscription metadata is advisory and never grants capability.
-  }
+  // Identity belongs to account hydration, never legacy commercial metadata.
+  useUserStore.getState().setPremium(get());
 }
 
 async function loadProductsAndSubs(): Promise<{

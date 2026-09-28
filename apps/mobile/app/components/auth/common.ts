@@ -22,6 +22,8 @@ import { eSendEvent } from "../../services/event-manager";
 import { eCloseLoginDialog } from "../../utils/events";
 import Navigation from "../../services/navigation";
 import { AuthParams } from "../../stores/use-navigation-store";
+import { fluidTabsRef } from "../../utils/global-refs";
+import { useAppleNavigationStore } from "../../stores/use-apple-navigation-store";
 export const AuthMode = {
   login: 0,
   signup: 1,
@@ -32,14 +34,17 @@ export const AuthMode = {
 
 export const initialAuthMode = createRef<number>();
 initialAuthMode.current = AuthMode.login;
-export function hideAuth(context?: AuthParams["context"]) {
+export function hideAuth(context?: AuthParams["context"], goToLibrary = false) {
   eSendEvent(eCloseLoginDialog);
   if (
+    goToLibrary ||
     initialAuthMode.current === AuthMode.welcomeSignup ||
     initialAuthMode.current === AuthMode.welcomeLogin ||
     context === "intro"
   ) {
-    Navigation.navigate("FluidPanelsView", {});
+    useAppleNavigationStore.getState().setSection("library");
+    fluidTabsRef.current?.goToPage("home", true);
+    Navigation.navigate("FluidPanelsView", { screen: "Library" });
   } else {
     Navigation.goBack();
   }

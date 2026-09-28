@@ -176,24 +176,36 @@ let backupRunning = false;
 async function run(
   progress = false,
   context?: string,
-  backupType: "full" | "partial" = "partial"
+  backupType: "full" | "partial" = "partial",
+  options: { requireLocalAttachments?: boolean } = {}
+) {
+  if (backupRunning)
+    return {
+      error: new Error(strings.backupFailed()),
+      path: undefined,
+      report: false
+    };
+  backupRunning = true;
+  try {
+    return await runBackup(progress, context, backupType, options);
+  } catch (error) {
+    DatabaseLogger.error(error, "Backup preparation failed");
+    return { error: error as Error, path: undefined, report: true };
+  } finally {
+    backupRunning = false;
+  }
+}
+
+async function runBackup(
+  progress = false,
+  context?: string,
+  backupType: "full" | "partial" = "partial",
+  options: { requireLocalAttachments?: boolean } = {}
 ): Promise<{
   path?: string;
   error?: Error;
   report?: boolean;
 }> {
-  if (backupRunning) {
-    if (progress) {
-      startProgress({
-        title: strings.backingUpData(backupType),
-        paragraph: strings.backupDataDesc(),
-        progress: "Backup in progress...",
-        canHideProgress: true
-      });
-    }
-    return {};
-  }
-  backupRunning = true;
   const androidBackupDirectory = (await checkBackupDirExists(
     false,
     context
@@ -245,7 +257,17 @@ async function run(
     await RNFetchBlob.fs.mkdir(attachmentsDir);
   }
 
+  const requiredLocalAttachments = new Set<string>();
   try {
+    if (options.requireLocalAttachments) {
+      if (backupType !== "full") throw new Error(strings.backupFailed());
+      for await (const attachment of db.attachments.all.iterate()) {
+        const exists = await FileStorage.exists(attachment.hash);
+        if (exists) requiredLocalAttachments.add(attachment.hash);
+        else if (!attachment.dateUploaded)
+          throw new Error(strings.backupLocalAttachmentMissing());
+      }
+    }
     const user = await db.user.getUser();
     DatabaseLogger.info(`Backup started: ${backupType}`);
     for await (const file of db.backup.export({
@@ -272,13 +294,17 @@ async function run(
               await getCachePathForFile(file.hash),
               `${attachmentsDir}/${file.hash}`
             )
-            .catch((e) =>
-              DatabaseLogger.error(e, "Error saving attachment to backup file")
-            );
+            .catch((e) => {
+              if (options.requireLocalAttachments) throw e;
+              DatabaseLogger.error(e, "Error saving attachment to backup file");
+            });
+          requiredLocalAttachments.delete(file.hash);
         }
       }
     }
 
+    if (requiredLocalAttachments.size)
+      throw new Error(strings.backupLocalAttachmentMissing());
     DatabaseLogger.info(`Backup complete: ${backupType}. Creating zip file...`);
 
     updateProgress({
@@ -318,8 +344,6 @@ async function run(
     const canShowCompletionStatus =
       progress && SettingsService.get().showBackupCompleteSheet;
 
-    backupRunning = false;
-
     if (context) {
       return {
         path: path
@@ -340,7 +364,6 @@ async function run(
       path: path
     };
   } catch (e) {
-    backupRunning = false;
     ToastManager.error(e as Error, strings.backupFailed(), context || "global");
 
     if (
@@ -348,7 +371,7 @@ async function run(
       androidBackupDirectory
     ) {
       SettingsService.setProperty("backupDirectoryAndroid", null);
-      return run(progress, context, backupType);
+      return runBackup(progress, context, backupType, options);
     }
 
     cleanupAfterBackup(zipSourceFolder, zipOutputFile);
@@ -411,7 +434,9 @@ const checkAndRun = async () => {
   if (await checkBackupRequired(settings?.reminder)) {
     try {
       await run();
-    } catch (e) {}
+    } catch (e) {
+      // Automatic backup failures are already logged by run().
+    }
   }
 };
 

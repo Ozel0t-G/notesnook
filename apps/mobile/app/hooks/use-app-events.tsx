@@ -23,11 +23,13 @@ import {
   EventManagerSubscription,
   SYNC_CHECK_IDS,
   SyncStatusEvent,
-  User,
   isInternalLink,
   parseInternalLink
 } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
+import { resetMobileAccountSession } from "../services/account-logout";
+import { readStoredAccountSession } from "../services/account-session";
+import { AuthMode } from "../components/auth/common";
 import notifee from "@notifee/react-native";
 import NetInfo, { NetInfoSubscription } from "@react-native-community/netinfo";
 import dayjs from "dayjs";
@@ -52,13 +54,11 @@ import Migrate from "../components/sheets/migrate";
 import NewFeature from "../components/sheets/new-feature";
 import { Walkthrough } from "../components/walkthroughs";
 import {
-  resetTabStore,
   useTabStore
 } from "../screens/editor/tiptap/use-tab-store";
 import { editorController, editorState } from "../screens/editor/tiptap/utils";
 import { useDragState } from "../screens/settings/editor/state";
 import BackupService from "../services/backup";
-import BiometricService from "../services/biometrics";
 import {
   ToastManager,
   eSendEvent,
@@ -86,8 +86,7 @@ import {
 } from "./task-widget-completion-intents";
 import SettingsService from "../services/settings";
 import Sync from "../services/sync";
-import { clearAllStores, initAfterSync } from "../stores";
-import { refreshAllStores } from "../stores/create-db-collection-store";
+import { initAfterSync } from "../stores";
 import { useAttachmentStore } from "../stores/use-attachment-store";
 import { useMessageStore } from "../stores/use-message-store";
 import { useRelationStore } from "../stores/use-relation-store";
@@ -95,7 +94,6 @@ import { useSettingStore } from "../stores/use-setting-store";
 import { SyncStatus, useUserStore } from "../stores/use-user-store";
 import { updateStatusBarColor } from "../utils/colors";
 import {
-  eAfterSync,
   eCloseSheet,
   eEditorReset,
   eLoginSessionExpired,
@@ -342,13 +340,18 @@ const onAppOpenedFromURL = async (event: {
 };
 
 const onUserEmailVerified = async () => {
+  const version = accountUpdateVersion;
   const user = await db.user.getUser();
+  if (version !== accountUpdateVersion || useUserStore.getState().isLoggingOut)
+    return;
   useUserStore.getState().setUser(user);
   if (!user) return;
   SettingsService.set({
     userEmailConfirmed: true
   });
   await PremiumService.setPremiumStatus();
+  if (version !== accountUpdateVersion || useUserStore.getState().isLoggingOut)
+    return;
   Walkthrough.present("emailconfirmed", false, true);
   if (user?.isEmailConfirmed) {
     clearMessage();
@@ -358,9 +361,15 @@ const onUserEmailVerified = async () => {
 const onUserSubscriptionStatusChanged = async () => {
   // A legacy subscription update does not grant VeyraN capabilities or
   // trigger the old paid-plan celebration/StoreKit cleanup flow.
+  const version = accountUpdateVersion;
   await PremiumService.setPremiumStatus();
+  if (version !== accountUpdateVersion || useUserStore.getState().isLoggingOut)
+    return;
+  const user = await db.user.fetchUser();
+  if (version !== accountUpdateVersion || useUserStore.getState().isLoggingOut)
+    return;
   useMessageStore.getState().setAnnouncement();
-  useUserStore.getState().setUser(await db.user.fetchUser());
+  useUserStore.getState().setUser(user);
 };
 
 const onRequestPartialSync = async (
@@ -382,24 +391,14 @@ const onRequestPartialSync = async (
   );
 };
 
+let accountUpdateVersion = 0;
+
 const onLogout = async (reason: string) => {
+  accountUpdateVersion += 1;
   pendingTaskCompletions.clear();
   DatabaseLogger.log("User Logged Out " + reason);
   setLoginMessage();
-  await PremiumService.setPremiumStatus();
-  await BiometricService.resetCredentials();
-  MMKV.clearStore();
-  resetTabStore();
-  clearAllStores();
-  setImmediate(() => {
-    refreshAllStores();
-  });
-  Navigation.queueRoutesForUpdate();
-  SettingsService.resetSettings();
-  useUserStore.getState().setUser(null);
-  useUserStore.getState().setSyncing(false);
-  useUserStore.getState().setIsLoggingOut(false);
-  eSendEvent(eAfterSync);
+  await resetMobileAccountSession();
 };
 
 async function checkForShareExtensionLaunchedInBackground() {
@@ -625,10 +624,9 @@ export const useAppEvents = () => {
         const previousId = previous.user?.id || null;
         const nextId = state.user?.id || null;
         if (
-          (previousId !== nextId &&
-            (previousId !== null ||
-              !pendingTaskCompletions.belongsToAccount(nextId))) ||
-          (!previous.isLoggingOut && state.isLoggingOut)
+          previousId !== nextId &&
+          (previousId !== null ||
+            !pendingTaskCompletions.belongsToAccount(nextId))
         )
           pendingTaskCompletions.clear();
       }),
@@ -705,13 +703,37 @@ export const useAppEvents = () => {
 
   const onUserUpdated = useCallback(
     async (isLogin?: boolean) => {
+      const version = ++accountUpdateVersion;
+      const isCurrent = () =>
+        version === accountUpdateVersion &&
+        !useUserStore.getState().isLoggingOut;
       let user;
       try {
-        user = await db.user.getUser();
+        const session = await readStoredAccountSession(!isLogin);
+        if (!isCurrent()) return;
+        user = session.user;
+        setUser(user);
+        useUserStore.setState({ accountSetupRequired: session.setupRequired });
+        if (session.recovered) {
+          setLoginMessage();
+          Navigation.navigate("Auth", { mode: AuthMode.login });
+          ToastManager.show({
+            heading: strings.accountSetupRetryLogin(),
+            type: "info",
+            context: "local"
+          });
+        }
+        if (session.setupRequired) {
+          setLoginMessage();
+          return;
+        }
         await PremiumService.setPremiumStatus();
-        setLastSynced(await db.lastSynced());
+        if (!isCurrent()) return;
+        const lastSynced = await db.lastSynced();
+        if (!isCurrent()) return;
+        setLastSynced(lastSynced);
         await useDragState.getState().init();
-        if (!user) return;
+        if (!isCurrent() || !user) return;
 
         const isUserEmailConfirmed = SettingsService.get().userEmailConfirmed;
         setUser(user);
@@ -726,6 +748,7 @@ export const useAppEvents = () => {
         }
         if (!isLogin) {
           user = await db.user.fetchUser();
+          if (!isCurrent()) return;
           setUser(user);
         } else {
           SettingsService.set({
@@ -739,18 +762,21 @@ export const useAppEvents = () => {
         }
 
         await PremiumService.setPremiumStatus();
+        if (!isCurrent()) return;
         if (user?.isEmailConfirmed && !isUserEmailConfirmed) {
           setTimeout(() => {
-            onUserEmailVerified();
+            if (isCurrent()) onUserEmailVerified();
           }, 1000);
           SettingsService.set({
             userEmailConfirmed: true
           });
         }
       } catch (e) {
-        ToastManager.error(e as Error, "Error updating user", "global");
+        if (isCurrent())
+          ToastManager.error(e as Error, "Error updating user", "global");
       }
 
+      if (!isCurrent()) return;
       syncedOnLaunch.current = true;
       if (!isLogin) {
         checkAutoBackup();
@@ -763,7 +789,13 @@ export const useAppEvents = () => {
     const subscriptions = [
       db.eventManager.subscribe(EVENTS.syncCheckStatus, onCheckSyncStatus),
       db.eventManager.subscribe(EVENTS.userFetched, async () => {
+        const version = accountUpdateVersion;
         const inboxEnabled = await db.user.hasInboxKeys();
+        if (
+          version !== accountUpdateVersion ||
+          useUserStore.getState().isLoggingOut
+        )
+          return;
         useSettingStore.getState().setInboxEnabled(inboxEnabled);
       }),
       db.eventManager.subscribe(EVENTS.syncAborted, onSyncAborted),
@@ -860,7 +892,12 @@ export const useAppEvents = () => {
           }
         }
       }),
-      eSubscribeEvent(eUserLoggedIn, onUserUpdated)
+      db.eventManager.subscribe(EVENTS.userLoggedIn, () => onUserUpdated(true)),
+      eSubscribeEvent(eUserLoggedIn, (isLogin?: boolean) => {
+        // Auth commits now hydrate through Core; retain legacy profile-update
+        // notifications without processing every login twice.
+        if (!isLogin) void onUserUpdated();
+      })
     ];
 
     const emitterSubscriptions = [

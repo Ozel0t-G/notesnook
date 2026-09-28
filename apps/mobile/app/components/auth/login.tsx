@@ -23,15 +23,10 @@ import React, { useEffect, useState } from "react";
 import { TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { DDS } from "../../services/device-detection";
-import { eSendEvent, presentSheet } from "../../services/event-manager";
-import Sync from "../../services/sync";
-import { useUserStore } from "../../stores/use-user-store";
-import { eUserLoggedIn } from "../../utils/events";
+import { presentSheet } from "../../services/event-manager";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
-import { sleep } from "../../utils/time";
 import { Dialog } from "../dialog";
-import { Progress } from "../sheets/progress";
 import AppIcon from "../ui/AppIcon";
 import { Button } from "../ui/button";
 import FormInput, { validators } from "../ui/input/form-input";
@@ -65,18 +60,7 @@ export const Login = ({
     login,
     error,
     formRef
-  } = useLogin(async () => {
-    eSendEvent(eUserLoggedIn, true);
-    await sleep(500);
-    hideAuth();
-    setTimeout(() => {
-      if (!useUserStore.getState().syncing) {
-        Sync.run("global", false, "full");
-      }
-    }, 5000);
-
-    Progress.present();
-  });
+  } = useLogin(() => hideAuth(undefined, true));
   const { width, height } = useWindowDimensions();
   const isTablet = width > 600;
 
@@ -85,15 +69,8 @@ export const Login = ({
   };
 
   useEffect(() => {
-    async () => {
-      setStep(LoginSteps.emailAuth);
-      await sleep(500);
-      emailInputRef.current?.focus();
-      setFocused(true);
-    };
-    return () => {
-      setStep(LoginSteps.emailAuth);
-    };
+    emailInputRef.current?.focus();
+    setFocused(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -265,6 +242,7 @@ export const Login = ({
 
             <View>
               <Button
+                testID="login-submit"
                 loading={loading}
                 onPress={() => {
                   onContinue();

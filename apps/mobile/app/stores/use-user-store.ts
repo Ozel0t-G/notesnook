@@ -32,6 +32,7 @@ export enum SyncStatus {
 
 export interface UserStore {
   user: User | null | undefined;
+  accountSetupRequired: boolean;
   premium: boolean;
   lastSynced: string | number;
   syncing: boolean;
@@ -51,6 +52,7 @@ export interface UserStore {
 
 export const useUserStore = create<UserStore>((set) => ({
   user: null,
+  accountSetupRequired: false,
   premium: false,
   lastSynced: "Never",
   syncing: false,

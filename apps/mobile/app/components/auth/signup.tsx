@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   TextInput,
   TouchableOpacity,
@@ -27,10 +27,8 @@ import {
   useWindowDimensions
 } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
-import { db } from "../../common/database";
+import { DatabaseLogger, db } from "../../common/database";
 import { DDS } from "../../services/device-detection";
-import { clearMessage, setEmailVerifyMessage } from "../../services/message";
-import { useUserStore } from "../../stores/use-user-store";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { Loading } from "../loading";
@@ -39,13 +37,18 @@ import FormInput, { createFormRef, validators } from "../ui/input/form-input";
 import Heading from "../ui/typography/heading";
 import Paragraph from "../ui/typography/paragraph";
 import { AuthHeader } from "./header";
-import { SignupContext } from "./signup-context";
 import AppIcon from "../ui/AppIcon";
+import { hideAuth } from "./common";
+import {
+  ACCOUNT_SETUP_NOTICE_MS,
+  completeAccountBootstrap,
+  SignupAttempt
+} from "./account-bootstrap";
 
 const SignupSteps = {
   signup: 0,
-  selectPlan: 1,
-  createAccount: 2
+  createAccount: 1,
+  failed: 2
 };
 
 export const Signup = ({
@@ -69,49 +72,77 @@ export const Signup = ({
   const confirmPasswordInputRef = useRef<TextInput>(null);
   const [errorMessage, setErrorMessage] = useState<string>();
   const [loading, setLoading] = useState(false);
-  const setUser = useUserStore((state) => state.setUser);
-  const setLastSynced = useUserStore((state) => state.setLastSynced);
+  const active = useRef(true);
+  const running = useRef(false);
+  const attempt = useRef(new SignupAttempt());
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const { width, height } = useWindowDimensions();
   const isTablet = width > 600;
 
   const signup = async () => {
     setErrorMessage(undefined);
     if (!formRef.current.validate()) return;
-    if (loading) return;
+    if (running.current) return;
 
     const values = formRef.current.getValues();
 
+    running.current = true;
     setLoading(true);
+    setCurrentStep(SignupSteps.createAccount);
+    const notice = setTimeout(() => {
+      if (!active.current) return;
+      setErrorMessage(strings.accountSetupTimedOut());
+      setCurrentStep(SignupSteps.failed);
+    }, ACCOUNT_SETUP_NOTICE_MS);
     try {
-      setCurrentStep(SignupSteps.createAccount);
-      await db.user.signup(values.email.toLowerCase(), values.password);
-      const user = await db.user.getUser();
-      setUser(user);
-      setLastSynced(await db.lastSynced());
-      clearMessage();
-      setEmailVerifyMessage();
+      await attempt.current.run(
+        async () => {
+          const email = values.email.trim().toLowerCase();
+          // A remounted screen may have lost its completion flag. A cached
+          // identity alone is not evidence that this transaction committed.
+          if (await db.user.getUser()) {
+            const { user } = await db.user.assertAccountReady();
+            if (user.email.toLowerCase() !== email)
+              throw new Error(
+                "The active account differs from the signup account."
+              );
+            return;
+          }
+          await db.user.signup(email, values.password);
+        },
+        () =>
+          completeAccountBootstrap(() => {
+            if (active.current) hideAuth(undefined, true);
+          })
+      );
       return true;
     } catch (e) {
-      setCurrentStep(SignupSteps.signup);
-      setLoading(false);
+      DatabaseLogger.error(e as Error, "VeyraN account setup failed");
+      if (!active.current) return false;
       if (
         (e as Error).message === "Unable to create an account on this email."
       ) {
-        formRef.current.setError("email", (e as Error).message);
+        setCurrentStep(SignupSteps.failed);
+        setErrorMessage(strings.accountSetupRetryLogin());
       } else {
-        setErrorMessage((e as Error).message);
+        setCurrentStep(SignupSteps.failed);
+        setErrorMessage(strings.accountSetupFailed());
       }
-
       return false;
+    } finally {
+      clearTimeout(notice);
+      running.current = false;
+      if (active.current) setLoading(false);
     }
   };
 
   return (
-    <SignupContext.Provider
-      value={{
-        signup: signup
-      }}
-    >
+    <>
       {currentStep === SignupSteps.signup ? (
         <>
           <AuthHeader welcome={welcome} />
@@ -267,6 +298,7 @@ export const Signup = ({
                 />
 
                 <Button
+                  testID="signup-submit"
                   title={!loading ? strings.continue() : null}
                   type="accent"
                   loading={loading}
@@ -324,14 +356,57 @@ export const Signup = ({
             </View>
           </KeyboardAwareScrollView>
         </>
-      ) : (
-        <>
+      ) : currentStep === SignupSteps.createAccount ? (
+        <View testID="account-setup-progress" style={{ flex: 1 }}>
           <Loading
-            title={"Setting up your account..."}
-            description="Your account is almost ready, please wait..."
+            title={strings.accountSetupTitle()}
+            description={strings.accountSetupDescription()}
           />
-        </>
+        </View>
+      ) : (
+        <View
+          testID="account-setup.failed"
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            paddingHorizontal: DefaultAppStyles.GAP,
+            gap: DefaultAppStyles.GAP_VERTICAL
+          }}
+        >
+          <Heading style={{ textAlign: "center" }}>
+            {strings.accountSetupTitle()}
+          </Heading>
+          <Paragraph
+            testID="account-setup-error"
+            style={{ textAlign: "center" }}
+          >
+            {errorMessage}
+          </Paragraph>
+          {loading ? (
+            <Paragraph style={{ textAlign: "center" }}>
+              {strings.accountSetupPending()}
+            </Paragraph>
+          ) : null}
+          <Button
+            testID="account-setup-retry"
+            title={strings.retry()}
+            type="accent"
+            disabled={loading}
+            width="100%"
+            onPress={signup}
+          />
+          <Button
+            testID="account-setup-login"
+            title={strings.login()}
+            type="secondaryAccented"
+            width="100%"
+            onPress={() => changeMode(0)}
+          />
+          <Paragraph style={{ textAlign: "center" }}>
+            {strings.accountSetupRetryLogin()}
+          </Paragraph>
+        </View>
       )}
-    </SignupContext.Provider>
+    </>
   );
 };

@@ -29,7 +29,6 @@ import { MMKV } from "../../common/database/mmkv";
 import filesystem from "../../common/filesystem";
 import { presentDialog } from "../../components/dialog/functions";
 import { AppLockPassword } from "../../components/dialogs/applock-password";
-import { endProgress, startProgress } from "../../components/dialogs/progress";
 import ExportNotesSheet from "../../components/sheets/export-notes";
 import { Progress } from "../../components/sheets/progress";
 import { VaultStatusType, useVaultStatus } from "../../hooks/use-vault-status";
@@ -68,53 +67,19 @@ import { useDragState } from "./editor/state";
 import { verifyUser, verifyUserWithApplock } from "./functions";
 import { logoutUser } from "./logout";
 import { SettingSection } from "./types";
+import { AuthMode } from "../../components/auth/common";
+import {
+  createAccountSection,
+  createLocalDataSection,
+  createSignedOutAccountSection
+} from "./account-section";
 
 export const settingsGroups: SettingSection[] = [
-  {
-    id: "account-local",
-    name: strings.account(),
-    useHook: () => useUserStore((state) => state.user),
-    hidden: (current) => !!current,
-    sections: [
-      {
-        id: "delete-data",
-        name: strings.deleteData(),
-        icon: "delete",
-        description: strings.deleteLocalDataDesc(),
-        modifer: () => {
-          presentDialog({
-            title: strings.deleteData(),
-            paragraph: strings.deleteLocalDataDesc(),
-            positiveType: "errorShade",
-            positiveText: "Delete data",
-            positivePress: async () => {
-              await ReminderWidget.clear();
-              await PremiumService.setPremiumStatus();
-              await BiometricService.resetCredentials();
-              MMKV.clearStore();
-              resetTabStore();
-              clearAllStores();
-              Navigation.queueRoutesForUpdate();
-              SettingsService.resetSettings();
-              db.reset();
-
-              setImmediate(() => {
-                refreshAllStores();
-                eSendEvent(eAfterSync);
-              });
-              return true;
-            }
-          });
-        }
-      }
-    ]
-  },
-  {
-    id: "account",
-    name: strings.account(),
-    useHook: () => useUserStore((state) => state.user),
-    hidden: (current) => !current,
-    sections: [
+  createSignedOutAccountSection(() => {
+    Navigation.navigate("Auth", { mode: AuthMode.login });
+  }),
+  createAccountSection(
+    [
       {
         id: "account-settings",
         type: "screen",
@@ -193,22 +158,6 @@ export const settingsGroups: SettingSection[] = [
             component: "attachments-manager",
             description: strings.manageAttachmentsDesc(),
             hideHeader: true
-          },
-          {
-            id: "change-password",
-            name: strings.changePassword(),
-            type: "screen",
-            description: strings.changePasswordDesc(),
-            component: "change-password",
-            icon: "form-textbox-password"
-          },
-          {
-            id: "change-email",
-            name: strings.changeEmail(),
-            type: "screen",
-            component: "change-email",
-            description: strings.changeEmailDesc(),
-            icon: "at"
           },
           {
             id: "2fa-settings",
@@ -317,84 +266,6 @@ export const settingsGroups: SettingSection[] = [
                 };
               }, []);
               return formatBytes(cacheSize);
-            }
-          },
-
-          {
-            id: "logout",
-            name: strings.logout(),
-            description: strings.logoutWarnin(),
-            icon: "logout",
-            modifer: logoutUser
-          },
-          {
-            id: "delete-account",
-            type: "danger",
-            name: strings.deleteAccount(),
-            icon: "alert",
-            description: strings.deleteAccountDesc(),
-            modifer: () => {
-              presentDialog({
-                title: strings.deleteAccount(),
-                paragraphColor: "red",
-                paragraph: strings.deleteAccountDesc(),
-                positiveType: "errorShade",
-                input: true,
-                secureTextEntry: true,
-                inputPlaceholder: strings.enterAccountPassword(),
-                positiveText: strings.delete(),
-                positivePress: async (value) => {
-                  try {
-                    if (!value || !value.trim()) {
-                      ToastManager.error(
-                        new Error(strings.passwordNotEntered()),
-                        undefined,
-                        "local"
-                      );
-                      return;
-                    }
-                    const verified = await db.user?.verifyPassword(value);
-                    if (verified) {
-                      setTimeout(async () => {
-                        try {
-                          startProgress({
-                            title: "Deleting account",
-                            paragraph:
-                              "Please wait while we delete your account"
-                          });
-                          await db.user?.deleteUser(value);
-                          DatabaseLogger.info("User account deleted");
-                          Navigation.navigate("Notes");
-                          await BiometricService.resetCredentials();
-                          SettingsService.set({
-                            introCompleted: true
-                          });
-                        } catch (e) {
-                          endProgress();
-                          DatabaseLogger.error(e);
-                          ToastManager.error(
-                            e as Error,
-                            strings.failedToDeleteAccount(),
-                            "global"
-                          );
-                        }
-                      }, 300);
-                    } else {
-                      ToastManager.show({
-                        heading: strings.passwordIncorrect(),
-                        type: "error",
-                        context: "global"
-                      });
-                    }
-                  } catch (e) {
-                    ToastManager.error(
-                      e as Error,
-                      strings.failedToDeleteAccount(),
-                      "global"
-                    );
-                  }
-                }
-              });
             }
           }
         ]
@@ -622,8 +493,9 @@ export const settingsGroups: SettingSection[] = [
           }
         ]
       }
-    ]
-  },
+    ],
+    logoutUser
+  ),
   {
     id: "customize",
     name: strings.customization(),
@@ -860,7 +732,8 @@ export const settingsGroups: SettingSection[] = [
         component: "server-config",
         hidden: () =>
           !__DEV__ &&
-          Object.keys(SettingsService.getProperty("serverUrls") || {}).length === 0
+          Object.keys(SettingsService.getProperty("serverUrls") || {})
+            .length === 0
       }
     ]
   },
@@ -900,8 +773,7 @@ export const settingsGroups: SettingSection[] = [
         },
         property: "corsProxy",
         icon: "arrow-decision-outline",
-        hidden: () =>
-          !__DEV__ && !SettingsService.getProperty("corsProxy")
+        hidden: () => !__DEV__ && !SettingsService.getProperty("corsProxy")
       },
 
       {
@@ -1169,6 +1041,34 @@ export const settingsGroups: SettingSection[] = [
       }
     ]
   },
+  createLocalDataSection(() => {
+    presentDialog({
+      title: strings.deleteLocalData(),
+      paragraph: strings.deleteLocalDataDesc(),
+      positiveType: "errorShade",
+      positiveText: strings.deleteLocalData(),
+      positivePress: async () => {
+        // The confirmation may outlive a login transition. A local-only
+        // wipe must never clear an authenticated profile by accident.
+        if (await db.user.getUser()) return false;
+        await ReminderWidget.clear();
+        await PremiumService.setPremiumStatus();
+        await BiometricService.resetCredentials();
+        MMKV.clearStore();
+        resetTabStore();
+        clearAllStores();
+        Navigation.queueRoutesForUpdate();
+        SettingsService.resetSettings();
+        await db.reset();
+
+        setImmediate(() => {
+          refreshAllStores();
+          eSendEvent(eAfterSync);
+        });
+        return true;
+      }
+    });
+  }),
   {
     id: "back-restore",
     name: strings.backupRestore(),

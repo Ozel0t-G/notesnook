@@ -21,24 +21,15 @@ import { useThemeColors } from "@notesnook/theme";
 import React, { useEffect, useState } from "react";
 import { View } from "react-native";
 import { db } from "../../common/database";
-import { MMKV } from "../../common/database/mmkv";
-import BiometricService from "../../services/biometrics";
-import {
-  ToastManager,
-  eSendEvent,
-  eSubscribeEvent
-} from "../../services/event-manager";
-import { setLoginMessage } from "../../services/message";
+import { eSubscribeEvent } from "../../services/event-manager";
 import SettingsService from "../../services/settings";
 import Sync from "../../services/sync";
-import { clearAllStores } from "../../stores";
-import { useUserStore } from "../../stores/use-user-store";
-import { eLoginSessionExpired, eUserLoggedIn } from "../../utils/events";
+import { SyncStatus, useUserStore } from "../../stores/use-user-store";
+import { eLoginSessionExpired } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
 import { sleep } from "../../utils/time";
 import { Dialog } from "../dialog";
 import BaseDialog from "../dialog/base-dialog";
-import { presentDialog } from "../dialog/functions";
 import SheetProvider from "../sheet-provider";
 import { Toast } from "../toast";
 import { Button } from "../ui/button";
@@ -50,39 +41,28 @@ import { strings } from "@notesnook/intl";
 import { getObfuscatedEmail } from "../../utils/functions";
 import { DefaultAppStyles } from "../../utils/styles";
 import FormInput, { validators } from "../ui/input/form-input";
+import { logoutUser } from "../../screens/settings/logout";
 
 export const SessionExpired = () => {
   const { colors } = useThemeColors();
   const [visible, setVisible] = useState(false);
   const [focused, setFocused] = useState(false);
-  const { step, passwordInputRef, loading, login, formRef } = useLogin(() => {
-    eSendEvent(eUserLoggedIn, true);
-    setVisible(false);
-    setFocused(false);
-    useUserStore.setState({
-      disableAppLockRequests: false
-    });
-  }, true);
-
-  const logout = async () => {
-    try {
-      await db.user.logout();
-      await BiometricService.resetCredentials();
-      setLoginMessage();
-      SettingsService.resetSettings();
-      useUserStore.getState().setUser(null);
-      useUserStore.getState().setSyncing(false);
-      MMKV.clearStore();
-      clearAllStores();
+  const { step, passwordInputRef, loading, login, formRef, error } = useLogin(
+    () => {
       setVisible(false);
+      setFocused(false);
       useUserStore.setState({
         disableAppLockRequests: false
       });
-    } catch (e) {
-      ToastManager.show({
-        heading: (e as Error).message,
-        type: "error",
-        context: "local"
+    },
+    true
+  );
+
+  const logout = async () => {
+    if (await logoutUser()) {
+      setVisible(false);
+      useUserStore.setState({
+        disableAppLockRequests: false
       });
     }
   };
@@ -98,18 +78,19 @@ export const SessionExpired = () => {
       if (!key) throw new Error("No encryption key found.");
 
       Sync.run("global", false, "full", async (complete) => {
-        if (!complete) {
+        try {
+          if (complete !== SyncStatus.Passed)
+            throw new Error("Session sync failed.");
+          await db.user.assertAccountReady();
+          SettingsService.set({ sessionExpired: false });
+          setVisible(false);
+        } catch {
           const user = await db.user.getUser();
           if (!user) return;
           formRef.current.setValue("email", user.email);
           setVisible(true);
           setFocused(false);
-          return;
         }
-        SettingsService.set({
-          sessionExpired: false
-        });
-        setVisible(false);
       });
     } catch (e) {
       const user = await db.user.getUser();
@@ -226,27 +207,31 @@ export const SessionExpired = () => {
             title={loading ? null : strings.login()}
           />
 
+          {error ? (
+            <Paragraph
+              testID="session-expired.error"
+              color={colors.error.accent}
+              style={{
+                textAlign: "center",
+                marginTop: DefaultAppStyles.GAP_VERTICAL
+              }}
+            >
+              {error.message}
+            </Paragraph>
+          ) : null}
+
           <Button
             style={{
               marginTop: DefaultAppStyles.GAP_VERTICAL,
               width: "100%"
             }}
-            onPress={() => {
-              presentDialog({
-                context: "session_expiry",
-                title: strings.logoutFromDevice(),
-                paragraph: strings.logoutDesc(),
-                positiveText: strings.logout(),
-                positiveType: "errorShade",
-                positivePress: logout
-              });
-            }}
+            disabled={loading}
+            onPress={logout}
             type="errorShade"
-            title={loading ? null : strings.logoutFromDevice()}
+            title={strings.signOut()}
           />
         </View>
         <Toast context="local" />
-        <Dialog context="session_expiry" />
 
         <SheetProvider context="two_factor_verify" />
       </BaseDialog>

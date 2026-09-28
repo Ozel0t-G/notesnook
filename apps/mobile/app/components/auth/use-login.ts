@@ -18,17 +18,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { strings } from "@notesnook/intl";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { TextInput } from "react-native";
-import { db } from "../../common/database";
+import { DatabaseLogger, db } from "../../common/database";
 import { ToastManager, eSendEvent } from "../../services/event-manager";
-import { clearMessage } from "../../services/message";
-import PremiumService from "../../services/premium";
-import SettingsService from "../../services/settings";
-import { useUserStore } from "../../stores/use-user-store";
 import { eCloseSimpleDialog } from "../../utils/events";
 import TwoFactorVerification from "./two-factor";
 import { createFormRef } from "../ui/input/form-input";
+import {
+  ACCOUNT_SETUP_NOTICE_MS,
+  completeAccountBootstrap
+} from "./account-bootstrap";
 
 export const LoginSteps = {
   emailAuth: 1,
@@ -37,12 +37,20 @@ export const LoginSteps = {
 };
 
 export const useLogin = (
-  onFinishLogin?: () => void,
+  onFinishLogin?: () => void | Promise<void>,
   sessionExpired = false
 ) => {
   const [error, setError] = useState<Error>();
   const [loading, setLoading] = useState(false);
-  const setUser = useUserStore((state) => state.setUser);
+  const running = useRef(false);
+  const committed = useRef(false);
+  const active = useRef(true);
+  useEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+    };
+  }, []);
   const [step, setStep] = useState(LoginSteps.emailAuth);
   const emailInputRef = useRef<TextInput>(null);
   const passwordInputRef = useRef<TextInput>(null);
@@ -54,23 +62,39 @@ export const useLogin = (
   );
 
   const login = async () => {
+    if (running.current) return;
+    let notice: ReturnType<typeof setTimeout> | undefined;
     try {
-      if (loading) return;
+      running.current = true;
       setError(undefined);
       setLoading(true);
+      notice = setTimeout(() => {
+        if (!active.current) return;
+        setLoading(false);
+        setError(new Error(strings.accountSetupTimedOut()));
+      }, ACCOUNT_SETUP_NOTICE_MS);
       switch (step) {
         case LoginSteps.emailAuth: {
+          committed.current = false;
           if (formRef.current.validateField("email")) {
             setLoading(false);
             return;
           }
           const mfaInfo = await db.user.authenticateEmail(
-            formRef.current.getValue("email")
+            formRef.current.getValue("email").trim().toLowerCase()
           );
 
-          if (mfaInfo) {
+          const authenticationStep = db.user.getPendingAuthenticationStep();
+          if (authenticationStep === "password") {
+            setStep(LoginSteps.passwordAuth);
+            passwordInputRef.current?.focus();
+          } else if (authenticationStep === "mfa" && mfaInfo) {
             TwoFactorVerification.present(
-              async (mfa: any, callback: (success: boolean) => void, onerror: (e: Error) => void) => {
+              async (
+                mfa: { code: string; method: string },
+                callback: (success: boolean) => void,
+                onerror: (e: Error) => void
+              ) => {
                 try {
                   const success = await db.user.authenticateMultiFactorCode(
                     mfa.code,
@@ -84,6 +108,7 @@ export const useLogin = (
                       passwordInputRef.current?.focus();
                     }, 500);
                     callback && callback(true);
+                    return;
                   }
                   callback && callback(false);
                 } catch (e) {
@@ -92,9 +117,12 @@ export const useLogin = (
                     eSendEvent(eCloseSimpleDialog, "two_factor_verify");
                     setLoading(false);
                     setStep(LoginSteps.emailAuth);
-                    ToastManager.error(new Error("Token expired, try logging in again"));
+                    ToastManager.error(
+                      new Error(strings.tokenExpiredTryLogin())
+                    );
                   } else {
-                    onerror(e as Error);
+                    DatabaseLogger.error(e, "VeyraN MFA failed");
+                    onerror(new Error(strings.authMfaFailed()));
                   }
                 }
               },
@@ -116,49 +144,57 @@ export const useLogin = (
             return;
           }
           const values = formRef.current.getValues();
-          await db.user.authenticatePassword(
-            values.email,
-            values.password,
-            undefined,
-            sessionExpired
-          );
-          finishLogin();
+          if (!committed.current) {
+            await db.user.authenticatePassword(
+              values.email.trim().toLowerCase(),
+              values.password,
+              undefined,
+              sessionExpired
+            );
+            committed.current = true;
+          }
+          await finishLogin();
           break;
         }
       }
       setLoading(false);
     } catch (e) {
       finishWithError(e as Error);
+    } finally {
+      clearTimeout(notice);
+      running.current = false;
+      if (active.current) setLoading(false);
     }
   };
 
-  const finishWithError = async (e: Error) => {
+  const finishWithError = (e: Error) => {
+    DatabaseLogger.error(e, "VeyraN sign in failed");
+    if (!active.current) return;
     if (e.message === "invalid_grant") setStep(LoginSteps.emailAuth);
     setLoading(false);
     if (e.message === "Password is incorrect.") {
-      formRef.current.setError("password", e.message);
+      formRef.current.setError("password", strings.emailOrPasswordIncorrect());
     } else {
-      setError(e);
+      setError(
+        new Error(
+          committed.current
+            ? strings.accountSetupIncomplete()
+            : strings.authRequestFailed()
+        )
+      );
     }
   };
 
   const finishLogin = async () => {
-    const user = await db.user.getUser();
-    if (!user) throw new Error(strings.emailOrPasswordIncorrect());
-    PremiumService.setPremiumStatus();
-    setUser(user);
-    clearMessage();
+    const user = await completeAccountBootstrap(() => {
+      if (active.current) return onFinishLogin?.();
+    });
     ToastManager.show({
       heading: strings.loginSuccess(),
       message: strings.loginSuccessDesc(user.email),
       type: "success",
       context: "global"
     });
-    SettingsService.set({
-      sessionExpired: false,
-      userEmailConfirmed: user?.isEmailConfirmed
-    });
-    onFinishLogin?.();
     setLoading(false);
   };
 

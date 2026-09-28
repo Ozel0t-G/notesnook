@@ -17,98 +17,208 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { strings } from "@notesnook/intl";
-import { presentDialog } from "../../components/dialog/functions";
+import {
+  Alert,
+  AlertButton,
+  AppState,
+  NativeEventSubscription
+} from "react-native";
+import { EVENTS, EventManagerSubscription } from "@notesnook/core";
 import { DatabaseLogger, db } from "../../common/database";
-import { eSendEvent, ToastManager } from "../../services/event-manager";
-import { eCloseSimpleDialog } from "../../utils/events";
+import { AuthMode } from "../../components/auth/common";
 import {
   endProgress,
   startProgress,
   updateProgress
 } from "../../components/dialogs/progress";
-import Navigation from "../../services/navigation";
 import BackupService from "../../services/backup";
+import { ToastManager } from "../../services/event-manager";
+import Navigation from "../../services/navigation";
 import { useUserStore } from "../../stores/use-user-store";
 
-export async function logoutUser() {
-  const hasUnsyncedChanges = await db.hasUnsyncedChanges();
-  presentDialog({
-    title: strings.logout(),
-    paragraph: strings.logoutConfirmation(),
-    positiveText: strings.logout(),
-    check: {
-      info: strings.backupDataBeforeLogout(),
-      defaultValue: true
-    },
-    notice: hasUnsyncedChanges
-      ? {
-          text: strings.unsyncedChangesWarning(),
-          type: "alert"
-        }
-      : undefined,
-    positivePress: async (_, takeBackup) => {
-      eSendEvent(eCloseSimpleDialog);
-      useUserStore.getState().setIsLoggingOut(true);
-      setTimeout(async () => {
+let logoutInProgress = false;
+
+function confirmSignOut(
+  hasUnsyncedChanges: boolean,
+  backupRequired: boolean
+): Promise<boolean | null> {
+  return new Promise((resolve) => {
+    const buttons: AlertButton[] = [
+      { text: strings.cancel(), style: "cancel", onPress: () => resolve(null) },
+      {
+        text: strings.signOutWithBackup(),
+        isPreferred: true,
+        onPress: () => resolve(true)
+      }
+    ];
+    if (!backupRequired)
+      buttons.push({
+        text: strings.signOutWithoutBackup(),
+        style: "destructive",
+        onPress: () => resolve(false)
+      });
+    Alert.alert(
+      strings.signOut(),
+      [
+        strings.signOutLocalDataWarning(),
+        backupRequired ? strings.signOutBackupRequired() : undefined,
+        hasUnsyncedChanges ? strings.unsyncedChangesWarning() : undefined
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      buttons,
+      { cancelable: true, onDismiss: () => resolve(null) }
+    );
+  });
+}
+
+function confirmSignOutAfterBackupFailure(
+  backupRequired: boolean
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    const buttons: AlertButton[] = [
+      { text: strings.cancel(), style: "cancel", onPress: () => resolve(false) }
+    ];
+    if (!backupRequired)
+      buttons.push({
+        text: strings.signOutWithoutBackup(),
+        style: "destructive",
+        onPress: () => resolve(true)
+      });
+    Alert.alert(
+      strings.failedToTakeBackup(),
+      backupRequired
+        ? strings.signOutBackupRequired()
+        : strings.signOutLocalDataWarning(),
+      buttons,
+      { cancelable: true, onDismiss: () => resolve(false) }
+    );
+  });
+}
+
+export async function logoutUser(): Promise<boolean> {
+  if (logoutInProgress) return false;
+  logoutInProgress = true;
+  let started = false;
+  let syncPaused = false;
+  let lifecycleSubscription: NativeEventSubscription | undefined;
+  let leftForeground = false;
+  let mutationSubscription: EventManagerSubscription | undefined;
+  let dataChanged = false;
+  const requireUnchangedData = () => {
+    if (leftForeground || AppState.currentState !== "active")
+      throw new Error(strings.signOutDataChanged());
+    if (dataChanged) throw new Error(strings.signOutDataChanged());
+  };
+  try {
+    const [hasUnsyncedChanges, affinityBlocked] = await Promise.all([
+      db.hasUnsyncedChanges(),
+      db.user.backendAffinity.isBlocked()
+    ]);
+    const backupRequired = hasUnsyncedChanges || affinityBlocked;
+    const takeBackup = await confirmSignOut(hasUnsyncedChanges, backupRequired);
+    if (takeBackup === null) return false;
+
+    lifecycleSubscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") leftForeground = true;
+    });
+    useUserStore.getState().setIsLoggingOut(true);
+    mutationSubscription = db.eventManager.subscribe(
+      EVENTS.databaseUpdated,
+      () => {
+        dataChanged = true;
+      }
+    );
+    started = true;
+    startProgress({
+      fillBackground: true,
+      title: strings.loggingOut(),
+      canHideProgress: false,
+      paragraph: strings.loggingOutDesc()
+    });
+
+    db.syncer.sync.autoSync.stop();
+    syncPaused = true;
+    await Promise.all([db.syncer.stop(), db.fs().cancel("sync-uploads")]);
+
+    return await db.withAccountDataWriteBarrier(async (assertUnchanged) => {
+      const assertBarrierUnchanged = () => {
         try {
+          assertUnchanged();
+        } catch {
+          throw new Error(strings.signOutDataChanged());
+        }
+      };
+      let backupSaved = false;
+      if (takeBackup) {
+        updateProgress({ progress: strings.backingUpData() });
+        try {
+          const result = await BackupService.run(false, "local", "full", {
+            requireLocalAttachments: true
+          });
+          if (result.error) throw result.error;
+          // A concurrent/skipped backup returns {}. It is not a saved backup.
+          if (!result.path) throw new Error(strings.backupFailed());
+          backupSaved = true;
+        } catch (error) {
+          DatabaseLogger.error(error);
+          endProgress();
+          const [stillUnsynced, stillBlocked] = await Promise.all([
+            db.hasUnsyncedChanges(),
+            db.user.backendAffinity.isBlocked()
+          ]);
+          const stillRequiresBackup = stillUnsynced || stillBlocked;
+          if (!(await confirmSignOutAfterBackupFailure(stillRequiresBackup)))
+            return false;
           startProgress({
             fillBackground: true,
             title: strings.loggingOut(),
-            canHideProgress: true,
+            canHideProgress: false,
             paragraph: strings.loggingOutDesc()
           });
-
-          Navigation.navigate("Notes");
-
-          if (takeBackup) {
-            updateProgress({
-              progress: strings.backingUpData()
-            });
-
-            try {
-              const result = await BackupService.run(false, "local", "partial");
-              if (result?.error) throw result.error as Error;
-            } catch (e) {
-              DatabaseLogger.error(e);
-              const error = e;
-              const canLogout = await new Promise((resolve) => {
-                presentDialog({
-                  context: "local",
-                  title: strings.failedToTakeBackup(),
-                  paragraph: `${
-                    (error as Error).message
-                  }. ${strings.failedToTakeBackupMessage()}?`,
-                  positiveText: strings.yes(),
-                  negativeText: strings.no(),
-                  positivePress: async () => {
-                    resolve(true);
-                    return true;
-                  },
-                  onClose: () => {
-                    resolve(false);
-                  }
-                });
-              });
-              if (!canLogout) {
-                endProgress();
-                return;
-              }
-            }
-          }
-
-          updateProgress({
-            progress: strings.loggingOut()
-          });
-
-          await db.user?.logout();
-          endProgress();
-        } catch (e) {
-          DatabaseLogger.error(e);
-          ToastManager.error(e as Error, strings.logoutError());
-          endProgress();
-          useUserStore.getState().setIsLoggingOut(false);
         }
-      }, 300);
+      }
+
+      // Affinity/recovery state may change while the native dialog is open.
+      const [stillUnsynced, stillBlocked] = await Promise.all([
+        db.hasUnsyncedChanges(),
+        db.user.backendAffinity.isBlocked()
+      ]);
+      if (!backupSaved && (stillUnsynced || stillBlocked)) {
+        ToastManager.show({
+          message: strings.signOutBackupRequired(),
+          type: "info"
+        });
+        return false;
+      }
+      updateProgress({ progress: strings.loggingOut() });
+      requireUnchangedData();
+      assertBarrierUnchanged();
+      await db.user.logout(true, undefined, {
+        beforeClearLocalData: () => {
+          requireUnchangedData();
+          assertBarrierUnchanged();
+        }
+      });
+      Navigation.navigate("Auth", { mode: AuthMode.login });
+      return true;
+    });
+  } catch (error) {
+    DatabaseLogger.error(error);
+    ToastManager.error(error as Error, strings.logoutError());
+    if (started && !useUserStore.getState().user)
+      Navigation.navigate("Auth", { mode: AuthMode.login });
+    return false;
+  } finally {
+    lifecycleSubscription?.remove();
+    mutationSubscription?.unsubscribe();
+    if (started) {
+      endProgress();
+      useUserStore.getState().setIsLoggingOut(false);
     }
-  });
+    if (syncPaused && useUserStore.getState().user) {
+      void db.syncer.sync.autoSync.start().catch(DatabaseLogger.error);
+    }
+    logoutInProgress = false;
+  }
 }

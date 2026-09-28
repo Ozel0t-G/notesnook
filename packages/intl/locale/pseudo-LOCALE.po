@@ -8528,3 +8528,103 @@ msgstr ""
 #: src/strings.ts:2891
 msgid "This file cannot be attached because the configured service does not support its size."
 msgstr ""
+
+#: src/strings.ts:1177
+msgid "Account setup needs attention"
+msgstr ""
+
+#: src/strings.ts:1152
+msgid "Back up and sign out"
+msgstr ""
+
+#: src/strings.ts:1163
+msgid "Data"
+msgstr ""
+
+#: src/strings.ts:1162
+msgid "Delete local data"
+msgstr ""
+
+#: src/strings.ts:1174
+msgid "If you restarted during setup, sign in with the email and password you used to create your account."
+msgstr ""
+
+#: src/strings.ts:1166
+msgid "Preparing your encrypted account. Please wait."
+msgstr ""
+
+#: src/strings.ts:1157
+msgid "Save a backup before signing out to protect your local notes and attachments."
+msgstr ""
+
+#: src/strings.ts:1164
+msgid "Setting up your VeyraN account…"
+msgstr ""
+
+#: src/strings.ts:1150
+msgid "Sign in to restore your encrypted notes and sync with VeyraN"
+msgstr ""
+
+#: src/strings.ts:1148
+msgid "Sign in to VeyraN"
+msgstr ""
+
+#: src/strings.ts:1151
+msgid "Sign out"
+msgstr ""
+
+#: src/strings.ts:1153
+msgid "Sign out without backup"
+msgstr ""
+
+#: src/strings.ts:1147
+msgid "Signed in to VeyraN"
+msgstr ""
+
+#: src/strings.ts:1155
+msgid "Signing out removes notes and settings from this device. Synced data stays in your VeyraN account. Back up or sync unsynced changes first."
+msgstr ""
+
+#: src/strings.ts:1161
+msgid "Some local attachments could not be saved in the backup. Your data remains on this device. Try again before signing out."
+msgstr ""
+
+#: src/strings.ts:1172
+msgid "The current setup attempt is still finishing. Keep this screen open before retrying."
+msgstr ""
+
+#: src/strings.ts:1183
+msgid "The sign-in request expired. Please sign in again."
+msgstr ""
+
+#: src/strings.ts:1146
+msgid "VeyraN Account"
+msgstr ""
+
+#: src/strings.ts:1170
+msgid "VeyraN account setup is taking too long. Check your connection and retry when the current attempt has finished."
+msgstr ""
+
+#: src/strings.ts:1179
+msgid "VeyraN could not complete sign in. Check your connection and try again."
+msgstr ""
+
+#: src/strings.ts:1168
+msgid "VeyraN could not finish setting up your account. Retry to continue, or return to sign in."
+msgstr ""
+
+#: src/strings.ts:1181
+msgid "VeyraN could not verify this code. Check the code or request a new one, then try again."
+msgstr ""
+
+#: src/strings.ts:2214
+msgid "Your issue report is available at [{url}]({url}). Save this link if you need to revisit it."
+msgstr ""
+
+#: src/strings.ts:1159
+msgid "Your notes changed while preparing to sign out. Nothing was removed from this device. Please try again."
+msgstr ""
+
+#: src/strings.ts:1176
+msgid "Your VeyraN account is not ready. Sign in again to finish setup safely."
+msgstr ""

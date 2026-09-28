@@ -71,12 +71,10 @@ export default {
 
 async function request(url: string, method: "GET" | "DELETE", token?: string) {
   assertCredentialDestination(token, url);
-  return handleResponse(
-    await fetchWrapped(url, {
-      method,
-      headers: getHeaders(token)
-    })
-  );
+  return fetchWrapped(url, {
+    method,
+    headers: getHeaders(token)
+  });
 }
 
 async function bodyRequest(
@@ -87,16 +85,14 @@ async function bodyRequest(
   contentType: ContentType = "application/x-www-form-urlencoded"
 ) {
   assertCredentialDestination(token, url);
-  return handleResponse(
-    await fetchWrapped(url, {
-      method,
-      body: data,
-      headers: {
-        ...getHeaders(token),
-        "Content-Type": contentType
-      }
-    })
-  );
+  return fetchWrapped(url, {
+    method,
+    body: data,
+    headers: {
+      ...getHeaders(token),
+      "Content-Type": contentType
+    }
+  });
 }
 
 export function errorTransformer(errorJson: {
@@ -149,10 +145,14 @@ async function fetchWrapped(
 ) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response | undefined;
   try {
-    const response = await fetch(input, { ...init, signal: controller.signal });
-    return response;
+    response = await fetch(input, { ...init, signal: controller.signal });
+    // Keep the abort deadline active until the body is consumed. Fetch can
+    // resolve at headers while a stalled JSON body otherwise waits forever.
+    return await handleResponse(response);
   } catch (e) {
+    if (response && !controller.signal.aborted) throw e;
     const host = extractHostname(input);
     const serverName = getServerNameFromHost(host);
     if (serverName)

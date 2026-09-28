@@ -91,6 +91,7 @@ import { LazyPromise } from "../utils/lazy-promise.js";
 import { InboxApiKeys } from "./inbox-api-keys.js";
 import { Circle } from "./circle.js";
 import { Wrapped } from "./wrapped.js";
+import { AccountDataWriteBarrier } from "../database/account-data-write-barrier.js";
 
 type EventSourceConstructor = new (
   uri: string,
@@ -158,6 +159,7 @@ class Database {
   };
 
   private _sql?: Kysely<DatabaseSchema>;
+  private readonly accountDataWriteBarrier = new AccountDataWriteBarrier();
   sql: DatabaseAccessor = () => {
     // if (this._transaction) return this._transaction.value;
 
@@ -272,10 +274,18 @@ class Database {
     this.options = options;
   }
 
+  /** Keep the exported account data fixed until sign out or cancellation. */
+  withAccountDataWriteBarrier<T>(
+    operation: (assertUnchanged: () => void) => Promise<T>
+  ) {
+    return this.accountDataWriteBarrier.run(operation);
+  }
+
   async reset() {
+    const resetSql = this.accountDataWriteBarrier.createResetView(this.sql());
     await this.storage().clear();
 
-    await dropTriggers(this.sql());
+    await dropTriggers(resetSql);
     for (const statement of [
       "PRAGMA writable_schema = 1",
       "DELETE FROM sqlite_master",
@@ -283,15 +293,15 @@ class Database {
       "VACUUM",
       "PRAGMA integrity_check"
     ]) {
-      await sql.raw(statement).execute(this.sql());
+      await sql.raw(statement).execute(resetSql);
     }
 
     await initializeDatabase(
-      this.sql().withTables(),
+      resetSql.withTables(),
       new NNMigrationProvider(),
       "notesnook"
     );
-    await this.onInit(this.sql() as unknown as Kysely<RawDatabaseSchema>);
+    await this.onInit(resetSql as unknown as Kysely<RawDatabaseSchema>);
     await this.initCollections();
     return true;
   }
@@ -334,6 +344,10 @@ class Database {
 
     this._sql = (await createDatabase<RawDatabaseSchema>("notesnook", {
       ...this.options.sqliteOptions,
+      dialect: (name, init) =>
+        this.accountDataWriteBarrier.wrapDialect(
+          this.options.sqliteOptions.dialect(name, init)
+        ),
       migrationProvider: new NNMigrationProvider(),
       onInit: (db) => this.onInit(db)
     })) as unknown as Kysely<DatabaseSchema>;

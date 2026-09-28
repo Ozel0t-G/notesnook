@@ -322,8 +322,8 @@ export class BackendAffinity {
     await this.db.kv().delete("backendAffinity");
   }
 
-  /** Include tombstones and all persisted local account state. */
-  async hasLocalAccountData() {
+  /** Include every account record and tombstone, independently of session markers. */
+  async hasLocalAccountRecords() {
     const tables = [
       "notes",
       "notebooks",
@@ -355,7 +355,14 @@ export class BackendAffinity {
       this.db.legacyNotes.count() > 0 ||
       this.db.legacyTags.count() > 0 ||
       this.db.legacyColors.count() > 0 ||
-      !!(await this.db.storage().read("settings")) ||
+      !!(await this.db.storage().read("settings"))
+    );
+  }
+
+  /** Include tombstones and all persisted local account state. */
+  async hasLocalAccountData() {
+    return (
+      (await this.hasLocalAccountRecords()) ||
       (await this.db.storage().snapshotCryptoKeyState()) != null ||
       !!(await this.db.kv().read("deviceId")) ||
       !!(await this.db.kv().read("lastSynced"))

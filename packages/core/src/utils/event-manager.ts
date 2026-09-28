@@ -86,6 +86,23 @@ export class EventManager {
     return await Promise.all(handlers.map((handler) => handler(...args)));
   }
 
+  /** Wait for every handler, even when an earlier cleanup rejects. */
+  async publishWithSettledResult<T = unknown>(
+    name: string,
+    ...args: any[]
+  ): Promise<PromiseSettledResult<T>[]> {
+    const handlers: EventHandler[] = [];
+    this._registry.forEach((props, handler) => {
+      if (props.name === name) {
+        handlers.push(handler);
+        if (props.once) this._registry.delete(handler);
+      }
+    });
+    return await Promise.allSettled(
+      handlers.map((handler) => Promise.resolve().then(() => handler(...args)))
+    );
+  }
+
   remove(...names: string[]) {
     this._registry.forEach((props, handler) => {
       if (names.includes(props.name)) this._registry.delete(handler);

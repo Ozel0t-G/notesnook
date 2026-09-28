@@ -41,30 +41,34 @@ test("new history session should be automatically created on note save", () =>
   }));
 
 test("editing the same note should create multiple history sessions", () =>
-  noteTest({ ...TEST_NOTE, sessionId: Date.now() }).then(async ({ db, id }) => {
-    let editedContent = {
-      data: TEST_NOTE.content.data + "<p>Some new content</p>",
-      type: "tiptap"
-    };
+  noteTest({ ...TEST_NOTE, sessionId: "original-session" }).then(
+    async ({ db, id }) => {
+      let editedContent = {
+        data: TEST_NOTE.content.data + "<p>Some new content</p>",
+        type: "tiptap"
+      };
 
-    await db.notes.add({
-      id: id,
-      content: editedContent,
-      sessionId: Date.now() + 10000
-    });
+      await db.notes.add({
+        id: id,
+        content: editedContent,
+        sessionId: "edited-session"
+      });
 
-    const sessions = await db.noteHistory
-      .get(id)
-      .items(undefined, { sortBy: "dateModified", sortDirection: "desc" });
-    expect(sessions).toHaveLength(2);
+      const sessions = await db.noteHistory
+        .get(id)
+        .items(undefined, { sortBy: "dateModified", sortDirection: "desc" });
+      expect(sessions).toHaveLength(2);
 
-    await expect(db.noteHistory.content(sessions[0].id)).resolves.toMatchObject(
-      editedContent
-    );
-    await expect(db.noteHistory.content(sessions[1].id)).resolves.toMatchObject(
-      TEST_NOTE.content
-    );
-  }));
+      // Millisecond timestamps can tie; each distinct session must retain its
+      // own content regardless of ordering among equal dateModified values.
+      await expect(
+        db.noteHistory.content(`${id}_edited-session`)
+      ).resolves.toMatchObject(editedContent);
+      await expect(
+        db.noteHistory.content(`${id}_original-session`)
+      ).resolves.toMatchObject(TEST_NOTE.content);
+    }
+  ));
 
 test("restoring an old session should replace note's content", () =>
   noteTest({ ...TEST_NOTE, sessionId: Date.now() }).then(async ({ db, id }) => {

@@ -61,6 +61,7 @@ const NOTESNOOK = {
 const mockGet = http.get as unknown as Mock;
 const mockPost = http.post as unknown as Mock;
 const mockDelete = http.delete as unknown as Mock;
+const mockPatchJson = http.patch.json as unknown as Mock;
 
 function affinityRecord(api: string, auth: string): StoredAffinity {
   return { v: 1, api, auth, recordedAt: 1 };
@@ -574,6 +575,165 @@ describe("automatic logout must not destroy local data", () => {
     await user.logout(false, "signed out");
     expect(reset).toHaveBeenCalledTimes(1);
   });
+
+  test("a rejected local-data guard prevents every logout mutation", async () => {
+    const local = serverUser();
+    const token = { access_token: "existing-token" };
+    const { user, db, kv, reset, unregister } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token,
+      deviceId: "existing-device",
+      cryptoKey: "existing-key"
+    });
+    const loggedOut = vi.fn();
+    db.eventManager.subscribe(EVENTS.userLoggedOut, loggedOut);
+    await expect(
+      user.logout(true, undefined, {
+        beforeClearLocalData: () => {
+          throw new Error("Notes changed after backup.");
+        }
+      })
+    ).rejects.toThrow("Notes changed after backup.");
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("token")).toEqual(token);
+    expect(kv.get("cryptoKey")).toBe("existing-key");
+    expect(kv.get("deviceId")).toBe("existing-device");
+    expect(unregister).not.toHaveBeenCalled();
+    expect(reset).not.toHaveBeenCalled();
+    expect(loggedOut).not.toHaveBeenCalled();
+  });
+
+  test("the local-data guard is rechecked after network cleanup before clearing keys or notes", async () => {
+    const local = serverUser();
+    const token = { access_token: "existing-token" };
+    const { user, db, kv, reset, unregister } = harness({
+      storedUser: local,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token,
+      deviceId: "existing-device",
+      cryptoKey: "existing-key"
+    });
+    let changed = false;
+    const guard = vi.fn(() => {
+      if (changed) throw new Error("Notes changed after backup.");
+    });
+    unregister.mockImplementationOnce(async () => {
+      changed = true;
+    });
+    const loggedOut = vi.fn();
+    db.eventManager.subscribe(EVENTS.userLoggedOut, loggedOut);
+    await expect(
+      user.logout(false, undefined, { beforeClearLocalData: guard })
+    ).rejects.toThrow("Notes changed after backup.");
+    expect(guard).toHaveBeenCalledTimes(2);
+    expect(kv.get("user")).toEqual(local);
+    expect(kv.get("token")).toEqual(token);
+    expect(kv.get("cryptoKey")).toBe("existing-key");
+    expect(reset).not.toHaveBeenCalled();
+    expect(loggedOut).not.toHaveBeenCalled();
+  });
+
+  test("logout waits for asynchronous account cleanup before another login can start", async () => {
+    const { user, db, reset } = harness({
+      storedUser: serverUser(),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
+    let finishCleanup!: () => void;
+    let completed = false;
+    db.eventManager.subscribe(
+      EVENTS.userLoggedOut,
+      () =>
+        new Promise<void>((resolve) => {
+          finishCleanup = resolve;
+        })
+    );
+    const signOut = user.logout(false).then(() => {
+      completed = true;
+    });
+    while (!finishCleanup) await Promise.resolve();
+    expect(reset).toHaveBeenCalledOnce();
+    expect(completed).toBe(false);
+    await expect(
+      user.authenticateEmail("someone@example.test")
+    ).rejects.toThrow("already in progress");
+    expect(mockPost).not.toHaveBeenCalled();
+    finishCleanup();
+    await signOut;
+    expect(completed).toBe(true);
+    mockPost.mockResolvedValueOnce({
+      access_token: "password-stage",
+      scope: "auth:grant_types:mfa_password"
+    });
+    await user.authenticateEmail("someone@example.test");
+    expect(user.getPendingAuthenticationStep()).toBe("password");
+  });
+
+  test("an early cleanup rejection cannot release auth while another logout handler is pending", async () => {
+    const { user, db } = harness({
+      storedUser: serverUser(),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth)
+    });
+    let finishCleanup!: () => void;
+    let settled = false;
+    db.eventManager.subscribe(EVENTS.userLoggedOut, () => {
+      throw new Error("first cleanup failed");
+    });
+    db.eventManager.subscribe(
+      EVENTS.userLoggedOut,
+      () =>
+        new Promise<void>((resolve) => {
+          finishCleanup = resolve;
+        })
+    );
+    const signOut = user.logout(false);
+    const failure = expect(signOut).rejects.toThrow("first cleanup failed");
+    void signOut.then(
+      () => (settled = true),
+      () => (settled = true)
+    );
+    while (!finishCleanup) await Promise.resolve();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    await expect(
+      user.authenticateEmail("someone@example.test")
+    ).rejects.toThrow("already in progress");
+    finishCleanup();
+    await failure;
+    expect(settled).toBe(true);
+  });
+
+  test("an in-flight profile fetch settles before logout can clear its session", async () => {
+    const { user, kv, reset } = harness({
+      storedUser: serverUser(),
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      token: {
+        access_token: "current-access",
+        scope: "notesnook.sync offline_access IdentityServerApi",
+        expires_in: 3600,
+        t: Date.now()
+      }
+    });
+    reset.mockImplementationOnce(async () => {
+      kv.clear();
+      return true;
+    });
+    let finishFetch!: (user: User) => void;
+    mockGet.mockImplementationOnce(
+      () => new Promise<User>((resolve) => (finishFetch = resolve))
+    );
+    const fetching = user.fetchUser();
+    while (!finishFetch) await Promise.resolve();
+    await expect(user.logout(false)).rejects.toThrow("already in progress");
+    expect(reset).not.toHaveBeenCalled();
+    finishFetch(serverUser());
+    await fetching;
+    await user.logout(false);
+    expect(reset).toHaveBeenCalledOnce();
+    expect(await user.getUser()).toBeUndefined();
+    expect(kv.has("token")).toBe(false);
+    expect(kv.has("backendAffinity")).toBe(false);
+  });
 });
 
 describe("account fetches are blocked across a boundary", () => {
@@ -1054,9 +1214,10 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     const { user, db, kv, storageWrite } = harness({});
     mockPost.mockResolvedValue({ access_token: "signup-access" });
     mockGet.mockResolvedValue(serverUser("brand-new"));
-    storageWrite.mockImplementationOnce(async (key: string, value: unknown) => {
+    storageWrite.mockImplementation(async (key: string, value: unknown) => {
       kv.set(key, value);
-      throw new Error("write acknowledgement lost");
+      if (key === "backendRecoveryRequired")
+        throw new Error("write acknowledgement lost");
     });
 
     await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
@@ -1093,6 +1254,470 @@ describe("a rejected signup leaves the profile exactly as it was", () => {
     expect(kv.has("user")).toBe(false);
     expect(kv.has("token")).toBe(false);
     expect(kv.get("backendAffinity")).toBeUndefined();
+  });
+});
+
+describe("VeyraN account setup readiness and safe retry", () => {
+  const signupToken = {
+    access_token: "signup-token",
+    refresh_token: "signup-refresh",
+    scope: "notesnook.sync offline_access IdentityServerApi",
+    expires_in: 3600
+  };
+
+  function arrangeSignup() {
+    mockPost.mockResolvedValue(signupToken);
+    mockGet.mockResolvedValue(serverUser("new-account"));
+  }
+
+  test("confirmed registration publishes the committed keyset and is ready for sync", async () => {
+    const { user, db, kv, register } = harness({});
+    arrangeSignup();
+    const loggedIn = vi.fn();
+    const fetched = vi.fn();
+    db.eventManager.subscribe(EVENTS.userLoggedIn, loggedIn);
+    db.eventManager.subscribe(EVENTS.userFetched, fetched);
+
+    await user.signup("NEW@example.test", "pw");
+    const ready = await user.assertAccountReady();
+
+    expect(ready.user).toMatchObject({
+      id: "new-account",
+      isEmailConfirmed: true,
+      dataEncryptionKey: { cipher: "c" },
+      attachmentsKey: { cipher: "c" },
+      monographPasswordsKey: { cipher: "c" }
+    });
+    expect(ready.lastSynced).toBe(0);
+    expect(loggedIn).toHaveBeenCalledWith(ready.user);
+    expect(fetched).toHaveBeenCalledWith(ready.user);
+    expect(register).toHaveBeenCalledWith(signupToken.access_token, VEYRAN.api);
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+    expect(mockPost.mock.calls[0]).toEqual([
+      `${VEYRAN.api}/users`,
+      {
+        email: "new@example.test",
+        password: "hashed:pw",
+        client_id: "notesnook"
+      }
+    ]);
+  });
+
+  test("registration preserves an actual unconfirmed server state", async () => {
+    const { user } = harness({});
+    arrangeSignup();
+    mockGet.mockResolvedValue({ ...serverUser(), isEmailConfirmed: false });
+    await user.signup("new@example.test", "pw");
+    expect((await user.assertAccountReady()).user.isEmailConfirmed).toBe(false);
+  });
+
+  test("a profile-fetch failure retries the remotely created account without another registration", async () => {
+    const { user, kv } = harness({});
+    arrangeSignup();
+    mockGet.mockRejectedValueOnce(new Error("temporary profile outage"));
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "Could not confirm"
+    );
+    expect(kv.has("user")).toBe(false);
+    expect(kv.has("token")).toBe(false);
+
+    await user.signup("new@example.test", "pw");
+    expect(mockPost).toHaveBeenCalledOnce();
+    expect(mockGet).toHaveBeenCalledTimes(2);
+    expect((await user.assertAccountReady()).user.id).toBe("new-account");
+  });
+
+  test("device failure restores the profile and Retry reuses the same wrapped keys", async () => {
+    const { user, db, kv, register } = harness({});
+    arrangeSignup();
+    const generateRandomKey = vi.fn(async () => ({ key: "generated-key" }));
+    (db as any).crypto = () => ({ generateRandomKey });
+    register.mockRejectedValueOnce(new Error("device unavailable"));
+
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "device unavailable"
+    );
+    expect(kv.has("user")).toBe(false);
+    expect(kv.has("cryptoKey")).toBe(false);
+    const keyset = mockPatchJson.mock.calls[0][1];
+
+    await user.signup("new@example.test", "pw");
+    expect(mockPost).toHaveBeenCalledOnce();
+    expect(generateRandomKey).toHaveBeenCalledTimes(3);
+    expect(mockPatchJson.mock.calls[1][1]).toEqual(keyset);
+    expect((await user.assertAccountReady()).user.dataEncryptionKey).toEqual(
+      keyset.dataEncryptionKey
+    );
+  });
+
+  test("an acknowledged-lost remote key update is verified and never repeated", async () => {
+    const { user, kv } = harness({});
+    arrangeSignup();
+    let remote = serverUser("new-account");
+    mockGet.mockImplementation(async () => remote);
+    mockPatchJson.mockImplementationOnce(async (_url, keyset) => {
+      remote = { ...remote, ...keyset };
+      throw new Error("key update response lost");
+    });
+
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "key update response lost"
+    );
+    expect(kv.has("user")).toBe(false);
+    await user.signup("new@example.test", "pw");
+    expect(mockPost).toHaveBeenCalledOnce();
+    expect(mockPatchJson).toHaveBeenCalledOnce();
+    expect((await user.assertAccountReady()).user).toEqual(remote);
+  });
+
+  test("retry accepts identical remote wrapped keys with different JSON property ordering", async () => {
+    const { user, register } = harness({});
+    arrangeSignup();
+    register.mockRejectedValueOnce(new Error("device unavailable"));
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow();
+    const reordered = { length: 1, salt: "s", iv: "i", cipher: "c" };
+    mockGet.mockResolvedValue({
+      ...serverUser("new-account"),
+      dataEncryptionKey: reordered,
+      attachmentsKey: reordered,
+      monographPasswordsKey: reordered
+    });
+    await user.signup("new@example.test", "pw");
+    expect(mockPatchJson).toHaveBeenCalledOnce();
+    await user.assertAccountReady();
+  });
+
+  test.each(["salt", "dataEncryptionKey"])(
+    "retry refuses changed remote %s instead of overwriting it",
+    async (field) => {
+      const { user, kv, register } = harness({});
+      arrangeSignup();
+      register.mockRejectedValueOnce(new Error("device unavailable"));
+      await expect(user.signup("new@example.test", "pw")).rejects.toThrow();
+      mockGet.mockResolvedValue({
+        ...serverUser("new-account"),
+        [field]: field === "salt" ? "different-salt" : { cipher: "different" }
+      });
+
+      await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+        /encryption (identity|keys) changed/
+      );
+      expect(mockPost).toHaveBeenCalledOnce();
+      expect(mockPatchJson).toHaveBeenCalledOnce();
+      expect(kv.has("user")).toBe(false);
+      expect(kv.has("token")).toBe(false);
+    }
+  );
+
+  test.each([
+    ["other@example.test", "pw"],
+    ["new@example.test", "different-password"]
+  ])("retry requires the original credentials", async (email, password) => {
+    const { user } = harness({});
+    arrangeSignup();
+    mockGet.mockRejectedValueOnce(new Error("profile unavailable"));
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow();
+    await expect(user.signup(email, password)).rejects.toThrow(
+      "same email and password"
+    );
+    expect(mockPost).toHaveBeenCalledOnce();
+    expect(mockGet).toHaveBeenCalledOnce();
+  });
+
+  test("retry cannot redirect the pending registration token to another backend", async () => {
+    const { user } = harness({});
+    arrangeSignup();
+    mockGet.mockRejectedValueOnce(new Error("profile unavailable"));
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow();
+    hosts.API_HOST = NOTESNOOK.api;
+    hosts.AUTH_HOST = NOTESNOOK.auth;
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "Server settings changed"
+    );
+    expect(mockPost).toHaveBeenCalledOnce();
+    expect(mockGet).toHaveBeenCalledOnce();
+  });
+
+  test("an expired setup proof directs sign in without registering twice", async () => {
+    const { user } = harness({});
+    arrangeSignup();
+    mockPost.mockResolvedValue({ ...signupToken, expires_in: 0 });
+    mockGet.mockRejectedValueOnce(new Error("profile unavailable"));
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow();
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "setup session has expired"
+    );
+    expect(mockPost).toHaveBeenCalledOnce();
+  });
+
+  test("pending native setup prevents a concurrent retry or login", async () => {
+    const { user, db } = harness({});
+    arrangeSignup();
+    const originalStorage = db.storage();
+    let settleHash!: (value: string) => void;
+    (db as any).storage = () => ({
+      ...originalStorage,
+      hash: () => new Promise<string>((resolve) => (settleHash = resolve))
+    });
+    const setup = user.signup("new@example.test", "pw");
+    await expect(user.signup("new@example.test", "pw")).rejects.toThrow(
+      "already in progress"
+    );
+    await expect(user.authenticateEmail("new@example.test")).rejects.toThrow(
+      "already in progress"
+    );
+    while (!settleHash) await Promise.resolve();
+    settleHash("hashed:pw");
+    await setup;
+    expect(mockPost).toHaveBeenCalledOnce();
+  });
+
+  test("committed signup survives manager restart with the same session, keys, device and affinity", async () => {
+    const { user, db, kv } = harness({});
+    arrangeSignup();
+    await user.signup("new@example.test", "pw");
+    const token = kv.get("token");
+    const reopened = new UserManager(db);
+    (db as any).user = reopened;
+    await reopened.init();
+    expect((await reopened.assertAccountReady()).user).toEqual(kv.get("user"));
+    expect(kv.get("token")).toEqual(token);
+    expect(kv.get("deviceId")).toBe("new-device");
+    expect(kv.get("cryptoKey")).toBe("new-derived-key");
+    expect(await reopened.backendAffinity.check()).toMatchObject({
+      status: "match",
+      configured: VEYRAN
+    });
+    expect(mockPost).toHaveBeenCalledOnce();
+  });
+
+  test("readiness rejects a retained recovery intent even with committed credentials", async () => {
+    const { user, kv } = harness({});
+    arrangeSignup();
+    await user.signup("new@example.test", "pw");
+    kv.set("backendRecoveryRequired", true);
+    await expect(user.assertAccountReady()).rejects.toThrow(
+      "cannot be attributed"
+    );
+    expect(kv.has("user")).toBe(true);
+    expect(kv.has("token")).toBe(true);
+  });
+
+  test.each(["deviceId", "cryptoKey"])(
+    "readiness refuses missing persisted %s",
+    async (marker) => {
+      const { user, kv } = harness({});
+      arrangeSignup();
+      await user.signup("new@example.test", "pw");
+      kv.delete(marker);
+      await expect(user.assertAccountReady()).rejects.toThrow(
+        /Could not verify/
+      );
+    }
+  );
+});
+
+describe("fresh registration restart recovery", () => {
+  const signupToken = {
+    access_token: "signup-token",
+    refresh_token: "signup-refresh",
+    scope: "notesnook.sync offline_access IdentityServerApi",
+    expires_in: 3600
+  };
+
+  function interruptedSignup(options: Parameters<typeof harness>[0] = {}) {
+    const profile = harness({
+      storedUser: serverUser("new-account"),
+      token: { ...signupToken, t: Date.now() },
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      cryptoKey: "partially-derived-key",
+      lastSynced: 0,
+      deviceId: "partial-device",
+      ...options
+    });
+    profile.kv.set("backendRecoveryRequired", true);
+    const remote = serverUser("new-account");
+    profile.kv.set("backendSignupRecovery", {
+      v: 1,
+      backend: VEYRAN,
+      serverSettings: "{}",
+      user: { id: remote.id, email: remote.email, salt: remote.salt }
+    });
+    return profile;
+  }
+
+  test("restart rolls back only the proven empty partial signup, then normal login initializes its missing keys", async () => {
+    const { user, db, kv, reset, unregister } = interruptedSignup();
+    await expect(user.recoverInterruptedSignup()).resolves.toBe(true);
+    expect(unregister).toHaveBeenCalledWith(
+      signupToken.access_token,
+      VEYRAN.api
+    );
+    expect(reset).not.toHaveBeenCalled();
+    for (const marker of [
+      "user",
+      "token",
+      "deviceId",
+      "cryptoKey",
+      "backendAffinity",
+      "lastSynced",
+      "backendRecoveryRequired"
+    ])
+      expect(kv.has(marker)).toBe(false);
+    expect(kv.has("backendSignupRecovery")).toBe(true);
+
+    const reopened = new UserManager(db);
+    (db as any).user = reopened;
+    mockPost
+      .mockResolvedValueOnce({
+        access_token: "password-challenge",
+        scope: "auth:grant_types:mfa_password"
+      })
+      .mockResolvedValueOnce({ ...signupToken, access_token: "login-access" });
+    mockGet.mockResolvedValue(serverUser("new-account"));
+    await expect(
+      reopened.authenticateEmail("someone@example.test")
+    ).resolves.toBeUndefined();
+    expect(reopened.getPendingAuthenticationStep()).toBe("password");
+    await reopened.authenticatePassword("someone@example.test", "pw");
+    expect((await reopened.assertAccountReady()).user).toMatchObject({
+      id: "new-account",
+      dataEncryptionKey: { cipher: "c" },
+      attachmentsKey: { cipher: "c" },
+      monographPasswordsKey: { cipher: "c" }
+    });
+    expect(kv.has("backendSignupRecovery")).toBe(false);
+    expect(
+      mockPost.mock.calls.every(
+        ([url]) => url === `${VEYRAN.auth}/connect/token`
+      )
+    ).toBe(true);
+    expect(mockPatchJson).toHaveBeenCalledOnce();
+  });
+
+  test("an interrupted signup can recover before any user or token was written", async () => {
+    const { user, kv } = interruptedSignup({
+      storedUser: undefined,
+      token: undefined,
+      cryptoKey: undefined,
+      deviceId: undefined,
+      affinity: undefined,
+      lastSynced: undefined
+    });
+    await expect(user.recoverInterruptedSignup()).resolves.toBe(true);
+    expect(await user.backendAffinity.check()).toMatchObject({
+      status: "no-user"
+    });
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("recovery never clears local records, even with a matching signup descriptor", async () => {
+    const { user, kv, restoreSessionState, unregister } = interruptedSignup({
+      localContent: true
+    });
+    const originalUser = kv.get("user");
+    await expect(user.recoverInterruptedSignup()).rejects.toThrow(
+      "contains local data"
+    );
+    expect(kv.get("user")).toEqual(originalUser);
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    expect(restoreSessionState).not.toHaveBeenCalled();
+    expect(unregister).not.toHaveBeenCalled();
+  });
+
+  test("recovery never clears a different account or backend", async () => {
+    const account = interruptedSignup({
+      storedUser: serverUser("different-account")
+    });
+    await expect(account.user.recoverInterruptedSignup()).rejects.toThrow(
+      "contains local data"
+    );
+    expect(account.kv.get("user")).toMatchObject({ id: "different-account" });
+    const backend = interruptedSignup({
+      affinity: affinityRecord(NOTESNOOK.api, NOTESNOOK.auth)
+    });
+    await expect(backend.user.recoverInterruptedSignup()).rejects.toThrow(
+      "contains local data"
+    );
+    expect(backend.kv.get("backendAffinity")).toMatchObject({
+      api: NOTESNOOK.api
+    });
+  });
+
+  test("generic interrupted login and legacy recovery markers remain quarantined", async () => {
+    const { user, kv, restoreSessionState } = harness({
+      storedUser: serverUser(),
+      token: signupToken,
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      cryptoKey: "existing-key"
+    });
+    kv.set("backendRecoveryRequired", true);
+    await expect(user.recoverInterruptedSignup()).resolves.toBe(false);
+    expect(restoreSessionState).not.toHaveBeenCalled();
+    expect(kv.get("cryptoKey")).toBe("existing-key");
+    expect(await user.backendAffinity.isBlocked()).toBe(true);
+  });
+
+  test("remote device cleanup failure keeps restart recovery pending for Retry", async () => {
+    const { user, kv, unregister } = interruptedSignup();
+    unregister.mockRejectedValueOnce(new Error("device service unavailable"));
+    await expect(user.recoverInterruptedSignup()).rejects.toThrow(
+      "device service unavailable"
+    );
+    expect(kv.get("deviceId")).toBe("partial-device");
+    expect(kv.get("backendRecoveryRequired")).toBe(true);
+    await expect(user.recoverInterruptedSignup()).resolves.toBe(true);
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+  });
+
+  test("an expired interrupted signup session cannot permanently block normal login", async () => {
+    const { user, kv, unregister } = interruptedSignup({
+      token: { ...signupToken, t: Date.now() - 7200000 }
+    });
+    await expect(user.recoverInterruptedSignup()).resolves.toBe(true);
+    expect(unregister).not.toHaveBeenCalled();
+    expect(kv.has("backendRecoveryRequired")).toBe(false);
+    expect(kv.has("backendSignupRecovery")).toBe(true);
+    expect(kv.has("user")).toBe(false);
+    expect(kv.has("token")).toBe(false);
+    mockPost.mockResolvedValueOnce({
+      access_token: "password-challenge",
+      scope: "auth:grant_types:mfa_password"
+    });
+    await user.authenticateEmail("someone@example.test");
+    expect(user.getPendingAuthenticationStep()).toBe("password");
+  });
+
+  test("startup keeps an expired refreshable session without weakening strict setup readiness", async () => {
+    const { user } = harness({
+      storedUser: serverUser(),
+      token: { ...signupToken, t: Date.now() - 7200000 },
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      deviceId: "existing-device",
+      cryptoKey: "existing-key"
+    });
+    await expect(user.assertAccountReady()).rejects.toThrow(
+      "valid account session"
+    );
+    await expect(
+      user.assertAccountReady({ allowExpiredSession: true })
+    ).resolves.toMatchObject({ user: { id: "u1" } });
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+
+  test("readiness does not require a commercial subscription object", async () => {
+    const cached = serverUser();
+    delete (cached as Partial<User>).subscription;
+    const { user } = harness({
+      storedUser: cached,
+      token: { ...signupToken, t: Date.now() },
+      affinity: affinityRecord(VEYRAN.api, VEYRAN.auth),
+      deviceId: "existing-device",
+      cryptoKey: "existing-key"
+    });
+    await expect(user.assertAccountReady()).resolves.toMatchObject({
+      user: cached
+    });
   });
 });
 

@@ -34,7 +34,7 @@ import {
   KeyTypeFromId,
   UnwrapKeyReturnType
 } from "./key-manager.js";
-import { BackendAffinity } from "./backend-affinity.js";
+import { BackendAffinity, StoredAffinity } from "./backend-affinity.js";
 import { bindCredential } from "../utils/credential-host-binding.js";
 
 const ENDPOINTS = {
@@ -50,9 +50,50 @@ const ENDPOINTS = {
   activateTrial: "/subscriptions/trial"
 };
 
+type SignupRecovery = {
+  v: 1;
+  backend: ReturnType<BackendAffinity["current"]>;
+  serverSettings: string;
+  user: Pick<User, "id" | "email" | "salt">;
+  originalAffinity?: StoredAffinity | string;
+  originalLastSynced?: number;
+};
+
+function sameWrappedKey(
+  left: Cipher<"base64"> | undefined,
+  right: Cipher<"base64"> | undefined
+) {
+  return Boolean(
+    left &&
+      right &&
+      (["alg", "cipher", "format", "iv", "length", "salt"] as const).every(
+        (field) => left[field] === right[field]
+      )
+  );
+}
+
 class UserManager {
   private tokenManager: TokenManager;
   private keyManager: KeyManager;
+  private accountOperationInProgress = false;
+  // A remotely created account must not be created a second time when local
+  // setup is retried. Keep its proof and exact wrapped keys only in memory;
+  // after a process exit the account is recovered through normal sign in.
+  private pendingSignup?: {
+    email: string;
+    passwordHash: string;
+    token: Omit<Token, "t">;
+    grantedAt: number;
+    backend: ReturnType<BackendAffinity["current"]>;
+    serverSettings: string;
+    user?: User;
+    keys?: Required<
+      Pick<
+        User,
+        "dataEncryptionKey" | "attachmentsKey" | "monographPasswordsKey"
+      >
+    >;
+  };
   // Interim MFA credentials are never persisted over an existing session.
   // A process exit during login therefore leaves the previous session intact.
   private pendingLogin?: {
@@ -110,11 +151,27 @@ class UserManager {
   }
 
   async init() {
+    await this.recoverInterruptedSignup();
     const user = await this.getUser();
     if (!user) return;
   }
 
   async signup(email: string, password: string) {
+    return this.runAccountOperation(() => this.completeSignup(email, password));
+  }
+
+  private async runAccountOperation<T>(operation: () => Promise<T>) {
+    if (this.accountOperationInProgress)
+      throw new Error("Account setup is already in progress. Please wait.");
+    this.accountOperationInProgress = true;
+    try {
+      return await operation();
+    } finally {
+      this.accountOperationInProgress = false;
+    }
+  }
+
+  private async completeSignup(email: string, password: string) {
     email = email.toLowerCase();
     const expected = this.captureConfiguration();
     await this.backendAffinity.assertAllowed("Creating an account");
@@ -134,6 +191,7 @@ class UserManager {
       if (snapshot.mutationStarted) await this.rollbackSession(snapshot);
       throw e;
     }
+    this.pendingSignup = undefined;
     this.db.eventManager.publish(EVENTS.userLoggedIn, user);
     await this.publishFetchedUserSafely(user, snapshot.user);
   }
@@ -145,14 +203,38 @@ class UserManager {
   ) {
     const hashedPassword = await this.db.storage().hash(password, email);
     this.assertConfigurationUnchanged(snapshot);
-    const grantedToken = await http.post(
-      `${snapshot.backend.api}${ENDPOINTS.signup}`,
-      {
+    let pending = this.pendingSignup;
+    if (pending) {
+      this.assertConfigurationUnchanged(pending);
+      if (pending.email !== email || pending.passwordHash !== hashedPassword)
+        throw new Error(
+          "An account was already created. Retry with the same email and password, or sign in to finish setup."
+        );
+      if (Date.now() >= pending.grantedAt + pending.token.expires_in * 1000)
+        throw new Error(
+          "Your account was created, but the setup session has expired. Sign in to finish setup."
+        );
+    } else {
+      const grantedToken = await http.post(
+        `${snapshot.backend.api}${ENDPOINTS.signup}`,
+        {
+          email,
+          password: hashedPassword,
+          client_id: "notesnook"
+        }
+      );
+      // Save proof before the next awaited stage. This response can represent
+      // a real account even if fetching its profile subsequently fails.
+      pending = this.pendingSignup = {
         email,
-        password: hashedPassword,
-        client_id: "notesnook"
-      }
-    );
+        passwordHash: hashedPassword,
+        token: grantedToken,
+        grantedAt: Date.now(),
+        backend: snapshot.backend,
+        serverSettings: snapshot.serverSettings
+      };
+    }
+    const grantedToken = pending.token;
     this.assertConfigurationUnchanged(snapshot);
     bindCredential(grantedToken.access_token, snapshot.backend);
 
@@ -169,12 +251,51 @@ class UserManager {
 
     snapshot.rollbackAccessToken = grantedToken.access_token;
 
+    if (
+      pending.user &&
+      (pending.user.id !== user.id || pending.user.salt !== user.salt)
+    )
+      throw new Error(
+        "The account's encryption identity changed during setup. Sign in to finish setup; local notes were not changed."
+      );
+    pending.user = user;
+    const keyIds = [
+      "dataEncryptionKey",
+      "attachmentsKey",
+      "monographPasswordsKey"
+    ] as const;
+    if (
+      pending.keys &&
+      keyIds.some(
+        (id) => user[id] && !sameWrappedKey(user[id], pending.keys?.[id])
+      )
+    )
+      throw new Error(
+        "The account's encryption keys changed during setup. Sign in to finish setup; no encryption keys were replaced."
+      );
+
     this.assertConfigurationUnchanged(snapshot);
     if (snapshot.user && snapshot.user.id !== user.id)
       throw new Error(
         "This profile belongs to a different account. Its local notes were not changed or uploaded. Start a new profile to create another account."
       );
 
+    const recovery: SignupRecovery = {
+      v: 1,
+      backend: snapshot.backend,
+      serverSettings: snapshot.serverSettings,
+      user: { id: user.id, email: user.email, salt: user.salt },
+      originalAffinity: snapshot.affinity,
+      originalLastSynced: snapshot.lastSynced
+    };
+    // This descriptor authorizes only rollback to the proven empty signup
+    // profile. It stores no password, session credential, or encryption key.
+    await this.db.storage().write("backendSignupRecovery", recovery);
+    if (
+      JSON.stringify(await this.db.storage().read("backendSignupRecovery")) !==
+      JSON.stringify(recovery)
+    )
+      throw new Error("Could not persist account setup recovery intent.");
     await this.beginSessionMutation(snapshot);
     await this.bindProfileToConfiguredBackend();
     await this.tokenManager.saveToken(grantedToken);
@@ -189,24 +310,30 @@ class UserManager {
 
     const masterKey = await this.getMasterKey();
     if (!masterKey) throw new Error("User encryption key not generated.");
-    await this.updateUser(
-      {
-        dataEncryptionKey: await this.keyManager.wrapKey(
+    pending.keys ||= {
+      dataEncryptionKey:
+        user.dataEncryptionKey ||
+        (await this.keyManager.wrapKey(
           await this.db.crypto().generateRandomKey(),
           masterKey
-        ),
-        attachmentsKey: await this.keyManager.wrapKey(
+        )),
+      attachmentsKey:
+        user.attachmentsKey ||
+        (await this.keyManager.wrapKey(
           await this.db.crypto().generateRandomKey(),
           masterKey
-        ),
-        monographPasswordsKey: await this.keyManager.wrapKey(
+        )),
+      monographPasswordsKey:
+        user.monographPasswordsKey ||
+        (await this.keyManager.wrapKey(
           await this.db.crypto().generateRandomKey(),
           masterKey
-        )
-      },
-      grantedToken.access_token,
-      snapshot
-    );
+        ))
+    };
+    // A PATCH response may have been lost. Reuse the same wrapped keyset, and
+    // skip the write when the next verified profile already contains it.
+    if (keyIds.some((id) => !user[id]))
+      await this.updateUser(pending.keys, grantedToken.access_token, snapshot);
 
     this.assertConfigurationUnchanged(snapshot);
     await this.db.syncer.devices.register(
@@ -217,13 +344,154 @@ class UserManager {
       userId: user.id,
       accessToken: grantedToken.access_token,
       requiresDevice: true,
-      resetSync: true
+      resetSync: true,
+      encryptionKeys: pending.keys
     });
+    await this.clearSignupRecoverySafely();
 
-    return user;
+    return { ...user, ...pending.keys };
+  }
+
+  /** Local readiness proof for account screens; never starts sync or HTTP. */
+  async assertAccountReady(options?: { allowExpiredSession?: boolean }) {
+    const expected = this.captureConfiguration();
+    const affinity = await this.backendAffinity.assertAllowed(
+      "Completing account setup"
+    );
+    if (affinity.status !== "match")
+      throw new Error("Account setup has not completed. Please sign in.");
+    const user = await this.getUser();
+    const token = await this.tokenManager.getToken(false, false);
+    if (
+      !user ||
+      !token ||
+      !token.scope?.split(" ").includes("notesnook.sync") ||
+      (!options?.allowExpiredSession &&
+        this.tokenManager._isTokenExpired(token))
+    )
+      throw new Error("A valid account session is required. Please sign in.");
+    await this.verifyCommittedSession({
+      userId: user.id,
+      accessToken: token.access_token,
+      requiresDevice: true,
+      resetSync: false
+    });
+    const lastSynced = await this.db.kv().read("lastSynced");
+    this.assertConfigurationUnchanged(expected);
+    await this.backendAffinity.assertAllowed("Completing account setup");
+    return { user, lastSynced };
+  }
+
+  /**
+   * An interrupted fresh signup can return to an empty profile, then sign in
+   * to the already-created remote account. Existing/unknown profiles have no
+   * such proof and retain their recovery quarantine and readable local notes.
+   */
+  async recoverInterruptedSignup() {
+    return this.runAccountOperation(async () => {
+      if (!(await this.db.storage().read<boolean>("backendRecoveryRequired")))
+        return false;
+      const recovery = await this.db
+        .storage()
+        .read<SignupRecovery>("backendSignupRecovery");
+      if (
+        !recovery ||
+        recovery.v !== 1 ||
+        !recovery.user?.id ||
+        !recovery.user?.email ||
+        !recovery.user?.salt ||
+        !recovery.backend?.api ||
+        !recovery.backend?.auth
+      )
+        return false;
+      this.assertConfigurationUnchanged(recovery);
+      const user = await this.getUser();
+      const affinity = await this.backendAffinity.get();
+      if (
+        (user &&
+          (user.id !== recovery.user.id ||
+            user.email !== recovery.user.email ||
+            user.salt !== recovery.user.salt)) ||
+        (affinity &&
+          (affinity.api !== recovery.backend.api ||
+            affinity.auth !== recovery.backend.auth)) ||
+        (await this.backendAffinity.hasLocalAccountRecords())
+      )
+        throw new Error(
+          "Interrupted account setup cannot be cleared safely because this profile contains local data. Local notes were preserved and sync remains blocked."
+        );
+      await this.db.eventManager.publishWithResult(
+        EVENTS.backendRecoveryStarted
+      );
+      const token = await this.db.kv().read("token");
+      const deviceId = await this.db.kv().read("deviceId");
+      if (deviceId) {
+        if (!token?.access_token)
+          throw new Error(
+            "Interrupted account setup cannot confirm its registered device. Please retry; local data was preserved."
+          );
+        // An expired signup session cannot clean up its remote device. The
+        // proven empty local profile can still roll back and sign in again;
+        // leaving an orphan device grants no access and must not brick login.
+        if (!this.tokenManager._isTokenExpired(token)) {
+          bindCredential(token.access_token, recovery.backend);
+          this.assertConfigurationUnchanged(recovery);
+          await this.db.syncer.devices.unregister(
+            token.access_token,
+            recovery.backend.api
+          );
+        }
+      }
+      this.assertConfigurationUnchanged(recovery);
+      await this.db.kv().restoreSessionState({
+        backendAffinity: recovery.originalAffinity,
+        lastSynced: recovery.originalLastSynced
+      });
+      await this.db.storage().restoreCryptoKeyState(undefined);
+      this.keyManager.clearCache();
+      for (const marker of ["user", "token", "deviceId"] as const)
+        if ((await this.db.kv().read(marker)) !== undefined)
+          throw new Error(
+            "Could not verify interrupted account setup recovery."
+          );
+      if ((await this.db.storage().snapshotCryptoKeyState()) != null)
+        throw new Error(
+          "Could not verify interrupted encryption key recovery."
+        );
+      if (
+        JSON.stringify(await this.db.kv().read("backendAffinity")) !==
+          JSON.stringify(recovery.originalAffinity) ||
+        (await this.db.kv().read("lastSynced")) !== recovery.originalLastSynced
+      )
+        throw new Error("Could not verify interrupted account setup recovery.");
+      await this.db.storage().remove("backendRecoveryRequired");
+      if (await this.db.storage().read<boolean>("backendRecoveryRequired"))
+        throw new Error("Could not clear interrupted account setup recovery.");
+      this.pendingSignup = undefined;
+      this.pendingLogin = undefined;
+      return true;
+    });
+  }
+
+  private async clearSignupRecoverySafely() {
+    try {
+      if (await this.db.storage().read<boolean>("backendRecoveryRequired"))
+        return;
+      await this.db.storage().remove("backendSignupRecovery");
+    } catch (error) {
+      // The main recovery marker already decides commit versus rollback.
+      // Stale, credential-free metadata must not undo a committed session.
+      logger.error(error, "Could not clear completed signup recovery metadata");
+    }
   }
 
   async authenticateEmail(email: string) {
+    return this.runAccountOperation(() =>
+      this.authenticateEmailInternal(email)
+    );
+  }
+
+  private async authenticateEmailInternal(email: string) {
     if (!email) throw new Error("Email is required.");
 
     email = email.toLowerCase();
@@ -251,6 +519,13 @@ class UserManager {
     return result.additional_data;
   }
 
+  getPendingAuthenticationStep(): "mfa" | "password" | undefined {
+    const scope = this.pendingLogin?.token.scope?.split(" ") || [];
+    if (scope.includes("auth:grant_types:mfa")) return "mfa";
+    if (scope.includes("auth:grant_types:mfa_password")) return "password";
+    return undefined;
+  }
+
   /** Return only the in-memory email challenge for MFA code delivery. */
   async getPendingMfaSendCredential() {
     const pending = this.pendingLogin;
@@ -270,6 +545,15 @@ class UserManager {
   }
 
   async authenticateMultiFactorCode(code: string, method: string) {
+    return this.runAccountOperation(() =>
+      this.authenticateMultiFactorCodeInternal(code, method)
+    );
+  }
+
+  private async authenticateMultiFactorCodeInternal(
+    code: string,
+    method: string
+  ) {
     if (!code || !method) throw new Error("code & method are required.");
 
     const pending = this.pendingLogin;
@@ -298,6 +582,22 @@ class UserManager {
   }
 
   async authenticatePassword(
+    email: string,
+    password: string,
+    hashedPassword?: string,
+    sessionExpired?: boolean
+  ) {
+    return this.runAccountOperation(() =>
+      this.authenticatePasswordInternal(
+        email,
+        password,
+        hashedPassword,
+        sessionExpired
+      )
+    );
+  }
+
+  private async authenticatePasswordInternal(
     email: string,
     password: string,
     hashedPassword?: string,
@@ -415,14 +715,62 @@ class UserManager {
           salt: user.salt
         });
       }
+      const signupRecovery = await this.db
+        .storage()
+        .read<SignupRecovery>("backendSignupRecovery");
+      const completesInterruptedSignup = Boolean(
+        !snapshot.user &&
+          !snapshot.token &&
+          snapshot.cryptoKeyState == null &&
+          signupRecovery?.v === 1 &&
+          signupRecovery.user.id === user.id &&
+          signupRecovery.user.email === user.email &&
+          signupRecovery.user.salt === user.salt &&
+          signupRecovery.backend.api === expected.backend.api &&
+          signupRecovery.backend.auth === expected.backend.auth &&
+          signupRecovery.serverSettings === expected.serverSettings
+      );
+      let committedUser = user;
+      if (completesInterruptedSignup) {
+        const masterKey = await this.getMasterKey();
+        if (!masterKey) throw new Error("User encryption key not generated.");
+        const missingKeys: Partial<User> = {};
+        for (const id of [
+          "dataEncryptionKey",
+          "attachmentsKey",
+          "monographPasswordsKey"
+        ] as const)
+          if (!user[id])
+            missingKeys[id] = await this.keyManager.wrapKey(
+              await this.db.crypto().generateRandomKey(),
+              masterKey
+            );
+        if (Object.keys(missingKeys).length) {
+          await this.updateUser(
+            missingKeys,
+            grantedToken.access_token,
+            expected
+          );
+          committedUser = { ...user, ...missingKeys };
+        }
+      }
       await this.finishSessionMutation(snapshot, {
         userId: user.id,
         accessToken: grantedToken.access_token,
         requiresDevice: !sessionExpired,
-        resetSync: !sessionExpired
+        resetSync: !sessionExpired,
+        encryptionKeys: completesInterruptedSignup
+          ? {
+              dataEncryptionKey: committedUser.dataEncryptionKey,
+              attachmentsKey: committedUser.attachmentsKey,
+              monographPasswordsKey: committedUser.monographPasswordsKey
+            }
+          : undefined
       });
       this.pendingLogin = undefined;
-      authenticatedUser = user;
+      this.pendingSignup = undefined;
+      if (completesInterruptedSignup) await this.clearSignupRecoverySafely();
+      authenticatedUser = committedUser;
     } catch (e) {
       // Put the profile back exactly as it was: cached identity, token and
       // affinity record. Leaving any of the three half-updated is what would
@@ -444,6 +792,15 @@ class UserManager {
 
   /** Verify a recovery-code account before adding its token to this profile. */
   async authenticateRecoveryCode(userId: string, authCode: string) {
+    return this.runAccountOperation(() =>
+      this.authenticateRecoveryCodeInternal(userId, authCode)
+    );
+  }
+
+  private async authenticateRecoveryCodeInternal(
+    userId: string,
+    authCode: string
+  ) {
     if (!userId || !authCode)
       throw new Error("Recovery code and account are required.");
     const expected = this.captureConfiguration();
@@ -542,7 +899,11 @@ class UserManager {
   async logout(
     revoke = true,
     reason?: string,
-    options?: { userInitiated?: boolean }
+    options?: {
+      userInitiated?: boolean;
+      /** Synchronous local-data guard, checked before network and before reset. */
+      beforeClearLocalData?: () => void;
+    }
   ) {
     const userInitiated = options?.userInitiated ?? true;
     if (!userInitiated) {
@@ -560,17 +921,31 @@ class UserManager {
       return;
     }
 
-    try {
-      await this.db.syncer.devices.unregister();
-      if (revoke) await this.tokenManager.revokeToken();
-    } catch (e) {
-      logger.error(e, "Error logging out user.", { revoke, reason });
-    } finally {
-      this.keyManager.clearCache();
-      await this.db.reset();
-      this.db.eventManager.publish(EVENTS.userLoggedOut, reason);
-      this.db.eventManager.publish(EVENTS.appRefreshRequested);
-    }
+    return this.runAccountOperation(async () => {
+      options?.beforeClearLocalData?.();
+      this.pendingSignup = undefined;
+      this.pendingLogin = undefined;
+      let cleanup: PromiseSettledResult<unknown>[] = [];
+      try {
+        await this.db.syncer.devices.unregister();
+        if (revoke) await this.tokenManager.revokeToken();
+      } catch (e) {
+        logger.error(e, "Error logging out user.", { revoke, reason });
+      } finally {
+        options?.beforeClearLocalData?.();
+        this.keyManager.clearCache();
+        await this.db.reset();
+        // Mobile clears credential stores and account state asynchronously.
+        // Keep new sign-in operations blocked until that cleanup has settled.
+        cleanup = await this.db.eventManager.publishWithSettledResult(
+          EVENTS.userLoggedOut,
+          reason
+        );
+        this.db.eventManager.publish(EVENTS.appRefreshRequested);
+      }
+      const failed = cleanup.find((result) => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+    });
   }
 
   /**
@@ -672,8 +1047,10 @@ class UserManager {
    * note data.
    */
   async fetchUser(): Promise<User | undefined> {
-    await this.backendAffinity.assertAllowed("Fetching your account");
-    return (await this.fetchUserInternal()).user;
+    return this.runAccountOperation(async () => {
+      await this.backendAffinity.assertAllowed("Fetching your account");
+      return (await this.fetchUserInternal()).user;
+    });
   }
 
   /**
@@ -857,6 +1234,7 @@ class UserManager {
       requiresDevice: boolean;
       resetSync: boolean;
       requiresCryptoKey?: boolean;
+      encryptionKeys?: Partial<User>;
     }
   ) {
     this.assertConfigurationUnchanged(snapshot);
@@ -894,6 +1272,7 @@ class UserManager {
     requiresDevice: boolean;
     resetSync: boolean;
     requiresCryptoKey?: boolean;
+    encryptionKeys?: Partial<User>;
   }) {
     const kv = this.db.kv();
     const user = await kv.read("user");
@@ -907,6 +1286,18 @@ class UserManager {
       affinity?.auth !== current.auth
     )
       throw new Error("Could not verify committed account identity.");
+    if (
+      expected.encryptionKeys &&
+      Object.entries(expected.encryptionKeys).some(
+        ([id, key]) =>
+          !key ||
+          !sameWrappedKey(
+            user[id as keyof User] as Cipher<"base64"> | undefined,
+            key as Cipher<"base64">
+          )
+      )
+    )
+      throw new Error("Could not verify committed encryption keys.");
     if (expected.resetSync && (await kv.read("lastSynced")) !== 0)
       throw new Error("Could not verify committed sync checkpoint.");
     if (expected.requiresDevice && !(await kv.read("deviceId")))
@@ -1079,7 +1470,9 @@ class UserManager {
     });
   }
 
-  async resetPasswordWithoutRecoveryKey(_newPassword: string): Promise<boolean> {
+  async resetPasswordWithoutRecoveryKey(
+    _newPassword: string
+  ): Promise<boolean> {
     // No configured backend has a verified atomic contract for this
     // destructive flow. The former client called /users/reset before the
     // password PATCH and could leave an account cleared after a later error.

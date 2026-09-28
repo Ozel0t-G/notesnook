@@ -24,8 +24,9 @@ beforeAll(async () => {
   // the explicit iOS account QA suites; retain normal timing for other tests.
   const liveAccountQa =
     device.getPlatform() === "ios" &&
-    ((!!process.env.VEYRAN_QA_CREDENTIAL_FILE &&
-      !!process.env.VEYRAN_QA_MFA_CODE_FILE) ||
+    (process.env.VEYRAN_QA_ACCOUNT_ENTRY === "1" ||
+      (!!process.env.VEYRAN_QA_CREDENTIAL_FILE &&
+        !!process.env.VEYRAN_QA_MFA_CODE_FILE) ||
       process.env.VEYRAN_QA_RETAINED_ACCOUNT_FEATURES === "true" ||
       ["baseline", "verify"].includes(
         process.env.VEYRAN_QA_UPGRADE_PHASE || ""

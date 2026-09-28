@@ -34,7 +34,39 @@ const credentials = credentialPath
     })
   : undefined;
 
+const disposableAccountDevices = new Set([
+  "5A8198CC-A75C-4933-8BB8-42A1C3F883F4",
+  "8BBC91D9-3520-467C-AC13-677C41096EE0"
+]);
+const resumeAccount = process.env.VEYRAN_QA_RESUME_ACCOUNT === "1";
+const accountEntry =
+  process.env.VEYRAN_QA_ACCOUNT_ENTRY === "1" && !resumeAccount
+    ? describe
+    : describe.skip;
+
+function assertDisposableTarget() {
+  if (
+    device.getPlatform() !== "ios" ||
+    !["true", "1"].includes(process.env.DETOX_REUSE || "") ||
+    process.env.VEYRAN_QA_DEVICE_ID !== device.id ||
+    !disposableAccountDevices.has(device.id)
+  )
+    throw new Error(
+      "Account lifecycle QA requires its explicit disposable target"
+    );
+}
+
+async function retainedLaunch() {
+  assertDisposableTarget();
+  await device.launchApp({
+    newInstance: true,
+    launchArgs: { detoxEnableSynchronization: 0 }
+  });
+  await device.disableSynchronization();
+}
+
 async function freshLaunch() {
+  assertDisposableTarget();
   await device.disableSynchronization();
   await device.uninstallApp();
   await device.installApp();
@@ -203,7 +235,7 @@ async function verifyAccount() {
   await detoxExpect(element(by.text("Upgrade plan"))).not.toBeVisible();
 }
 
-describe("ACCOUNT ENTRY", () => {
+accountEntry("ACCOUNT ENTRY", () => {
   it("offers create account and login from a fresh install", async () => {
     await freshLaunch();
     await openCreateAccount();
@@ -218,11 +250,12 @@ describe("ACCOUNT ENTRY", () => {
 
 live("LIVE DISPOSABLE ACCOUNT LIFECYCLE", () => {
   it("registers, persists a session, signs out and restores encrypted notes on login", async () => {
-    await freshLaunch();
-    if (process.env.VEYRAN_QA_RESUME_ACCOUNT !== "1") {
+    if (resumeAccount) await retainedLaunch();
+    else await freshLaunch();
+    if (!resumeAccount) {
       await openCreateAccount(process.env.VEYRAN_QA_EXISTING_ACCOUNT === "1");
     }
-    if (process.env.VEYRAN_QA_RESUME_ACCOUNT === "1") {
+    if (resumeAccount) {
       await waitFor(element(by.id("library-heading")))
         .toBeVisible()
         .withTimeout(30_000);

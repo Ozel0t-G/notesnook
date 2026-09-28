@@ -24,7 +24,7 @@ import { TextInput, View } from "react-native";
 import { ScrollView } from "react-native-actions-sheet";
 import { db } from "../../common/database/index";
 import useTimer from "../../hooks/use-timer";
-import { eSendEvent, ToastManager } from "../../services/event-manager";
+import { eSendEvent } from "../../services/event-manager";
 import { eCloseSimpleDialog } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
@@ -278,6 +278,7 @@ const TwoFactorVerification = ({
             />
             {error ? (
               <Paragraph
+                testID="account-mfa-error"
                 numberOfLines={4}
                 onPress={() => {}}
                 color={colors.error.accent}

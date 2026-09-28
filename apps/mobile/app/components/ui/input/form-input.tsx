@@ -408,6 +408,7 @@ export function FormInput({
       {fieldError ? (
         <Paragraph
           size={AppFontSize.xs}
+          testID={`input-error.${name}`}
           style={[{ marginTop: 5, color: colors.error.icon }, errorStyle]}
         >
           <AppIcon

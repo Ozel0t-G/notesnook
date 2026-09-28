@@ -1,5 +1,27 @@
 # VeyraN product independence migration — release gate open
 
+## App Store Connect follow-up — 2026-09-28
+
+**Internal candidate distribution: PASS; production readiness: FAIL.** This
+section supersedes the pending Apple processing/group status below. In the
+user-restored browser session, App Store Connect showed iPhone/iPad
+**3.4.16 (18)** upload **Complete**, Binary State **Validated**, ARM64 device
+family **iPhone, iPad**, and the existing **Internal Pencil Beta** group with
+one tester. That group's tester status reports **Installed 3.4.16 (18)** on
+September 28; the exact physical device and functional mobile behavior remain
+unverified. Mac **3.4.8 (1790539967)** is also **Complete** and assigned to the
+same group, complementing the actual Mac installation/QA evidence below.
+
+The initially empty build-specific **What to Test** fields were populated
+with the prepared QA checks and account-flow limitations; both showed
+**Saved**. No new binaries, testers, groups, or review/release submissions
+were added. The unfiltered Crash Feedback list showed only older Mac
+`1790320806` and iOS `3.4.13 (2)` reports; Screenshot Feedback was empty.
+No absence-of-crashes claim is made from this snapshot. Physical mobile QA,
+two-client Tasks, token refresh/full domain attribution, and safe account
+mutation contracts remain open. See [the detailed QA report]
+(veyran-testflight-qa/REPORT.md).
+
 ## Installed Mac TestFlight and production Web E2E — 2026-09-27, final run update
 
 This section supersedes the interim Mac-not-installable and authenticated-QA
@@ -29,9 +51,10 @@ its title/body after a full reload and synced into the new Mac beta. The
 universal iOS/iPadOS **3.4.16 (18)** upload remains accepted for processing;
 ASC processing completion/internal group assignment are **NOT TESTED** due
 Apple reauthentication. Actual Mac TestFlight availability is **PASS**.
-Testing used the approved disposable plus-alias QA account from the Apple
-handoff; the task text names a different address, so fresh login/MFA for that
-named account is **NOT TESTED**. Final production readiness remains **FAIL**.
+Testing used the approved disposable plus-alias QA account in the user's
+corrected mailbox, as recorded in the Apple handoff. Fresh password/MFA
+entry in the installed Mac candidate remains **NOT TESTED** because its
+existing authenticated session persisted. Final production readiness remains **FAIL**.
 See [the detailed QA report](veyran-testflight-qa/REPORT.md) and
 [physical-device checklist](VEYRAN_TESTFLIGHT_PHYSICAL_QA.md).
 

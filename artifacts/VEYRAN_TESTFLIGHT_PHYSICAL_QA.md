@@ -2,6 +2,12 @@
 
 Expected iPhone/iPad candidate: **3.4.16 (18)**, one universal iOS build. Check the number in TestFlight before testing; report a mismatch. Use the dedicated QA account and disposable `VEYRAN-TF-QA-` content. Do not post passwords, MFA codes, or recovery values in screenshots or bug reports.
 
+**September 28 availability evidence:** App Store Connect reports build 18
+Complete/Validated for iPhone and iPad, assigned to `Internal Pencil Beta`,
+and the group's tester status says Installed 3.4.16 (18). That status does
+not identify the exact device or establish the functional checks below;
+leave each unchecked until observed on the relevant device.
+
 ## iPhone
 
 - [ ] Install/update **3.4.16 (18)** from the internal TestFlight group; confirm the installed build.

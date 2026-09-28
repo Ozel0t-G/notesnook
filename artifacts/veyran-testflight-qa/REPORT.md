@@ -1,4 +1,4 @@
-# VeyraN internal TestFlight candidate QA — 2026-09-27
+# VeyraN internal TestFlight candidate QA — 2026-09-27/28
 
 This report records the new candidates, not final App Store readiness. No `main` merge or production App Store submission occurred. Times are Europe/Oslo (CEST).
 
@@ -6,13 +6,33 @@ This report records the new candidates, not final App Store readiness. No `main`
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| iPhone/iPad | **PARTIAL PASS** | Universal `3.4.16 (18)` from signed `c1273982b`, Xcode ARM64 archive, upload accepted at 22:24:30. ASC processing completion and `Internal Pencil Beta` membership remain unverified because the ASC browser session requires Apple reauthentication. Physical installation is tomorrow's QA. Hermes VM dSYM warning limits crash symbolication. |
+| iPhone/iPad distribution | **PASS** | Universal `3.4.16 (18)` from signed `c1273982b`, Xcode ARM64 archive, upload accepted September 27 at 22:24:30. September 28 live ASC UI shows upload **Complete**, Binary State **Validated**, ARM64 device family **iPhone, iPad**, and existing `Internal Pencil Beta` membership with one tester. The group reports **Installed 3.4.16 (18)** on September 28. The exact installed device and mobile functional behavior remain unverified. Hermes VM dSYM warning limits crash symbolication. |
 | Mac package/upload | **PASS** | MAS `3.4.8 (1790539967)` from signed `1559b18e5`; signed arm64 app and installer, App Sandbox, team `QXCNJY73A8`, existing profile identity. Transporter delivered at 22:23 and reports `processingState: VALID`. |
 | Mac internal availability/install | **PASS** | Native macOS TestFlight offered build `1790539967` as an Update. Installed `/Applications/VeyraN.app` reports `CFBundleVersion=1790539967`, `CFBundleShortVersionString=3.4.8`, `Authority=TestFlight Beta Distribution`, and team `QXCNJY73A8`. TestFlight then showed Open. No manual package was substituted. |
 
+## App Store Connect follow-up — September 28
+
+The user restored the Apple browser session. Mac `3.4.8 (1790539967)` also
+shows upload **Complete** and the existing `Internal Pencil Beta` group with
+one tester. Build-specific **What to Test** fields were empty for both current
+candidates; the prepared QA checklist and guarded-account-flow limitations
+were saved for iPhone/iPad and Mac, and each displayed **Saved**. No new
+upload, tester invitation, group, Beta App Review submission, or App Store
+release was performed.
+
+The unfiltered Crash Feedback list has two September 25 reports for old Mac
+`3.4.8 (1790320806)` and a September 19 report for old iOS `3.4.13 (2)`.
+Neither current candidate appears in that list. Screenshot Feedback shows
+**No Screenshot Feedback**. The group-level aggregate seven-crash count
+does not establish a build-18 crash count from this view. This
+snapshot does not prove crash-free use or replace device functional testing.
+
+Live build records: [iPhone/iPad build 18](https://appstoreconnect.apple.com/teams/ba00d3c6-85d0-445e-b0d3-89d7e993c601/apps/6813860928/testflight/ios/0fcb5ddf-c78d-4a83-ab32-8417fca62582),
+[Mac build 1790539967](https://appstoreconnect.apple.com/teams/ba00d3c6-85d0-445e-b0d3-89d7e993c601/apps/6813860928/testflight/macos/0a8fe238-d7d1-4c6f-b1a6-d7eb65b24da2).
+
 ## Actual Mac TestFlight ↔ production Web
 
-The installed Mac TestFlight build and Chrome production Web used the previously authorized disposable plus-alias QA account. The newer task text names `ozel031820@gmail.com`, while the authoritative Apple handoff identifies the plus alias as the approved QA account. Account identity should be reconciled before treating testing of the named address as complete. No credential or MFA code is stored here.
+The installed Mac TestFlight build and Chrome production Web used the approved disposable `ozel0t31820+veyranqa20260927@gmail.com` QA account. The user corrected the original mailbox spelling to `ozel0t31820@gmail.com` and approved that plus alias; the earlier `ozel031820@gmail.com` address is superseded. No credential or MFA code is stored here.
 
 | Gate | Status | Evidence / limit |
 | --- | --- | --- |

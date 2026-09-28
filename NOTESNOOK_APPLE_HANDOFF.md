@@ -1,5 +1,31 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
+## September 28 App Store Connect verification — newest evidence
+
+The user restored the Apple browser session. Live App Store Connect now shows
+the universal **iPhone/iPad 3.4.16 (18)** upload as **Complete**, Binary State
+**Validated**, device family **iPhone, iPad**, ARM64, and membership in the
+existing **Internal Pencil Beta** group with one tester. The group's tester
+status reports **Installed 3.4.16 (18)** on September 28. This closes the ASC
+processing/group/installation-evidence gap below; it does not establish which
+physical device installed it or prove mobile functional QA.
+
+The current **Mac 3.4.8 (1790539967)** upload is also **Complete** and assigned
+to the same existing internal group. Its actual native TestFlight installation
+and Mac/Web QA remain the evidence recorded below. Build-specific **What to
+Test** notes were empty for both candidates; the prepared device/sync/theme/
+Task/attachment checklist and guarded-account-flow limitations were saved
+for each, with ASC displaying **Saved**. No new upload, tester invitation,
+group, Beta App Review submission, or App Store release was performed.
+
+The unfiltered Crash Feedback list contains only older Mac `1790320806` and
+iOS `3.4.13 (2)` entries; neither current candidate appears there. Screenshot
+Feedback is empty. This is a feedback snapshot, not proof of crash-free use.
+Physical mobile feature QA, two-client Tasks, refresh/domain attribution, and
+the remaining safe-account-contract/security gates are still open. Overall
+production readiness remains **FAIL**. See the [QA report]
+(artifacts/veyran-testflight-qa/REPORT.md).
+
 ## September 27 installed Mac TestFlight and live QA — newest evidence
 
 This section supersedes the interim Mac install/E2E status immediately below.
@@ -10,8 +36,9 @@ Apple's TestFlight Beta Distribution signature, and team `QXCNJY73A8`.
 The existing encrypted profile was preserved. Authenticated session continuity
 survived a full quit/relaunch; fresh password/MFA entry in this build was not
 needed and was not re-tested. The dedicated plus-alias QA account identified
-in this handoff was used. The newer task text names a different email address;
-that account identity remains to be reconciled.
+in this handoff was used. The user's corrected `ozel0t31820@gmail.com`
+mailbox and approved disposable plus alias supersede the original misspelled
+QA address.
 
 **PASS:** VeyraN Light, Dark, Auto/System, Mac branding/navigation; Mac↔Web
 Note title/body in both directions; Notebook assignment; Tag add/remove;

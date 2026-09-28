@@ -17,8 +17,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { describe, expect, test, vi } from "vitest";
-import { sql } from "@streetwriters/kysely";
+import { Dialect, Kysely, SqliteDialect, sql } from "@streetwriters/kysely";
+import BetterSQLite3 from "better-sqlite3-multiple-ciphers";
 import { databaseTest } from "./utils/index.js";
+import { AccountDataWriteBarrier } from "../src/database/account-data-write-barrier.js";
+import { initializeDatabase } from "../src/database/index.js";
 
 function deferred() {
   let resolve!: () => void;
@@ -28,7 +31,85 @@ function deferred() {
   return { promise, resolve };
 }
 
+function resetViewTest() {
+  const barrier = new AccountDataWriteBarrier();
+  const dialect = new SqliteDialect({ database: BetterSQLite3(":memory:") });
+  const driver = dialect.createDriver();
+  const destroy = vi.spyOn(driver, "destroy");
+  const owningDialect: Dialect = {
+    createDriver: () => driver,
+    createAdapter: () => dialect.createAdapter(),
+    createQueryCompiler: () => dialect.createQueryCompiler(),
+    createIntrospector: (db) => dialect.createIntrospector(db)
+  };
+  const parent = new Kysely<{ notes: { id: string } }>({
+    dialect: barrier.wrapDialect(owningDialect)
+  });
+  return { parent, barrier, destroy };
+}
+
 describe("exclusive account data during sign out", () => {
+  test("destroying a derived reset view does not close its owning database", async () => {
+    const { parent, barrier, destroy } = resetViewTest();
+    try {
+      await sql`SELECT 1`.execute(parent);
+      await barrier.createResetView(parent).withTables().destroy();
+      expect(destroy).not.toHaveBeenCalled();
+      expect((await sql`SELECT 1 AS value`.execute(parent)).rows).toEqual([
+        { value: 1 }
+      ]);
+    } finally {
+      await parent.destroy();
+    }
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+
+  test("failed reset migrations preserve driver ownership and keep ordinary writes fenced", async () => {
+    const { parent, barrier, destroy } = resetViewTest();
+    try {
+      await parent.schema
+        .createTable("notes")
+        .addColumn("id", "text")
+        .execute();
+      await parent.insertInto("notes").values({ id: "preserved" }).execute();
+      await barrier.run(async () => {
+        await expect(
+          initializeDatabase(
+            barrier.createResetView(parent).withTables(),
+            {
+              getMigrations: async () => ({
+                failed_reset: {
+                  up: async () => {
+                    throw new Error("Injected reset migration failure");
+                  }
+                }
+              })
+            },
+            "reset-failure"
+          )
+        ).rejects.toThrow("Injected reset migration failure");
+        expect(destroy).not.toHaveBeenCalled();
+        expect(await parent.selectFrom("notes").select("id").execute()).toEqual(
+          [{ id: "preserved" }]
+        );
+        await expect(
+          parent.insertInto("notes").values({ id: "blocked" }).execute()
+        ).rejects.toThrow("Account data changed");
+      });
+      await parent
+        .insertInto("notes")
+        .values({ id: "after-failure" })
+        .execute();
+      expect(await parent.selectFrom("notes").select("id").execute()).toEqual([
+        { id: "preserved" },
+        { id: "after-failure" }
+      ]);
+    } finally {
+      await parent.destroy();
+    }
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+
   test("allows backup reads and auth markers, but fences collection and raw writes", async () => {
     const db = await databaseTest();
     await db

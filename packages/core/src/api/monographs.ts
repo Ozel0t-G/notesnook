@@ -49,8 +49,12 @@ export class Monographs {
   monographs: string[] = [];
   constructor(private readonly db: Database) {}
 
-  async clear() {
+  clearCache() {
     this.monographs = [];
+  }
+
+  async clear() {
+    this.clearCache();
     await this.db.monographsCollection.collection.clear();
   }
 

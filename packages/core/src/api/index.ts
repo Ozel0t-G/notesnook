@@ -337,7 +337,9 @@ class Database {
       }
     );
     this.eventManager.subscribe(EVENTS.userLoggedOut, async () => {
-      await this.monographs.clear();
+      // logout has already reset the schema; clear only the in-memory cache.
+      // A second table DELETE would violate the account-data export fence.
+      this.monographs.clearCache();
       await this.fs().clear();
       this.disconnectSSE();
     });

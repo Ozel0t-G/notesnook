@@ -198,10 +198,24 @@ export class AccountDataWriteBarrier {
     const dialect = this.dialect;
     if (!driver || !dialect)
       throw new Error("Account database driver is not initialized.");
+    // This view borrows the owner's initialized driver. Migration failure
+    // destroys its Kysely view, so neither lifecycle hook may close or reopen
+    // the shared database used by ordinary account collections.
+    const resetDriver: Driver = {
+      init: async () => {},
+      destroy: async () => {},
+      acquireConnection: () => driver.acquireConnection(),
+      beginTransaction: (connection, settings) =>
+        driver.beginTransaction(connection, settings),
+      commitTransaction: (connection) => driver.commitTransaction(connection),
+      rollbackTransaction: (connection) =>
+        driver.rollbackTransaction(connection),
+      releaseConnection: (connection) => driver.releaseConnection(connection)
+    };
     return new Kysely<Schema>({
       config: { dialect },
       dialect,
-      driver,
+      driver: resetDriver,
       executor: new DefaultQueryExecutor(
         dialect.createQueryCompiler(),
         dialect.createAdapter(),

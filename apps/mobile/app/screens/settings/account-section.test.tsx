@@ -92,6 +92,7 @@ jest.mock("./section-item", () => ({
         typeof item.description === "function"
           ? item.description(current)
           : item.description,
+      sessionState: item.id === "veyran-account-session" ? current : undefined,
       onPress: item.modifer
     });
   }
@@ -160,6 +161,76 @@ describe("VeyraN Account Settings rendering", () => {
     });
     row.props.onPress();
     expect(signIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("retains the session snapshot through unrelated renders and updates either status flag", () => {
+    mockUser = { id: "retained-account" };
+    const section = createAccountSection([], async () => true);
+    const render = (parentVersion: number) => (
+      <React.Fragment>
+        <SectionGroup item={section} />
+        {React.createElement("UnrelatedParentValue", {
+          version: parentVersion
+        })}
+      </React.Fragment>
+    );
+    act(() => {
+      tree = create(render(0));
+    });
+    const sessionRow = () =>
+      tree.root.findByProps({ testID: "veyran-account-session" });
+    const initial = sessionRow().props.sessionState;
+    expect(initial).toEqual({ expired: false, setupRequired: false });
+    expect(sessionRow().props.name).toBe("Signed in to VeyraN");
+
+    act(() => {
+      tree.update(render(1));
+    });
+    expect(sessionRow().props.sessionState).toBe(initial);
+
+    mockSessionExpired = true;
+    act(() => {
+      tree.update(render(2));
+    });
+    const expired = sessionRow().props.sessionState;
+    expect(expired).not.toBe(initial);
+    expect(expired).toEqual({ expired: true, setupRequired: false });
+    expect(sessionRow().props).toMatchObject({
+      name: "Session expired",
+      description: "Sign in again"
+    });
+    act(() => {
+      tree.update(render(3));
+    });
+    expect(sessionRow().props.sessionState).toBe(expired);
+
+    mockAccountSetupRequired = true;
+    act(() => {
+      tree.update(render(4));
+    });
+    const incomplete = sessionRow().props.sessionState;
+    expect(incomplete).not.toBe(expired);
+    expect(incomplete).toEqual({ expired: true, setupRequired: true });
+    expect(sessionRow().props).toMatchObject({
+      name: "Account setup needs attention",
+      description: "Sign in again to finish setup"
+    });
+    act(() => {
+      tree.update(render(5));
+    });
+    expect(sessionRow().props.sessionState).toBe(incomplete);
+
+    mockSessionExpired = false;
+    mockAccountSetupRequired = false;
+    act(() => {
+      tree.update(render(6));
+    });
+    expect(sessionRow().props.sessionState).not.toBe(incomplete);
+    expect(sessionRow().props.sessionState).toEqual({
+      expired: false,
+      setupRequired: false
+    });
+    expect(sessionRow().props.name).toBe("Signed in to VeyraN");
   });
 
   it("updates visibility and identity when account state hydrates or signs out", () => {

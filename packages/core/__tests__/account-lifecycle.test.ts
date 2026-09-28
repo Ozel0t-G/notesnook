@@ -149,7 +149,11 @@ describe("VeyraN account lifecycle with SQLite and real encrypted keys", () => {
     await db.user.signup(email, password);
     const { id, cipher } = await collectedNote(db);
     const wrappedKey = remoteUser.dataEncryptionKey;
-    await db.user.logout();
+    await db.withAccountDataWriteBarrier(async (assertUnchanged) => {
+      await db.user.logout(true, undefined, {
+        beforeClearLocalData: assertUnchanged
+      });
+    });
     expect(await db.user.getUser()).toBeUndefined();
     expect(await db.kv().read("token")).toBeUndefined();
     expect(await db.notes.exists(id)).toBe(false);

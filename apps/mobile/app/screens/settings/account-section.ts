@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import type { User } from "@notesnook/core";
+import { useMemo } from "react";
 import { strings } from "@notesnook/intl";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { useUserStore } from "../../stores/use-user-store";
@@ -68,7 +69,10 @@ export function createAccountSection(
           const setupRequired = useUserStore(
             (state) => state.accountSetupRequired
           );
-          return { expired, setupRequired };
+          return useMemo(
+            () => ({ expired, setupRequired }),
+            [expired, setupRequired]
+          );
         },
         type: "component",
         icon: "shield-check-outline"

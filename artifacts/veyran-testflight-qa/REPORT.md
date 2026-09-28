@@ -1,8 +1,54 @@
 # VeyraN internal TestFlight candidate QA — 2026-09-27/28
 
+## September 28 account regression repair — current mobile candidate gate
+
+The user supplied physical iPhone screenshots from **3.4.16 (18)** showing
+registration stuck in account setup and Settings without signed-in account
+management. The distribution PASS below concerns build 18's Apple availability
+only. It does not establish a working mobile account lifecycle. Current repair
+evidence is maintained in [the account lifecycle repair report](../veyran-account-lifecycle-repair/REPORT.md).
+
+The removed commercial PayWall screen had owned signup's final app transition;
+its removal left successful registration on setup. Incomplete mobile identity
+hydration then hid the account group. The repair adds verified signup/login
+completion, Library navigation, cached restart hydration, localized bounded
+setup recovery, and retries that reuse the existing created account/keyset.
+Settings presents VeyraN identity/email/session and Sign out independently of
+commercial plans, with separate signed-out Sign in and local Data deletion.
+Unavailable credential changes and remote account deletion remain hidden.
+
+Sign out keeps the existing intentional local-cache removal model, explained
+in native confirmation. Unsynced/quarantined data requires a complete full
+backup including required local attachments. Sync is stopped, progress cannot
+be hidden, and an exclusive database writer barrier plus foreground/mutation
+checks protect backup/reset. Logout awaits all cleanup handlers; native
+Keychain rejection still clears mobile account state and returns to Login.
+Stale asynchronous account callbacks cannot restore an old identity. VeyraN
+service defaults, local themes, encryption/native identities and production
+entitlements remain unchanged.
+
+| Current repair gate | Status | Evidence / limit |
+| --- | --- | --- |
+| Focused mobile automated checks | **PASS** | 15 suites, 109 tests. These transport/native-mocked checks do not establish production account sync. |
+| Core automated checks | **PASS** | 54 files, 840 tests, one existing todo. Includes account readiness/rollback/affinity and data-safety coverage. |
+| Simulator launch recovery | **PASS** | Minimal ad hoc simulator-only entitlements resolve the previous launch problem. Production entitlements are untouched; this is not a completed iPhone/iPad Release functional matrix. |
+| Live Release account lifecycle | **PASS** | iPhone/iPad login, recoverable MFA/password errors, account Settings, restart, backed-up sign out and re-login restore a unique Note through encrypted Sync without reinstall. Fresh iPad signup automatically enters Library. |
+| ARM64 Release/native destinations | **PASS / partial coverage** | Both device builds pass with stable Xcode 27. Native network log summaries show VeyraN Auth/API/Events; no Notesnook production host is observed. This is not a complete packet capture. |
+| Standalone retained-session features | **PASS** | Both devices pass Note write/edit/reopen, Task create/complete/detail after restart, Search and VeyraN Light/Dark/System. Native dark/light appearance follows System. |
+| Seeded local-profile in-place upgrade | **PASS** | iPhone/iPad old17 to linked Release candidate retains all protected prelaunch hashes plus exact Note/Task/preferences after restart, without postinstall restoration. These profiles are signed out. |
+| Authenticated existing-user upgrade | **PASS** | Separate native84 fixture proves real old17 MFA/password login and exact Note decryption; all 20 protected AppData/11 raw Group/9 Keychain files retained before first launch. Candidate identity and exact Note persist after restart; normal Sync completes without re-login/reset/copyback. Protected originals remain Shutdown. |
+| Fresh device archive/upload | **PASS** | Live next-number check allocated 3.4.16 (19) from signed `1d5cb2c`; fresh Release archive/local Distribution IPA and independent actual-artifact audit pass. Apple accepted 16:50:46 CEST; ASC Complete/Validated, ARM64 iPhone/iPad, Internal Pencil Beta with one existing tester, and saved What to Test notes. Hermes VM dSYM warning limits symbolication. |
+| Physical account closure | **PENDING** | Original regressions require exact-build iPhone and iPad confirmation using [the checklist](../VEYRAN_TESTFLIGHT_PHYSICAL_QA.md). |
+
+Account-repair **3.4.16 (19)** is uploaded and assigned internally. No `main`
+merge, new tester invitation, Beta App Review submission or App Store production
+release occurred. Historical
+Mac/Web runtime results below remain valid for their stated builds and do not
+close this repair's mobile acceptance gates.
+
 This report records the new candidates, not final App Store readiness. No `main` merge or production App Store submission occurred. Times are Europe/Oslo (CEST).
 
-## Candidate distribution
+## Historical candidate distribution — before account repair build 19
 
 | Gate | Status | Evidence |
 | --- | --- | --- |

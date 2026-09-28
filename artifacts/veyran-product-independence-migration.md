@@ -1,6 +1,73 @@
 # VeyraN product independence migration — release gate open
 
-## App Store Connect follow-up — 2026-09-28
+## iOS/iPadOS account lifecycle repair — 2026-09-28, current checkpoint
+
+**Account repair source/tests and local live acceptance: PASS; internal distribution: PASS;
+production readiness: FAIL.** The user's physical iPhone evidence from
+**3.4.16 (18)** supersedes any inference of mobile account readiness from the
+historical build/distribution checks below. Signup's removed PayWall destination
+had also owned the final transition into the app; valid registration could
+therefore remain on its setup screen. Missing mobile identity hydration hid
+account controls in Settings. Restoring commercial subscription state would
+not repair either lifecycle failure.
+
+The current `test` repair verifies the committed account/token scope, wrapped
+keys, VeyraN affinity, device and checkpoint before a shared mobile completion
+bridge publishes identity and enters Library. Cached restart hydration remains
+available offline. Setup deadlines show localized recovery, registration retry
+avoids a duplicate account/keyset, and interrupted fresh-signup recovery is
+limited to a proven empty profile; unknown/legacy/foreign data stays protected.
+Account Settings shows VeyraN identity/session and Sign out without a plan;
+signed-out Settings offers Sign in. Local deletion is a separate Data action,
+with a persisted-user recheck. Unsupported password/email mutation, remote
+account deletion and unsafe no-key reset remain unavailable.
+
+Sign out explicitly confirms the existing deliberate local-cache removal
+model. Unsynced or quarantined data requires a completed full backup with
+required local attachments. Sync is stopped before an exclusive database writer
+barrier encloses backup/reset; nonhideable progress and foreground/mutation
+checks refuse unsafe clearing. Core waits for all logout cleanup handlers.
+Native credential cleanup failure still clears signed-in mobile state and
+returns to Login, while generation checks prevent stale account callbacks.
+Production server defaults, theme independence, VeyraN-owned capabilities,
+encryption format, native identities and production entitlements are preserved.
+No production service change was made for this repair.
+
+The final mobile run passed **15 suites / 109 tests** and Core passed
+**54 files / 840 tests / one existing todo**; Core/mobile TypeScript and focused
+lint pass. Both ARM64 Release simulator builds pass. Live iPhone/iPad account
+runs now pass login, MFA/password recovery, Library, Note create/reopen, account
+Settings, force quit/session retention, backed-up sign out and re-login with
+normal encrypted Sync restoration into a cleared profile. A fresh disposable
+iPad registration automatically enters Library. The status hook render loop,
+borrowed reset-driver lifecycle and redundant logout SQL cleanup were fixed and
+covered. Production signing settings remain unchanged.
+
+Native log summaries positively show VeyraN Auth/API/Events and no Notesnook
+production hosts within partial coverage; this does not establish complete
+packet-level absence. Standalone Note/Task/Search/theme feature gates and seeded
+signed-out old17 in-place profile migration pass on both devices, including
+prelaunch retained hashes and semantic restart verification. Authenticated
+old17 upgrade also passes retained prelaunch data/Keychain, exact Note decryption,
+account identity after restart and ordinary completed Sync without re-login or
+profile restoration. The fresh build 19 Release archive/export and actual IPA
+signing audit pass independently. Apple accepted upload at 16:50:46 CEST; live
+ASC verifies Complete/Validated, ARM64 iPhone/iPad, existing Internal Pencil Beta
+with one tester, and saved narrow What to Test notes. Hermes VM crash
+symbolication remains limited by a missing dSYM. Physical-device closure is
+**PENDING**. Protected old profiles are Shutdown and match their
+original complete hashes; upgrade experiments enforce fresh native device and
+live-container isolation. ASC was rechecked after local gates: newest uploaded
+iOS was **3.4.16 (18)**, so **3.4.16 (19)** was allocated on signed source
+`1d5cb2c`; that fresh candidate is now uploaded and internally available.
+
+See [the account lifecycle repair report](veyran-account-lifecycle-repair/REPORT.md)
+and [the physical-device checklist](VEYRAN_TESTFLIGHT_PHYSICAL_QA.md).
+Historical Mac/Web and prior build evidence below is retained and is not
+substituted for this candidate's mobile acceptance gates. No `main` merge or
+App Store production submission occurred.
+
+## Earlier App Store Connect follow-up — 2026-09-28, build 18 history
 
 **Internal candidate distribution: PASS; production readiness: FAIL.** This
 section supersedes the pending Apple processing/group status below. In the

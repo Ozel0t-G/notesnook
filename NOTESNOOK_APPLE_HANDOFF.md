@@ -1,8 +1,80 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
-## September 28 App Store Connect verification — newest evidence
+## September 28 iOS/iPadOS account lifecycle repair — current release gate
 
-The user restored the Apple browser session. Live App Store Connect now shows
+The physical iPhone screenshots from **3.4.16 (18)** establish two account
+regressions: registration remained on “Setting up your account…” and Settings
+showed local deletion without the signed-in account controls. Build 18's Apple
+processing and internal installation evidence below remains valid, but it is
+not evidence that these account flows pass. The repair is in progress on
+`test`; `main` and App Store production release remain outside this work.
+See the [account lifecycle repair report](artifacts/veyran-account-lifecycle-repair/REPORT.md)
+for the current implementation and release evidence.
+
+The signup hang followed removal of a commercial PayWall screen that also
+owned the final application transition. Signup could finish its encrypted
+account commit without leaving the setup screen. Incomplete mobile session
+hydration then hid the account Settings group. The repair gives signup/login
+a shared completion bridge: core verifies account, keys, token scope, backend
+affinity, device, and checkpoint before mobile publishes identity and enters
+Library. Restart restores the cached identity without making network access a
+UI gate; bounded setup progress exposes localized recovery. Registration retry
+reuses the created account/keyset. No billing or Notesnook-hosted account
+service is reintroduced.
+
+Settings now derives account visibility from identity/session state, shows
+VeyraN Account, email, session/setup status and Sign out, and offers Sign in
+when signed out. Local deletion is separately labeled under Data and rechecks
+the persisted user before clearing local data. Unsupported password/email
+changes and remote deletion remain omitted. Sign out preserves the existing
+local-cache removal security model with explicit native confirmation. A full
+backup with required local attachments protects unsynced/quarantined data;
+nonhideable progress, stopped Sync, an exclusive database writer barrier and
+final foreground/mutation checks protect the backup/reset interval. Core
+waits for all cleanup handlers; native Keychain failure still clears mobile
+identity and returns to Login. Generation guards prevent stale asynchronous
+account callbacks from republishing a signed-out identity.
+
+**Automated validation:** 15 mobile suites / 109 tests and 54 Core files /
+840 tests / one existing todo pass; Core/mobile TypeScript and focused lint
+pass. Fresh ARM64 Release iPhone and iPad builds pass with stable Xcode 27.
+The restored Settings status hook's render loop was fixed by memoization;
+reset views no longer destroy their borrowed database driver, and logout clears
+monograph memory without a redundant SQL deletion inside the writer barrier.
+
+**Live Release account validation:** both iPhone and iPad pass login, recoverable
+MFA/password errors, Library, Note create/reopen, account Settings, session
+restart, backed-up sign out, and re-login with normal encrypted Sync restoring
+the Note into the cleared cache without reinstall. A fresh disposable iPad
+registration also automatically entered Library. Native runtime log summaries
+show VeyraN Auth/API/Events and no Notesnook production hosts within their partial
+coverage; they are host mentions, not complete packet capture.
+
+**Feature and local-profile upgrade validation:** both devices pass Note edit/reopen,
+Tasks create/complete/restart, Search and VeyraN Light/Dark/System. Seeded signed-out
+old17 profiles retain exact protected prelaunch hashes, Note/Task/preferences
+and semantic state after in-place install and restart. A separate authenticated
+old17 fixture retains all 20 protected AppData, 11 App Group and 9 Keychain
+files before launch; the candidate preserves identity and exact Note decryption
+after upgrade and restart, and ordinary Sync completes without re-login or
+profile copying.
+
+**Release: PASS.** Fresh **3.4.16 (19)** from signed source `1d5cb2c` passes
+Release archive/export, actual IPA signature audit and independent artifact
+review. Apple accepted upload at 16:50:46 CEST and live ASC now shows
+**Complete / Validated**, ARM64, iPhone/iPad, and **Internal Pencil Beta**
+with one existing tester. Narrow What to Test notes were saved and verified.
+The Hermes VM dSYM warning still limits crash symbolication. Protected original
+build-17 profiles are Shutdown and match complete original hashes; upgrade
+experiments use separately guarded native-created devices. Actual Apple state
+was rechecked after local acceptance: newest upload remained 18, so build 19
+was allocated on signed source `1d5cb2c`. Physical iPhone/iPad account closure
+remains required.
+
+## Earlier September 28 App Store Connect verification — build 18 history
+
+Before the account-repair upload, the user restored the Apple browser session.
+App Store Connect showed
 the universal **iPhone/iPad 3.4.16 (18)** upload as **Complete**, Binary State
 **Validated**, device family **iPhone, iPad**, ARM64, and membership in the
 existing **Internal Pencil Beta** group with one tester. The group's tester

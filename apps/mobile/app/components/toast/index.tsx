@@ -115,11 +115,17 @@ export const Toast = ({ context = "global" }) => {
         hideToast();
       }}
       activeOpacity={1}
+      accessibilityRole="alert"
+      accessibilityLiveRegion="polite"
       style={{
         width: DDS.isTab ? dimensions.width / 2 : "100%",
         alignItems: "center",
         alignSelf: "center",
-        bottom: insets.bottom + 15,
+        // iOS shows transient confirmations as a HUD at the top (like
+        // "Copied"), clear of the tab bar and the keyboard.
+        ...(Platform.OS === "ios"
+          ? { top: insets.top + 8 }
+          : { bottom: insets.bottom + 15 }),
         position: "absolute",
         zIndex: 999,
         elevation: 15
@@ -128,9 +134,17 @@ export const Toast = ({ context = "global" }) => {
       <View
         style={{
           ...getElevationStyle(5),
-          backgroundColor: isDark ? colors.static.black : colors.static.white,
+          backgroundColor:
+            Platform.OS === "ios"
+              ? isDark
+                ? "#2C2C2E"
+                : colors.static.white
+              : isDark
+                ? colors.static.black
+                : colors.static.white,
           alignSelf: "center",
-          borderRadius: defaultBorderRadius * 2,
+          borderRadius:
+            Platform.OS === "ios" ? 999 : defaultBorderRadius * 2,
           paddingVertical: DefaultAppStyles.GAP_VERTICAL,
           paddingHorizontal: DefaultAppStyles.GAP,
           justifyContent: "space-between",
@@ -161,9 +175,7 @@ export const Toast = ({ context = "global" }) => {
             }
             size={isFullToastMessage ? AppFontSize.xxxl : AppFontSize.xl}
             color={
-              toastOptions?.icon
-                ? toastOptions?.icon
-                : toastOptions.type === "error"
+              toastOptions.type === "error"
                   ? colors.error.icon
                   : toastOptions.type === "info"
                     ? isDark
@@ -205,7 +217,10 @@ export const Toast = ({ context = "global" }) => {
             type={
               toastOptions.type === "error" ? "errorShade" : "secondaryAccented"
             }
-            onPress={toastOptions.func}
+            onPress={() => {
+              toastOptions.func?.();
+              hideToast();
+            }}
             title={toastOptions.actionText}
             height={35}
             style={{

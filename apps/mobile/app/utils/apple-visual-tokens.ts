@@ -26,12 +26,24 @@ import { Platform } from "react-native";
  * Values intentionally resolve from the active Notesnook theme so custom
  * themes, dark mode, and the user-selected accent remain authoritative.
  */
+/** UIKit dark grouped colors (systemGroupedBackground and friends). */
+export const IOS_DARK = {
+  grouped: "#000000",
+  card: "#1C1C1E",
+  selected: "#3A3A3C",
+  separator: "#38383A"
+} as const;
+
 export const getAppleVisualTokens = (
   colors: VariantsWithStaticColors<true>,
   isDark = false
 ) => {
   const ios = Platform.OS === "ios";
-  return {
+  // iOS dark mode layers get *lighter* towards the front: black grouped
+  // background, cards one step up (secondarySystemGroupedBackground). The
+  // theme's dark colors are the other way round and made cards look like holes.
+  const iosDark = ios && isDark;
+  const base = {
     ios,
     screenBackground: ios
       ? colors.secondary.background
@@ -96,5 +108,21 @@ export const getAppleVisualTokens = (
       shadowOpacity: isDark ? 0.3 : 0.12,
       shadowRadius: 14
     }
+  };
+  if (!iosDark) return base;
+  return {
+    ...base,
+    screenBackground: IOS_DARK.grouped,
+    sidebarBackground: IOS_DARK.grouped,
+    contentSurface: IOS_DARK.card,
+    secondarySurface: IOS_DARK.card,
+    elevatedSurface: IOS_DARK.card,
+    toolbarSurface: IOS_DARK.card,
+    navigationSurface: IOS_DARK.grouped,
+    editorSurround: IOS_DARK.grouped,
+    surface: IOS_DARK.card,
+    separator: IOS_DARK.separator,
+    selectedSurface: IOS_DARK.selected,
+    selectionBackground: IOS_DARK.selected
   };
 };

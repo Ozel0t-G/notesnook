@@ -49,8 +49,10 @@
 		65C400DE2A80B68D00AA3DF5 /* MaterialCommunityIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65C400DD2A80B68D00AA3DF5 /* MaterialCommunityIcons.ttf */; };
 		65C400DF2A80B6B600AA3DF5 /* MaterialCommunityIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65C400DD2A80B68D00AA3DF5 /* MaterialCommunityIcons.ttf */; };
 		65E0340B257B9FF100793428 /* File.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E0340A257B9FF100793428 /* File.swift */; };
+		68406CC26E6997EE57304950 /* VeyraNMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF444E3AD3521A14B5C350AE /* VeyraNMenu.swift */; };
 		7E98A197B6B9779DBA5F9010 /* HandwritingMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 849377998732E0BB9CF032F0 /* HandwritingMetadata.swift */; };
 		A1C0A1C0A1C0A1C0A1C0A1C0 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */; };
+		A475C84EEA9FAEAE6B63CC4D /* VeyraNMenuManagers.m in Sources */ = {isa = PBXBuildFile; fileRef = A9C02269874C13CD2B03D9F0 /* VeyraNMenuManagers.m */; };
 		A79A93DC9D0CAE8703462151 /* libPods-Notesnook-NotesnookTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 068FA9BDFA207A50B0A9E597 /* libPods-Notesnook-NotesnookTests.a */; };
 		D10000000000000000000001 /* ReminderWidgetModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* ReminderWidgetModule.swift */; };
 		D10000000000000000000002 /* ReminderWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* ReminderWidgetModule.m */; };
@@ -191,11 +193,13 @@
 		A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = AppIcon.icon; path = Notesnook/AppIcon.icon; sourceTree = "<group>"; };
 		A482053C4A6E06443DC525BD /* SceneDelegate.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = Notesnook/SceneDelegate.h; sourceTree = "<group>"; };
 		A84F3F0D50641D1CD4569B0E /* Pods-Make Note.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Make Note.release.xcconfig"; path = "Target Support Files/Pods-Make Note/Pods-Make Note.release.xcconfig"; sourceTree = "<group>"; };
+		A9C02269874C13CD2B03D9F0 /* VeyraNMenuManagers.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNMenuManagers.m; sourceTree = "<group>"; };
 		B1C2824E09020408C06D888A /* HandwritingModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = HandwritingModule.m; sourceTree = "<group>"; };
 		B259038A5D1207C9F28314CD /* HandwritingViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingViewController.swift; sourceTree = "<group>"; };
 		B5216B66C0B4A91C0A69128B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Notesnook/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		B9989E5C777BB11343A62D09 /* Pods-Notesnook-NotesnookTests.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-NotesnookTests.debug.xcconfig"; path = "Target Support Files/Pods-Notesnook-NotesnookTests/Pods-Notesnook-NotesnookTests.debug.xcconfig"; sourceTree = "<group>"; };
 		C5367EAC4A122EA969687331 /* HandwritingModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingModule.swift; sourceTree = "<group>"; };
+		CF444E3AD3521A14B5C350AE /* VeyraNMenu.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNMenu.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* ReminderWidgetModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReminderWidgetModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* ReminderWidgetModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ReminderWidgetModule.m; sourceTree = "<group>"; };
 		D20000000000000000000003 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = ../../../resources/icon.png; sourceTree = SOURCE_ROOT; };
@@ -384,6 +388,16 @@
 			path = "Make Note";
 			sourceTree = "<group>";
 		};
+		75A1C404C417ECED7BF2261C /* VeyraNMenu */ = {
+			isa = PBXGroup;
+			children = (
+				CF444E3AD3521A14B5C350AE /* VeyraNMenu.swift */,
+				A9C02269874C13CD2B03D9F0 /* VeyraNMenuManagers.m */,
+			);
+			name = VeyraNMenu;
+			path = Notesnook/VeyraNMenu;
+			sourceTree = "<group>";
+		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
 			isa = PBXGroup;
 			children = (
@@ -413,6 +427,7 @@
 				DA84645424CFBF19A44D64B3 /* Pods */,
 				B5216B66C0B4A91C0A69128B /* PrivacyInfo.xcprivacy */,
 				684AA0A1B1BE6091A02D42FF /* ios-build.active.xcconfig */,
+				75A1C404C417ECED7BF2261C /* VeyraNMenu */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -1091,6 +1106,8 @@
 				D10000000000000000000025 /* VeyraNTaskEntity.swift in Sources */,
 				D10000000000000000000023 /* VeyraNCaptureOpenIntent.swift in Sources */,
 				64F1C8C66C1A56ADE2A0CAA5 /* SceneDelegate.m in Sources */,
+				68406CC26E6997EE57304950 /* VeyraNMenu.swift in Sources */,
+				A475C84EEA9FAEAE6B63CC4D /* VeyraNMenuManagers.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

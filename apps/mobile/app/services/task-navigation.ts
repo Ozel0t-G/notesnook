@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import type { Task } from "@notesnook/core";
 import { db } from "../common/database";
 import { isValidTaskWidgetId } from "../hooks/task-widget-completion-intents";
 import { useSettingStore } from "../stores/use-setting-store";
@@ -60,6 +61,14 @@ export type TaskNavigationIntent = {
   taskId: string;
   accountId?: string | null;
   occurrenceKey?: string;
+  /**
+   * The recurring series the tapped occurrence belongs to, when the producer
+   * knew it. Together with `occurrenceKey` it names the occurrence's
+   * authoritative record even before that record exists (a future occurrence of
+   * a live series), which is what keeps a tap on one occurrence from being
+   * answered with another.
+   */
+  seriesId?: string;
   source?: TaskNavigationSource;
 };
 
@@ -124,11 +133,10 @@ export type TaskNavigationTarget =
   | { kind: "stale"; taskId: string }
   | { kind: "missing"; taskId: string };
 
-type NavigableTask = {
-  id: string;
-  listId: string;
+type NavigableTask = Pick<Task, "id" | "listId"> & {
   completed?: boolean;
   occurrenceKey?: string;
+  seriesId?: string;
 };
 
 /**
@@ -170,6 +178,49 @@ export function resolveTaskNavigationTarget(
   };
 }
 
+/**
+ * The authoritative record for an intent, read from the encrypted Task domain.
+ *
+ * A notification produced for one occurrence of a recurring series carries that
+ * occurrence's own identity (`seriesId` + `occurrenceKey`), so the tap is
+ * answered by the record of exactly the occurrence it was produced for -- the
+ * domain's own `occurrenceKey` field, never a re-derived recurrence. A future
+ * occurrence whose record does not exist yet (the series has not rolled forward
+ * to it) is answered by the series' current record, which *is* the current state
+ * of that Task. A payload that names no occurrence -- a one-off Task, a widget
+ * link, a legacy payload -- resolves by its own id, exactly as before.
+ *
+ * The resolved record's own id replaces the payload's, so the occurrence
+ * identity is never compared against a record that belongs to another
+ * occurrence. The router still never mutates anything.
+ */
+async function resolveNavigationRecord(
+  intent: TaskNavigationIntent
+): Promise<{
+  record: NavigableTask | undefined;
+  intent: Pick<TaskNavigationIntent, "taskId" | "occurrenceKey">;
+}> {
+  if (!intent.seriesId || !intent.occurrenceKey)
+    return { record: await db.tasks.get(intent.taskId), intent };
+  const seriesOf = (candidate: NavigableTask) =>
+    candidate.seriesId || candidate.id;
+  const tasks = await db.tasks.list();
+  const matching = tasks.filter(
+    (candidate) =>
+      seriesOf(candidate) === intent.seriesId &&
+      candidate.occurrenceKey === intent.occurrenceKey
+  );
+  const occurrence = matching.find((candidate) => !candidate.completed) ??
+    matching[0];
+  const record =
+    occurrence ??
+    tasks.find(
+      (candidate) => seriesOf(candidate) === intent.seriesId && !candidate.completed
+    );
+  if (!record) return { record: undefined, intent };
+  return { record, intent: { taskId: record.id } };
+}
+
 /** A unique, monotonically increasing nonce for one focus request. */
 let focusRequestCounter = 0;
 export function nextTaskFocusRequestId(now = Date.now()) {
@@ -201,7 +252,11 @@ export function taskNotificationIntent(
     typeof data?.occurrenceKey === "string" && data.occurrenceKey
       ? data.occurrenceKey
       : undefined;
-  return { taskId, accountId, occurrenceKey, source };
+  const seriesId =
+    typeof data?.seriesId === "string" && data.seriesId
+      ? data.seriesId
+      : undefined;
+  return { taskId, accountId, occurrenceKey, seriesId, source };
 }
 
 function normalizeIntent(
@@ -305,10 +360,10 @@ export async function openTaskInContext(
         return;
       }
     }
-    const task = await db.tasks.get(normalized.taskId);
+    const task = await resolveNavigationRecord(normalized);
     if (generation !== navigationGeneration) return;
     presentTaskNavigationTarget(
-      resolveTaskNavigationTarget(task, normalized, (listId) =>
+      resolveTaskNavigationTarget(task.record, task.intent, (listId) =>
         !!db.taskLists.getSync(listId)
       )
     );

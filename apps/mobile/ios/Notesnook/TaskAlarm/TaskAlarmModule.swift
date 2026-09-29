@@ -15,6 +15,10 @@ import SwiftUI
 final class TaskAlarmModule: NSObject {
   private static let fingerprintKey = "notesnook.taskAlarms.fingerprints.v2"
   private static let ownedIdsKey = "notesnook.taskAlarms.ownedIds.v1"
+  /// Alarm ids whose presentation was created with the App Lock placeholder, so
+  /// turning App Lock on can tell which held presentations still show the real
+  /// Task title. Ids only: never a title, an account or any other content.
+  private static let redactedIdsKey = "notesnook.taskAlarms.redactedIds.v1"
   private static let namespace = "com.streetwriters.notesnook.taskAlarm.v1"
   /// How long Snooze postpones the next alert. The Task's own reminder is never
   /// modified, so the occurrence the alarm belongs to stays intact.
@@ -97,9 +101,11 @@ final class TaskAlarmModule: NSObject {
     resolve(["status": "unsupported", "scheduledAlarmKeys": [String]()])
   }
 
-  /// Reports which of `alarmKeys` the system currently holds for the account.
-  /// Used after a failed reconcile, so an unknown native state is resolved by
-  /// the truth instead of falling every occurrence back to a notification.
+  /// Reports which of `alarmKeys` the system currently holds for the account,
+  /// and which of those are presenting right now (alerting, counting down after
+  /// a Snooze, or paused). Used before a reconcile writes anything -- so an
+  /// unknown native state keeps every existing fallback instead of guessing --
+  /// and again after a failed one, to resolve the truth.
   @objc(verifyAlarms:alarmKeys:resolver:rejecter:)
   func verifyAlarms(_ accountId: String,
                     alarmKeys rawKeys: [String],
@@ -110,26 +116,36 @@ final class TaskAlarmModule: NSObject {
       do {
         let manager = AlarmManager.shared
         let owned = Set(UserDefaults.standard.stringArray(forKey: Self.ownedIdsKey) ?? [])
-        let held = Set(try manager.alarms
-          .filter { Self.isOwnedAlarm($0.id, legacyOwned: owned) }
-          .map(\.id))
-        let scheduled = rawKeys.filter {
-          held.contains(Self.alarmId(accountId: accountId, alarmKey: $0))
+        var keyByAlarmId = [UUID: String]()
+        for key in rawKeys where !key.isEmpty {
+          keyByAlarmId[Self.alarmId(accountId: accountId, alarmKey: key)] = key
+        }
+        var held = [String]()
+        var active = [String]()
+        for alarm in try manager.alarms
+        where Self.isOwnedAlarm(alarm.id, legacyOwned: owned) {
+          guard let key = keyByAlarmId[alarm.id] else { continue }
+          held.append(key)
+          if alarm.state != .scheduled { active.append(key) }
         }
         resolve(["status": Self.statusName(manager.authorizationState),
-                 "scheduledAlarmKeys": scheduled])
+                 "scheduledAlarmKeys": held,
+                 "activeAlarmKeys": active])
       } catch {
         reject("task_alarm_verify", error.localizedDescription, error)
       }
       return
     }
     #endif
-    resolve(["status": "unsupported", "scheduledAlarmKeys": [String]()])
+    resolve(["status": "unsupported", "scheduledAlarmKeys": [String](),
+             "activeAlarmKeys": [String]()])
   }
 
   /// Cancels only alarms that have not started alerting (`.scheduled`). An alarm
   /// that is alerting, counting down (Snooze) or paused is a choice the person
-  /// just made and is never cancelled to make room for a notification fallback.
+  /// just made and is never cancelled to make room for a notification fallback;
+  /// it is reported back as retained so the caller can be honest about which
+  /// occurrences are still held.
   @objc(cancelScheduledAlarms:alarmKeys:resolver:rejecter:)
   func cancelScheduledAlarms(_ accountId: String,
                              alarmKeys rawKeys: [String],
@@ -141,32 +157,47 @@ final class TaskAlarmModule: NSObject {
         let manager = AlarmManager.shared
         var owned = Set(UserDefaults.standard.stringArray(forKey: Self.ownedIdsKey) ?? [])
         var fingerprints = UserDefaults.standard.dictionary(forKey: Self.fingerprintKey) as? [String: String] ?? [:]
+        var redacted = Set(UserDefaults.standard.stringArray(forKey: Self.redactedIdsKey) ?? [])
         var keyByAlarmId = [UUID: String]()
         for key in rawKeys where !key.isEmpty {
           keyByAlarmId[Self.alarmId(accountId: accountId, alarmKey: key)] = key
         }
         var cancelled = [String]()
+        var retained = [String]()
         for alarm in try manager.alarms {
           guard let key = keyByAlarmId[alarm.id],
-                Self.isOwnedAlarm(alarm.id, legacyOwned: owned),
-                alarm.state == .scheduled
+                Self.isOwnedAlarm(alarm.id, legacyOwned: owned)
           else { continue }
-          try manager.cancel(id: alarm.id)
-          fingerprints.removeValue(forKey: alarm.id.uuidString)
-          owned.remove(alarm.id.uuidString)
-          cancelled.append(key)
+          guard alarm.state == .scheduled else {
+            retained.append(key)
+            continue
+          }
+          do {
+            try manager.cancel(id: alarm.id)
+            fingerprints.removeValue(forKey: alarm.id.uuidString)
+            redacted.remove(alarm.id.uuidString)
+            owned.remove(alarm.id.uuidString)
+            cancelled.append(key)
+          } catch {
+            // The alarm is still held, so it is reported as retained rather than
+            // as a clean cancellation the caller could fall back on.
+            retained.append(key)
+          }
         }
         UserDefaults.standard.set(fingerprints, forKey: Self.fingerprintKey)
+        UserDefaults.standard.set(Array(redacted), forKey: Self.redactedIdsKey)
         UserDefaults.standard.set(Array(owned), forKey: Self.ownedIdsKey)
         resolve(["status": Self.statusName(manager.authorizationState),
-                 "cancelledAlarmKeys": cancelled])
+                 "cancelledAlarmKeys": cancelled,
+                 "retainedAlarmKeys": retained])
       } catch {
         reject("task_alarm_cancel_scheduled", error.localizedDescription, error)
       }
       return
     }
     #endif
-    resolve(["status": "unsupported", "cancelledAlarmKeys": [String]()])
+    resolve(["status": "unsupported", "cancelledAlarmKeys": [String](),
+             "retainedAlarmKeys": [String]()])
   }
 
   @objc(cancelAll:rejecter:)
@@ -183,6 +214,7 @@ final class TaskAlarmModule: NSObject {
         UserDefaults.standard.removeObject(forKey: Self.fingerprintKey)
         UserDefaults.standard.removeObject(forKey: "notesnook.taskAlarms.fingerprints.v1")
         UserDefaults.standard.removeObject(forKey: Self.ownedIdsKey)
+        UserDefaults.standard.removeObject(forKey: Self.redactedIdsKey)
         resolve(nil)
       } catch {
         reject("task_alarm_cancel", error.localizedDescription, error)
@@ -253,6 +285,10 @@ private struct WantedAlarm {
   let timestamp: TimeInterval
   let title: String
   let fingerprint: String
+  /// Whether the presentation was built with the App Lock placeholder. Held so
+  /// App Lock turning on can tell a presentation that still shows the real Task
+  /// title from one that is already redacted.
+  let privacyHidden: Bool
 }
 
 @available(iOS 26.0, *)
@@ -288,7 +324,8 @@ private extension TaskAlarmModule {
       .map { String(format: "%02x", $0) }.joined()
     return WantedAlarm(id: id, taskId: taskId, alarmKey: alarmKey,
                        timestamp: timestamp.doubleValue / 1000,
-                       title: safeTitle, fingerprint: fingerprint)
+                       title: safeTitle, fingerprint: fingerprint,
+                       privacyHidden: privacyHidden)
   }
 
   static func alarmId(accountId: String, alarmKey: String) -> UUID {
@@ -326,23 +363,52 @@ private extension TaskAlarmModule {
   static func replace(_ wanted: [WantedAlarm]) async throws -> [String: Any] {
     let manager = AlarmManager.shared
     let state = manager.authorizationState
-    guard state == .authorized else {
-      UserDefaults.standard.removeObject(forKey: fingerprintKey)
-      return ["status": statusName(state), "scheduledAlarmKeys": [String]()]
-    }
     let desired = Dictionary(uniqueKeysWithValues: wanted.map { ($0.id, $0) })
     var owned = Set(UserDefaults.standard.stringArray(forKey: ownedIdsKey) ?? [])
-    let current = try manager.alarms.filter { isOwnedAlarm($0.id, legacyOwned: owned) }
-    UserDefaults.standard.removeObject(forKey: "notesnook.taskAlarms.fingerprints.v1")
     var fingerprints = UserDefaults.standard.dictionary(forKey: fingerprintKey) as? [String: String] ?? [:]
+    var redacted = Set(UserDefaults.standard.stringArray(forKey: redactedIdsKey) ?? [])
     // The per-occurrence truth handed back to JS: keys this app holds after the
     // pass. Anything absent is not scheduled, so exactly those occurrences get
-    // the notification fallback.
+    // the notification fallback. `active` is the subset presenting right now.
     var scheduled = [String]()
+    var active = [String]()
+    guard state == .authorized else {
+      // Nothing new can be scheduled, but alarms that were scheduled while the
+      // app *was* authorized can still be held and still sound. They are cleaned
+      // up here -- except a presentation the person is engaged with -- and
+      // reported back, so JS never grants a duplicate fallback for an occurrence
+      // whose alarm is still there.
+      for alarm in try manager.alarms where isOwnedAlarm(alarm.id, legacyOwned: owned) {
+        let key = desired[alarm.id]?.alarmKey
+        if alarm.state == .scheduled {
+          do {
+            try manager.cancel(id: alarm.id)
+            fingerprints.removeValue(forKey: alarm.id.uuidString)
+            redacted.remove(alarm.id.uuidString)
+            owned.remove(alarm.id.uuidString)
+          } catch {
+            // Still held: report it instead of pretending it is gone.
+            if let key { scheduled.append(key); active.append(key) }
+          }
+        } else if let key {
+          scheduled.append(key)
+          active.append(key)
+        }
+      }
+      UserDefaults.standard.set(fingerprints, forKey: fingerprintKey)
+      UserDefaults.standard.set(Array(redacted), forKey: redactedIdsKey)
+      UserDefaults.standard.set(Array(owned), forKey: ownedIdsKey)
+      return ["status": statusName(state),
+              "scheduledAlarmKeys": scheduled,
+              "activeAlarmKeys": active]
+    }
+    let current = try manager.alarms.filter { isOwnedAlarm($0.id, legacyOwned: owned) }
+    UserDefaults.standard.removeObject(forKey: "notesnook.taskAlarms.fingerprints.v1")
 
     for alarm in current where desired[alarm.id] == nil {
       try remove(alarm, manager: manager)
       fingerprints.removeValue(forKey: alarm.id.uuidString)
+      redacted.remove(alarm.id.uuidString)
       owned.remove(alarm.id.uuidString)
     }
 
@@ -350,30 +416,58 @@ private extension TaskAlarmModule {
     let now = Date().timeIntervalSince1970
     for item in wanted {
       let existing = currentById[item.id]
+      // 0. App Lock is on and this held presentation was created with a real
+      //    Task title. AlarmKit has no in-place presentation update, so the
+      //    leaking presentation is removed with the supported stop/cancel calls
+      //    and the occurrence is re-scheduled below with the placeholder. The
+      //    privacy policy outranks preserving the presentation: leaving it would
+      //    keep the true title on the Lock Screen, and a later Snooze or Resume
+      //    would re-alert it.
+      var privacyRemoval = false
+      if let existing, item.privacyHidden,
+         !redacted.contains(existing.id.uuidString) {
+        do {
+          try remove(existing, manager: manager)
+          fingerprints.removeValue(forKey: existing.id.uuidString)
+          redacted.remove(existing.id.uuidString)
+          owned.remove(existing.id.uuidString)
+          privacyRemoval = true
+        } catch {
+          // The unredacted presentation could not be removed. It is reported as
+          // held (and presenting) so JS adds no fallback that would duplicate
+          // it, and the failure is never reported as a clean redaction.
+          scheduled.append(item.alarmKey)
+          active.append(item.alarmKey)
+          continue
+        }
+      }
       // 1. A presentation the person is already engaged with at this exact
       //    occurrence is never torn down. `.alerting` is the alarm sounding
       //    (Stop stays a separate user action, so reconciliation must not
       //    silence or complete the Task); `.countdown` is their Snooze and
       //    `.paused` is their Pause. Removing either would silently throw away
       //    a choice the person just made, on the next background reconcile.
-      if let existing,
+      if !privacyRemoval, let existing,
          matchesFixedSchedule(existing, timestamp: item.timestamp),
          existing.state != .scheduled {
         scheduled.append(item.alarmKey)
+        active.append(item.alarmKey)
         continue
       }
       // 2. A Snooze/Pause that is still running is never cancelled, whatever
       //    the desired schedule now says; the alarm re-alerts when the countdown
       //    ends and the reconcile after that picks up any newer occurrence.
-      if let existing,
+      if !privacyRemoval, let existing,
          existing.state == .countdown || existing.state == .paused {
         scheduled.append(item.alarmKey)
+        active.append(item.alarmKey)
         continue
       }
       // 3. An unchanged future alarm is left exactly as it is.
-      if let existing,
+      if !privacyRemoval, let existing,
          matchesFixedSchedule(existing, timestamp: item.timestamp),
-         fingerprints[item.id.uuidString] == item.fingerprint {
+         fingerprints[item.id.uuidString] == item.fingerprint,
+         redacted.contains(item.id.uuidString) == item.privacyHidden {
         scheduled.append(item.alarmKey)
         continue
       }
@@ -382,14 +476,15 @@ private extension TaskAlarmModule {
       //    an alarm nor a notification fallback (JS only falls back for the
       //    occurrences missing from `scheduledAlarmKeys`), i.e. a silently
       //    missed alert. A content-only change is applied to the next
-      //    occurrence instead.
-      if let existing,
+      //    occurrence instead -- except a redaction change, which is applied
+      //    immediately because the alternative is leaving the title visible.
+      if !privacyRemoval, let existing,
          matchesFixedSchedule(existing, timestamp: item.timestamp),
          item.timestamp <= now {
         scheduled.append(item.alarmKey)
         continue
       }
-      if let existing {
+      if !privacyRemoval, let existing {
         do { try remove(existing, manager: manager) }
         catch {
           // The old alarm could not be removed, so it still exists and may
@@ -400,7 +495,9 @@ private extension TaskAlarmModule {
         }
       }
       fingerprints.removeValue(forKey: item.id.uuidString)
-      if item.timestamp <= now { continue } // Stopped one-time alarms remain stopped.
+      // A redaction change is re-scheduled even for an occurrence that is due
+      // now, so removing the leaking presentation cannot also drop the alert.
+      if !privacyRemoval, item.timestamp <= now { continue } // Stopped one-time alarms remain stopped.
 
       do {
         // Persist ownership before scheduling so a crash cannot orphan this alarm.
@@ -450,6 +547,8 @@ private extension TaskAlarmModule {
           secondaryIntent: TaskAlarmRepeatIntent(alarmID: item.id.uuidString))
         _ = try await manager.schedule(id: item.id, configuration: config)
         fingerprints[item.id.uuidString] = item.fingerprint
+        if item.privacyHidden { redacted.insert(item.id.uuidString) }
+        else { redacted.remove(item.id.uuidString) }
         scheduled.append(item.alarmKey)
       } catch {
         // The occurrence stays absent from `scheduled`, so it becomes a
@@ -457,10 +556,13 @@ private extension TaskAlarmModule {
       }
     }
 
-    // The fingerprint uses schedule metadata; Task titles never enter UserDefaults.
+    // The fingerprint uses schedule metadata; Task titles never enter
+    // UserDefaults -- only ids, digests and the App Lock flag per alarm id.
     UserDefaults.standard.set(fingerprints, forKey: fingerprintKey)
+    UserDefaults.standard.set(Array(redacted), forKey: redactedIdsKey)
     UserDefaults.standard.set(Array(owned), forKey: ownedIdsKey)
-    return ["status": "authorized", "scheduledAlarmKeys": scheduled]
+    return ["status": "authorized", "scheduledAlarmKeys": scheduled,
+            "activeAlarmKeys": active]
   }
 
   enum TaskAlarmError: LocalizedError {

@@ -195,7 +195,16 @@ export function desiredTaskAlarms(
 export function overdueTaskSurfaces(
   tasks: Task[],
   now = Date.now(),
-  limit = MAX_OVERDUE_SURFACES
+  limit = MAX_OVERDUE_SURFACES,
+  /**
+   * Occurrences whose AlarmKit alarm is presenting right now (alerting,
+   * counting down after a Snooze, or paused). Those already own a Lock Screen
+   * surface for this occurrence, so the ongoing overdue surface would be a
+   * second, redundant one -- and the person's live alarm must never be traded
+   * for it. Unknown alarm state passes `false` here and leaves the surface
+   * exactly as it was.
+   */
+  isAlarmPresenting?: (alarmKey: string) => boolean
 ): OverdueTaskSurface[] {
   return tasks
     .flatMap((task): OverdueTaskSurface[] => {
@@ -205,6 +214,7 @@ export function overdueTaskSurfaces(
       if (!schedule.date || !schedule.time) return [];
       const current = taskReminderOccurrences(task, now)[0];
       if (!current) return [];
+      if (isAlarmPresenting?.(taskAlarmKey(task, current.key))) return [];
       const age = now - current.timestamp;
       if (age < 0 || age > OVERDUE_SURFACE_LIFETIME_MS) return [];
       return [

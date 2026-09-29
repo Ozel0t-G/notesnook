@@ -37,10 +37,12 @@ const mockEndOverdueActivities = jest.fn(async () => ({
 type AlarmReport = {
   status: "unsupported" | "notDetermined" | "denied" | "authorized";
   scheduledAlarmKeys?: string[];
+  activeAlarmKeys?: string[];
 };
 type CancelReport = {
   status: AlarmReport["status"];
   cancelledAlarmKeys?: string[];
+  retainedAlarmKeys?: string[];
 };
 
 const mockReplaceAlarms = jest.fn(
@@ -85,9 +87,7 @@ jest.mock("../stores/use-user-store", () => ({
   }
 }));
 
-import {
-  desiredTaskAlarms
-} from "./task-alarm-plan";
+import { desiredTaskAlarms } from "./task-alarm-plan";
 import {
   endOverdueActivities,
   reconcileTaskAlarmDelivery,
@@ -118,6 +118,9 @@ function recurringTask(id: string): Task {
   } as Task;
 }
 
+/** A withdrawal that reports every asked key as verifiably withdrawn. */
+const withdrawnAll = { withdraw: jest.fn(async () => new Set<string>()) };
+
 beforeEach(() => {
   mockUserId = "account-a";
   mockSyncOverdueActivities.mockClear();
@@ -126,28 +129,34 @@ beforeEach(() => {
   mockVerifyAlarms.mockClear();
   mockCancelScheduledAlarms.mockClear();
   mockCancelAll.mockClear();
-  mockReplaceAlarms.mockResolvedValue({
+  withdrawnAll.withdraw.mockClear();
+  mockReplaceAlarms.mockImplementation(async (_accountId, alarms) => ({
     status: "authorized",
-    scheduledAlarmKeys: []
-  });
+    scheduledAlarmKeys: (alarms as { alarmKey: string }[]).map(
+      (alarm) => alarm.alarmKey
+    ),
+    activeAlarmKeys: []
+  }));
   mockVerifyAlarms.mockResolvedValue({
     status: "authorized",
-    scheduledAlarmKeys: []
+    scheduledAlarmKeys: [],
+    activeAlarmKeys: []
   });
   mockCancelScheduledAlarms.mockResolvedValue({
     status: "authorized",
-    cancelledAlarmKeys: []
+    cancelledAlarmKeys: [],
+    retainedAlarmKeys: []
   });
 });
 
 describe("Urgent Task alarm delivery", () => {
   test("keeps the account-scoped desired list and reports which occurrences the system holds", async () => {
-    const delivery = await reconcileTaskAlarmDelivery([], false);
+    const delivery = await reconcileTaskAlarmDelivery([], false, withdrawnAll);
 
     expect(mockReplaceAlarms).toHaveBeenCalledWith("account-a", []);
     expect(delivery.status).toBe("authorized");
     expect(delivery.verified).toBe(true);
-    expect([...delivery.scheduledAlarmKeys]).toEqual([]);
+    expect([...delivery.heldAlarmKeys]).toEqual([]);
   });
 
   test("uses the current occurrence's own key, so one failed occurrence cannot fall back the whole series", async () => {
@@ -162,84 +171,204 @@ describe("Urgent Task alarm delivery", () => {
       scheduledAlarmKeys: wanted.slice(0, -1)
     });
 
-    const delivery = await reconcileTaskAlarmDelivery([task], false);
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
 
     expect(delivery.verified).toBe(true);
-    // The delivery answer is per occurrence: only the one whose alarm is
-    // missing needs an audible fallback.
-    expect(wanted.filter((key) => !delivery.scheduledAlarmKeys.has(key))).toEqual(
-      [wanted[wanted.length - 1]]
-    );
+    // Only the occurrence whose alarm is missing is *proven* not held, so only
+    // that one may gain an audible fallback.
+    expect([...delivery.absentAlarmKeys]).toEqual([wanted[wanted.length - 1]]);
   });
 
-  test("treats denied/unsupported as a verified 'nothing scheduled' answer, never as an error", async () => {
-    mockReplaceAlarms.mockResolvedValueOnce({
-      status: "denied" as const,
-      scheduledAlarmKeys: ["task:should-be-ignored"]
+  test("withdraws a competing fallback before the alarm is written, and reports the unwithdrawn key", async () => {
+    const task = recurringTask("gate");
+    const wanted = desiredTaskAlarms([task], false).map(
+      (alarm) => alarm.alarmKey
+    );
+    // The first occurrence's fallback cannot be confirmed withdrawn.
+    const withdrawal = {
+      withdraw: jest.fn(async () => new Set([wanted[0]]))
+    };
+
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawal);
+
+    expect(withdrawal.withdraw).toHaveBeenCalledWith(wanted);
+    // Only the occurrences whose fallback is verifiably gone are introduced.
+    const sent = mockReplaceAlarms.mock.calls[0][1] as {
+      alarmKey: string;
+    }[];
+    expect(sent.map((alarm) => alarm.alarmKey)).toEqual(wanted.slice(1));
+    // The blocked occurrence keeps its notification as the sole delivery, so it
+    // is still a fallback candidate and was never claimed as alarmed.
+    expect([...delivery.absentAlarmKeys]).toEqual([wanted[0]]);
+    expect([...delivery.heldAlarmKeys]).toEqual(wanted.slice(1));
+  });
+
+  test("introduces nothing new when the withdrawal itself throws", async () => {
+    const task = recurringTask("gate-throws");
+    const wanted = desiredTaskAlarms([task], false).map(
+      (alarm) => alarm.alarmKey
+    );
+    const withdrawal = {
+      withdraw: jest.fn(async () => {
+        throw new Error("trigger store unavailable");
+      })
+    };
+
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawal);
+
+    expect(mockReplaceAlarms.mock.calls[0][1]).toEqual([]);
+    expect([...delivery.absentAlarmKeys]).toEqual(wanted);
+  });
+
+  test("reads the native state first and writes nothing when it cannot be read", async () => {
+    const task = recurringTask("unreadable");
+    mockVerifyAlarms.mockRejectedValueOnce(new Error("manager unavailable"));
+
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
+
+    expect(mockVerifyAlarms).toHaveBeenCalledTimes(1);
+    expect(mockReplaceAlarms).not.toHaveBeenCalled();
+    expect(withdrawnAll.withdraw).not.toHaveBeenCalled();
+    // Ambiguous, so nothing is held and nothing is proven absent: the caller
+    // keeps every existing fallback and creates no new one.
+    expect(delivery.verified).toBe(false);
+    expect(delivery.absentAlarmKeys.size).toBe(0);
+    expect(delivery.heldAlarmKeys.size).toBe(0);
+    expect(delivery.error).toBeInstanceOf(Error);
+  });
+
+  test("cleans held alarms up when authorization was revoked, without falling back for the ones still presenting", async () => {
+    const task = recurringTask("revoked");
+    const wanted = desiredTaskAlarms([task], false).map(
+      (alarm) => alarm.alarmKey
+    );
+    mockVerifyAlarms.mockResolvedValueOnce({
+      status: "denied",
+      scheduledAlarmKeys: wanted,
+      activeAlarmKeys: [wanted[0]]
+    });
+    mockCancelScheduledAlarms.mockResolvedValueOnce({
+      status: "denied",
+      cancelledAlarmKeys: wanted.slice(1),
+      retainedAlarmKeys: [wanted[0]]
     });
 
-    const delivery = await reconcileTaskAlarmDelivery([], false);
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
 
-    expect(delivery.status).toBe("denied");
+    expect(mockReplaceAlarms).not.toHaveBeenCalled();
+    // The snoozed/alerting occurrence still owns its delivery; the cancelled
+    // ones are the only occurrences that may become notifications.
+    expect([...delivery.heldAlarmKeys]).toEqual([wanted[0]]);
+    expect([...delivery.activeAlarmKeys]).toEqual([wanted[0]]);
+    expect([...delivery.absentAlarmKeys].sort()).toEqual(wanted.slice(1).sort());
     expect(delivery.verified).toBe(true);
-    expect(delivery.scheduledAlarmKeys.size).toBe(0);
-    expect(delivery.error).toBeUndefined();
-    expect(mockVerifyAlarms).not.toHaveBeenCalled();
   });
 
-  test("recovers an unknown reconcile by verifying what the system still holds", async () => {
+  test("treats an unreachable revoked-alarm cleanup as still held", async () => {
+    const task = recurringTask("revoked-cancel-fails");
+    const wanted = desiredTaskAlarms([task], false).map(
+      (alarm) => alarm.alarmKey
+    );
+    mockVerifyAlarms.mockResolvedValueOnce({
+      status: "denied",
+      scheduledAlarmKeys: wanted
+    });
+    mockCancelScheduledAlarms.mockRejectedValueOnce(new Error("cancel failed"));
+
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
+
+    expect([...delivery.heldAlarmKeys].sort()).toEqual([...wanted].sort());
+    expect(delivery.absentAlarmKeys.size).toBe(0);
+    expect(delivery.error).toBeInstanceOf(Error);
+  });
+
+  test("recovers a lost replace answer by verifying what the system still holds", async () => {
     const task = recurringTask("recurring");
     const wanted = desiredTaskAlarms([task], false).map(
       (alarm) => alarm.alarmKey
     );
     mockReplaceAlarms.mockRejectedValueOnce(new Error("manager unavailable"));
-    mockVerifyAlarms.mockResolvedValueOnce({
-      status: "authorized" as const,
-      scheduledAlarmKeys: wanted.slice(0, 2)
-    });
+    mockVerifyAlarms
+      .mockResolvedValueOnce({ status: "authorized", scheduledAlarmKeys: [] })
+      .mockResolvedValueOnce({
+        status: "authorized",
+        scheduledAlarmKeys: wanted.slice(0, 2)
+      });
 
-    const delivery = await reconcileTaskAlarmDelivery([task], false);
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
 
-    expect(mockVerifyAlarms).toHaveBeenCalledWith("account-a", wanted);
+    expect(mockVerifyAlarms).toHaveBeenLastCalledWith("account-a", wanted);
     expect(delivery.verified).toBe(true);
-    expect([...delivery.scheduledAlarmKeys]).toEqual(wanted.slice(0, 2));
+    expect([...delivery.heldAlarmKeys]).toEqual(wanted.slice(0, 2));
+    expect([...delivery.absentAlarmKeys].sort()).toEqual(
+      wanted.slice(2).sort()
+    );
     // The original failure is still reported, so it is not silently swallowed.
     expect(delivery.error).toBeInstanceOf(Error);
     expect(mockCancelScheduledAlarms).not.toHaveBeenCalled();
   });
 
-  test("cancels only not-yet-alerting alarms when even verification fails", async () => {
+  test("cancels only not-yet-alerting alarms when even verification fails, and reports what it retained", async () => {
     const task = recurringTask("recurring");
     const wanted = desiredTaskAlarms([task], false).map(
       (alarm) => alarm.alarmKey
     );
     mockReplaceAlarms.mockRejectedValueOnce(new Error("replace failed"));
-    mockVerifyAlarms.mockRejectedValueOnce(new Error("verify failed"));
+    // The first (read) verification succeeds; the retry after the failed write
+    // is the one that fails.
+    mockVerifyAlarms
+      .mockResolvedValueOnce({ status: "authorized", scheduledAlarmKeys: [] })
+      .mockRejectedValueOnce(new Error("verify failed"));
+    mockCancelScheduledAlarms.mockResolvedValueOnce({
+      status: "authorized",
+      cancelledAlarmKeys: wanted.slice(1),
+      retainedAlarmKeys: [wanted[0]]
+    });
 
-    const delivery = await reconcileTaskAlarmDelivery([task], false);
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
 
     expect(mockCancelScheduledAlarms).toHaveBeenCalledWith(
       "account-a",
       wanted
     );
-    // Verified cancellation: nothing future will sound, so a fallback for every
-    // occurrence is safe and cannot duplicate an alarm.
+    // Cancelled occurrences are provably silent, so their fallback is safe;
+    // the retained one is still going to alert and gets none.
+    expect([...delivery.absentAlarmKeys].sort()).toEqual(
+      wanted.slice(1).sort()
+    );
+    expect([...delivery.heldAlarmKeys]).toEqual([wanted[0]]);
     expect(delivery.verified).toBe(true);
-    expect(delivery.scheduledAlarmKeys.size).toBe(0);
   });
 
   test("stays unverified when verification and cancellation both fail", async () => {
     const task = recurringTask("recurring");
     mockReplaceAlarms.mockRejectedValueOnce(new Error("replace failed"));
-    mockVerifyAlarms.mockRejectedValueOnce(new Error("verify failed"));
+    mockVerifyAlarms
+      .mockResolvedValueOnce({ status: "authorized", scheduledAlarmKeys: [] })
+      .mockRejectedValueOnce(new Error("verify failed"));
     mockCancelScheduledAlarms.mockRejectedValueOnce(new Error("cancel failed"));
 
-    const delivery = await reconcileTaskAlarmDelivery([task], false);
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
 
     // The caller must not schedule a duplicate audible fallback on this answer.
     expect(delivery.verified).toBe(false);
-    expect(delivery.scheduledAlarmKeys.size).toBe(0);
+    expect(delivery.absentAlarmKeys.size).toBe(0);
+    expect(delivery.heldAlarmKeys.size).toBe(0);
     expect(delivery.error).toBeInstanceOf(Error);
+  });
+
+  test("reports a non-authorized pass as a complete 'no alarm' answer when nothing is held", async () => {
+    mockVerifyAlarms.mockResolvedValueOnce({
+      status: "denied",
+      scheduledAlarmKeys: ["task:should-be-ignored"]
+    });
+
+    const delivery = await reconcileTaskAlarmDelivery([], false, withdrawnAll);
+
+    expect(delivery.status).toBe("denied");
+    expect(delivery.verified).toBe(true);
+    expect(delivery.heldAlarmKeys.size).toBe(0);
+    expect(mockCancelScheduledAlarms).not.toHaveBeenCalled();
   });
 });
 
@@ -302,7 +431,9 @@ describe("independent Task surface cleanup", () => {
 
 describe("overdue Task Live Activity bridge", () => {
   test("hands the desired surfaces, the account and the App Lock flag to the native side", async () => {
-    const surfaces = [{ taskId: "task-1", timestamp: 1700000000000, title: "Pay rent" }];
+    const surfaces = [
+      { taskId: "task-1", timestamp: 1700000000000, title: "Pay rent" }
+    ];
 
     const result = await syncOverdueActivities(surfaces, true);
 

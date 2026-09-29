@@ -1,78 +1,73 @@
-# Urgent reminders — routing/focus/overdue re-run evidence
+# Urgent reminders — routing/focus/overdue/delivery re-run evidence
 
-This directory holds instructions and (once a host run happens) the machine-readable output for
-the bounded milestone that hardened notification/deep-link Task routing, the Tasks-list
-focus/highlight, and the Urgent-only overdue Live Activity.
+This directory holds the re-run instructions for the bounded milestone that hardened
+notification/deep-link Task routing, the Tasks-list focus/highlight, the Urgent-only overdue Live
+Activity, and per-occurrence delivery exclusivity. The machine-readable results are produced by the
+host run; the summary lives in `../urgent-reminders-qa.md`.
 
-## Why this directory is empty of Jest results
+## Status
 
-The isolated coding sandbox that produced these changes had **no `node_modules`, no npm cache,
-and no TypeScript/Jest tooling**, so it could not run the mobile Jest suite or `tsc --noEmit`.
-The new Jest test bytes are therefore **not yet executed**; the routing/focus/overdue changes
-must be re-run in the host QA tree that has dependencies installed.
+The **mobile Jest suite and `tsc --noEmit` now execute in the coding checkout** (workspace packages
+built, `patch-package` applied):
 
-### What *was* executed locally (not Jest)
+- `npx jest app/ --runInBand` → **356/356 tests, 35/35 suites** (the 34-suites/333-tests digest
+  recorded earlier does not cover this round's new/changed files).
+- `npx tsc --noEmit` (from `apps/mobile`) → **0 errors**.
+- Combined digest of this round's changed bytes (recipe below) →
+  `6c411dd505c673223bdf18489d8d06d022aa0372476ff5d69dd3286232a62fff`.
 
-Node 24's `--experimental-transform-types` ran byte-identical copies of the three product modules
-with stubbed dependencies in a TMPDIR harness (the harness itself is deliberately **not** added to
-this repository). All assertions passed:
+Not run anywhere yet: the native iOS build for the current bytes, simulator/computer-use QA, and
+physical-device QA (`PHYSICAL_QA_PENDING`).
 
-- `services/task-navigation.ts` — **34/34**: readiness gating with no protected-domain read before
-  ready; pending intent queued while locked/cold and consumed exactly once after unlock, cleared on
-  logout/account change; wrong-account rejection before any Task lookup; accountless legacy policy
-  with no account read; payload parsing; pure target resolution (moved / completed-in-List /
-  completed-fallback / missing / stale); no complete/update/remove; last-accepted-tap-wins ordering;
-  unique focus nonce per repeat.
-- `screens/tasks/task-focus.ts` — **21/21**: scrolls immediately but highlights only on
-  viewability; bounded retries then release; bounded deadline give-up; cancel ends highlight and
-  aborts retries; new request aborts the old target; adopts a later-resolvable index; settled
-  redelivery is a no-op.
-- `services/task-alarm-plan.ts` `overdueTaskSurfaces()` — **14/14**: Urgent-only; ordinary
-  reminders never take a surface slot; empty desired set on Urgent-off/reminder-removed/completion/
-  deletion/reschedule; 8h lifetime bound; newest-first cap of five; title sanitisation.
-
-This harness executes the real product logic but **does not replace** running the Jest test files
-in the project (React rendering, FlatList callbacks and native behaviour are still unverified).
-
-## Exact commands (run from `apps/mobile` in a checkout with `node_modules`)
+## Exact commands (run from `apps/mobile` in a checkout with `node_modules` + `patch-package`)
 
 ```bash
-# Whole mobile Jest suite, machine-readable
-npx --no-install jest app/ --runInBand --json --outputFile=/tmp/veyran-routing-tests.json
+# Whole mobile Jest suite, machine-readable. The module mapper is required: metro/rspack alias
+# @notifee/react-native -> @ammarahmed/notifee-react-native and the repo has no Jest config.
+BROWSERSLIST="node 20" npx --no-install jest app/ --runInBand \
+  --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}' \
+  --json --outputFile="$TMPDIR/veyran-routing-tests.json"
 
 # Focused suites added/changed by this milestone
-npx --no-install jest \
+BROWSERSLIST="node 20" npx --no-install jest \
   app/services/task-navigation.test.ts \
   app/services/task-alarm-plan.test.ts \
+  app/services/task-notification-plan.test.ts \
+  app/services/task-alarms.test.ts \
+  app/services/task-notifications.test.ts \
   app/screens/tasks/task-focus.test.ts \
-  --runInBand
+  --runInBand --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}'
 
-# Full-app type-check (known dependency/setup/baseline errors remain; diff against baseline)
-npx --no-install tsc --noEmit
+# Full-app type-check (0 errors on this round's bytes)
+BROWSERSLIST="node 20" npx --no-install tsc --noEmit
 ```
 
-## Bytes under test (recorded from the coding checkout; recompute in the host tree)
+## Bytes under test
 
-- `sha256(git diff HEAD -- apps/mobile/app) = 72429f30d3ca12bc4c8364ba2bfd388550195fdcb788dc13bf581faf95adabaa`
-  (excludes the two new untracked files below).
-- `apps/mobile/app/screens/tasks/task-focus.ts`
-  `sha256 c3937b6387f6e75c62c936f440d6788bcb365e9327a7b563440db8711fa3f198`
-- `apps/mobile/app/screens/tasks/task-focus.test.ts`
-  `sha256 f49104362c843ced7b57eaa89c7bbf58056ccca8e0c5de2f68339c9f691b44b7`
+```bash
+# from the repository root
+{ git diff HEAD -- apps/mobile/app packages/core; \
+  for f in $(git ls-files -o --exclude-standard -- apps/mobile/app); do cat "$f"; done; } | shasum -a 256
+```
 
-The prior **296/296 tests, 33/33 suites** result was bound to the prior `apps/mobile/app` bytes
-(`sha256 5502e4bc8e9ed8ac925ba8ed20885f99f8f727f60d43dd2eae355c7713f7dc68`) and does **not**
-cover these new/changed files.
+Per-file hashes and the host QA action list are in `../urgent-reminders-qa.md`.
 
 ## What the re-run must confirm
 
-1. `task-navigation.test.ts` — readiness gating (no domain read before ready), bounded pending
-   queue consumed once after unlock and cleared on logout/account change, wrong-account rejection
-   before any Task lookup, accountless legacy policy, moved/completed/missing/stale targets,
-   last-accepted-tap-wins ordering, unique focus nonce, and that nothing routes into the editor or
-   completes/edits a Task.
-2. `task-focus.test.ts` — highlight starts only from viewability, bounded retries + bounded
-   deadline, cancel on new intent/unmount, no stale captured index, no re-arm from mere visibility.
-3. `task-alarm-plan.test.ts` — `overdueTaskSurfaces()` is Urgent-only, ordinary reminders never
-   take a surface slot, and the desired set empties on Urgent-off/reminder-removed/completion/
-   deletion/reschedule.
+1. `task-notifications.test.ts` — the production pass withdraws a competing fallback **before** an
+   alarm is introduced; a lost replace acknowledgement leaves exactly one audible delivery; a
+   verified cancellation grants fallbacks only to the occurrences it cancelled; a snoozed alarm is
+   never traded for a fallback; alarms held from before a denied authorization are cleaned up and
+   the presenting one is not duplicated; per-occurrence payload identity; App Lock redaction from
+   the persisted setting; pending cleanup obligations retried before planning.
+2. `task-alarms.test.ts` — read-first reconcile, the withdrawal gate, denied/unsupported cleanup and
+   the truthful `cancelled`/`retained`/`active` reporting, plus `runIndependentCleanup`.
+3. `task-navigation.test.ts` — readiness gating, wrong-account rejection before any Task read,
+   occurrence-accurate resolution (completed occurrence shows its own record; a future occurrence
+   shows the series' current record; a missing one shows the generic message), no mutation, no
+   editor, last-accepted-tap-wins.
+4. `task-focus.test.ts` — highlight only from viewability, bounded retries + deadline, cancel on new
+   intent/unmount.
+5. `task-alarm-plan.test.ts` — Urgent-only overdue surfaces, empty set on Urgent-off/reminder
+   removed/completion/deletion/reschedule, newest-first cap, and no surface for an occurrence whose
+   alarm is presenting.

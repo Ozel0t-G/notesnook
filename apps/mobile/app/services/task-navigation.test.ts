@@ -23,6 +23,7 @@ jest.mock("../common/database", () => ({
     user: { getUser: jest.fn() },
     tasks: {
       get: jest.fn(),
+      list: jest.fn(async () => []),
       complete: jest.fn(),
       update: jest.fn(),
       remove: jest.fn()
@@ -67,9 +68,11 @@ import {
   taskNotificationIntent
 } from "./task-navigation";
 
+
 const database = db as unknown as { isInitialized: boolean };
 const mockedGetUser = db.user.getUser as unknown as jest.Mock;
 const mockedGetTask = db.tasks.get as unknown as jest.Mock;
+const mockedListTasks = db.tasks.list as unknown as jest.Mock;
 const mockedGetList = db.taskLists.getSync as unknown as jest.Mock;
 const navigate = Navigation.navigate as unknown as jest.Mock;
 const toast = ToastManager.show as unknown as jest.Mock;
@@ -425,6 +428,104 @@ describe("Task target resolution", () => {
 
     for (const call of navigate.mock.calls)
       expect(call[0]).not.toBe("TaskDetail");
+  });
+});
+
+describe("recurring occurrence identity", () => {
+  test("resolves the record of the exact occurrence the notification was produced for", async () => {
+    // The series rolled forward: the record for the tapped occurrence exists and
+    // is completed; the live record belongs to the *next* occurrence.
+    mockedListTasks.mockResolvedValue([
+      {
+        id: taskId(20),
+        seriesId: "series-1",
+        occurrenceKey: "2026-10-02T14:00",
+        listId: "personal",
+        completed: true
+      },
+      {
+        id: taskId(21),
+        seriesId: "series-1",
+        occurrenceKey: "2026-10-03T14:00",
+        listId: "personal",
+        completed: false
+      }
+    ]);
+
+    await openTaskInContext({
+      taskId: taskId(20),
+      seriesId: "series-1",
+      occurrenceKey: "2026-10-02T14:00",
+      source: "notification"
+    });
+
+    // The tapped occurrence's own record is shown (completed), never the next
+    // occurrence, and nothing is mutated.
+    expect(navigate).toHaveBeenCalledWith(
+      "Tasks",
+      expect.objectContaining({ focusTaskId: taskId(20), includeCompleted: true })
+    );
+    expect(db.tasks.complete).not.toHaveBeenCalled();
+    expect(db.tasks.update).not.toHaveBeenCalled();
+  });
+
+  test("answers a future occurrence the series has not reached with the current record", async () => {
+    mockedGetTask.mockResolvedValue(undefined);
+    mockedListTasks.mockResolvedValue([
+      {
+        id: taskId(22),
+        seriesId: "series-2",
+        occurrenceKey: "2026-10-01T14:00",
+        listId: "work",
+        completed: false
+      }
+    ]);
+
+    await openTaskInContext({
+      taskId: taskId(22),
+      seriesId: "series-2",
+      occurrenceKey: "2026-10-05T14:00",
+      source: "notification"
+    });
+
+    // The series' current record is the current state of that Task.
+    expect(navigate).toHaveBeenCalledWith(
+      "Tasks",
+      expect.objectContaining({ listId: "work", focusTaskId: taskId(22) })
+    );
+  });
+
+  test("reports an occurrence of a series this account does not have as unavailable", async () => {
+    mockedGetTask.mockResolvedValue(undefined);
+    mockedListTasks.mockResolvedValue([]);
+
+    await openTaskInContext({
+      taskId: taskId(23),
+      seriesId: "series-3",
+      occurrenceKey: "2026-10-05T14:00",
+      source: "notification"
+    });
+
+    expect(navigate).toHaveBeenCalledWith("Tasks");
+    expect(toast).toHaveBeenCalledWith({
+      message: TASK_UNAVAILABLE_MESSAGE,
+      type: "info"
+    });
+  });
+
+  test("reads the series identity a producer attached", () => {
+    expect(
+      taskNotificationIntent(
+        { taskId: taskId(24), seriesId: "series-4", occurrenceKey: "k" },
+        "notification"
+      )
+    ).toEqual({
+      taskId: taskId(24),
+      accountId: undefined,
+      seriesId: "series-4",
+      occurrenceKey: "k",
+      source: "notification"
+    });
   });
 });
 

@@ -39,10 +39,19 @@ export type ExistingTaskTrigger = {
 export type UrgentAlarmFallback = {
   needsFallback: (alarmKey: string) => boolean;
   /**
-   * Set only when the native alarm state could not be determined. An Urgent
-   * occurrence without fallback news then keeps whatever trigger it already has
-   * (rather than being cancelled into silence) and never gains a second,
-   * duplicate audible alert. Callers that know the alarm state leave this off.
+   * Asked per occurrence when `needsFallback` is false: the native alarm state
+   * for this occurrence could not be determined, so its existing fallback (if
+   * any) is kept untouched and no new one is created. This is the fail-closed
+   * answer for a single occurrence, so one unknown occurrence never forces the
+   * rest of the plan into the same all-or-nothing treatment.
+   */
+  isUnknown?: (alarmKey: string) => boolean;
+  /**
+   * Set only when the native alarm state could not be determined at all. Every
+   * Urgent occurrence without fallback news then keeps whatever trigger it
+   * already has (rather than being cancelled into silence) and never gains a
+   * second, duplicate audible alert. Callers that know the alarm state leave
+   * this off.
    */
   preserveExisting?: boolean;
 };
@@ -85,32 +94,45 @@ export function planTaskNotifications(
     .flatMap((task) =>
       taskReminderOccurrences(task, now)
         .filter((occurrence) => occurrence.timestamp > now)
-        .map((occurrence) => ({
-          ...task,
-          notificationId: taskNotificationId(
-            task.seriesId || task.id,
-            task.recurrenceRule ? occurrence.key : undefined
-          ),
-          timestamp: occurrence.timestamp,
-          // A notification is only ever a fallback for the occurrence whose
-          // own alarm is not scheduled, so the decision is taken per
-          // occurrence (stable `taskAlarmKey`), never per Task. Non-urgent
-          // Tasks are their own normal notification path and are never
-          // fallbacks.
-          urgentFallback: Boolean(task.urgent),
-          needsFallback:
-            !task.urgent ||
-            urgentFallback.needsFallback(taskAlarmKey(task, occurrence.key))
-        }))
+        .map((occurrence) => {
+          const alarmKey = taskAlarmKey(task, occurrence.key);
+          // An Urgent occurrence whose alarm state is unknown must never gain a
+          // second, possibly-duplicate audible alert. It is not granted a new
+          // fallback, but an existing trigger is preserved rather than
+          // cancelled into silence.
+          const unknownAlarm = task.urgent
+            ? Boolean(urgentFallback.preserveExisting) ||
+              Boolean(urgentFallback.isUnknown?.(alarmKey))
+            : false;
+          return {
+            ...task,
+            notificationId: taskNotificationId(
+              task.seriesId || task.id,
+              task.recurrenceRule ? occurrence.key : undefined
+            ),
+            timestamp: occurrence.timestamp,
+            // The notification's own occurrence identity travels with it, so a
+            // tap on a future occurrence can never be answered with whatever
+            // occurrence the Task record happens to hold by then. The id is the
+            // authoritative record id core uses for that occurrence, so the tap
+            // resolves the record for the occurrence it was produced for.
+            occurrenceKey: task.recurrenceRule ? occurrence.key : undefined,
+            seriesId: task.recurrenceRule ? task.seriesId || task.id : undefined,
+            // A notification is only ever a fallback for the occurrence whose
+            // own alarm is not scheduled, so the decision is taken per
+            // occurrence (stable `taskAlarmKey`), never per Task. Non-urgent
+            // Tasks are their own normal notification path and are never
+            // fallbacks.
+            urgentFallback: Boolean(task.urgent),
+            unknownAlarm,
+            needsFallback:
+              !task.urgent || (!unknownAlarm && urgentFallback.needsFallback(alarmKey))
+          };
+        })
     )
-    // An Urgent occurrence whose alarm state is unknown is never granted a new
-    // audible fallback, but is kept only if it already has a trigger, so a
-    // working fallback is not cancelled into silence by a failed verification.
     .filter(
       (entry) =>
-        entry.needsFallback ||
-        (Boolean(urgentFallback.preserveExisting) &&
-          existingIds.has(entry.notificationId))
+        entry.needsFallback || (entry.unknownAlarm && existingIds.has(entry.notificationId))
     );
   const wanted = eligible
     .sort(

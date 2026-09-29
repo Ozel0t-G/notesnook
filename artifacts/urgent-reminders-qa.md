@@ -1,105 +1,157 @@
 # Urgent reminders + notification routing — QA report
 
-Current milestone: **bounded alarm-correctness** (per-occurrence delivery exclusivity, honest
-unknown native state, independent + generation-guarded account cleanup, documented ActivityKit
-conditions), stacked on the earlier **routing/focus hardening + Urgent-only overdue cleanup**.
+Current milestone: **review-round fixes** — per-occurrence delivery exclusivity that withdraws a
+competing fallback *before* an alarm is introduced, truthful denied/unsupported handling, App Lock
+privacy transitions for alarms that are already presenting, durable device-cleanup obligations,
+occurrence-accurate notification tap identity, and the review's TypeScript errors. Stacked on the
+earlier **bounded alarm-correctness** and **routing/focus hardening + Urgent-only overdue cleanup**
+milestones.
 
-Source base: `17def76c1e069a72c4b74e9c035a847ff66c286b` (branch `test`), carrying the partial
-urgent-reminders feature/test-harness work plus this later bounded milestone. This is **not** the
-older `5dc366a0` candidate — that candidate's pass is kept below as HISTORICAL only.
+Source base: `17def76c1e069a72c4b74e9c035a847ff66c286b` (branch `test`). `packages/core` is
+**unchanged** by this pass (byte-identical to the base; verified with
+`git diff --stat -- packages/core`).
 
-See `docs/urgent-reminders-architecture.md` for behavior and the architecture-recorded overdue
-Activity limits; `artifacts/urgent-reminders-qa/` holds the exact re-run commands.
+See `docs/urgent-reminders-architecture.md` for the behavior and the recorded ActivityKit/AlarmKit
+limits; `artifacts/urgent-reminders-qa/` holds the re-run commands.
 
-## This milestone's changes (new bytes — NOT covered by the 296/296 result)
+## What this round changed
 
-| Area | Change | New/changed tests |
+| Area | Change | Focused tests |
 |---|---|---|
-| Tap routing (`services/task-navigation.ts`) | Minimal intents (`taskId`, `accountId?`, `occurrenceKey?`, `source`); readiness gate over `isAppInitialized`/`isAppLoading`/`appLocked`/`isLoggingOut`; bounded pending-intent queue consumed once after unlock and cleared on logout/account change; wrong-account rejection **before** any Task lookup; accountless legacy policy documented; moved/completed(`includeCompleted`)/missing/stale handling; last-accepted-tap-wins generation; unique `focusRequestId` nonce; never completes/edits/opens the editor. | `services/task-navigation.test.ts` (rewritten, exercises the real exported helpers/handlers) |
-| Tasks focus (`screens/tasks/index.tsx`, new `screens/tasks/task-focus.ts`) | `TaskFocusSession`: viewability-gated highlight, bounded retry, bounded deadline, cancel on new intent/list change/unmount; no captured stale index; keyboard dismissed on arrival; `focusTaskId`/`focusRequestId`/`includeCompleted` route params. | `screens/tasks/task-focus.test.ts` (exercises the real session/helpers) |
-| Overdue planner (`services/task-alarm-plan.ts`) | `overdueTaskSurfaces()` restricted to incomplete **Urgent** timed Tasks; desired set empties on Urgent-off/reminder-removed/completion/deletion/reschedule so the native reconcile clears the surface; ordinary reminders can no longer consume a surface slot. | `services/task-alarm-plan.test.ts` (updated: normal-reminder expectations corrected, cleanup cases added) |
-| Producer payload (`services/task-notifications.ts`) | Every Task notification now carries the owning `accountId` and the `occurrenceKey` so a tap can be validated before any Task read. | covered by `task-navigation.test.ts#taskNotificationIntent` + `task-alarm-plan.test.ts` |
+| Exclusivity gate (`services/task-alarms.ts`, `services/task-notifications.ts`) | `reconcileTaskAlarmDelivery()` now **reads first** (`verifyAlarms`), then requires the competing notification fallback of every *missing* occurrence to be withdrawn **and the withdrawal re-verified** before that occurrence may gain an alarm; a failed read writes nothing and withdraws nothing. The per-occurrence answer is now `held` / `active` / `absent` / unverified, so an unknown occurrence keeps its existing fallback and gains none — instead of a lost replace acknowledgement leaving a new alarm **and** the old fallback for the same occurrence. | `task-alarms.test.ts` (withdrawal gate, unwithdrawn key, nothing written on an unreadable state), `task-notifications.test.ts` (lost ack, partial cancellation, no duplicate) |
+| Denied / unsupported truthfulness (native + bridge) | A revoked/denied authorization is no longer reported as "nothing scheduled": alarms scheduled while the app *was* authorized are queried, the not-yet-alerting ones it owns are cancelled, and the ones still presenting (`alerting`/`countdown`/`paused`) are reported as held so no fallback duplicates them. `cancelScheduledAlarms` now reports `retainedAlarmKeys` as well as `cancelledAlarmKeys`; `verifyAlarms`/`replaceAlarms` report `activeAlarmKeys`. | `task-alarms.test.ts`, `task-notifications.test.ts` (denied-after-authorization) |
+| App Lock privacy (native) | A held presentation created with the real Task title is removed with the supported `stop`/`cancel` calls when App Lock is on, then re-scheduled from the redacted placeholder (including for an occurrence that is already due, so removing the leak cannot also drop the alert). Per-alarm redaction is persisted as **ids only** (`notesnook.taskAlarms.redactedIds.v1`); no title, account or other content enters `UserDefaults`. | Swift type-check (host) + review; the JS side is covered by `task-notifications.test.ts` (redaction, displayed-notification withdrawal) |
+| Redaction source | `taskSurfacesPrivacyHidden()` = persisted `SettingsService.get().appLockEnabled` **or** the hydrated store, so a headless/not-yet-hydrated process can never default to "not hidden". | `task-notifications.test.ts` (persisted-on/store-off) |
+| Durable cleanup (JS) | A cleanup that fails is persisted as a minimal obligation (`notesnook.taskSurfaces.pendingCleanup.v1`: mechanism labels + timestamp, no content, no account id) and retried at the next launch/foreground **before** any new planning — including when the Task domain is not initialized or the app is mid-logout, because every mechanism cancels surfaces by ownership, not by reading the old account. | `task-notifications.test.ts` (#3 cleanup obligations) |
+| Occurrence-accurate taps | A notification now stamps its **own** occurrence (`occurrenceKey` + `seriesId`), and the router resolves the authoritative record through the domain (`db.tasks.list()` by `seriesId`+`occurrenceKey`), falling back to the series' current record for a future occurrence whose record does not exist yet. The tapped occurrence is never answered with the next one, and nothing is mutated. | `task-navigation.test.ts` (occurrence identity), `task-notifications.test.ts` (stamped payload) |
+| Subscription (verification) | The "settings-only subscription" critique is a **false positive**: core stores Task records in the settings collection (`TaskRecordStore.save` → `db.settings.collection.upsert`), and `SQLCollection.upsert` publishes `databaseUpdated` with `collection: this.type` (`"settings"`) — see `packages/core/src/collections/tasks.ts`, `packages/core/src/database/sql-collection.ts:108`, `packages/core/src/collections/settings.ts:104`. | `task-notifications.test.ts` (settings-collection write re-plans) |
+| Duplicate surface | An occurrence whose alarm is *presenting* is excluded from the overdue Live Activity (`overdueTaskSurfaces(..., isAlarmPresenting)`), so one occurrence never owns two Lock Screen surfaces. | `task-alarm-plan.test.ts` |
+| Widget account change | A user-id change now clears **and** re-projects the widget snapshot instead of leaving the widget empty (or the previous account's state) until an unrelated event. Availability fix only; the completion queue/auth paths are untouched. | `reminder-widget.test.ts`, `reminder-widget-writer.test.ts`, `reminder-widget-completion.test.ts` (all pass, unchanged) |
+| Review's TypeScript errors | `screens/tasks/index.tsx` `useRef<TaskFocusSession>()` → `useRef<TaskFocusSession \| undefined>(undefined)`; the logout/account-change cleanup chain no longer returns `Promise<string[]>` where `Promise<void>` is expected. | full `tsc --noEmit` below |
 
-Wiring: `services/notifications.ts` (warm `PRESS`) and `hooks/use-app-events.tsx`
-(cold-start initial notification, widget link, legacy `open_reminder` link, unlock consumption,
-logout/account-change clearing).
-
-## Bounded alarm-correctness milestone (per-occurrence exclusivity, honest unknown, independent cleanup)
-
-| Area | Change | New/changed tests |
-|---|---|---|
-| Per-occurrence identity (`services/task-alarm-plan.ts`) | New `taskAlarmKey(task, occurrenceKey)` is the one stable occurrence identity (`series:<seriesId\|id>:<occurrenceKey>` / `task:<id>`) shared by the alarm and the notification fallback; `desiredTaskAlarms()` uses it. | `task-alarm-plan.test.ts` |
-| Per-occurrence fallback (`services/task-notification-plan.ts`) | `planTaskNotifications()` now takes `UrgentAlarmFallback` whose `needsFallback(alarmKey)` is asked **per occurrence**; a recurring series with a missing alarm falls back only for that occurrence. A `preserveExisting` mode keeps an existing trigger (and adds none) when the native state is unknown instead of cancelling a working fallback into silence. | `task-notification-plan.test.ts` |
-| Native contract (`TaskAlarmModule.swift`, `TaskAlarmModule.m`) | `replaceAlarms` returns `scheduledAlarmKeys` (the per-occurrence truth; `failedTaskIds` is gone). New `verifyAlarms(accountId, alarmKeys)` reports what the system still holds; new `cancelScheduledAlarms(accountId, alarmKeys)` cancels **only `.scheduled`** alarms (never alerting/snoozed/paused). `WantedAlarm` carries `alarmKey`. | `task-alarms.test.ts` |
-| Bridge (`services/task-alarms.ts`) | `reconcileTaskAlarmDelivery()` returns `{status, scheduledAlarmKeys: Set, verified}` and resolves an unknown reconcile in tiers: replace → verify → verified cancellation → unverified. New `runIndependentCleanup()` runs every attempt even when one rejects. | `task-alarms.test.ts` |
-| Producer/orchestrator (`services/task-notifications.ts`) | Wires the per-occurrence decision; fallback notifications use `strings.tasksUrgentFallbackBody()`; an account-generation guard aborts a stale async pass; account-change/logout cleanup attempts notifications, native alarms and overdue activities independently and logs the failing mechanisms; an already-displayed Task notification created with the real title is withdrawn once App Lock is on. | decision logic covered by `task-alarms.test.ts` + `task-notification-plan.test.ts`; the notifee-side withdrawal and cleanup orchestration are **not** Jest-covered here |
-
-## Current evidence (this milestone — base `17def76c1`)
+## Evidence (this round, executed in this checkout)
 
 | Check | Result | Notes |
 |---|---|---|
-| This milestone's focused Jest suites (`task-alarms.test.ts`, `task-notification-plan.test.ts`, `task-alarm-plan.test.ts`) | **NOT RUN in the worker sandbox** | The isolated checkout has **no `node_modules`** and no npm cache, and no TypeScript/Jest tooling is installed, so the project's Jest suite or `tsc` could not execute here. The new Jest bytes are therefore **not yet run**; every prior result below is bound to older bytes. |
-| Local behavioral harness on the **real module bytes** (ad-hoc, not Jest) | **69/69 assertions pass** | Node 24 `--experimental-transform-types` executed byte-identical copies of the product modules with stubbed dependencies in a TMPDIR harness: `task-navigation.ts` **34/34** (readiness gating, no domain read before ready, queue consume-once + clear-on-logout, wrong-account rejection before lookup, accountless policy, payload parsing, pure target resolution, moved/completed/`includeCompleted`/missing/stale, no mutation/editor, last-tap-wins ordering, unique focus nonce), `task-focus.ts` **21/21** (viewability-gated highlight, bounded retry + deadline, cancel on new intent, no stale index, no re-visible re-arm), `task-alarm-plan.ts` `overdueTaskSurfaces()` **14/14** (Urgent-only, ordinary reminders never take a slot, empty desired set on Urgent-off/reminder-removed/completion/deletion/reschedule, lifetime/cap/title). Verified digests: `task-navigation.ts sha256 79b10d12…80eb56`, `task-focus.ts c3937b63…1fa3f198`, `task-alarm-plan.ts d31c7bc7…e5b9fec`. **This is not a substitute** for the project Jest suite (the test files themselves were not executed), and it cannot exercise React rendering, the FlatList, or native code. |
-| Mobile jest suite, supervisor-run (PRIOR JS) | **296/296 tests, 33/33 suites, 0 failed, 0 pending** | Command: `npx --no-install jest app/ --runInBand --json --outputFile=<json>` executed from the retained prior checkout's `apps/mobile`. Verified at `/Users/ozel0t/Notesnook/qa/veyran-urgent-reminders/mobile-current-tests.json`. This covers only the **prior** `apps/mobile/app` bytes (`sha256 5502e4bc…3f7dc68`), **not** this milestone's new/changed files. |
-| Local behavioral harness on the **alarm-correctness bytes** (ad-hoc, not Jest) | **27/27 assertions pass** | Node 24 `--experimental-transform-types` (with a resolver shim that only appends the missing `.ts`/`.js` extension — the module **bytes are unchanged**, digests below) executed byte-identical copies of `task-alarm-plan.ts`, `task-notification-plan.ts` and `task-alarms.ts` with stubbed `@notesnook/core`, `rrule`, `react-native` and `use-user-store`. Coverage: distinct per-occurrence keys; a mixed recurring series falling back for **only** the missing occurrence; unknown state keeping an existing fallback and adding none; a verified answer cancelling a stale fallback; normal reminders unchanged; `reconcileTaskAlarmDelivery` replace→verify→cancel→unverified tiers and the denied-is-verified case; `runIndependentCleanup` running every step past a rejection. **Not a substitute** for Jest (the test files themselves were not executed). |
-| Swift **type-check** of `TaskAlarm/TaskAlarmSurface.swift` + `TaskAlarmModule.swift` | **clean (0 errors)** | `swiftc -typecheck -target arm64-apple-ios26.0 -sdk <iPhoneOS27.0.sdk> -I <React typedef stub> -module-cache-path <TMPDIR>`. The SDK ships `AlarmKit.framework`/`ActivityKit.framework`, so `#if canImport(AlarmKit)`/`canImport(ActivityKit)` **were** compiled: the dumped AST contains 258 matches for `cancelScheduledAlarms`/`OverdueActivity`/`TaskAlarmRepeatIntent`/`alarmId`. Only `React` was stubbed, with the exact `RCTPromiseResolveBlock`/`RCTPromiseRejectBlock` typedefs (`void (^)(id)` / `void (^)(NSString *, NSString *, NSError *)`). This type-checks the new `scheduledAlarmKeys`/`verifyAlarms`/`cancelScheduledAlarms` code against the real SDK, but is **not** a full app/target build (no Pods, no `TaskAlarmModule.m` ObjC expansion, no link). |
-| Prior tested mobile source diff | `sha256 5502e4bc8e9ed8ac925ba8ed20885f99f8f727f60d43dd2eae355c7713f7dc68` | Prior JS only; does not cover the routing/focus/overdue changes made in this milestone. |
-| Previously failing account suites (`account-logout`, `account-session`) | **repaired, assertions unchanged** | Hoist/mock-initialization fixes; account **production** code unchanged. |
-| Mobile TypeScript, full app (`tsc --noEmit`) | **not clean — unresolved** | Remaining errors are dependency/setup/baseline issues (`clipboard.setHTML`, a null ref, swiper, Orama generics). Not run in this milestone (no toolchain). |
-| Native iOS build (host, iPhone ARM64) | **NOT PASSED / not re-run** | **This milestone changed native code** (`TaskAlarmModule.swift`/`.m`: `scheduledAlarmKeys`, `verifyAlarms`, `cancelScheduledAlarms`, `WantedAlarm.alarmKey`). A targeted `swiftc -typecheck` against the iPhoneOS27 SDK came back clean (row above), but the full app/target build (Pods, the `.m` ObjC expansion, link, widget target) is **pending** and remains the authoritative check. |
-| Physical device QA | **`PHYSICAL_QA_PENDING`** | No physical phone available. |
-| Interactive simulator QA | **not yet performed** | Highlights/scroll and the highlight-only-when-viewable behavior are **not** yet visually confirmed; the unit tests exercise the session's decisions, not pixels. |
-| Independent candidate review (security / domain / diff) | **pending** | Not performed in this pass. |
+| Mobile Jest suite | **356/356 tests, 35/35 suites, 0 failed, 0 pending** | `BROWSERSLIST="node 20" npx --no-install jest app/ --runInBand --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}'` from `apps/mobile`. The module mapper is required because metro/rspack alias `@notifee/react-native` → `@ammarahmed/notifee-react-native` (`apps/mobile/metro.config.js:26`, `apps/mobile/rspack.config.js:90`) and the repository contains no Jest config. New in this round: `task-notifications.test.ts` (15 production-orchestrator tests over the real pass). |
+| Mobile TypeScript, full app (`tsc --noEmit`) | **0 errors** | `BROWSERSLIST="node 20" npx --no-install tsc --noEmit` from `apps/mobile`, after building the workspace packages and running `patch-package` (see setup below). Without `patch-package` the pre-existing dependency errors reappear (`clipboard.setHTML`, `react-native-swiper-flatlist` null ref) — those are setup artifacts, not source errors. The `use-editor.ts` implicit-`any` reported by an earlier QA tree did **not** reproduce once the workspace packages were built here; it is not claimed as fixed, only as not observed. |
+| Core sources | **unchanged** | `git diff --stat -- packages/core` is empty. |
+| Native Swift | **NOT re-run here** | Xcode/SDK writes are blocked in this sandbox. `TaskAlarmModule.swift` changed (privacy transition, `activeAlarmKeys`, `retainedAlarmKeys`, revoked-authorization cleanup), so the host type-check/build is required and remains the authoritative check. |
+| Native iOS build (host, ARM64 iPhone + iPad) | **NOT re-run for this milestone** | The prior `78c04436d` builds predate the new native methods and the actual candidate bytes; they must not be quoted as current evidence. |
+| Physical device QA | **`PHYSICAL_QA_PENDING`** | No physical phone available; no sound/haptics/locked-device claims are made. |
+| Interactive simulator QA | **not performed** (Codex/computer-use step, specified below) | Highlight-only-when-viewable, warm/cold/locked taps, App Group and notification delivery need a real run. |
 
-## Exact re-run commands (for the host QA tree with dependencies)
+### Deterministic setup (host, once per fresh tree)
 
 ```bash
-# from apps/mobile, in a checkout with node_modules installed
-npx --no-install jest app/ --runInBand --json --outputFile=/tmp/veyran-routing-tests.json
-# focused suites only
-npx --no-install jest \
-  app/services/task-navigation.test.ts \
-  app/services/task-alarm-plan.test.ts \
-  app/services/task-notification-plan.test.ts \
-  app/services/task-alarms.test.ts \
-  app/screens/tasks/task-focus.test.ts --runInBand
-# full-app type-check (known baseline errors remain; compare against the prior baseline)
-npx --no-install tsc --noEmit
+# from the repository root, with a writable npm cache
+npm install --ignore-scripts --legacy-peer-deps --cache "$TMPDIR/npm-cache"
+for p in core logger crypto theme common intl editor; do
+  npm install --prefix "packages/$p" --ignore-scripts --legacy-peer-deps --cache "$TMPDIR/npm-cache"
+  npm run build --prefix "packages/$p"
+done
+(cd apps/mobile && npx --no-install patch-package)     # applies apps/mobile/patches (clipboard, swiper, ...)
+```
+
+Notes for the host run:
+
+- `packages/intl`'s `npm run build` runs a Lingui extract step and a Vite build. In the worker
+  sandbox the Vite step aborted with `EPERM` while PostCSS searched parent directories above the
+  checkout; building the same package from a copy under `$TMPDIR` succeeded and its `dist/` was
+  used here. On the host, run the documented `npm run build --prefix packages/intl`; if the extract
+  step fails, `npx vite build` from `packages/intl` still produces `dist/index.js|mjs|d.ts`.
+- `BROWSERSLIST` is only needed for the sandbox (browserslist walks to an unreadable parent
+  directory); on the host the plain commands work.
+
+### Exact re-run commands
+
+```bash
+cd apps/mobile
+BROWSERSLIST="node 20" npx --no-install jest app/ --runInBand \
+  --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}' \
+  --json --outputFile="$TMPDIR/veyran-tests.json"
+BROWSERSLIST="node 20" npx --no-install tsc --noEmit
 ```
 
 ```bash
-# native module type-check (worker-sandbox build; stub only React's promise typedefs)
-SDK=$(xcrun --sdk iphoneos --show-sdk-path)      # iPhoneOS27.0.sdk ships AlarmKit + ActivityKit
-swiftc -typecheck -target arm64-apple-ios26.0 -sdk "$SDK" -I "$STUB" \
-  -module-cache-path "$TMPDIR/vyswiftcache" \
-  apps/mobile/ios/Notesnook/TaskAlarm/TaskAlarmSurface.swift \
-  apps/mobile/ios/Notesnook/TaskAlarm/TaskAlarmModule.swift
-# full native build (host, with Pods) is still required and NOT run here
+# native (host, authoritative): widget target included
+xcodebuild -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme Notesnook \
+  -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' \
+  -derivedDataPath "$TMPDIR/DerivedData" build
 ```
 
-## Bytes under test (alarm-correctness milestone; recompute in the host tree)
+## Bytes under test (this round; recompute in the host tree)
 
-`sha256` of the byte-identical copies executed by the local harness (identical to the repository
-bytes at the time of the run):
+`sha256` of the changed product/test files, and the combined recipe used for the milestone digest:
 
-- `apps/mobile/app/services/task-alarm-plan.ts` — `5e3b869ad2cae948a10b4d526aef410ac6d4968d01b3f2e8ca13d6dfa784ae54`
-- `apps/mobile/app/services/task-notification-plan.ts` — `3898db40f5ea378c260382fa6ad822d74c4bcd6ba130768380997e86da7a08c8`
-- `apps/mobile/app/services/task-alarms.ts` — `f7e88df03051a8fa56a3b3c9d3f3a4894d6e0bb098dccfcbfddea80b57269333`
+```bash
+{ git diff HEAD -- apps/mobile/app packages/core; \
+  for f in $(git ls-files -o --exclude-standard -- apps/mobile/app); do cat "$f"; done; } | shasum -a 256
+# -> 6c411dd505c673223bdf18489d8d06d022aa0372476ff5d69dd3286232a62fff
+```
 
-The Jest test files, `task-notifications.ts` and `notifications.ts` bytes were **not** executed
-here (no Jest); the harness covers only the three planner/bridge modules above.
+| File | sha256 |
+|---|---|
+| `apps/mobile/app/services/task-alarms.ts` | `51e80e236d7e822d67547ff2fc56341590dcab78e07ff5a18da3cc473addafa6` |
+| `apps/mobile/app/services/task-alarms.test.ts` | `e4fd13ef5fe9e6a33ba55c105678090da61d8e4fb0146cd87f1f7edb51f069d7` |
+| `apps/mobile/app/services/task-alarm-plan.ts` | `0e467a302e40545cf1a3353ddcc050fc6f7ccab765df0d4a059bd36f26da5893` |
+| `apps/mobile/app/services/task-notification-plan.ts` | `c3f8271766078f0a4c417a3758fb1c052bbd36bd900aa8d2e7e3d5a0a8409e25` |
+| `apps/mobile/app/services/task-notifications.ts` | `02b312a6e30517c6faeb89ff735feed92257b2bbb134c62a4514b5c84cb830f5` |
+| `apps/mobile/app/services/task-notifications.test.ts` | `f33c8c5457858491eabca4072d8d45967c17d73dc6cbeabf5af491fa22550b40` |
+| `apps/mobile/app/services/task-navigation.ts` | `c4244637e332d531532712aadd2e616c7daeb4ae051f757954618b646d5235a0` |
+| `apps/mobile/app/services/task-navigation.test.ts` | `65502e2b54995ad034fa4fb5fe4690a65a017608ee1f01e73129827b25014307` |
+| `apps/mobile/app/services/reminder-widget.ts` | `ce72988128ac785d923aa64f1a0f3e050c17bf377589eea4fe32a6e94c37c665` |
+| `apps/mobile/app/screens/tasks/index.tsx` | `b9f2a86ca776ef3c8ba08e1fa462d40135ac11f3a802fb722f36f794b4da4b05` |
+| `apps/mobile/ios/Notesnook/TaskAlarm/TaskAlarmModule.swift` | `d8b63925b57754d66c90c6b8665a13120562eef3e32d64ea77fb6fedb3bdb6dd` |
+
+## Host QA actions for Codex (mechanical, no feature code)
+
+1. **Build + install on the fresh dedicated simulators** (never the protected account profiles):
+   iPhone 27 `2A3460BC-0244-47CC-88C4-C96D53172B29`, iPad 27
+   `4E76B6BB-AD17-4222-BE8D-464077DE7621`.
+   ```bash
+   xcrun simctl boot 2A3460BC-0244-47CC-88C4-C96D53172B29   # and the iPad one
+   xcodebuild -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme Notesnook \
+     -configuration Debug -sdk iphonesimulator \
+     -destination 'platform=iOS Simulator,id=2A3460BC-0244-47CC-88C4-C96D53172B29' \
+     -derivedDataPath "$TMPDIR/DerivedData" ENABLE_DEBUG_DYLIB=NO build
+   xcrun simctl install 2A3460BC-0244-47CC-88C4-C96D53172B29 <built Notesnook.app>
+   xcrun simctl launch 2A3460BC-0244-47CC-88C4-C96D53172B29 com.streetwriters.notesnook
+   ```
+   Ad-hoc signing of the widget/app-group entitlements is required for the widget + AlarmKit
+   surfaces; it is unchanged from the prior build recipe.
+2. **New Note → visible editor → type → Save → Back → reopen the note**: the text is retained.
+3. **Canonical Task tap**: from a Task notification (warm and cold start), from the widget link, and
+   while App Lock is on; expect the Tasks list at the Task's **current** List with the row briefly
+   highlighted, no editor, no keyboard. A tap for an occurrence that no longer exists must show the
+   generic "no longer available" message and land on Tasks.
+4. **Settings / login / logout**: sign in, sign out, sign in again; Task notifications, alarms and
+   the overdue surface of the previous account must disappear, and the widget must not show the
+   previous account's Tasks after the sign-out.
+5. **Widget check**: complete a Task from the widget (iOS 27 `CompleteTaskWidgetIntent`), confirm
+   the completion lands and the snapshot re-projects; switch accounts and confirm the widget is
+   re-projected rather than left empty or stale.
+6. **Sound/haptics/locked-device**: **not claimed** — `PHYSICAL_QA_PENDING`. A simulator cannot
+   validate the audible AlarmKit presentation, Snooze/Pause/Stop semantics or Lock Screen behavior.
 
 ## Current gaps and scope limits
 
-- Engineering is **NOT ACCEPTED** and the release is **NOT AUTHORIZED** for this milestone.
-- No screenshots, model-subagent reviews, or new-agent claims are made here. Earlier sessions did
-  include a Sonnet-era review and a real-quota reset/resume; that is history only. All latest
-  engineering passes were DeepSeek Flash.
-- Overdue Activity behavior keeps the app-reconciled limits recorded in
-  `docs/urgent-reminders-architecture.md`. Do not describe future/unimplemented behavior: there is
-  no guaranteed cold background start, no undismissable alarm, and no volume-behavior guarantee.
-- Root-checkout contributions in this pass were limited to supervisor-run byte copy, Git operations
-  and deterministic checks.
+- Engineering is **NOT ACCEPTED**; the release is **NOT AUTHORIZED**. The implementation range will
+  be independently re-reviewed after these fixes, and the native build + simulator QA above are
+  still outstanding.
+- The revoked-authorization cleanup, the privacy transition and `activeAlarmKeys` are **new native
+  behavior**: they are reviewed and type-check only once the host builds them. AlarmKit exposes no
+  in-place presentation update, so enabling App Lock while an alarm is alerting/snoozed removes that
+  presentation and does not re-present it as an alarm; the redacted overdue surface keeps the Task
+  visible. That is a deliberate, documented limitation, not a claim of full privacy coverage.
+- The overdue Live Activity still depends on the app running to reconcile it: no guaranteed cold
+  background start, no undismissable alarm, no volume-behavior guarantee, no silent-switch or
+  critical-alert tricks, and no JavaScript keepalive timer.
+- `reminder-widget.ts`'s account-change re-projection is wired in the widget's own subscription;
+  the focused subscription assertion lives in `reminder-widget-writer.test.ts`, which is outside
+  this bounded change's allowed paths (it passes unchanged).
+- No screenshots, no fabricated counts, no model-subagent review claims. All of this round's
+  engineering was DeepSeek Flash; Codex only supervises/builds/tests mechanically.
 
 ## HISTORICAL — prior `5dc366a0` candidate pass (superseded; not current evidence)
 
@@ -131,10 +183,9 @@ independent `urgent-specialist` (claude-sonnet-5) review — describe that older
 
 ## Status summary (kept distinct per policy)
 
-- **Engineering**: partial — TypeScript not clean, the focused Jest suites were not run here, and
-  the native Swift build is not re-verified. The alarm-correctness pass changed **native** code
-  (`TaskAlarmModule.swift`/`.m`), so a host type-check/build against the iOS 26 SDK is now required
-  as well as the Jest re-run. **NOT ACCEPTED.**
+- **Engineering**: partial — mobile Jest **356/356 (35 suites)** and `tsc --noEmit` **0 errors** were
+  executed here on the current bytes; the native build and the host re-run are outstanding.
+  **NOT ACCEPTED.**
 - **Physical QA**: `PHYSICAL_QA_PENDING`.
 - **Release**: `NOT AUTHORIZED` — local implementation/tests/QA only. No push, no `main` merge, no
   TestFlight/App Store submission, no production deployment.

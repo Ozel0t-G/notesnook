@@ -65,48 +65,70 @@ if the framework can't be imported at all (e.g. simulator runtimes/SDKs that pre
   (`task-alarms.ts#urgentStatus`, `#requestUrgentPermission`). Requested only from the Urgent
   switch (`detail.tsx`, `app-intent-requests.ts`'s Shortcuts path) — never from background
   reconciliation, matching the existing code comment's intent.
-- **Scheduling**: `reconcileTaskAlarmDelivery(tasks, privacyHidden)` computes the desired alarm
-  set via `desiredTaskAlarms()` (`task-alarm-plan.ts`; current occurrence plus up to 5 future
-  RRULE occurrences, deduplicated and identified by `taskAlarmKey()` —
+- **Scheduling**: `reconcileTaskAlarmDelivery(tasks, privacyHidden, withdrawal)` computes the
+  desired alarm set via `desiredTaskAlarms()` (`task-alarm-plan.ts`; current occurrence plus up to
+  5 future RRULE occurrences, deduplicated and identified by `taskAlarmKey()` —
   `series:<seriesId|taskId>:<occurrenceKey>` for a recurring occurrence, `task:<id>` for a
-  one-off) and calls `Native.replaceAlarms(accountId, desired)`. The Swift side (`replace()`)
-  fully reconciles: alarms not in the desired set are removed; an alarm already `.alerting` or
-  correctly `.scheduled` (matched by timestamp + a stored fingerprint) is left untouched
-  (**"Stop is a separate user action; never complete or silence the Task here"**); everything
-  else is recreated. It returns `{status, scheduledAlarmKeys}` — the **per-occurrence** truth:
-  exactly the alarm keys this app holds for the account after the pass. An occurrence absent
-  from the list (unsupported/denied, malformed input, or an individual scheduling failure) is
-  simply not scheduled; an alarm that could not be **removed** is reported as held, so JS never
-  adds a duplicate fallback alongside an alarm that still exists. The signed-in account is folded
-  into each native alarm id
-  (`sha256("…:\(accountId):\(alarmKey)")`-derived UUIDv8), so one key is only ever meaningful
-  with the account that reconciled it.
+  one-off), then:
+  1. **reads the current native state** (`verifyAlarms`), so nothing is written and no fallback is
+     withdrawn while the state is unknown;
+  2. **withdraws the competing fallback before introducing an alarm.** For every desired
+     occurrence the system does *not* hold, `task-notifications.ts#withdrawCompetingFallbacks()`
+     cancels the matching pending notification trigger and re-reads the trigger store to confirm
+     it is gone. An occurrence whose withdrawal cannot be confirmed is **left out of the write
+     entirely**, so it keeps exactly one audible delivery (its notification) instead of gaining a
+     second one;
+  3. calls `Native.replaceAlarms(accountId, desired)` for the rest. The Swift side (`replace()`)
+     fully reconciles: alarms not in the desired set are removed; an alarm already `.alerting` or
+     correctly `.scheduled` (matched by timestamp + a stored fingerprint) is left untouched
+     (**"Stop is a separate user action; never complete or silence the Task here"**); everything
+     else is recreated. It returns `{status, scheduledAlarmKeys, activeAlarmKeys}` — the
+     **per-occurrence** truth: exactly the alarm keys this app holds for the account after the
+     pass, and which of them are presenting right now. An occurrence absent from the list
+     (unsupported/denied, malformed input, or an individual scheduling failure) is simply not
+     scheduled; an alarm that could not be **removed** is reported as held, so JS never adds a
+     duplicate fallback alongside an alarm that still exists. The signed-in account is folded into
+     each native alarm id (`sha256("…:\(accountId):\(alarmKey)")`-derived UUIDv8), so one key is
+     only ever meaningful with the account that reconciled it.
+  4. **resolves a failed write honestly**: `verifyAlarms` first, then a verified cancellation of
+     only the not-yet-alerting alarms. The answer is per occurrence — `held`, `absent` (proven not
+     held, so a fallback is safe and cannot duplicate), or neither (unknown: keep the existing
+     fallback, add none) — never a Task-wide guess.
+  A **lost replacement acknowledgement** (the device applied the pass but the promise was lost)
+  therefore cannot leave an alarm *and* a pending fallback for the same occurrence: the fallback
+  was already withdrawn before the alarm was introduced, and an unknown outcome never re-creates
+  it.
 - **Fallback routing**: `planTaskNotifications()` (`task-notification-plan.ts`) takes an
-  `UrgentAlarmFallback` decision whose `needsFallback(alarmKey)` is asked **per occurrence**, not
-  per Task. `reconcileNow()` wires this to `reconcileTaskAlarmDelivery()`'s real
-  `scheduledAlarmKeys`, so in a partially successful recurring series only the occurrences whose
-  own alarm is missing get a Notifee notification and the occurrences whose alarm did schedule
-  get **no** duplicate. Normal (non-Urgent) reminders are unaffected and keep their existing
-  Notifee `TimestampTrigger` path. The fallback notification's body is
-  `strings.tasksUrgentFallbackBody()` ("Alarm unavailable. This is a standard notification."),
-  so a denied/unsupported/individually-failed Urgent occurrence is clearly identified as a
-  fallback rather than mistaken for the alarm.
-- **Unknown native state is honest, never a blind Task-wide fallback.** When
-  `replaceAlarms` rejects, the bridge does not assume every Urgent Task failed. It asks the
-  system what it actually still holds (`verifyAlarms(accountId, keys)`); if that also fails it
-  performs a **verified cancellation** of only the alarms that have not started alerting
-  (`cancelScheduledAlarms` cancels `.scheduled` only), which makes an audible fallback safe; and
-  if cancellation fails too the pass stays `verified: false`, so the planner schedules **no new
-  fallback and cancels no existing one** (keeping `preserveExisting`). It never cancels an
-  alerting, snoozed (`.countdown`) or paused alarm just to make a fallback possible.
-- **Account change / logout cleanup is independent per mechanism.** The signed-in account change
-  and `userLoggedOut` handlers bump a generation counter immediately (so an in-flight pass
-  refuses to write old-account alarms/notifications/surfaces once it differs) and then run
-  `runIndependentCleanup` over the three mechanisms — scheduled Task notifications, native Urgent
-  alarms, overdue Live Activities. A rejection from one (`Promise.allSettled`) cannot skip the
-  others, and the failing mechanism names are logged so a partial cleanup stays honest. The iOS
-  Task widget snapshot is cleared by its own independent `ReminderWidget` logout/account-change
-  subscriptions, so it is not gated on this cleanup.
+  `UrgentAlarmFallback` decision whose `needsFallback(alarmKey)` and `isUnknown(alarmKey)` are
+  asked **per occurrence**, not per Task. `reconcileNow()` wires `needsFallback` to
+  `absentAlarmKeys` and `isUnknown` to "in neither `held` nor `absent`", so in a partially
+  successful recurring series only the occurrences whose own alarm is provably missing get a
+  Notifee notification, the occurrences whose alarm did schedule get **no** duplicate, and a
+  single unknown occurrence does not drag the rest of the plan into the same treatment. Normal
+  (non-Urgent) reminders are unaffected and keep their existing Notifee `TimestampTrigger` path.
+  The fallback notification's body is `strings.tasksUrgentFallbackBody()` ("Alarm unavailable.
+  This is a standard notification."), so a denied/unsupported/individually-failed Urgent
+  occurrence is clearly identified as a fallback rather than mistaken for the alarm.
+- **Denied / unsupported is not "nothing scheduled".** Alarms scheduled while the app *was*
+  authorized can still be held and still sound after authorization is revoked, so a
+  `denied`/`notDetermined`/`unsupported` read is followed by a cleanup of the alarms this app owns
+  (never a presentation the person is engaged with) and a truthful report: `cancelScheduledAlarms`
+  returns `cancelledAlarmKeys` **and** `retainedAlarmKeys`, and the retained/presenting occurrences
+  are kept out of the fallback path so no notification duplicates them. If that cleanup itself
+  fails, the owned alarms are reported as still held and the failure travels with the answer.
+- **Account change / logout cleanup is independent per mechanism and durable.** The signed-in
+  account change and `userLoggedOut` handlers bump a generation counter immediately (so an
+  in-flight pass refuses to write old-account alarms/notifications/surfaces once it differs) and
+  then run `runIndependentCleanup` over the four mechanisms — scheduled Task notifications, native
+  Urgent alarms, overdue Live Activities, and already-displayed unredacted Task notifications. A
+  rejection from one (`Promise.allSettled`) cannot skip the others. **A failure is not just
+  logged:** the failing mechanism labels are persisted as a minimal obligation
+  (`notesnook.taskSurfaces.pendingCleanup.v1` — labels + timestamp, no content, no account id) and
+  retried at the next launch/foreground **before** any new planning, even when the Task domain is
+  not initialized or the app is mid-logout — every mechanism cancels surfaces by ownership rather
+  than by reading the account that created them. The iOS Task widget snapshot is cleared by its own
+  independent `ReminderWidget` logout/account-change subscriptions, and a user-id change now also
+  re-projects the snapshot so the widget cannot sit on the previous account's Tasks.
 - **Stop / Snooze / Complete semantics** (enforced natively, unchanged by this work): Stop
   silences the alert without completing the Task (state machine stays `OVERDUE_INCOMPLETE`
   until the user completes it through the normal Task-domain operation). Completion always

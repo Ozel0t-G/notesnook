@@ -176,7 +176,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const dismissedFocusRequest = React.useRef<string | undefined>(undefined);
   const focusTaskId = route.params?.focusTaskId ?? route.params?.highlightTaskId;
   const focusRequestId = route.params?.focusRequestId ?? focusTaskId;
-  const focusSession = React.useRef<TaskFocusSession>();
+  const focusSession = React.useRef<TaskFocusSession | undefined>(undefined);
   if (!focusSession.current) {
     focusSession.current = new TaskFocusSession({
       requestScroll: (index, animated) => {

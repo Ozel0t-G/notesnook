@@ -414,7 +414,13 @@ function start() {
   });
   const unsubscribeUser = useUserStore.subscribe((state, previous) => {
     if (state.user?.id !== previous.user?.id) {
+      // Clearing alone leaves the widget showing its empty state until some
+      // unrelated event happens to re-project it. The account change *is* the
+      // event: the previous account's snapshot is dropped (generation bumped,
+      // so a write already in flight is discarded) and the signed-in state --
+      // the new account's Tasks, or nothing while signed out -- is projected.
       void clearSnapshot();
+      update();
     } else if (state.appLocked !== previous.appLocked) {
       if (state.appLocked) {
         void clearSnapshot();

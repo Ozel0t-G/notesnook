@@ -59,6 +59,11 @@ import {
   taskListSymbol
 } from "./list-customization";
 import { keyboardDockInset } from "./keyboard-dock";
+import {
+  resolveTaskFocusIndex,
+  TASK_FOCUS_VIEW_POSITION,
+  TaskFocusSession
+} from "./task-focus";
 
 type SmartList = "today" | "scheduled" | "all" | "flagged" | "completed";
 type Selection =
@@ -159,8 +164,47 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const [error, setError] = React.useState(false);
   const [quickTitle, setQuickTitle] = React.useState("");
   const [quickBusy, setQuickBusy] = React.useState(false);
+  const [includeCompleted, setIncludeCompleted] = React.useState(
+    !!route.params?.includeCompleted
+  );
+  const [highlightedTaskId, setHighlightedTaskId] = React.useState<
+    string | undefined
+  >(undefined);
   const refreshGeneration = React.useRef(0);
   const screenRef = React.useRef<View>(null);
+  const listRef = React.useRef<FlatList<Task>>(null);
+  const dismissedFocusRequest = React.useRef<string | undefined>(undefined);
+  const focusTaskId = route.params?.focusTaskId ?? route.params?.highlightTaskId;
+  const focusRequestId = route.params?.focusRequestId ?? focusTaskId;
+  const focusSession = React.useRef<TaskFocusSession>();
+  if (!focusSession.current) {
+    focusSession.current = new TaskFocusSession({
+      requestScroll: (index, animated) => {
+        try {
+          listRef.current?.scrollToIndex({
+            index,
+            viewPosition: TASK_FOCUS_VIEW_POSITION,
+            animated
+          });
+        } catch {
+          // Unmeasured rows are reported through onScrollToIndexFailed, which
+          // schedules a bounded retry instead of looping here.
+        }
+      },
+      resetScroll: (index, averageItemLength) => {
+        listRef.current?.scrollToOffset({
+          offset: index * averageItemLength,
+          animated: false
+        });
+      },
+      startHighlight: (taskId) => setHighlightedTaskId(taskId),
+      endHighlight: (taskId) =>
+        setHighlightedTaskId((current) =>
+          current === taskId ? undefined : current
+        ),
+      onUnresolved: () => setHighlightedTaskId(undefined)
+    });
+  }
   const keyboardFrame = React.useRef<KeyboardEvent["endCoordinates"] | null>(
     null
   );
@@ -202,15 +246,40 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     };
   }, [updateKeyboardInset]);
 
+  const selectionRef = React.useRef(selection);
+  selectionRef.current = selection;
+
   React.useEffect(() => {
-    if (route.params?.listId) {
-      setSelection({ kind: "list", id: route.params.listId });
+    // A second notification/deep-link tap while this screen is already mounted
+    // still delivers new route params (React Navigation updates params on an
+    // existing screen instance rather than always creating a new one). Show the
+    // requested List; only re-enter the loading state when the shown List (or
+    // the completed-inclusion flag) would actually change, so a tap that lands
+    // on the List already on screen does not flash a spinner.
+    const next: Selection | undefined = route.params?.listId
+      ? { kind: "list", id: route.params.listId }
+      : route.params?.smartList
+        ? { kind: "smart", id: route.params.smartList }
+        : undefined;
+    const nextIncludeCompleted = !!route.params?.includeCompleted;
+    const current = selectionRef.current;
+    if (next) {
+      const changed =
+        current.kind !== next.kind || current.id !== next.id;
+      setSelection(next);
       setShowListOnPhone(true);
-    } else if (route.params?.smartList) {
-      setSelection({ kind: "smart", id: route.params.smartList });
-      setShowListOnPhone(true);
+      if (changed) setLoading(true);
     }
-  }, [route.params?.listId, route.params?.smartList]);
+    setIncludeCompleted(nextIncludeCompleted);
+    if (nextIncludeCompleted !== includeCompleted) setLoading(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    route.params?.listId,
+    route.params?.smartList,
+    route.params?.includeCompleted,
+    route.params?.focusRequestId,
+    route.params?.highlightTaskId
+  ]);
 
   const refresh = React.useCallback(async () => {
     if (!db.isInitialized) return;
@@ -251,7 +320,9 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       setTasks(
         selection.kind === "list"
           ? allTasks.filter(
-              (task) => task.listId === selection.id && !task.completed
+              (task) =>
+                task.listId === selection.id &&
+                (includeCompleted || !task.completed)
             )
           : (
               { today, scheduled, all, flagged, completed } as Record<
@@ -267,7 +338,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     } finally {
       if (generation === refreshGeneration.current) setLoading(false);
     }
-  }, [selection]);
+  }, [selection, includeCompleted]);
 
   React.useEffect(() => {
     const generationRef = refreshGeneration;
@@ -299,6 +370,9 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     setSelection(next);
     setShowListOnPhone(true);
     setLoading(true);
+    setIncludeCompleted(false);
+    setHighlightedTaskId(undefined);
+    focusSession.current?.cancel();
   };
 
   const selectedLabel =
@@ -464,6 +538,64 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         a.id.localeCompare(b.id)
     );
   }, [tasks, isScheduled]);
+
+  React.useEffect(() => {
+    const session = focusSession.current;
+    if (!session) return;
+    if (!focusTaskId) {
+      session.cancel();
+      return;
+    }
+    const requestId = String(focusRequestId);
+    // Arriving from a notification/deep link must never land on a focused
+    // input. Dismiss once per distinct request (not on every list refresh, so
+    // typing in the quick-add row is not interrupted by a background refresh).
+    if (dismissedFocusRequest.current !== requestId) {
+      dismissedFocusRequest.current = requestId;
+      Keyboard.dismiss();
+    }
+    if (loading) return;
+    // Arm focus for this request. The transient highlight only starts from the
+    // FlatList viewability callback below once the row is actually on screen;
+    // a fresh nonce on a repeat tap re-arms the whole thing.
+    session.begin(
+      { taskId: focusTaskId, requestId },
+      resolveTaskFocusIndex(displayTasks, focusTaskId)
+    );
+  }, [focusTaskId, focusRequestId, loading, displayTasks]);
+
+  React.useEffect(() => () => focusSession.current?.cancel(), []);
+
+  const onScrollToIndexFailed = React.useCallback<
+    NonNullable<
+      React.ComponentProps<typeof FlatList<Task>>["onScrollToIndexFailed"]
+    >
+  >((info) => {
+    // Bounded retry with increasing backoff -- never an unbounded loop. The
+    // session uses its current index (not a stale one from this callback) and
+    // aborts itself on a new intent, a list change or unmount.
+    focusSession.current?.onScrollToIndexFailed(
+      info.index,
+      info.averageItemLength
+    );
+  }, []);
+
+  // Highlight only once the row has genuinely settled on screen: at least half
+  // of it visible for a short, explicit minimum so a transient fling past the
+  // row does not flash the highlight.
+  const viewabilityConfig = React.useRef({
+    itemVisiblePercentThreshold: 50,
+    minimumViewTime: 250
+  }).current;
+  const onViewableItemsChanged = React.useCallback<
+    NonNullable<
+      React.ComponentProps<typeof FlatList<Task>>["onViewableItemsChanged"]
+    >
+  >((info) => {
+    focusSession.current?.watchViewable(
+      info.viewableItems.map((entry) => entry.item.id)
+    );
+  }, []);
 
   const nav = (
     <ScrollView
@@ -763,8 +895,12 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         </Text>
       ) : (
         <FlatList
+          ref={listRef}
           data={displayTasks}
           keyExtractor={(item) => item.id}
+          onScrollToIndexFailed={onScrollToIndexFailed}
+          onViewableItemsChanged={onViewableItemsChanged}
+          viewabilityConfig={viewabilityConfig}
           contentContainerStyle={{
             paddingHorizontal: 18,
             paddingBottom: 80,
@@ -802,12 +938,21 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                   </Text>
                 )}
               <View
+                testID={`task-row-${item.id}`}
+                accessibilityState={{
+                  selected: item.id === highlightedTaskId
+                }}
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   borderBottomWidth: 0.5,
                   borderBottomColor: visual.separator,
-                  minHeight: 68
+                  minHeight: 68,
+                  borderRadius: visual.controlRadius,
+                  backgroundColor:
+                    item.id === highlightedTaskId
+                      ? visual.selectedSurface
+                      : undefined
                 }}
               >
                 <Pressable

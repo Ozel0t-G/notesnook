@@ -80,6 +80,13 @@ import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { startAppIntentBridge } from "../services/app-intent-bridge";
 import { claimTaskNotificationPress } from "../services/task-notifications";
 import {
+  canRouteTaskNavigation,
+  clearPendingTaskNavigation,
+  consumePendingTaskNavigation,
+  openTaskInContext,
+  taskNotificationIntent
+} from "../services/task-navigation";
+import {
   canReplayTaskWidgetCompletion,
   isValidTaskWidgetId,
   PendingTaskCompletions
@@ -227,24 +234,28 @@ const onAppOpenedFromURL = async (event: {
       if (reminderWidgetLink.action === "complete") {
         if (!isValidTaskWidgetId(reminderWidgetLink.id)) return;
         // Old installed widgets still emit this URL. A URL can be invoked by
-        // another app, so open detail and require an explicit in-app action.
+        // another app, so open the Task in its List and require an explicit
+        // in-app action (the same checkbox used elsewhere in the List) --
+        // never complete it directly from the URL, and never jump straight
+        // into the editor either.
       } else if (
         reminderWidgetLink.action === "task" &&
         !isValidTaskWidgetId(reminderWidgetLink.id)
       ) {
         return;
       }
-      Navigation.navigate("Tasks");
       if (
         reminderWidgetLink.action === "task" ||
         reminderWidgetLink.action === "complete"
       ) {
-        setTimeout(
-          () =>
-            Navigation.push("TaskDetail", { taskId: reminderWidgetLink.id }),
-          0
-        );
+        // A widget deep link is accountless (it carries only a Task ID), so it
+        // is resolved against the CURRENT account only.
+        await openTaskInContext({
+          taskId: reminderWidgetLink.id,
+          source: "widget"
+        });
       } else if (reminderWidgetLink.action === "create") {
+        Navigation.navigate("Tasks");
         setTimeout(() => Navigation.push("TaskDetail", {}), 0);
       }
       return;
@@ -319,16 +330,21 @@ const onAppOpenedFromURL = async (event: {
       }
     } else if (url.startsWith("https://app.notesnook.com/open_reminder")) {
       const id = new URL(url).searchParams.get("id");
-      if (id) {
+      // Mapping the legacy reminder id to a Task needs the protected domain, so
+      // it waits for auth/App Lock/hydration readiness; until then the link only
+      // lands on the safe Tasks destination.
+      if (id && canRouteTaskNavigation()) {
         const task = (await db.tasks.list()).find(
           (item) => item.legacyReminderId === id
         );
-        Navigation.navigate("Tasks");
         if (task)
-          setTimeout(
-            () => Navigation.push("TaskDetail", { taskId: task.id }),
-            0
-          );
+          await openTaskInContext({
+            taskId: task.id,
+            source: "legacy-link"
+          });
+        else Navigation.navigate("Tasks");
+      } else if (id) {
+        Navigation.navigate("Tasks");
       }
     } else if (url.startsWith("https://app.notesnook.com/new_reminder")) {
       Navigation.navigate("Tasks");
@@ -396,6 +412,9 @@ let accountUpdateVersion = 0;
 const onLogout = async (reason: string) => {
   accountUpdateVersion += 1;
   pendingTaskCompletions.clear();
+  // A queued notification tap belongs to the account that was signed in when it
+  // arrived; it must never be replayed against a different account.
+  clearPendingTaskNavigation();
   DatabaseLogger.log("User Logged Out " + reason);
   setLoginMessage();
   await resetMobileAccountSession();
@@ -615,6 +634,10 @@ export const useAppEvents = () => {
     if (!appLocked && !isAppLoading) {
       void replayPendingTaskCompletions();
       void ReminderWidget.drainPendingCompletions();
+      // A notification/deep-link tap that arrived while the app was locked or
+      // still hydrating is consumed exactly once, here, now that the Task
+      // domain is readable.
+      void consumePendingTaskNavigation();
     }
   }, [appLocked, isAppLoading]);
 
@@ -629,6 +652,9 @@ export const useAppEvents = () => {
             !pendingTaskCompletions.belongsToAccount(nextId))
         )
           pendingTaskCompletions.clear();
+        // The signed-in account changed: drop any notification/deep-link tap
+        // queued for the previous account.
+        if (previousId !== nextId) clearPendingTaskNavigation();
       }),
     []
   );
@@ -641,17 +667,18 @@ export const useAppEvents = () => {
     if (parseReminderWidgetLink(initialUrl)) return;
     notifee
       .getInitialNotification()
-      .then((initial) => {
+      .then(async (initial) => {
         const data = initial?.notification?.data;
-        if (data?.type !== "task" || typeof data.taskId !== "string") return;
-        if (!isValidTaskWidgetId(data.taskId)) return;
-        if (!claimTaskNotificationPress(data.taskId)) return;
-        Navigation.navigate("Tasks");
-        setTimeout(
-          () =>
-            Navigation.push("TaskDetail", { taskId: data.taskId as string }),
-          0
-        );
+        if (data?.type !== "task") return;
+        const intent = taskNotificationIntent(data, "cold-initial-notification");
+        if (!intent || !isValidTaskWidgetId(intent.taskId)) return;
+        if (!claimTaskNotificationPress(intent.taskId)) return;
+        // Cold start: wait for the database (initialized earlier in this
+        // same load sequence, gated by isAppLoading) before resolving the
+        // Task's current List, matching the warm-launch path in
+        // notifications.ts exactly. If the app is still locked, the minimal
+        // intent is queued and consumed once App Lock clears.
+        await openTaskInContext(intent);
       })
       .catch(() => {});
   }, [initialUrl, isAppLoading]);

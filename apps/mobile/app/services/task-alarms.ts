@@ -1,7 +1,10 @@
 import type { Task } from "@notesnook/core";
 import { NativeModules, Platform } from "react-native";
 import { useUserStore } from "../stores/use-user-store";
-import { desiredTaskAlarms } from "./task-alarm-plan";
+import {
+  desiredTaskAlarms,
+  type OverdueTaskSurface
+} from "./task-alarm-plan";
 
 export type UrgentAlarmStatus =
   | "unsupported"
@@ -14,6 +17,20 @@ type ReplaceResult = {
   failedTaskIds: string[];
 };
 
+export type OverdueActivityStatus = "unsupported" | "denied" | "authorized";
+
+export type OverdueActivityResult = {
+  status: OverdueActivityStatus;
+  /** Surfaces created this pass. */
+  created?: number;
+  /** Surfaces whose content changed and was refreshed in place. */
+  updated?: number;
+  /** Surfaces the person dismissed, that expired, or that no longer apply. */
+  ended?: number;
+  /** Tasks whose surface could not be shown; never silently assumed shown. */
+  failedTaskIds?: string[];
+};
+
 type TaskAlarmNative = {
   status(): Promise<UrgentAlarmStatus>;
   requestAuthorization(): Promise<UrgentAlarmStatus>;
@@ -22,6 +39,12 @@ type TaskAlarmNative = {
     alarms: ReturnType<typeof desiredTaskAlarms>
   ): Promise<ReplaceResult>;
   cancelAll(): Promise<void>;
+  syncOverdueActivities(
+    accountId: string,
+    activities: OverdueTaskSurface[],
+    privacyHidden: boolean
+  ): Promise<OverdueActivityResult>;
+  endOverdueActivities(): Promise<OverdueActivityResult>;
 };
 
 const Native: TaskAlarmNative | undefined =
@@ -54,4 +77,39 @@ export async function reconcileTaskAlarms(
 
 export async function cancelAllTaskAlarms() {
   await Native?.cancelAll();
+}
+
+/**
+ * Reconciles the ongoing "Urgent Task is overdue and still incomplete" Live
+ * Activities with exactly the Tasks that qualify right now. The native side is
+ * authoritative: it creates missing surfaces, refreshes the dynamic content of
+ * existing ones, ends surfaces that no longer apply (or that belong to another
+ * account), and reports the Tasks it could not show instead of pretending they
+ * are visible. It also never re-creates a surface the person dismissed or that
+ * the system expired.
+ *
+ * An empty `surfaces` list is meaningful: it ends every surface this app owns
+ * (Urgent switched off, reminder removed, task completed/deleted/rescheduled).
+ */
+export async function syncOverdueActivities(
+  surfaces: OverdueTaskSurface[],
+  privacyHidden = false
+): Promise<OverdueActivityResult> {
+  if (!Native)
+    return {
+      status: "unsupported",
+      failedTaskIds: surfaces.map((surface) => surface.taskId)
+    };
+  const accountId = useUserStore.getState().user?.id || "local";
+  return Native.syncOverdueActivities(accountId, surfaces, privacyHidden);
+}
+
+/**
+ * Ends every overdue Live Activity this app owns. Call wherever the Task domain
+ * changes underneath a surface: completion, deletion, a removed reminder, a
+ * reschedule, Urgent being switched off, logout or an account change.
+ */
+export async function endOverdueActivities(): Promise<OverdueActivityResult> {
+  if (!Native) return { status: "unsupported" };
+  return Native.endOverdueActivities();
 }

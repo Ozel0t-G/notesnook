@@ -50,6 +50,11 @@ import { ToastManager } from "../../services/event-manager";
 import { NavigationProps } from "../../services/navigation";
 import { openAppNotificationSettings } from "../../services/notification-settings";
 import { TaskNotifications } from "../../services/task-notifications";
+import {
+  requestUrgentPermission as requestNativeUrgentPermission,
+  urgentStatus as nativeUrgentStatus,
+  type UrgentAlarmStatus
+} from "../../services/task-alarms";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { TaskSymbolView } from "../../components/task-symbol-view";
 import { taskListColor, taskListSymbol } from "./list-customization";
@@ -59,11 +64,7 @@ type ScheduledTask = Task & {
   reminderTime?: string;
   urgent?: boolean;
 };
-type UrgentStatus = "unsupported" | "notDetermined" | "denied" | "authorized";
-const urgentNotifications = TaskNotifications as typeof TaskNotifications & {
-  urgentStatus(): Promise<UrgentStatus>;
-  requestUrgentPermission(): Promise<UrgentStatus>;
-};
+type UrgentStatus = UrgentAlarmStatus;
 type RepeatMode =
   | "never"
   | "daily"
@@ -202,8 +203,7 @@ export default function TaskDetail({
         )
       )
       .catch(() => {});
-    urgentNotifications
-      .urgentStatus()
+    nativeUrgentStatus()
       .then(setUrgentStatus)
       .catch(() => {
         setUrgentStatus("unsupported");
@@ -379,11 +379,10 @@ export default function TaskDetail({
       return;
     }
     try {
-      const currentStatus =
-        urgentStatus || (await urgentNotifications.urgentStatus());
+      const currentStatus = urgentStatus || (await nativeUrgentStatus());
       const status =
         currentStatus === "notDetermined"
-          ? await urgentNotifications.requestUrgentPermission()
+          ? await requestNativeUrgentPermission()
           : currentStatus;
       setUrgentStatus(status);
       if (status === "authorized") setUrgent(true);

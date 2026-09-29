@@ -16,4 +16,13 @@ RCT_EXTERN_METHOD(replaceAlarms:(NSString *)accountId
 RCT_EXTERN_METHOD(cancelAll:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(syncOverdueActivities:(NSString *)accountId
+                  activities:(NSArray *)activities
+                  privacyHidden:(BOOL)privacyHidden
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(endOverdueActivities:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 @end

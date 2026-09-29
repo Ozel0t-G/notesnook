@@ -1,13 +1,113 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
-## September 28 iOS/iPadOS account lifecycle repair — current release gate
+## September 28–29 Urgent reminders + notification routing — import recovery, PARTIAL
 
-The physical iPhone screenshots from **3.4.16 (18)** establish two account
+Two regressions were fixed on `agent/claude-urgent-reminders`, independent of the account
+lifecycle repair track below: Urgent Tasks were falling through to an ordinary labeled
+notification instead of using the already-built (but never finish-wired) native AlarmKit module;
+and tapping a Task notification/widget-link/legacy-migration-link always opened the Task editor
+instead of the Task's current List with the Task scrolled into view and highlighted. Both were
+finish-wiring gaps in existing code, not missing features — see
+`docs/urgent-reminders-architecture.md` for the root cause and design, and
+`artifacts/urgent-reminders-qa.md` for the current evidence, limits, and next steps.
+
+**Where this work actually lives (2026-09-29).** The earlier snapshot was committed as
+`5dc366a0531315f2646b4fd1a059027d8cba7dd5` (signed) on `agent/claude-urgent-reminders`; that
+commit and its recorded results are history and do **not** apply to the current worktree. On
+`test` (base `17def76c1e069a72c4b74e9c035a847ff66c286b`) the same change exists only as an
+**uncommitted partial worktree**: an imported patch plus three small Swift fixes from the
+2026-09-29 recovery pass (two `due:` argument labels and one paused-countdown formatter).
+**Nothing here is committed or natively built, and no independent review of the current candidate
+has been completed.**
+
+**Swift fixes carried in this worktree.** The two earlier missing `due:` label errors
+(`TaskAlarmModule.swift:492` → `occurrenceKey(parsed.taskId, due: parsed.due)` and `:535` →
+`occurrenceKey(item.taskId, due: due)`) are already imported here. The host iPhone ARM64 build
+then progressed and failed at `NotesWidget/NotesWidget.swift:645` with
+`instance method 'formatted' requires the types 'Double' and 'Duration.TimeFormatStyle.FormatInput'
+(aka 'Duration') be equivalent` — AlarmKit's paused mode reports `totalCountdownDuration` /
+`previouslyElapsedDuration` as `TimeInterval` (`Double`), while `.time(pattern: .minuteSecond)` is a
+`Duration` format style. The minimal fix wraps the frozen remainder as `Duration.seconds(remaining)`
+before formatting; the countdown and overdue values remain system-rendered SwiftUI timer styles, with
+no JavaScript timer and no static-elapsed substitution. Type-checked in isolation against the
+installed iOS SDK; no other Swift behaviour was changed.
+
+**Automated validation status:** Swift compile re-verification is **PENDING** — the host build has
+not yet been re-run against these frozen bytes (Xcode cannot run inside the sandboxed worker; the
+host re-run against the stopped prior checkout with a QA `-derivedDataPath` is the next step).
+Mobile Jest **is** now verified for this source: **296/296 tests, 33/33 suites, 0 failed,
+0 pending**, run by the supervisor via
+`npx --no-install jest app/ --runInBand --json --outputFile=…` from the prior checkout's
+`apps/mobile`, with the JSON verified at
+`/Users/ozel0t/Notesnook/qa/veyran-urgent-reminders/mobile-current-tests.json` and the tested
+mobile-source diff pinned at `sha256 5502e4bc8e9ed8ac925ba8ed20885f99f8f727f60d43dd2eae355c7713f7dc68`.
+The 7 older account-suite failures were hoist/mock-initialization problems repaired without
+removing or changing assertions; account production code is unchanged. Full-app `tsc --noEmit` is
+**not clean** — remaining errors are dependency/setup/baseline issues (`clipboard.setHTML`, a null
+ref, swiper, Orama generics), and no unrelated product fix was attempted in this bounded
+milestone. The old `255/262` / `tsc 0 errors` figures belong to `5dc366a` only. Interactive
+simulator QA was never performed. Physical QA remains `PHYSICAL_QA_PENDING`, and independent
+security/domain/diff review of the current candidate is still pending.
+
+**Model/provenance.** This recovery was executed by the DeepSeek-Flash worker; the historical
+Sonnet runs and the 2026-09-28 subscription-quota resume are history only, and the legacy Claude
+autorunner was disabled by user override on 2026-09-29. Independent review of the **new**
+candidate is **NOT COMPLETE**. **Engineering: PARTIAL. Physical QA: PHYSICAL_QA_PENDING.
+Release: NOT AUTHORIZED** (local implementation/tests/QA only — no push, `main` merge,
+TestFlight, App Store, or production deployment).
+
+**Later bounded milestone (2026-09-29) — routing/focus hardening + Urgent-only overdue cleanup.**
+A further bounded pass (DeepSeek-Flash, HIGH) left the native Swift untouched and hardened three
+JavaScript areas that the imported patch had left short:
+
+- `services/task-navigation.ts` is now a production shared router. Entry points pass a **minimal
+  intent** (`taskId`, optional `accountId`/`occurrenceKey`, `source`). It does not read the
+  protected Task domain until auth/App Lock/hydration is ready (a cold or locked tap queues a
+  bounded, last-wins intent consumed once after unlock and cleared on logout/account change),
+  rejects a payload naming a **different account before any Task lookup**, resolves the Task's
+  **current** canonical List (moved → current List; completed → its List with `includeCompleted`,
+  else the Completed smart list; missing → safe `Tasks` + a generic non-identifying notice; a
+  mismatched `occurrenceKey` is `stale` and never targets the next occurrence), makes the **last
+  accepted rapid tap win**, and never completes/edits/reopens a Task or opens the editor.
+- `screens/tasks/index.tsx` now drives a testable `TaskFocusSession`
+  (`screens/tasks/task-focus.ts`): the transient highlight starts **only from the FlatList
+  viewability callback** once the row is on screen, retries and the give-up deadline are bounded,
+  a new intent/list change/unmount cancels pending timers and any running highlight (no stale
+  captured index), and the keyboard is dismissed on arrival. Repeat taps re-arm via a unique
+  `focusRequestId` nonce rather than a stable `highlightTaskId`.
+- `overdueTaskSurfaces()` (`services/task-alarm-plan.ts`) is now restricted to incomplete
+  **Urgent** timed Tasks, so switching Urgent off (or completing/deleting/removing the
+  reminder/rescheduling) empties the desired set and the native reconcile clears the associated
+  Live Activity; ordinary reminders can no longer take a surface slot. Normal reminder delivery is
+  unchanged and no unsolicited normal Live Activity is created.
+- Producer payloads (`services/task-notifications.ts`) now carry the owning account id and the
+  occurrence key so a tap can be validated before any Task read.
+
+Focused tests were added/updated (`services/task-navigation.test.ts` rewritten,
+`screens/tasks/task-focus.test.ts` new, `services/task-alarm-plan.test.ts` updated to the
+Urgent-only requirement) but the **Jest suite could not be executed** in the worker sandbox — this
+isolated checkout has no `node_modules`, npm cache, or TypeScript/Jest tooling, so neither Jest nor
+`tsc --noEmit` ran. As a substitute, the product logic of the three changed modules was executed
+locally with Node 24's type-stripping transform against byte-identical copies and stubbed
+dependencies: `task-navigation.ts` 34/34, `task-focus.ts` 21/21, `task-alarm-plan.ts` 14/14
+assertions passed. That does **not** replace a real Jest run (the test files, React rendering, the
+FlatList callbacks and native behaviour are still unverified). The **296/296 tests, 33/33 suites**
+result above is bound to the prior `apps/mobile/app` bytes only and does **not** cover these
+new/changed files. Exact re-run commands and the recorded byte digests are in
+`artifacts/urgent-reminders-qa/README.md`. Design and policy are in
+`docs/urgent-reminders-architecture.md`. Still **NOT ACCEPTED**: the new bytes need a mobile Jest
+re-run, the native Swift host build re-run, and interactive/physical QA.
+
+## September 28 iOS/iPadOS account lifecycle repair — complete, idle
+
+The physical iPhone screenshots from **3.4.16 (18)** established two account
 regressions: registration remained on “Setting up your account…” and Settings
 showed local deletion without the signed-in account controls. Build 18's Apple
 processing and internal installation evidence below remains valid, but it is
-not evidence that these account flows pass. The repair is in progress on
-`test`; `main` and App Store production release remain outside this work.
+not evidence that these account flows pass. The repair is **complete and idle**
+on `test` (signed source `1d5cb2c`, build 19 below); it is no longer an
+in-progress track. `main` and App Store production release remain outside this
+work.
 See the [account lifecycle repair report](artifacts/veyran-account-lifecycle-repair/REPORT.md)
 for the current implementation and release evidence.
 

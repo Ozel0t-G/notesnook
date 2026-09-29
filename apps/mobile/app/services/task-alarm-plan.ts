@@ -25,6 +25,20 @@ import { RRule } from "rrule";
 
 const MAX_FUTURE_OCCURRENCES = 5;
 
+/**
+ * How many ongoing overdue surfaces can exist at once. Apple's
+ * `ActivityAuthorizationError.globalMaximumExceeded`/`targetMaximumExceeded`
+ * bound how many Live Activities may be live, so the newest overdue Tasks win.
+ */
+export const MAX_OVERDUE_SURFACES = 5;
+
+/**
+ * Apple ends a Live Activity after roughly eight hours. An occurrence older
+ * than that is never re-surfaced, so opening the app on a device that has been
+ * closed for days does not resurrect a long-past overdue banner.
+ */
+export const OVERDUE_SURFACE_LIFETIME_MS = 8 * 60 * 60 * 1000;
+
 export function taskAlertTitle(title: string) {
   return title
     // eslint-disable-next-line no-control-regex
@@ -40,6 +54,13 @@ export type DesiredTaskAlarm = {
   title: string;
   updatedAt: number;
   privacyHidden: boolean;
+};
+
+export type OverdueTaskSurface = {
+  taskId: string;
+  /** The overdue occurrence's instant, in milliseconds. */
+  timestamp: number;
+  title: string;
 };
 
 export type TaskReminderOccurrence = {
@@ -135,6 +156,51 @@ export function desiredTaskAlarms(
   ].sort(
     (a, b) => a.timestamp - b.timestamp || a.alarmKey.localeCompare(b.alarmKey)
   );
+}
+
+/**
+ * The overdue-but-still-incomplete Urgent Tasks that should own an ongoing Live
+ * Activity surface right now (the `OVERDUE_INCOMPLETE` device presentation of
+ * an incomplete Urgent Task whose reminder has already fired).
+ *
+ * Restricted to Urgent Tasks: these surfaces belong to the Urgent alarm
+ * feature. A normal (non-Urgent) reminder never owns one, so switching Urgent
+ * off -- or removing the reminder, completing, deleting or rescheduling the
+ * Task -- clears the surface instead of leaving an unsolicited Live Activity
+ * behind, and normal reminders can never consume the shared five-surface budget
+ * ahead of Urgent ones. Normal reminder delivery is unchanged and unaffected.
+ *
+ * Titles are passed through sanitized but unredacted; the native side applies
+ * the same App Lock redaction the alarm path uses, so the placeholder is chosen
+ * in one place.
+ */
+export function overdueTaskSurfaces(
+  tasks: Task[],
+  now = Date.now(),
+  limit = MAX_OVERDUE_SURFACES
+): OverdueTaskSurface[] {
+  return tasks
+    .flatMap((task): OverdueTaskSurface[] => {
+      if (task.completed || !task.urgent) return [];
+      const schedule = taskReminderSchedule(task);
+      // A date-only reminder has no instant to be overdue relative to.
+      if (!schedule.date || !schedule.time) return [];
+      const current = taskReminderOccurrences(task, now)[0];
+      if (!current) return [];
+      const age = now - current.timestamp;
+      if (age < 0 || age > OVERDUE_SURFACE_LIFETIME_MS) return [];
+      return [
+        {
+          taskId: task.id,
+          timestamp: current.timestamp,
+          title: taskAlertTitle(task.title)
+        }
+      ];
+    })
+    .sort(
+      (a, b) => b.timestamp - a.timestamp || a.taskId.localeCompare(b.taskId)
+    )
+    .slice(0, Math.max(0, limit));
 }
 
 function floatingDate(date: string, time: string) {

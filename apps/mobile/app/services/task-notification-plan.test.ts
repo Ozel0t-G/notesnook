@@ -83,7 +83,7 @@ describe("Task notification reconciliation", () => {
     expect(plan.schedule.map((item) => item.id)).toEqual(["private"]);
   });
 
-  test("schedules Urgent through one notification path", () => {
+  test("schedules a fallback notification only for the Urgent task whose alarm failed", () => {
     const plan = planTaskNotifications(
       [
         { ...task("urgent-failed", NOW + 1000), urgent: true },
@@ -93,16 +93,16 @@ describe("Task notification reconciliation", () => {
       NOW,
       50,
       false,
-      true
+      (taskId) => taskId === "urgent-failed"
     );
-    expect(plan.schedule.map((item) => item.id)).toEqual([
-      "urgent-failed",
-      "urgent-ok"
-    ]);
-    expect(plan.schedule.every((item) => !item.urgentFallback)).toBe(true);
+    // Only the task whose native alarm failed gets a fallback notification;
+    // the successfully-alarmed task gets none (AlarmKit is its sole audible
+    // delivery path, so it must never also receive a duplicate notification).
+    expect(plan.schedule.map((item) => item.id)).toEqual(["urgent-failed"]);
+    expect(plan.schedule[0].urgentFallback).toBe(true);
   });
 
-  test("does not schedule Urgent while legacy alarms cannot be cleared", () => {
+  test("falls back to a labeled notification for every Urgent task when native alarms are unsupported/denied", () => {
     const plan = planTaskNotifications(
       [
         {
@@ -117,7 +117,20 @@ describe("Task notification reconciliation", () => {
       Date.parse("2026-09-23T12:00:00"),
       50,
       false,
-      false
+      () => true
+    );
+    expect(plan.schedule).toHaveLength(1);
+    expect(plan.schedule[0].urgentFallback).toBe(true);
+  });
+
+  test("schedules neither an alarm-covered notification nor a duplicate when no task needs fallback", () => {
+    const plan = planTaskNotifications(
+      [{ ...task("urgent-ok", NOW + 1000), urgent: true }],
+      [],
+      NOW,
+      50,
+      false,
+      () => false
     );
     expect(plan.schedule).toHaveLength(0);
   });

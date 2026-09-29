@@ -21,12 +21,16 @@ export {};
 const mockGetUser = jest.fn();
 const mockReady = jest.fn();
 const mockRecover = jest.fn();
+// The factory runs while this module's own top-level consts are still being
+// initialised, so every reference has to be indirect. Binding `mockGetUser`
+// directly would capture `undefined` and the suite would silently test a
+// database stub with no methods on it.
 jest.mock("../common/database", () => ({
   db: {
     user: {
-      getUser: mockGetUser,
-      assertAccountReady: mockReady,
-      recoverInterruptedSignup: mockRecover
+      getUser: () => mockGetUser(),
+      assertAccountReady: (options: unknown) => mockReady(options),
+      recoverInterruptedSignup: () => mockRecover()
     }
   },
   DatabaseLogger: { error: jest.fn() }

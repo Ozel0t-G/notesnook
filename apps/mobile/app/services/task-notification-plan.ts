@@ -49,10 +49,10 @@ export function planTaskNotifications(
   now: number,
   limit: number,
   privacyHidden = false,
-  canScheduleUrgent = true
+  needsUrgentFallback: (taskId: string) => boolean = () => true
 ) {
   const eligible = tasks
-    .filter((task) => !task.completed && (!task.urgent || canScheduleUrgent))
+    .filter((task) => !task.completed && (!task.urgent || needsUrgentFallback(task.id)))
     .flatMap((task) =>
       taskReminderOccurrences(task, now)
         .filter((occurrence) => occurrence.timestamp > now)
@@ -63,7 +63,11 @@ export function planTaskNotifications(
             task.recurrenceRule ? occurrence.key : undefined
           ),
           timestamp: occurrence.timestamp,
-          urgentFallback: false
+          // Only urgent tasks that actually need the fallback path reach
+          // this point at all (see the filter above), so every urgent task
+          // here is, by construction, a fallback; non-urgent tasks are
+          // never fallbacks.
+          urgentFallback: Boolean(task.urgent)
         }))
     );
   const wanted = eligible

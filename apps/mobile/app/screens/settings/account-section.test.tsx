@@ -85,7 +85,11 @@ jest.mock("./section-item", () => ({
     };
   }) => {
     const current = item.useHook?.();
-    return React.createElement("SettingRow", {
+    // `React` is this test file's own top-level import, which `jest.mock`
+    // factories are not allowed to capture (the hoist plugin aborts the whole
+    // suite). `require` is the allowed escape hatch inside a factory.
+    const { createElement } = require("react") as typeof React;
+    return createElement("SettingRow", {
       testID: item.id,
       name: typeof item.name === "function" ? item.name(current) : item.name,
       description:

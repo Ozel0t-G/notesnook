@@ -37,6 +37,26 @@ const mockExport = jest.fn(() =>
 );
 const mockSettingsSet = jest.fn();
 
+/**
+ * `jest.mock` factories may not contain generator syntax: babel hoists an
+ * `_wrapAsyncGenerator` helper into the factory body and `jest-hoist` then
+ * rejects it as an out-of-scope variable, so the suite never even loads. The
+ * async iterable is built by hand instead.
+ */
+function mockAsyncIterable<T>(items: T[]): AsyncIterableIterator<T> {
+  let index = 0;
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next(): Promise<IteratorResult<T>> {
+      if (index >= items.length)
+        return Promise.resolve({ value: undefined, done: true });
+      return Promise.resolve({ value: items[index++], done: false });
+    }
+  };
+}
+
 jest.mock("@notesnook/common", () => ({
   sanitizeFilename: (name: string) => name
 }));
@@ -71,10 +91,7 @@ jest.mock("../common/database", () => ({
     user: { getUser: jest.fn(async () => ({ id: "qa-account" })) },
     attachments: {
       all: {
-        iterate: () =>
-          (async function* () {
-            for (const attachment of mockAttachments) yield attachment;
-          })()
+        iterate: () => mockAsyncIterable(mockAttachments)
       }
     },
     backup: { export: (...args: unknown[]) => mockExport(...(args as [])) }

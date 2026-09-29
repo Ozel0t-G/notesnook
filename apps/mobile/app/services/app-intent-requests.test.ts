@@ -90,10 +90,12 @@ jest.mock("./notifications", () => ({
 }));
 jest.mock("./task-notifications", () => ({
   TaskNotifications: {
-    urgentStatus: async () => "authorized",
-    requestUrgentPermission: async () => "authorized",
     requestPermission: () => mockRequestPermission()
   }
+}));
+jest.mock("./task-alarms", () => ({
+  urgentStatus: async () => "authorized",
+  requestUrgentPermission: async () => "authorized"
 }));
 jest.mock("./navigation", () => ({
   __esModule: true,

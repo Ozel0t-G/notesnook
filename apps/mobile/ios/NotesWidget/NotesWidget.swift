@@ -9,6 +9,12 @@ import SwiftUI
 import UIKit
 import WidgetKit
 import AppIntents
+#if canImport(ActivityKit)
+import ActivityKit
+#endif
+#if canImport(AlarmKit)
+import AlarmKit
+#endif
 
 private enum WidgetURLs {
   static let quickNote = URL(string: "ShareMedia://QuickNoteWidget")!
@@ -541,11 +547,249 @@ private extension Color {
   }
 }
 
+// MARK: - Live Activities
+//
+// Both surfaces below are silent and additive: they never make a sound, so they
+// cannot duplicate an alarm or a notification. Every countdown / elapsed value
+// is rendered by SwiftUI's own timer styles, which the system updates on its own
+// -- no JavaScript timer and no app refresh is involved.
+//
+// AlarmKit hands the widget extension the same `AlarmAttributes` the app
+// scheduled the alarm with, so the widget can only render what it is given; Task
+// titles never reach it except through the attributes the app chose to send.
+
+#if canImport(AlarmKit)
+@available(iOSApplicationExtension 26.0, *)
+private struct TaskAlarmLiveActivity: Widget {
+  var body: some WidgetConfiguration {
+    ActivityConfiguration(for: AlarmAttributes<TaskAlarmMetadata>.self) { context in
+      alarmLockScreenView(context)
+    } dynamicIsland: { context in
+      DynamicIsland {
+        DynamicIslandExpandedRegion(.leading) {
+          alarmTitle(context)
+        }
+        DynamicIslandExpandedRegion(.trailing) {
+          alarmTimer(context)
+        }
+        DynamicIslandExpandedRegion(.bottom) {
+          HStack {
+            alarmStatus(context)
+            Spacer(minLength: 0)
+            alarmControls(context)
+          }
+        }
+      } compactLeading: {
+        Image(systemName: "alarm.fill")
+          .foregroundStyle(context.attributes.tintColor)
+      } compactTrailing: {
+        alarmTimer(context, compact: true)
+      } minimal: {
+        Image(systemName: "alarm.fill")
+          .foregroundStyle(context.attributes.tintColor)
+      }
+      .keylineTint(context.attributes.tintColor)
+    }
+  }
+
+  private func alarmTitle(
+    _ context: ActivityViewContext<AlarmAttributes<TaskAlarmMetadata>>
+  ) -> some View {
+    Text(alarmTitleResource(context))
+      .font(.headline)
+      .lineLimit(1)
+  }
+
+  /// The title the app supplied for whichever presentation is on screen.
+  private func alarmTitleResource(
+    _ context: ActivityViewContext<AlarmAttributes<TaskAlarmMetadata>>
+  ) -> LocalizedStringResource {
+    switch context.state.mode {
+    case .countdown:
+      return context.attributes.presentation.countdown?.title
+        ?? context.attributes.presentation.alert.title
+    case .paused:
+      return context.attributes.presentation.paused?.title
+        ?? context.attributes.presentation.alert.title
+    default:
+      return context.attributes.presentation.alert.title
+    }
+  }
+
+  private func alarmStatus(
+    _ context: ActivityViewContext<AlarmAttributes<TaskAlarmMetadata>>
+  ) -> some View {
+    switch context.state.mode {
+    case .countdown:
+      return Text("Snoozed")
+    case .paused:
+      return Text("Paused")
+    default:
+      return Text("Alarm")
+    }
+  }
+
+  @ViewBuilder private func alarmTimer(
+    _ context: ActivityViewContext<AlarmAttributes<TaskAlarmMetadata>>,
+    compact: Bool = false
+  ) -> some View {
+    switch context.state.mode {
+    case .countdown(let countdown):
+      // System-rendered countdown to the next alert; no JavaScript timer.
+      Text(timerInterval: Date.now ... countdown.fireDate, countsDown: true)
+        .monospacedDigit()
+        .foregroundStyle(context.attributes.tintColor)
+        .font(compact ? .footnote : .title3)
+    case .paused(let paused):
+      // AlarmKit exposes paused durations as `TimeInterval` (seconds), so the
+      // frozen remainder is wrapped back into a `Duration` before handing it to
+      // the system's time format style. Paused time does not advance, so this
+      // stays accurate without any JavaScript timer or app refresh.
+      let remaining = max(0, paused.totalCountdownDuration - paused.previouslyElapsedDuration)
+      Text(Duration.seconds(remaining).formatted(.time(pattern: .minuteSecond)))
+        .monospacedDigit()
+        .foregroundStyle(context.attributes.tintColor)
+        .font(compact ? .footnote : .title3)
+    default:
+      EmptyView()
+    }
+  }
+
+  @ViewBuilder private func alarmControls(
+    _ context: ActivityViewContext<AlarmAttributes<TaskAlarmMetadata>>
+  ) -> some View {
+    HStack(spacing: 6) {
+      switch context.state.mode {
+      case .countdown:
+        Button(intent: TaskAlarmPauseIntent(alarmID: context.state.alarmID.uuidString)) {
+          Label("Pause", systemImage: "pause.fill")
+        }
+      case .paused:
+        Button(intent: TaskAlarmResumeIntent(alarmID: context.state.alarmID.uuidString)) {
+          Label("Resume", systemImage: "play.fill")
+        }
+      default:
+        EmptyView()
+      }
+      // Stop only silences the alert; the Task itself stays incomplete until it
+      // is completed through the ordinary Task action.
+      Button(intent: TaskAlarmStopIntent(alarmID: context.state.alarmID.uuidString)) {
+        Label("Stop", systemImage: "stop.fill")
+      }
+    }
+    .font(.caption)
+    .buttonStyle(.bordered)
+    .tint(.red)
+  }
+
+  private func alarmLockScreenView(
+    _ context: ActivityViewContext<AlarmAttributes<TaskAlarmMetadata>>
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        alarmTitle(context)
+        Spacer(minLength: 8)
+        alarmStatus(context)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+      HStack {
+        alarmTimer(context)
+        Spacer(minLength: 8)
+        alarmControls(context)
+      }
+    }
+    .padding(14)
+  }
+}
+#endif
+
+@available(iOSApplicationExtension 16.2, *)
+private struct OverdueTaskLiveActivity: Widget {
+  var body: some WidgetConfiguration {
+    ActivityConfiguration(for: OverdueTaskActivityAttributes.self) { context in
+      overdueLockScreenView(context)
+    } dynamicIsland: { context in
+      DynamicIsland {
+        DynamicIslandExpandedRegion(.leading) {
+          overdueTitle(context)
+        }
+        DynamicIslandExpandedRegion(.trailing) {
+          overdueElapsed(context, compact: false)
+        }
+        DynamicIslandExpandedRegion(.bottom) {
+          Text("Overdue")
+            .font(.caption)
+            .foregroundStyle(.red)
+        }
+      } compactLeading: {
+        Image(systemName: "exclamationmark.circle.fill")
+          .foregroundStyle(.red)
+      } compactTrailing: {
+        overdueElapsed(context, compact: true)
+      } minimal: {
+        overdueElapsed(context, compact: true)
+      }
+      .keylineTint(.red)
+    }
+  }
+
+  private func overdueTitle(
+    _ context: ActivityViewContext<OverdueTaskActivityAttributes>
+  ) -> some View {
+    Text(context.state.title)
+      .font(.headline)
+      .lineLimit(1)
+  }
+
+  /// How long the Task has been overdue, rendered by the system's own timer
+  /// style so it keeps counting without the app running.
+  private func overdueElapsed(
+    _ context: ActivityViewContext<OverdueTaskActivityAttributes>,
+    compact: Bool
+  ) -> some View {
+    Text(timerInterval: context.state.dueDate ... Date.distantFuture,
+         countsDown: false)
+      .monospacedDigit()
+      .foregroundStyle(.red)
+      .font(compact ? .footnote : .title3)
+  }
+
+  private func overdueLockScreenView(
+    _ context: ActivityViewContext<OverdueTaskActivityAttributes>
+  ) -> some View {
+    HStack(spacing: 10) {
+      Image(systemName: "exclamationmark.circle.fill")
+        .foregroundStyle(.red)
+      VStack(alignment: .leading, spacing: 2) {
+        overdueTitle(context)
+        Text("Overdue")
+          .font(.caption)
+          .foregroundStyle(.red)
+      }
+      Spacer(minLength: 8)
+      overdueElapsed(context, compact: false)
+    }
+    .padding(14)
+    // Tapping the surface opens the Task's current List with the Task in view.
+    // It never opens the editor, and it never completes anything by itself.
+    .widgetURL(WidgetURLs.reminder(id: context.attributes.taskId))
+  }
+}
+
 @main
 struct NotesWidgetBundle: WidgetBundle {
   var body: some Widget {
     QuickNoteWidget()
     ReminderWidget()
+    if #available(iOSApplicationExtension 16.2, *) {
+      OverdueTaskLiveActivity()
+    }
+#if canImport(AlarmKit)
+    if #available(iOSApplicationExtension 26.0, *) {
+      TaskAlarmLiveActivity()
+    }
+#endif
     if #available(iOSApplicationExtension 18.0, *) {
       NewTaskControl()
       NewNoteControl()

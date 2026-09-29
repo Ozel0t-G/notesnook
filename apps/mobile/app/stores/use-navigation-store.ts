@@ -101,6 +101,23 @@ export interface RouteParams extends ParamListBase {
     | {
         listId?: string;
         smartList?: "today" | "scheduled" | "all" | "flagged" | "completed";
+        /** Legacy single-shot highlight. Kept so any older caller keeps
+         * working; new callers use `focusTaskId` + `focusRequestId` so a repeat
+         * of the same Task re-arms the focus instead of being ignored. */
+        highlightTaskId?: string;
+        /** The Task to scroll into view and briefly highlight. Never opens the
+         * editor or the keyboard. Used by notification taps, widget/app-intent
+         * "open" actions, and legacy reminder migration links -- anywhere a
+         * user should land on the Task in its list context rather than jump
+         * straight into editing it. */
+        focusTaskId?: string;
+        /** A unique nonce for one focus request. Tapping the same Task again
+         * after the highlight expired must re-arm the focus, which a stable
+         * Task ID alone cannot signal. */
+        focusRequestId?: string;
+        /** Include completed Tasks in a List view. Used to show a completed
+         * Task in its current canonical List without resurrecting it. */
+        includeCompleted?: boolean;
       }
     | undefined;
   TaskDetail:

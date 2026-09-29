@@ -60,6 +60,10 @@ import Navigation from "./navigation";
 import { ReminderWidget } from "./reminder-widget";
 import SettingsService from "./settings";
 import { claimTaskNotificationPress, TaskNotifications } from "./task-notifications";
+import {
+  openTaskInContext,
+  taskNotificationIntent
+} from "./task-navigation";
 
 let pinned: DisplayedNotification[] = [];
 
@@ -146,13 +150,15 @@ const onEvent = async ({ type, detail }: Event) => {
     notifee.decrementBadgeCount();
     if (notification?.data?.type === "quickNote") return;
     if (notification?.data?.type === "task") {
-      const taskId = notification.data.taskId;
-      if (typeof taskId !== "string" || !(await db.tasks.get(taskId))) return;
+      // The producer attaches the owning account and occurrence identity; the
+      // router validates the account before reading any Task data.
+      const intent = taskNotificationIntent(notification.data, "notification");
+      if (!intent) return;
       // On a cold start the navigation tree is not ready; the initial
       // notification is consumed by use-app-events after database setup.
-      if (!rootNavigatorRef.current || !claimTaskNotificationPress(taskId)) return;
-      Navigation.navigate("Tasks");
-      setTimeout(() => Navigation.push("TaskDetail", { taskId }), 0);
+      if (!rootNavigatorRef.current || !claimTaskNotificationPress(intent.taskId))
+        return;
+      await openTaskInContext(intent);
       return;
     }
     if (notification?.data?.type === "reminder" && notification?.id) {

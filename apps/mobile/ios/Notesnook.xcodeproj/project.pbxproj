@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		A1C0A1C0A1C0A1C0A1C0A1C0 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */; };
 		00E356F31AD99517003FC87E /* NotesnookTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 00E356F21AD99517003FC87E /* NotesnookTests.m */; };
 		01EB83A26658BBA7965AD9F6 /* HandwritingPaper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A16B1B0D911292F7962D997 /* HandwritingPaper.swift */; };
 		06B3A7F98D370B7811B5BF82 /* HandwritingViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B259038A5D1207C9F28314CD /* HandwritingViewController.swift */; };
@@ -38,13 +37,6 @@
 		65AA857925E6DDEC00772A01 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 65AA857825E6DDEC00772A01 /* WidgetKit.framework */; };
 		65AA857B25E6DDEC00772A01 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 65AA857A25E6DDEC00772A01 /* SwiftUI.framework */; };
 		65AA857E25E6DDEC00772A01 /* NotesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65AA857D25E6DDEC00772A01 /* NotesWidget.swift */; };
-		D10000000000000000000010 /* TaskWidgetSnapshotCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */; };
-		D10000000000000000000036 /* TaskWidgetSnapshotCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */; };
-		D10000000000000000000030 /* TaskWidgetCompletionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000030 /* TaskWidgetCompletionIntent.swift */; };
-		D10000000000000000000035 /* TaskWidgetCompletionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000030 /* TaskWidgetCompletionIntent.swift */; };
-		D10000000000000000000031 /* TaskWidgetCompletionBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000031 /* TaskWidgetCompletionBridge.swift */; };
-		D10000000000000000000032 /* TaskWidgetCompletionModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000032 /* TaskWidgetCompletionModule.m */; };
-		D10000000000000000000033 /* TaskWidgetReactHost.mm in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000033 /* TaskWidgetReactHost.mm */; };
 		65AA858025E6DDEE00772A01 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 65AA857F25E6DDEE00772A01 /* Assets.xcassets */; };
 		65AA858425E6DDEE00772A01 /* NotesWidgetExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 65AA857725E6DDEC00772A01 /* NotesWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		65AD1F4A2F6289110033176F /* EvilIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65AD1F492F6289110033176F /* EvilIcons.ttf */; };
@@ -58,26 +50,36 @@
 		65C400DF2A80B6B600AA3DF5 /* MaterialCommunityIcons.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 65C400DD2A80B68D00AA3DF5 /* MaterialCommunityIcons.ttf */; };
 		65E0340B257B9FF100793428 /* File.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65E0340A257B9FF100793428 /* File.swift */; };
 		7E98A197B6B9779DBA5F9010 /* HandwritingMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = 849377998732E0BB9CF032F0 /* HandwritingMetadata.swift */; };
+		A1C0A1C0A1C0A1C0A1C0A1C0 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */; };
 		A79A93DC9D0CAE8703462151 /* libPods-Notesnook-NotesnookTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 068FA9BDFA207A50B0A9E597 /* libPods-Notesnook-NotesnookTests.a */; };
 		D10000000000000000000001 /* ReminderWidgetModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000001 /* ReminderWidgetModule.swift */; };
 		D10000000000000000000002 /* ReminderWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* ReminderWidgetModule.m */; };
+		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
+		D10000000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
+		D10000000000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* PrivacyInfo.xcprivacy */; };
 		D10000000000000000000006 /* TaskAlarmModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000006 /* TaskAlarmModule.swift */; };
 		D10000000000000000000007 /* TaskAlarmModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000007 /* TaskAlarmModule.m */; };
-		D10000000000000000000040 /* NotificationSettingsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000040 /* NotificationSettingsModule.swift */; };
-		D10000000000000000000041 /* NotificationSettingsModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000041 /* NotificationSettingsModule.m */; };
 		D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000008 /* TaskSymbolViewManager.swift */; };
 		D10000000000000000000009 /* TaskSymbolViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000009 /* TaskSymbolViewManager.m */; };
+		D10000000000000000000010 /* TaskWidgetSnapshotCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */; };
 		D10000000000000000000011 /* VeyraNTabBarViewManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000011 /* VeyraNTabBarViewManager.swift */; };
 		D10000000000000000000012 /* VeyraNTabBarViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000012 /* VeyraNTabBarViewManager.m */; };
 		D10000000000000000000020 /* VeyraNIntentMailbox.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000020 /* VeyraNIntentMailbox.swift */; };
 		D10000000000000000000021 /* VeyraNIntentModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000021 /* VeyraNIntentModule.m */; };
 		D10000000000000000000022 /* VeyraNShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000022 /* VeyraNShortcuts.swift */; };
-		D10000000000000000000025 /* VeyraNTaskEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000025 /* VeyraNTaskEntity.swift */; };
 		D10000000000000000000023 /* VeyraNCaptureOpenIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000023 /* VeyraNCaptureOpenIntent.swift */; };
 		D10000000000000000000024 /* VeyraNCaptureOpenIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000023 /* VeyraNCaptureOpenIntent.swift */; };
-		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
-		D10000000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
-		D10000000000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* PrivacyInfo.xcprivacy */; };
+		D10000000000000000000025 /* VeyraNTaskEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000025 /* VeyraNTaskEntity.swift */; };
+		D10000000000000000000030 /* TaskWidgetCompletionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000030 /* TaskWidgetCompletionIntent.swift */; };
+		D10000000000000000000031 /* TaskWidgetCompletionBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000031 /* TaskWidgetCompletionBridge.swift */; };
+		D10000000000000000000032 /* TaskWidgetCompletionModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000032 /* TaskWidgetCompletionModule.m */; };
+		D10000000000000000000033 /* TaskWidgetReactHost.mm in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000033 /* TaskWidgetReactHost.mm */; };
+		D10000000000000000000035 /* TaskWidgetCompletionIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000030 /* TaskWidgetCompletionIntent.swift */; };
+		D10000000000000000000036 /* TaskWidgetSnapshotCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */; };
+		D10000000000000000000040 /* NotificationSettingsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000040 /* NotificationSettingsModule.swift */; };
+		D10000000000000000000041 /* NotificationSettingsModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000041 /* NotificationSettingsModule.m */; };
+		D10000000000000000000050 /* TaskAlarmSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000050 /* TaskAlarmSurface.swift */; };
+		D10000000000000000000051 /* TaskAlarmSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000050 /* TaskAlarmSurface.swift */; };
 		E63910B563ED7C2EC6602FA0 /* HandwritingModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C2824E09020408C06D888A /* HandwritingModule.m */; };
 		E7F9D56665C2F19F4A97BF49 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B679E87FDFB1312CAD6CF45 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -129,7 +131,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = AppIcon.icon; path = Notesnook/AppIcon.icon; sourceTree = "<group>"; };
 		008F07F21AC5B25A0029DE68 /* main.jsbundle */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = main.jsbundle; sourceTree = "<group>"; };
 		00E356EE1AD99517003FC87E /* NotesnookTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = NotesnookTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		00E356F11AD99517003FC87E /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -164,12 +165,6 @@
 		65AA857825E6DDEC00772A01 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		65AA857A25E6DDEC00772A01 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		65AA857D25E6DDEC00772A01 /* NotesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotesWidget.swift; sourceTree = "<group>"; };
-		D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskWidgetSnapshotCodec.swift; sourceTree = "<group>"; };
-		D20000000000000000000030 /* TaskWidgetCompletionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskWidgetCompletionIntent.swift; sourceTree = "<group>"; };
-		D20000000000000000000031 /* TaskWidgetCompletionBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskWidgetCompletionBridge.swift; sourceTree = "<group>"; };
-		D20000000000000000000032 /* TaskWidgetCompletionModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskWidgetCompletionModule.m; sourceTree = "<group>"; };
-		D20000000000000000000033 /* TaskWidgetReactHost.mm */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.cpp.objcpp; path = TaskWidgetReactHost.mm; sourceTree = "<group>"; };
-		D20000000000000000000034 /* TaskWidgetReactHost.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = TaskWidgetReactHost.h; sourceTree = "<group>"; };
 		65AA857F25E6DDEE00772A01 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		65AA858125E6DDEE00772A01 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		65AD1F492F6289110033176F /* EvilIcons.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = EvilIcons.ttf; path = ../fonts/EvilIcons.ttf; sourceTree = SOURCE_ROOT; };
@@ -193,6 +188,7 @@
 		8630765778FA70C8BA4CA7AD /* SceneDelegate.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = Notesnook/SceneDelegate.m; sourceTree = "<group>"; };
 		88211800FA8BF60638327ADE /* Pods-Make Note.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Make Note.debug.xcconfig"; path = "Target Support Files/Pods-Make Note/Pods-Make Note.debug.xcconfig"; sourceTree = "<group>"; };
 		9FDB47901983098E34AC2A4D /* HandwritingExporter.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingExporter.swift; sourceTree = "<group>"; };
+		A1C0A1C0A1C0A1C0A1C0A1C1 /* AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; name = AppIcon.icon; path = Notesnook/AppIcon.icon; sourceTree = "<group>"; };
 		A482053C4A6E06443DC525BD /* SceneDelegate.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = Notesnook/SceneDelegate.h; sourceTree = "<group>"; };
 		A84F3F0D50641D1CD4569B0E /* Pods-Make Note.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Make Note.release.xcconfig"; path = "Target Support Files/Pods-Make Note/Pods-Make Note.release.xcconfig"; sourceTree = "<group>"; };
 		B1C2824E09020408C06D888A /* HandwritingModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = HandwritingModule.m; sourceTree = "<group>"; };
@@ -202,22 +198,29 @@
 		C5367EAC4A122EA969687331 /* HandwritingModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HandwritingModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000001 /* ReminderWidgetModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReminderWidgetModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000002 /* ReminderWidgetModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = ReminderWidgetModule.m; sourceTree = "<group>"; };
+		D20000000000000000000003 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = ../../../resources/icon.png; sourceTree = SOURCE_ROOT; };
+		D20000000000000000000004 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
+		D20000000000000000000005 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		D20000000000000000000006 /* TaskAlarmModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskAlarmModule.swift; sourceTree = "<group>"; };
 		D20000000000000000000007 /* TaskAlarmModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskAlarmModule.m; sourceTree = "<group>"; };
-		D20000000000000000000040 /* NotificationSettingsModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationSettingsModule.swift; sourceTree = "<group>"; };
-		D20000000000000000000041 /* NotificationSettingsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = NotificationSettingsModule.m; sourceTree = "<group>"; };
 		D20000000000000000000008 /* TaskSymbolViewManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskSymbolViewManager.swift; sourceTree = "<group>"; };
 		D20000000000000000000009 /* TaskSymbolViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskSymbolViewManager.m; sourceTree = "<group>"; };
+		D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskWidgetSnapshotCodec.swift; sourceTree = "<group>"; };
 		D20000000000000000000011 /* VeyraNTabBarViewManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNTabBarViewManager.swift; sourceTree = "<group>"; };
 		D20000000000000000000012 /* VeyraNTabBarViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNTabBarViewManager.m; sourceTree = "<group>"; };
 		D20000000000000000000020 /* VeyraNIntentMailbox.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNIntentMailbox.swift; sourceTree = "<group>"; };
 		D20000000000000000000021 /* VeyraNIntentModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNIntentModule.m; sourceTree = "<group>"; };
 		D20000000000000000000022 /* VeyraNShortcuts.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNShortcuts.swift; sourceTree = "<group>"; };
-		D20000000000000000000025 /* VeyraNTaskEntity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNTaskEntity.swift; sourceTree = "<group>"; };
 		D20000000000000000000023 /* VeyraNCaptureOpenIntent.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNCaptureOpenIntent.swift; sourceTree = "<group>"; };
-		D20000000000000000000003 /* icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; name = icon.png; path = ../../../resources/icon.png; sourceTree = SOURCE_ROOT; };
-		D20000000000000000000004 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
-		D20000000000000000000005 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		D20000000000000000000025 /* VeyraNTaskEntity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNTaskEntity.swift; sourceTree = "<group>"; };
+		D20000000000000000000030 /* TaskWidgetCompletionIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskWidgetCompletionIntent.swift; sourceTree = "<group>"; };
+		D20000000000000000000031 /* TaskWidgetCompletionBridge.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskWidgetCompletionBridge.swift; sourceTree = "<group>"; };
+		D20000000000000000000032 /* TaskWidgetCompletionModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = TaskWidgetCompletionModule.m; sourceTree = "<group>"; };
+		D20000000000000000000033 /* TaskWidgetReactHost.mm */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.cpp.objcpp; path = TaskWidgetReactHost.mm; sourceTree = "<group>"; };
+		D20000000000000000000034 /* TaskWidgetReactHost.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = TaskWidgetReactHost.h; sourceTree = "<group>"; };
+		D20000000000000000000040 /* NotificationSettingsModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = NotificationSettingsModule.swift; sourceTree = "<group>"; };
+		D20000000000000000000041 /* NotificationSettingsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = NotificationSettingsModule.m; sourceTree = "<group>"; };
+		D20000000000000000000050 /* TaskAlarmSurface.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskAlarmSurface.swift; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		ED2971642150620600B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS12.0.sdk/System/Library/Frameworks/JavaScriptCore.framework; sourceTree = DEVELOPER_DIR; };
 		EF88477758968C47002AB99A /* Pods-Notesnook-Add to Notes.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-Add to Notes.debug.xcconfig"; path = "Target Support Files/Pods-Notesnook-Add to Notes/Pods-Notesnook-Add to Notes.debug.xcconfig"; sourceTree = "<group>"; };
@@ -443,6 +446,29 @@
 			path = Notesnook/ReminderWidget;
 			sourceTree = "<group>";
 		};
+		D30000000000000000000006 /* TaskAlarm */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000006 /* TaskAlarmModule.swift */,
+				D20000000000000000000007 /* TaskAlarmModule.m */,
+				D20000000000000000000050 /* TaskAlarmSurface.swift */,
+				D20000000000000000000008 /* TaskSymbolViewManager.swift */,
+				D20000000000000000000009 /* TaskSymbolViewManager.m */,
+			);
+			name = TaskAlarm;
+			path = Notesnook/TaskAlarm;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000011 /* VeyraNTabBar */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000011 /* VeyraNTabBarViewManager.swift */,
+				D20000000000000000000012 /* VeyraNTabBarViewManager.m */,
+			);
+			name = VeyraNTabBar;
+			path = Notesnook/VeyraNTabBar;
+			sourceTree = "<group>";
+		};
 		D30000000000000000000020 /* AppIntents */ = {
 			isa = PBXGroup;
 			children = (
@@ -455,18 +481,6 @@
 			path = Notesnook/AppIntents;
 			sourceTree = "<group>";
 		};
-		D30000000000000000000006 /* TaskAlarm */ = {
-			isa = PBXGroup;
-			children = (
-				D20000000000000000000006 /* TaskAlarmModule.swift */,
-				D20000000000000000000007 /* TaskAlarmModule.m */,
-				D20000000000000000000008 /* TaskSymbolViewManager.swift */,
-				D20000000000000000000009 /* TaskSymbolViewManager.m */,
-			);
-			name = TaskAlarm;
-			path = Notesnook/TaskAlarm;
-			sourceTree = "<group>";
-		};
 		D30000000000000000000040 /* NotificationSettings */ = {
 			isa = PBXGroup;
 			children = (
@@ -475,16 +489,6 @@
 			);
 			name = NotificationSettings;
 			path = Notesnook/NotificationSettings;
-			sourceTree = "<group>";
-		};
-		D30000000000000000000011 /* VeyraNTabBar */ = {
-			isa = PBXGroup;
-			children = (
-				D20000000000000000000011 /* VeyraNTabBarViewManager.swift */,
-				D20000000000000000000012 /* VeyraNTabBarViewManager.m */,
-			);
-			name = VeyraNTabBar;
-			path = Notesnook/VeyraNTabBar;
 			sourceTree = "<group>";
 		};
 		DA84645424CFBF19A44D64B3 /* Pods */ = {
@@ -1074,6 +1078,7 @@
 				D10000000000000000000030 /* TaskWidgetCompletionIntent.swift in Sources */,
 				D10000000000000000000006 /* TaskAlarmModule.swift in Sources */,
 				D10000000000000000000007 /* TaskAlarmModule.m in Sources */,
+				D10000000000000000000050 /* TaskAlarmSurface.swift in Sources */,
 				D10000000000000000000040 /* NotificationSettingsModule.swift in Sources */,
 				D10000000000000000000041 /* NotificationSettingsModule.m in Sources */,
 				D10000000000000000000008 /* TaskSymbolViewManager.swift in Sources */,
@@ -1110,6 +1115,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				65AA857E25E6DDEC00772A01 /* NotesWidget.swift in Sources */,
+				D10000000000000000000051 /* TaskAlarmSurface.swift in Sources */,
 				D10000000000000000000010 /* TaskWidgetSnapshotCodec.swift in Sources */,
 				D10000000000000000000035 /* TaskWidgetCompletionIntent.swift in Sources */,
 				D10000000000000000000024 /* VeyraNCaptureOpenIntent.swift in Sources */,

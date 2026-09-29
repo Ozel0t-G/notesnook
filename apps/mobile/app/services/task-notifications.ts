@@ -33,8 +33,13 @@ import {
   planTaskNotifications,
   taskNotificationId
 } from "./task-notification-plan";
-import { cancelAllTaskAlarms } from "./task-alarms";
-import { taskAlertTitle } from "./task-alarm-plan";
+import {
+  cancelAllTaskAlarms,
+  endOverdueActivities,
+  reconcileTaskAlarms,
+  syncOverdueActivities
+} from "./task-alarms";
+import { overdueTaskSurfaces, taskAlertTitle } from "./task-alarm-plan";
 
 // Keep four slots free under iOS's 64 pending local notification limit.
 const MAX_TOTAL_PENDING = Platform.OS === "ios" ? 60 : 500;
@@ -80,14 +85,36 @@ async function reconcileNow() {
   const privacyHidden = Boolean(
     useSettingStore.getState().settings.appLockEnabled
   );
-  // AlarmKit overrides Silent Mode. Remove alarms from older builds before
-  // scheduling system notifications so there is only one audible delivery path.
-  let oldAlarmsCleared = true;
+  // The account that owns this reconcile pass. It travels with every Task
+  // notification so a tap can be refused if a different account is signed in
+  // before any Task data is read.
+  const accountId = useUserStore.getState().user?.id || "";
+  // AlarmKit is the sole audible delivery path for a successfully-scheduled
+  // Urgent alarm; a labeled notification is only a fallback for the Urgent
+  // tasks whose native alarm could not be scheduled (unsupported, denied,
+  // or an individual scheduling failure), so there is never a duplicate
+  // audible alert for the same occurrence.
+  let urgentFallbackTaskIds = new Set<string>();
   try {
-    await cancelAllTaskAlarms();
+    const result = await reconcileTaskAlarms(all, privacyHidden);
+    urgentFallbackTaskIds = new Set(result.failedTaskIds);
   } catch (error) {
-    oldAlarmsCleared = false;
-    DatabaseLogger.error(error as Error, "Cancel legacy Task alarms");
+    DatabaseLogger.error(error as Error, "Schedule Task alarms");
+    // Fail safe: if we can't tell whether alarms were scheduled, every
+    // Urgent task falls back to a notification rather than risking silence.
+    urgentFallbackTaskIds = new Set(
+      all.filter((task) => task.urgent).map((task) => task.id)
+    );
+  }
+  // The ongoing overdue Urgent surface (Lock Screen / Dynamic Island),
+  // reconciled on the same cadence as alarms and notifications so Urgent being
+  // switched off, a completion, deletion, removed reminder or reschedule takes
+  // it away without leaving a ghost. An empty desired set ends every surface.
+  // It is silent, so it never duplicates an audible alert.
+  try {
+    await syncOverdueActivities(overdueTaskSurfaces(all), privacyHidden);
+  } catch (error) {
+    DatabaseLogger.error(error as Error, "Reconcile overdue Task surfaces");
   }
   const availableSlots = availableTaskNotificationSlots(
     existing.map((entry) => entry.notification.id || ""),
@@ -110,7 +137,7 @@ async function reconcileNow() {
     now,
     availableSlots,
     privacyHidden,
-    oldAlarmsCleared
+    (taskId) => urgentFallbackTaskIds.has(taskId)
   );
   const eligibleCount = plan.eligibleCount;
   const truncation =
@@ -151,7 +178,11 @@ async function reconcileNow() {
           taskId: task.id,
           updatedAt: String(task.updatedAt),
           privacyHidden: privacyHidden ? "1" : "0",
-          urgentFallback: task.urgentFallback ? "1" : "0"
+          urgentFallback: task.urgentFallback ? "1" : "0",
+          // Non-empty only when an account is signed in; the tap router treats
+          // an empty value as an accountless payload.
+          accountId,
+          occurrenceKey: task.occurrenceKey || ""
         },
         android: {
           channelId: channelId || "com.streetwriters.notesnook.tasks",
@@ -210,8 +241,14 @@ function start() {
     clearTimeout(timer);
     reconciliation = reconciliation
       .then(async () => {
+        // The signed-in account changed, so every surface that belongs to the
+        // previous account has to go before anything is planned for the new
+        // one: alarms are keyed by account, but a Live Activity created for the
+        // old account would otherwise stay on the Lock Screen (a ghost) until
+        // some later reconcile happened to run.
         await cancelAllTaskTriggers();
         await cancelAllTaskAlarms();
+        await endOverdueActivities();
         lastTruncation = "";
       })
       .catch((error) =>
@@ -219,7 +256,11 @@ function start() {
           error as Error,
           "Cancel Task alerts after account change"
         )
-      );
+      )
+      // Whatever the outcome, re-plan for the account that is signed in now --
+      // an account change must not leave the new account with no alarms at all
+      // until the next unrelated database event.
+      .then(() => queueReconcile());
   });
   const logoutSubscription = db.eventManager.subscribe(
     EVENTS.userLoggedOut,
@@ -229,6 +270,7 @@ function start() {
         .then(async () => {
           await cancelAllTaskTriggers();
           await cancelAllTaskAlarms();
+          await endOverdueActivities();
           lastTruncation = "";
         })
         .catch((error) =>
@@ -271,16 +313,5 @@ export const TaskNotifications = {
   reconcile,
   permissionStatus: taskNotificationPermission,
   requestPermission,
-  notificationId: taskNotificationId,
-  urgentStatus: async () => {
-    const status = (await notifee.getNotificationSettings())
-      .authorizationStatus;
-    if (status === AuthorizationStatus.NOT_DETERMINED)
-      return "notDetermined" as const;
-    return (await taskNotificationPermission())
-      ? ("authorized" as const)
-      : ("denied" as const);
-  },
-  requestUrgentPermission: async () =>
-    (await requestPermission()) ? ("authorized" as const) : ("denied" as const)
+  notificationId: taskNotificationId
 };

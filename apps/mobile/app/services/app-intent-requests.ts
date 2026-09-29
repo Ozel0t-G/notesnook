@@ -23,6 +23,10 @@ import { MMKV } from "../common/database/mmkv";
 import { taskWidgetAccountScope } from "../hooks/task-widget-completion-intents";
 import { textToHTML } from "./notifications";
 import { TaskNotifications } from "./task-notifications";
+import {
+  requestUrgentPermission as requestNativeUrgentPermission,
+  urgentStatus as nativeUrgentStatus
+} from "./task-alarms";
 import Navigation from "./navigation";
 import { ReminderWidget } from "./reminder-widget";
 import SettingsService from "./settings";
@@ -230,11 +234,11 @@ export async function executeAppIntentRequest(
         const urgent = payload.urgent === "true";
         if (urgent && !reminder) return failure("invalid");
         if (urgent) {
-          const status = await TaskNotifications.urgentStatus();
+          const status = await nativeUrgentStatus();
           const authorized =
             status === "authorized"
               ? status
-              : await TaskNotifications.requestUrgentPermission();
+              : await requestNativeUrgentPermission();
           if (authorized !== "authorized") return failure("unavailable");
         } else if (reminder) {
           const authorized = await TaskNotifications.requestPermission().catch(

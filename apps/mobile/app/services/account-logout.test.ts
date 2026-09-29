@@ -42,6 +42,10 @@ jest.mock("../stores", () => ({ clearAllStores: () => mockClearStores() }));
 jest.mock("../stores/create-db-collection-store", () => ({
   refreshAllStores: jest.fn()
 }));
+// `getState` is already lazy, but `setState` used to be bound directly: the
+// mock factory is invoked before this module's own consts are initialised, so
+// it captured `undefined` and every assertion failed with "setState is not a
+// function" instead of exercising the sign-out cleanup.
 jest.mock("../stores/use-user-store", () => ({
   useUserStore: {
     getState: () => ({
@@ -49,7 +53,7 @@ jest.mock("../stores/use-user-store", () => ({
       setSyncing: mockSyncing,
       setIsLoggingOut: mockLoggingOut
     }),
-    setState: mockSetState
+    setState: (state: Record<string, unknown>) => mockSetState(state)
   }
 }));
 jest.mock("./navigation", () => ({

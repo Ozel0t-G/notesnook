@@ -86,6 +86,8 @@
 	<string>VeyraN uses alarms for Tasks you mark Urgent, so they can alert you at the time you choose.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>VeyraN requires Face ID access for App Lock</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Only required by library- not requested in application</string>
 	<key>NSPhotoLibraryUsageDescription</key>

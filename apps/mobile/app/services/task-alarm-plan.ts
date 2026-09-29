@@ -100,6 +100,17 @@ export function taskReminderOccurrences(
   const time = schedule.time || "09:00";
   const timestamp = taskReminderTimestamp(task);
   if (timestamp === undefined) return [];
+  // The occurrence key must be exactly the one core stores for the occurrence
+  // (`packages/core/src/collections/tasks.ts#ensureNextOccurrence`): the wall
+  // time when the series is timed, else the literal `date`. `nextOccurrence`
+  // decides "timed" from the series start (falling back to the record's own due
+  // time), and the date-only 09:00 default is only ever the *timestamp* -- never
+  // part of the key. Getting this wrong makes a tap on a materialized occurrence
+  // miss its record and fall through to the series fallback.
+  const seriesIsTimed =
+    task.seriesStartDate !== undefined
+      ? task.seriesStartTime !== undefined
+      : task.dueTime !== undefined;
   const occurrence = (
     date: string,
     wallTime: string,
@@ -108,7 +119,7 @@ export function taskReminderOccurrences(
     date,
     time: wallTime,
     timestamp: at,
-    key: `${date}T${wallTime}`
+    key: `${date}T${seriesIsTimed ? wallTime : "date"}`
   });
   const result = [occurrence(schedule.date, time, timestamp)];
   if (!task.recurrenceRule) return result;

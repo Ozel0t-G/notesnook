@@ -204,19 +204,31 @@ async function resolveNavigationRecord(
     return { record: await db.tasks.get(intent.taskId), intent };
   const seriesOf = (candidate: NavigableTask) =>
     candidate.seriesId || candidate.id;
-  const tasks = await db.tasks.list();
-  const matching = tasks.filter(
-    (candidate) =>
-      seriesOf(candidate) === intent.seriesId &&
-      candidate.occurrenceKey === intent.occurrenceKey
+  /**
+   * A total order over one series' own records, derived only from what the
+   * domain already stored -- never from a re-derived recurrence. A record with
+   * no `occurrenceKey` is the series' first occurrence and orders before any
+   * keyed one; the keys themselves are chronological (`YYYY-MM-DDTHH:MM` /
+   * `YYYY-MM-DDTdate`), and the id breaks a remaining tie. `db.tasks.list()`'s
+   * order is unspecified, so without this the same tap could be answered by a
+   * different record on a different pass.
+   */
+  const byOccurrence = (a: NavigableTask, b: NavigableTask) =>
+    (a.occurrenceKey ?? "").localeCompare(b.occurrenceKey ?? "") ||
+    a.id.localeCompare(b.id);
+  const series = (await db.tasks.list())
+    .filter((candidate) => seriesOf(candidate) === intent.seriesId)
+    .sort(byOccurrence);
+  const matching = series.filter(
+    (candidate) => candidate.occurrenceKey === intent.occurrenceKey
   );
-  const occurrence = matching.find((candidate) => !candidate.completed) ??
-    matching[0];
-  const record =
-    occurrence ??
-    tasks.find(
-      (candidate) => seriesOf(candidate) === intent.seriesId && !candidate.completed
-    );
+  const occurrence =
+    matching.find((candidate) => !candidate.completed) ?? matching[0];
+  // The series' current occurrence is its earliest still-open record, chosen
+  // deterministically; a future occurrence the series has not rolled forward to
+  // yet is therefore answered by the current state of that Task, never by an
+  // arbitrary sibling record.
+  const record = occurrence ?? series.find((candidate) => !candidate.completed);
   if (!record) return { record: undefined, intent };
   return { record, intent: { taskId: record.id } };
 }

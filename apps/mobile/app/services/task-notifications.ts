@@ -27,6 +27,7 @@ import { strings } from "@notesnook/intl";
 import { AppState, Platform } from "react-native";
 import { db, DatabaseLogger } from "../common/database";
 import { MMKV } from "../common/database/mmkv";
+import { ToastManager } from "./event-manager";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useUserStore } from "../stores/use-user-store";
 import {
@@ -84,6 +85,25 @@ export function taskSurfacesPrivacyHidden() {
     !!useSettingStore.getState().settings.appLockEnabled
   );
 }
+
+/**
+ * Shown when App Lock is on but a *held* alarm still presents the real Task
+ * title. AlarmKit has no public API to restyle a presentation that has already
+ * started (or is about to start), and this app never tears a live alarm down to
+ * redact it, so the surface keeps its title until it ends -- the person is told
+ * rather than left believing the title is hidden.
+ *
+ * A literal, not an `@notesnook/intl` string, for the same bounded-scope reason
+ * as `TASK_UNAVAILABLE_MESSAGE`; it carries no Task content.
+ */
+export const TASK_ALARM_UNREDACTED_MESSAGE =
+  "An alarm that is already ringing still shows its Task title. It will be hidden once the alarm ends.";
+
+/**
+ * The last set of unredacted occurrences the notice was shown for, so a
+ * reconcile that repeats the same failure does not re-notify on every pass.
+ */
+let lastUnredactedNotice = "";
 
 export function claimTaskNotificationPress(id: string) {
   const now = Date.now();
@@ -167,6 +187,27 @@ async function reconcileNow() {
         delivery.error as Error,
         "Schedule Task alarms (occurrences left unverified; existing fallbacks kept)"
       );
+    // App Lock is on but at least one *held* alarm still shows the real Task
+    // title. That is never reported as a clean redaction: the failure is logged
+    // and said out loud, because the whole point of App Lock is that this does
+    // not happen. The occurrence stays held (`heldAlarmKeys`), so it gains no
+    // duplicate fallback -- only the honesty of the pass changes.
+    if (privacyHidden && delivery.unredactedAlarmKeys.size) {
+      DatabaseLogger.error(
+        new Error(
+          `${delivery.unredactedAlarmKeys.size} Task alarm presentation(s) still show the real title while App Lock is on`
+        ),
+        "Task alarm privacy"
+      );
+      const signature = [...delivery.unredactedAlarmKeys].sort().join("|");
+      const firstReport = signature !== lastUnredactedNotice;
+      lastUnredactedNotice = signature;
+      if (firstReport)
+        ToastManager.show({
+          message: TASK_ALARM_UNREDACTED_MESSAGE,
+          type: "error"
+        });
+    }
   } catch (error) {
     // The reconcile produced no per-occurrence answer at all: keep every
     // existing fallback and create no new one, so nothing can duplicate a

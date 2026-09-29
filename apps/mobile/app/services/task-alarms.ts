@@ -26,6 +26,13 @@ type AlarmReconcileReport = {
   status: UrgentAlarmStatus;
   scheduledAlarmKeys?: string[];
   activeAlarmKeys?: string[];
+  /**
+   * Occurrences whose Live alarm presentation still shows the real Task title
+   * although App Lock is on. The occurrence is still *held*, so it never also
+   * owns a duplicate fallback; but a pass that reports any of these is **not** a
+   * clean redaction and must say so.
+   */
+  unredactedAlarmKeys?: string[];
 };
 
 type AlarmCancellationReport = {
@@ -38,6 +45,12 @@ type AlarmCancellationReport = {
    * engaged with is never torn down to make room for a fallback.
    */
   retainedAlarmKeys?: string[];
+  /**
+   * Occurrences the system does not hold at all (already ended or dismissed), so
+   * they are *provably* not scheduled and a fallback for them cannot duplicate
+   * anything. Distinct from "answered about neither set", which stays unknown.
+   */
+  notFoundAlarmKeys?: string[];
 };
 
 export type OverdueActivityStatus = "unsupported" | "denied" | "authorized";
@@ -118,6 +131,17 @@ export type TaskAlarmDelivery = {
   activeAlarmKeys: Set<string>;
   absentAlarmKeys: Set<string>;
   verified: boolean;
+  /**
+   * Occurrences whose Live alarm presentation still shows the real Task title
+   * while App Lock is on, because AlarmKit exposes no in-place presentation
+   * update for an alarm that has already started or is due now (the app never
+   * tears a live alarm down and never re-schedules it on a past instant), or
+   * because removing a not-yet-presenting unredacted alarm failed. Each of these
+   * occurrences is *also* in `heldAlarmKeys`, so it never gains a duplicate
+   * fallback; the set exists so privacy is never reported as succeeded while a
+   * real title is still on screen.
+   */
+  unredactedAlarmKeys: Set<string>;
   /** Non-fatal cause of an unverified/failed pass, for honest logging. */
   error?: unknown;
 };
@@ -186,6 +210,7 @@ export async function reconcileTaskAlarmDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: new Set(alarmKeys),
+      unredactedAlarmKeys: new Set(),
       verified: true
     };
   const accountId = currentAccountId();
@@ -200,12 +225,14 @@ export async function reconcileTaskAlarmDelivery(
     status: UrgentAlarmStatus,
     held: Set<string>,
     active: Set<string>,
+    unredacted: Set<string>,
     error?: unknown
   ): TaskAlarmDelivery => ({
     status,
     heldAlarmKeys: held,
     activeAlarmKeys: active,
     absentAlarmKeys: new Set(alarmKeys.filter((key) => !held.has(key))),
+    unredactedAlarmKeys: unredacted,
     verified: true,
     error
   });
@@ -227,6 +254,9 @@ export async function reconcileTaskAlarmDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: new Set(),
+      // Nothing is known about redaction from a failed *read* either; it is not
+      // a claim that the titles are hidden, only that this pass learned nothing.
+      unredactedAlarmKeys: new Set(),
       verified: false,
       error: readError
     };
@@ -278,7 +308,8 @@ export async function reconcileTaskAlarmDelivery(
     return answer(
       report.status,
       asKeys(report.scheduledAlarmKeys),
-      asKeys(report.activeAlarmKeys)
+      asKeys(report.activeAlarmKeys),
+      asKeys(report.unredactedAlarmKeys)
     );
   } catch (error) {
     replaceError = error;
@@ -289,6 +320,7 @@ export async function reconcileTaskAlarmDelivery(
       report.status,
       asKeys(report.scheduledAlarmKeys),
       asKeys(report.activeAlarmKeys),
+      asKeys(report.unredactedAlarmKeys),
       replaceError
     );
   } catch {
@@ -297,16 +329,21 @@ export async function reconcileTaskAlarmDelivery(
   try {
     const cancelled = await Native.cancelScheduledAlarms(accountId, alarmKeys);
     const cancelledKeys = new Set(cancelled.cancelledAlarmKeys || []);
+    const notFoundKeys = new Set(cancelled.notFoundAlarmKeys || []);
     const retained = asKeys(cancelled.retainedAlarmKeys);
-    // Cancelled occurrences are provably not scheduled now, so their fallback is
-    // safe; a retained alarm is still going to sound, so it gets none. Anything
-    // replied about neither is unknown and stays out of both sets.
+    // Cancelled *and* already-gone occurrences are provably not scheduled now, so
+    // their fallback is safe; a retained alarm is still going to sound, so it
+    // gets none. Anything replied about neither is unknown and stays out of both
+    // sets. A pure cancellation never reports redaction either way.
     return {
       status: cancelled.status,
       heldAlarmKeys: retained,
       activeAlarmKeys: retained,
+      unredactedAlarmKeys: new Set<string>(),
       absentAlarmKeys: new Set(
-        alarmKeys.filter((key) => cancelledKeys.has(key))
+        alarmKeys.filter(
+          (key) => cancelledKeys.has(key) || notFoundKeys.has(key)
+        )
       ),
       verified: true,
       error: replaceError
@@ -317,6 +354,7 @@ export async function reconcileTaskAlarmDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: new Set(),
+      unredactedAlarmKeys: new Set(),
       verified: false,
       error: cancelError ?? replaceError
     };
@@ -345,11 +383,13 @@ async function cleanupRevokedDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: absent,
+      unredactedAlarmKeys: new Set(),
       verified: true
     };
   try {
     const report = await Native.cancelScheduledAlarms(accountId, [...held]);
     const cancelled = new Set(report.cancelledAlarmKeys || []);
+    const notFound = new Set(report.notFoundAlarmKeys || []);
     const retained = new Set(
       alarmKeys.filter((key) => (report.retainedAlarmKeys || []).includes(key))
     );
@@ -357,8 +397,11 @@ async function cleanupRevokedDelivery(
       status,
       heldAlarmKeys: retained,
       activeAlarmKeys: retained,
+      unredactedAlarmKeys: new Set(),
       absentAlarmKeys: new Set(
-        alarmKeys.filter((key) => absent.has(key) || cancelled.has(key))
+        alarmKeys.filter(
+          (key) => absent.has(key) || cancelled.has(key) || notFound.has(key)
+        )
       ),
       verified: true
     };
@@ -372,6 +415,7 @@ async function cleanupRevokedDelivery(
       heldAlarmKeys: held,
       activeAlarmKeys: active,
       absentAlarmKeys: absent,
+      unredactedAlarmKeys: new Set(),
       verified: true,
       error: cancelError
     };

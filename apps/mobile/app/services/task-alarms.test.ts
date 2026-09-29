@@ -357,6 +357,57 @@ describe("Urgent Task alarm delivery", () => {
     expect(delivery.error).toBeInstanceOf(Error);
   });
 
+  test("surfaces an unredacted held alarm instead of claiming the redaction succeeded", async () => {
+    const task = recurringTask("unredacted");
+    const wanted = desiredTaskAlarms([task], false).map(
+      (alarm) => alarm.alarmKey
+    );
+    // The device holds the occurrence but could not redact a presentation that
+    // was already on screen.
+    mockReplaceAlarms.mockResolvedValueOnce({
+      status: "authorized",
+      scheduledAlarmKeys: [wanted[0]],
+      activeAlarmKeys: [wanted[0]],
+      unredactedAlarmKeys: [wanted[0]]
+    });
+
+    const delivery = await reconcileTaskAlarmDelivery([task], true, withdrawnAll);
+
+    expect([...delivery.unredactedAlarmKeys]).toEqual([wanted[0]]);
+    // The occurrence is still *held*, so it must not also gain a fallback; only
+    // the honesty of the answer changes.
+    expect(delivery.heldAlarmKeys.has(wanted[0])).toBe(true);
+    expect(delivery.absentAlarmKeys.has(wanted[0])).toBe(false);
+    expect(delivery.verified).toBe(true);
+  });
+
+  test("classifies a requested key the system no longer holds as provably absent", async () => {
+    const task = recurringTask("gone");
+    const wanted = desiredTaskAlarms([task], false).map(
+      (alarm) => alarm.alarmKey
+    );
+    mockReplaceAlarms.mockRejectedValueOnce(new Error("replace failed"));
+    mockVerifyAlarms
+      .mockResolvedValueOnce({ status: "authorized", scheduledAlarmKeys: [] })
+      .mockRejectedValueOnce(new Error("verify failed"));
+    mockCancelScheduledAlarms.mockResolvedValueOnce({
+      status: "authorized",
+      cancelledAlarmKeys: [wanted[0]],
+      retainedAlarmKeys: [],
+      notFoundAlarmKeys: [wanted[1]]
+    });
+
+    const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawnAll);
+
+    // A cancelled occurrence *and* one the system simply does not hold are both
+    // provably silent, so their fallback cannot duplicate anything; everything
+    // else is unanswered and gains no second delivery.
+    expect([...delivery.absentAlarmKeys].sort()).toEqual(
+      [wanted[0], wanted[1]].sort()
+    );
+    expect([...delivery.heldAlarmKeys]).toEqual([]);
+  });
+
   test("reports a non-authorized pass as a complete 'no alarm' answer when nothing is held", async () => {
     mockVerifyAlarms.mockResolvedValueOnce({
       status: "denied",

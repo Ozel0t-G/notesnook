@@ -38,6 +38,8 @@ type FakeAlarmDevice = {
   failVerifyOnCall: number;
   /** Occurrences the device refuses to schedule (a per-occurrence failure). */
   dropAlarms: Set<string>;
+  /** Held presentations the device could not redact under App Lock. */
+  unredacted: Set<string>;
   failCancel: false | Error;
   triggers: Map<string, FakeTrigger>;
   displayed: FakeTrigger[];
@@ -132,6 +134,8 @@ jest.mock("react-native", () => {
     verifyCalls: 0,
     failVerifyOnCall: 0,
     dropAlarms: new Set<string>(),
+    /** Keys whose held presentation still shows the real title under App Lock. */
+    unredacted: new Set<string>(),
     failCancel: false as false | Error
   };
   const deviceReplace = async (
@@ -153,7 +157,10 @@ jest.mock("react-native", () => {
       scheduledAlarmKeys: [...device.alarms.keys()],
       activeAlarmKeys: [...device.alarms.entries()]
         .filter(([, state]) => state === "active")
-        .map(([key]) => key)
+        .map(([key]) => key),
+      unredactedAlarmKeys: [...device.alarms.keys()].filter((key) =>
+        device.unredacted.has(key)
+      )
     };
   };
   const deviceVerify = async (_accountId: string, keys: string[]) => {
@@ -242,6 +249,10 @@ jest.mock("./settings", () => ({
   default: { get: jest.fn(() => ({ appLockEnabled: false })) }
 }));
 
+jest.mock("./event-manager", () => ({
+  ToastManager: { show: jest.fn() }
+}));
+
 jest.mock("../stores/use-setting-store", () => ({
   useSettingStore: {
     getState: jest.fn(() => ({
@@ -296,8 +307,12 @@ import { MMKV } from "../common/database/mmkv";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useUserStore } from "../stores/use-user-store";
 import SettingsService from "./settings";
+import { ToastManager } from "./event-manager";
 import { taskAlarmKey, taskReminderOccurrences } from "./task-alarm-plan";
-import { TaskNotifications } from "./task-notifications";
+import {
+  TASK_ALARM_UNREDACTED_MESSAGE,
+  TaskNotifications
+} from "./task-notifications";
 
 const database = db as unknown as {
   isInitialized: boolean;
@@ -315,6 +330,7 @@ const storage = MMKV as unknown as {
 const settingStore = useSettingStore.getState as unknown as jest.Mock;
 const userStore = useUserStore.getState as unknown as jest.Mock;
 const settingsService = SettingsService.get as unknown as jest.Mock;
+const toast = ToastManager.show as unknown as jest.Mock;
 
 const notifee = jest.requireMock("@notifee/react-native").default as {
   getTriggerNotifications: jest.Mock;
@@ -433,6 +449,7 @@ beforeEach(() => {
   device.verifyCalls = 0;
   device.failVerifyOnCall = 0;
   device.dropAlarms.clear();
+  device.unredacted.clear();
   device.failCancel = false;
   database.isInitialized = true;
   // Every mocked device call is reset to its base behaviour, so a test that
@@ -485,6 +502,7 @@ beforeEach(() => {
     isAppLoading: false
   });
   settingsService.mockReturnValue({ appLockEnabled: false });
+  toast.mockClear();
   storage.getString.mockImplementation((key: string) => pendingCleanup.get(key));
   storage.setString.mockImplementation((key: string, value: string) => {
     if (value) pendingCleanup.set(key, value);
@@ -722,6 +740,31 @@ describe("App Lock privacy in the delivery pass", () => {
     const created = notifeeStore.triggers.get(triggerId(task.id));
     expect(created?.title).toBe("VeyraN Task");
     expect(created?.data.privacyHidden).toBe("1");
+  });
+
+  test("surfaces a redaction failure instead of claiming App Lock hid the title", async () => {
+    const task = urgentTask("unredactable");
+    database.tasks.list.mockResolvedValue([task]);
+    settingStore.mockReturnValue({
+      settings: { appLockEnabled: true },
+      isAppLoading: false
+    });
+    // The alarm exists and is held, but the device could not redact the
+    // presentation that is already on screen.
+    device.alarms.set(alarmKeyFor(task), "active");
+    device.unredacted.add(alarmKeyFor(task));
+
+    await TaskNotifications.reconcile();
+
+    // The failure is said out loud, never reported as a clean redaction.
+    expect(DatabaseLog.error).toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith({
+      message: TASK_ALARM_UNREDACTED_MESSAGE,
+      type: "error"
+    });
+    // ...and the occurrence is still *held*, so it gains no second, duplicate
+    // audible delivery.
+    expect(createdNotificationIds()).toEqual([]);
   });
 
   test("withdraws an already-displayed unredacted notification", async () => {

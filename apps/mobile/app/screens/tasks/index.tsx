@@ -22,6 +22,7 @@ import {
   Task,
   TaskFavorite,
   TaskList,
+  TaskPriority,
   isTaskOverdue,
   taskReminderSchedule
 } from "@notesnook/core";
@@ -34,7 +35,6 @@ import {
   AppState,
   FlatList,
   Keyboard,
-  KeyboardEvent,
   Platform,
   Pressable,
   ScrollView,
@@ -47,56 +47,134 @@ import {
   SafeAreaView,
   useSafeAreaInsets
 } from "react-native-safe-area-context";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
-import Navigation, { NavigationProps } from "../../services/navigation";
-import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { APPLE_TAB_BAR_HEIGHT } from "../../components/apple-tab-bar";
+import {
+  IosBarButton,
+  IosLargeTitle,
+  IosMoreMenu,
+  IosNavBar
+} from "../../components/ios-nav-bar";
+import { ContextMenu, NativeMenuItem } from "../../components/native-menu";
+import { SwipeRow } from "../../components/swipe-row";
 import { TaskSymbolView } from "../../components/task-symbol-view";
+import { SymbolTile } from "../../components/ui/symbol-tile";
+import { ToastManager } from "../../services/event-manager";
+import Navigation, { NavigationProps } from "../../services/navigation";
+import { TaskNotifications } from "../../services/task-notifications";
+import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { SystemColorName, systemColor } from "../../utils/ios-system-colors";
 import { FavoritesEditor } from "./favorites-editor";
 import {
   ListCustomization,
   taskListColor,
   taskListSymbol
 } from "./list-customization";
-import { keyboardDockInset } from "./keyboard-dock";
+import { parseQuickAdd } from "./quick-add-parse";
 import {
   resolveTaskFocusIndex,
   TASK_FOCUS_VIEW_POSITION,
   TaskFocusSession
 } from "./task-focus";
+import { localCalendarDate, TaskListRow, taskListRows } from "./task-sections";
 
 type SmartList = "today" | "scheduled" | "all" | "flagged" | "completed";
 type Selection =
   | { kind: "smart"; id: SmartList }
   | { kind: "list"; id: string };
 
-const SMART_LISTS: { id: SmartList; icon: string; label: () => string }[] = [
-  { id: "today", icon: "calendar", label: strings.tasksToday },
+/** Reminders-style smart lists: one colored circle each, found without reading. */
+const SMART_LISTS: {
+  id: SmartList;
+  symbol: string;
+  color: SystemColorName;
+  label: () => string;
+}[] = [
+  {
+    id: "today",
+    symbol: "calendar",
+    color: "blue",
+    label: strings.tasksToday
+  },
   {
     id: "scheduled",
-    icon: "calendar.badge.clock",
+    symbol: "calendar",
+    color: "red",
     label: strings.tasksScheduled
   },
-  { id: "all", icon: "tray.full", label: strings.tasksAll },
-  { id: "flagged", icon: "flag", label: strings.tasksFlagged },
+  { id: "all", symbol: "tray.fill", color: "darkGray", label: strings.tasksAll },
+  {
+    id: "flagged",
+    symbol: "flag.fill",
+    color: "orange",
+    label: strings.tasksFlagged
+  },
   {
     id: "completed",
-    icon: "checkmark.circle",
+    symbol: "checkmark",
+    color: "gray",
     label: strings.tasksCompleted
   }
 ];
 
+/** "Completed" is a filter of every list, not a tile of its own. */
+const TILE_SMART_LISTS = new Set<SmartList>([
+  "today",
+  "scheduled",
+  "all",
+  "flagged"
+]);
+
+/** Undo window for deletions and the time a checked-off Task stays visible. */
+const UNDO_DELETE_MS = 4000;
+const COMPLETE_LINGER_MS = 1500;
+
 function dateLabel(value: string) {
   const [year, month, day] = value.split("-").map(Number);
   return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
     day: "numeric",
     month: "short",
     ...(year !== new Date().getFullYear() ? { year: "numeric" as const } : {})
   }).format(new Date(year, month - 1, day));
 }
 
-function scheduledDay(task: Task) {
-  return taskReminderSchedule(task).date;
+/** Formats a stored `HH:mm` in the device's 12/24-hour style. */
+function timeLabel(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  const date = new Date();
+  date.setHours(hour, minute, 0, 0);
+  return date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function relativeDateLabel(value: string) {
+  const today = localCalendarDate(new Date());
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  if (value === today) return strings.tasksToday();
+  if (value === localCalendarDate(tomorrow)) return strings.tasksTomorrow();
+  return dateLabel(value);
+}
+
+function scheduleLabel(task: Task) {
+  const schedule = taskReminderSchedule(task);
+  if (!schedule.date) return "";
+  return `${relativeDateLabel(schedule.date)}${
+    schedule.time ? `, ${timeLabel(schedule.time)}` : ""
+  }`;
+}
+
+function priorityMarks(priority: TaskPriority) {
+  return priority === "high"
+    ? "!!!"
+    : priority === "medium"
+      ? "!!"
+      : priority === "low"
+        ? "!"
+        : "";
 }
 
 function priorityLabel(task: Task) {
@@ -112,30 +190,47 @@ function priorityLabel(task: Task) {
   }
 }
 
-function taskAccessibilityLabel(task: Task) {
-  const schedule = taskReminderSchedule(task);
+function taskAccessibilityLabel(task: Task, listName?: string) {
+  const schedule = scheduleLabel(task);
   return [
     task.title,
-    schedule.date
-      ? `${strings.tasksReminder()}: ${dateLabel(schedule.date)}${
-          schedule.time ? ` ${schedule.time}` : ""
-        }`
-      : undefined,
+    schedule ? `${strings.tasksReminder()}: ${schedule}` : undefined,
     isTaskOverdue(task) ? strings.tasksOverdue() : undefined,
     task.urgent ? strings.tasksUrgent() : undefined,
     task.flagged ? strings.tasksFlagged() : undefined,
-    priorityLabel(task)
+    priorityLabel(task),
+    listName
   ]
     .filter(Boolean)
     .join(", ");
 }
 
+function sectionTitle(row: Extract<TaskListRow, { kind: "header" }>) {
+  switch (row.section) {
+    case "overdue":
+      return strings.tasksSectionOverdue();
+    case "today":
+      return strings.tasksSectionToday();
+    case "later":
+      return strings.tasksSectionLater();
+    case "noDate":
+      return strings.tasksSectionNoDate();
+    case "completed":
+      return strings.tasksCompleted();
+    default:
+      return row.date ? dateLabel(row.date) : "";
+  }
+}
+
 export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const safeAreaInsets = useSafeAreaInsets();
   const isTablet = width >= 700;
+  // Accessibility text sizes (AX1 and up) get a single-column overview so
+  // titles never break mid-word and counts never overflow their tile.
+  const accessibilityLayout = fontScale >= 1.4;
   const [selection, setSelection] = React.useState<Selection>(
     route.params?.listId
       ? { kind: "list", id: route.params.listId }
@@ -162,17 +257,26 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
-  const [quickTitle, setQuickTitle] = React.useState("");
-  const [quickBusy, setQuickBusy] = React.useState(false);
   const [includeCompleted, setIncludeCompleted] = React.useState(
     !!route.params?.includeCompleted
   );
   const [highlightedTaskId, setHighlightedTaskId] = React.useState<
     string | undefined
   >(undefined);
+  const [pendingComplete, setPendingComplete] = React.useState<Set<string>>(
+    () => new Set()
+  );
+  const [pendingDelete, setPendingDelete] = React.useState<Set<string>>(
+    () => new Set()
+  );
+  const completeTimers = React.useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  );
+  const deleteTimers = React.useRef(
+    new Map<string, ReturnType<typeof setTimeout>>()
+  );
   const refreshGeneration = React.useRef(0);
-  const screenRef = React.useRef<View>(null);
-  const listRef = React.useRef<FlatList<Task>>(null);
+  const listRef = React.useRef<FlatList<TaskListRow>>(null);
   const dismissedFocusRequest = React.useRef<string | undefined>(undefined);
   const focusTaskId = route.params?.focusTaskId ?? route.params?.highlightTaskId;
   const focusRequestId = route.params?.focusRequestId ?? focusTaskId;
@@ -205,46 +309,6 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       onUnresolved: () => setHighlightedTaskId(undefined)
     });
   }
-  const keyboardFrame = React.useRef<KeyboardEvent["endCoordinates"] | null>(
-    null
-  );
-  const [keyboardInset, setKeyboardInset] = React.useState(0);
-
-  const updateKeyboardInset = React.useCallback(() => {
-    const frame = keyboardFrame.current;
-    if (!frame) {
-      setKeyboardInset(0);
-      return;
-    }
-    screenRef.current?.measureInWindow((x, y, width, height) => {
-      setKeyboardInset(
-        keyboardDockInset(frame, { x, y, width, height }, safeAreaInsets.bottom)
-      );
-    });
-  }, [safeAreaInsets.bottom]);
-
-  React.useEffect(() => {
-    const change = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillChangeFrame" : "keyboardDidShow",
-      (event) => {
-        keyboardFrame.current = event.endCoordinates;
-        if (Platform.OS === "ios") Keyboard.scheduleLayoutAnimation(event);
-        updateKeyboardInset();
-      }
-    );
-    const hide = Keyboard.addListener(
-      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-      (event) => {
-        keyboardFrame.current = null;
-        if (Platform.OS === "ios") Keyboard.scheduleLayoutAnimation(event);
-        setKeyboardInset(0);
-      }
-    );
-    return () => {
-      change.remove();
-      hide.remove();
-    };
-  }, [updateKeyboardInset]);
 
   const selectionRef = React.useRef(selection);
   selectionRef.current = selection;
@@ -264,8 +328,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     const nextIncludeCompleted = !!route.params?.includeCompleted;
     const current = selectionRef.current;
     if (next) {
-      const changed =
-        current.kind !== next.kind || current.id !== next.id;
+      const changed = current.kind !== next.kind || current.id !== next.id;
       setSelection(next);
       setShowListOnPhone(true);
       if (changed) setLoading(true);
@@ -317,6 +380,21 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         flagged: flagged.length,
         completed: completed.length
       });
+      const smart = { today, scheduled, all, flagged, completed } as Record<
+        SmartList,
+        Task[]
+      >;
+      const todayDate = localCalendarDate(new Date());
+      // "Show Completed" adds the completed Tasks that belong to the list.
+      const completedFor = (id: SmartList) =>
+        completed.filter((task) => {
+          const date = taskReminderSchedule(task).date;
+          if (id === "all") return true;
+          if (id === "flagged") return task.flagged;
+          if (id === "scheduled") return !!date;
+          if (id === "today") return !!date && date <= todayDate;
+          return false;
+        });
       setTasks(
         selection.kind === "list"
           ? allTasks.filter(
@@ -324,12 +402,9 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                 task.listId === selection.id &&
                 (includeCompleted || !task.completed)
             )
-          : (
-              { today, scheduled, all, flagged, completed } as Record<
-                SmartList,
-                Task[]
-              >
-            )[selection.id]
+          : selection.id !== "completed" && includeCompleted
+            ? [...smart[selection.id], ...completedFor(selection.id)]
+            : smart[selection.id]
       );
       setError(false);
     } catch {
@@ -366,6 +441,23 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     };
   }, [navigation, refresh]);
 
+  // Leaving the screen never loses a pending check-off or deletion: both are
+  // committed right away instead of waiting for their undo window.
+  React.useEffect(() => {
+    const completions = completeTimers.current;
+    const deletions = deleteTimers.current;
+    return () => {
+      for (const [id, timer] of completions) {
+        clearTimeout(timer);
+        void db.tasks.complete(id).catch(() => {});
+      }
+      for (const [id, timer] of deletions) {
+        clearTimeout(timer);
+        void db.tasks.remove(id).catch(() => {});
+      }
+    };
+  }, []);
+
   const select = (next: Selection) => {
     setSelection(next);
     setShowListOnPhone(true);
@@ -375,28 +467,43 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     focusSession.current?.cancel();
   };
 
-  const selectedLabel =
+  const selectedSmart =
     selection.kind === "smart"
-      ? SMART_LISTS.find((item) => item.id === selection.id)?.label() ||
-        strings.tasksTitle()
-      : lists.find((list) => list.id === selection.id)?.name ||
-        strings.tasksList();
+      ? SMART_LISTS.find((item) => item.id === selection.id)
+      : undefined;
   const selectedList =
     selection.kind === "list"
       ? lists.find((list) => list.id === selection.id)
       : undefined;
-  const openCount = tasks.filter((task) => !task.completed).length;
-  const overdueCount = tasks.filter((task) => isTaskOverdue(task)).length;
+  const selectedLabel = selectedSmart
+    ? selectedSmart.label()
+    : selectedList?.name || strings.tasksList();
+  const visibleTasks = tasks.filter((task) => !pendingDelete.has(task.id));
+  const openCount = visibleTasks.filter((task) => !task.completed).length;
+  const overdueCount = visibleTasks.filter((task) => isTaskOverdue(task)).length;
   const listSummary = [
     strings.tasksOpenCount(openCount),
     ...(overdueCount ? [strings.tasksOverdueCount(overdueCount)] : [])
   ].join(", ");
+  const listNames = React.useMemo(
+    () => new Map(lists.map((list) => [list.id, list.name])),
+    [lists]
+  );
 
-  const openDetail = (task?: Task, initialTitle?: string) => {
+  const openDetail = (
+    task?: Task,
+    draft?: { title?: string; date?: string; time?: string }
+  ) => {
+    Keyboard.dismiss();
     Navigation.push("TaskDetail", {
       ...(task ? { taskId: task.id } : {}),
       ...(selection.kind === "list" ? { listId: selection.id } : {}),
-      ...(initialTitle ? { initialTitle } : {})
+      ...(draft?.title ? { initialTitle: draft.title } : {}),
+      ...(draft?.date ? { initialDate: draft.date } : {}),
+      ...(draft?.time ? { initialTime: draft.time } : {}),
+      ...(selection.kind === "smart" && selection.id === "flagged"
+        ? { initialFlagged: true }
+        : {})
     });
   };
 
@@ -416,6 +523,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
             );
             await db.taskFavorites.set(remainingFavorites);
             setSelection({ kind: "smart", id: "today" });
+            setShowListOnPhone(false);
             await refresh();
           } catch {
             Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
@@ -427,117 +535,166 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
 
   const editList = (list: TaskList) => setEditingList(list);
 
-  const listActions = (list: TaskList) => {
-    Alert.alert(list.name, undefined, [
-      { text: strings.tasksEditList(), onPress: () => editList(list) },
-      ...(list.id === defaultListId
-        ? []
-        : [
-            {
-              text: strings.tasksDeleteList(),
-              style: "destructive" as const,
-              onPress: () => deleteList(list)
-            }
-          ]),
-      { text: strings.cancel(), style: "cancel" }
-    ]);
-  };
-
-  const addQuickTask = async () => {
-    const title = quickTitle.trim();
-    if (
-      !title ||
-      quickBusy ||
-      (selection.kind === "smart" && selection.id === "completed")
-    )
-      return;
-    setQuickBusy(true);
+  const createTask = async (draft: string) => {
+    const parsed = parseQuickAdd(draft);
+    const title = parsed.title.trim();
+    if (!title) return false;
+    const smart = selection.kind === "smart" ? selection.id : undefined;
+    // Adding in Today/Scheduled dates the Task today; Flagged flags it.
+    const date =
+      parsed.date ||
+      (smart === "today" || smart === "scheduled"
+        ? localCalendarDate(new Date())
+        : undefined);
     try {
       const defaultList = await db.taskLists.default();
+      if (date) await TaskNotifications.requestPermission().catch(() => false);
       await db.tasks.create({
         title,
-        listId: selection.kind === "list" ? selection.id : defaultList.id
+        listId: selection.kind === "list" ? selection.id : defaultList.id,
+        ...(date ? { reminderDate: date } : {}),
+        ...(date && parsed.time ? { reminderTime: parsed.time } : {}),
+        ...(smart === "flagged" ? { flagged: true } : {})
       });
-      setQuickTitle("");
       await refresh();
+      return true;
     } catch {
       Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
-    } finally {
-      setQuickBusy(false);
+      return false;
     }
   };
 
-  const toggleCompletion = async (task: Task) => {
+  const commitCompletion = async (task: Task) => {
+    completeTimers.current.delete(task.id);
     try {
-      if (task.completed) await db.tasks.uncomplete(task.id);
-      else await db.tasks.complete(task.id);
+      await db.tasks.complete(task.id);
       await refresh();
-    } catch {
-      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
-    }
-  };
-
-  const taskActions = (task: Task) => {
-    Alert.alert(task.title, undefined, [
-      {
-        text: task.completed
-          ? strings.tasksUncomplete()
-          : strings.tasksComplete(),
-        onPress: () => void toggleCompletion(task)
-      },
-      {
-        text: task.flagged ? strings.tasksUnflag() : strings.tasksFlag(),
-        onPress: async () => {
+      ToastManager.show({
+        message: strings.tasksCompletedToast(),
+        type: "success",
+        context: "global",
+        duration: UNDO_DELETE_MS,
+        actionText: strings.tasksUndo(),
+        func: async () => {
           try {
-            await db.tasks.update(task.id, { flagged: !task.flagged });
+            await db.tasks.uncomplete(task.id);
             await refresh();
           } catch {
             Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
           }
         }
-      },
-      {
-        text: strings.tasksDelete(),
-        style: "destructive",
-        onPress: () => {
-          Alert.alert(strings.tasksDelete(), strings.tasksDeleteConfirm(), [
-            { text: strings.cancel(), style: "cancel" },
-            {
-              text: strings.delete(),
-              style: "destructive",
-              onPress: async () => {
-                try {
-                  await db.tasks.remove(task.id);
-                  await refresh();
-                } catch {
-                  Alert.alert(
-                    strings.tasksTitle(),
-                    strings.tasksCouldNotSave()
-                  );
-                }
-              }
-            }
-          ]);
+      });
+    } catch {
+      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+    } finally {
+      setPendingComplete((current) => {
+        const next = new Set(current);
+        next.delete(task.id);
+        return next;
+      });
+    }
+  };
+
+  const toggleCompletion = async (task: Task) => {
+    const pending = completeTimers.current.get(task.id);
+    if (pending) {
+      // Tapping the circle again during the linger cancels the check-off.
+      clearTimeout(pending);
+      completeTimers.current.delete(task.id);
+      setPendingComplete((current) => {
+        const next = new Set(current);
+        next.delete(task.id);
+        return next;
+      });
+      return;
+    }
+    if (task.completed) {
+      try {
+        await db.tasks.uncomplete(task.id);
+        await refresh();
+      } catch {
+        Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      }
+      return;
+    }
+    // Like Reminders: the Task stays, checked and struck through, for a moment
+    // before it leaves the list.
+    setPendingComplete((current) => new Set(current).add(task.id));
+    completeTimers.current.set(
+      task.id,
+      setTimeout(
+        () => void commitCompletion(task),
+        includeCompleted ? 0 : COMPLETE_LINGER_MS
+      )
+    );
+  };
+
+  const toggleFlag = async (task: Task) => {
+    try {
+      await db.tasks.update(task.id, { flagged: !task.flagged });
+      await refresh();
+    } catch {
+      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+    }
+  };
+
+  const updateTask = async (task: Task, patch: Partial<Task>) => {
+    try {
+      await db.tasks.update(task.id, patch);
+      await refresh();
+    } catch {
+      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+    }
+  };
+
+  /** Deletes after an undo window instead of asking first. */
+  const deleteTask = (task: Task) => {
+    setPendingDelete((current) => new Set(current).add(task.id));
+    const restore = () => {
+      const timer = deleteTimers.current.get(task.id);
+      if (timer) clearTimeout(timer);
+      deleteTimers.current.delete(task.id);
+      setPendingDelete((current) => {
+        const next = new Set(current);
+        next.delete(task.id);
+        return next;
+      });
+    };
+    deleteTimers.current.set(
+      task.id,
+      setTimeout(async () => {
+        deleteTimers.current.delete(task.id);
+        try {
+          await db.tasks.remove(task.id);
+          await refresh();
+        } catch {
+          Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+        } finally {
+          setPendingDelete((current) => {
+            const next = new Set(current);
+            next.delete(task.id);
+            return next;
+          });
         }
-      },
-      { text: strings.cancel(), style: "cancel" }
-    ]);
+      }, UNDO_DELETE_MS)
+    );
+    ToastManager.show({
+      message: strings.tasksDeleted(),
+      type: "info",
+      context: "global",
+      duration: UNDO_DELETE_MS,
+      actionText: strings.tasksUndo(),
+      func: restore
+    });
   };
 
   const isScheduled =
     selection.kind === "smart" && selection.id === "scheduled";
-  const displayTasks = React.useMemo(() => {
-    if (!isScheduled) return tasks;
-    return [...tasks].sort(
-      (a, b) =>
-        (scheduledDay(a) || "").localeCompare(scheduledDay(b) || "") ||
-        (taskReminderSchedule(a).time || "").localeCompare(
-          taskReminderSchedule(b).time || ""
-        ) ||
-        a.createdAt - b.createdAt ||
-        a.id.localeCompare(b.id)
-    );
-  }, [tasks, isScheduled]);
+  const rows = React.useMemo(
+    () => taskListRows(visibleTasks, { perDay: isScheduled }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tasks, pendingDelete, isScheduled]
+  );
 
   React.useEffect(() => {
     const session = focusSession.current;
@@ -549,7 +706,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     const requestId = String(focusRequestId);
     // Arriving from a notification/deep link must never land on a focused
     // input. Dismiss once per distinct request (not on every list refresh, so
-    // typing in the quick-add row is not interrupted by a background refresh).
+    // typing in the new-task row is not interrupted by a background refresh).
     if (dismissedFocusRequest.current !== requestId) {
       dismissedFocusRequest.current = requestId;
       Keyboard.dismiss();
@@ -560,15 +717,15 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     // a fresh nonce on a repeat tap re-arms the whole thing.
     session.begin(
       { taskId: focusTaskId, requestId },
-      resolveTaskFocusIndex(displayTasks, focusTaskId)
+      resolveTaskFocusIndex(rows, focusTaskId)
     );
-  }, [focusTaskId, focusRequestId, loading, displayTasks]);
+  }, [focusTaskId, focusRequestId, loading, rows]);
 
   React.useEffect(() => () => focusSession.current?.cancel(), []);
 
   const onScrollToIndexFailed = React.useCallback<
     NonNullable<
-      React.ComponentProps<typeof FlatList<Task>>["onScrollToIndexFailed"]
+      React.ComponentProps<typeof FlatList<TaskListRow>>["onScrollToIndexFailed"]
     >
   >((info) => {
     // Bounded retry with increasing backoff -- never an unbounded loop. The
@@ -589,93 +746,156 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   }).current;
   const onViewableItemsChanged = React.useCallback<
     NonNullable<
-      React.ComponentProps<typeof FlatList<Task>>["onViewableItemsChanged"]
+      React.ComponentProps<
+        typeof FlatList<TaskListRow>
+      >["onViewableItemsChanged"]
     >
   >((info) => {
     focusSession.current?.watchViewable(
-      info.viewableItems.map((entry) => entry.item.id)
+      info.viewableItems
+        .filter((entry) => entry.item.kind === "task")
+        .map((entry) => entry.item.id)
     );
   }, []);
+
+  const bottomInset =
+    (Platform.OS === "ios" ? APPLE_TAB_BAR_HEIGHT : 0) +
+    safeAreaInsets.bottom +
+    24;
+
+  const tile = ({
+    key,
+    testID,
+    label,
+    count,
+    symbol,
+    color,
+    active,
+    onPress
+  }: {
+    key: string;
+    testID: string;
+    label: string;
+    count: number;
+    symbol: string;
+    color: string;
+    active: boolean;
+    onPress: () => void;
+  }) => (
+    <Pressable
+      key={key}
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${count}`}
+      accessibilityState={{ selected: active }}
+      style={({ pressed }) => ({
+        width: accessibilityLayout ? "100%" : "47.5%",
+        minHeight: accessibilityLayout ? 60 : 82,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: 12,
+        backgroundColor:
+          active || pressed ? visual.selectedSurface : visual.contentSurface,
+        ...(accessibilityLayout
+          ? { flexDirection: "row", alignItems: "center", gap: 12 }
+          : { justifyContent: "space-between" })
+      })}
+    >
+      {accessibilityLayout ? (
+        <>
+          <SymbolTile symbol={symbol} color={color} shape="circle" size={34} />
+          <Text
+            style={{
+              flex: 1,
+              color: visual.primaryText,
+              fontSize: 17,
+              fontWeight: "600"
+            }}
+          >
+            {label}
+          </Text>
+          <Text
+            style={{
+              color: visual.primaryText,
+              fontSize: 22,
+              fontWeight: "700"
+            }}
+          >
+            {count}
+          </Text>
+        </>
+      ) : (
+        <>
+          <View
+            style={{
+              flexDirection: "row",
+              justifyContent: "space-between",
+              alignItems: "flex-start"
+            }}
+          >
+            <SymbolTile symbol={symbol} color={color} shape="circle" size={32} />
+            <Text
+              numberOfLines={1}
+              style={{
+                color: visual.primaryText,
+                fontSize: 26,
+                fontWeight: "700",
+                marginLeft: 8
+              }}
+            >
+              {count}
+            </Text>
+          </View>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            style={{
+              color: visual.secondaryText,
+              fontSize: 16,
+              fontWeight: "600",
+              marginTop: 8
+            }}
+          >
+            {label}
+          </Text>
+        </>
+      )}
+    </Pressable>
+  );
 
   const nav = (
     <ScrollView
       style={{ flex: 1 }}
-      keyboardShouldPersistTaps="always"
-      contentContainerStyle={{ paddingBottom: 24 }}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ paddingBottom: bottomInset }}
     >
-      <View style={{ padding: 20, flexDirection: "row", alignItems: "center" }}>
-        {Platform.OS !== "ios" && (
-          <Pressable
-            onPress={() =>
-              navigation.canGoBack()
-                ? navigation.goBack()
-                : Navigation.navigate("FluidPanelsView")
-            }
-            accessibilityRole="button"
-            accessibilityLabel={strings.back()}
-            style={{ width: 44, height: 44, justifyContent: "center" }}
-          >
-            <Icon name="arrow-left" size={25} color={visual.primaryText} />
-          </Pressable>
-        )}
-        <Text
-          style={{
-            color: visual.primaryText,
-            fontSize: 34,
-            fontWeight: "700",
-            flex: 1
-          }}
-        >
-          {strings.tasksTitle()}
-        </Text>
-      </View>
-      <View
-        style={{
-          paddingHorizontal: 20,
-          paddingTop: 10,
-          paddingBottom: 8,
-          flexDirection: "row",
-          alignItems: "center"
-        }}
-      >
-        <Text
-          style={{
-            flex: 1,
-            color: visual.primaryText,
-            fontSize: 21,
-            fontWeight: "700"
-          }}
-        >
-          {strings.tasksFavorites()}
-        </Text>
-        <Pressable
-          onPress={() => setFavoritesEditorOpen(true)}
-          accessibilityRole="button"
-          accessibilityLabel={strings.tasksEditFavorites()}
-          style={{ padding: 8 }}
-        >
-          <Text
-            style={{
-              color: colors.primary.accent,
-              fontSize: 15,
-              fontWeight: "600"
-            }}
-          >
-            {strings.edit()}
-          </Text>
-        </Pressable>
-      </View>
+      <IosNavBar
+        trailing={
+          <IosBarButton
+            label={strings.edit()}
+            accessibilityLabel={strings.tasksEditFavorites()}
+            onPress={() => setFavoritesEditorOpen(true)}
+          />
+        }
+      />
+      <IosLargeTitle title={strings.tasksTitle()} />
       <View
         style={{
           flexDirection: "row",
           flexWrap: "wrap",
-          paddingHorizontal: 14
+          justifyContent: "space-between",
+          rowGap: 12,
+          paddingHorizontal: 16,
+          paddingTop: 6
         }}
       >
         {favorites.flatMap((ref) => {
           const smart = ref.startsWith("smart:")
             ? SMART_LISTS.find((item) => item.id === ref.slice(6))
             : undefined;
+          if (smart && !TILE_SMART_LISTS.has(smart.id)) return [];
           const taskList = ref.startsWith("list:")
             ? lists.find((item) => item.id === ref.slice(5))
             : undefined;
@@ -683,78 +903,35 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
           const next: Selection = smart
             ? { kind: "smart", id: smart.id }
             : { kind: "list", id: taskList!.id };
+          // The current selection is only shown on iPad, where the list sits
+          // next to the overview. On iPhone nothing stays highlighted.
           const active =
-            selection.kind === next.kind && selection.id === next.id;
-          const label = smart ? smart.label() : taskList!.name;
+            isTablet &&
+            selection.kind === next.kind &&
+            selection.id === next.id;
           const count = smart
             ? counts[smart.id]
             : allTasks.filter(
                 (task) => task.listId === taskList!.id && !task.completed
               ).length;
-          return (
-            <Pressable
-              key={ref}
-              testID={
-                smart
-                  ? `task-smart-${smart.id}`
-                  : `task-favorite-list-${taskList!.id}`
-              }
-              onPress={() => select(next)}
-              accessibilityRole="button"
-              accessibilityLabel={`${label}, ${count}`}
-              style={{
-                width: "45%",
-                margin: 6,
-                minHeight: 86,
-                padding: 13,
-                borderRadius: visual.cardRadius,
-                backgroundColor: active
-                  ? visual.selectedSurface
-                  : visual.contentSurface,
-                justifyContent: "space-between"
-              }}
-            >
-              {smart ? (
-                <TaskSymbolView
-                  name={smart.icon}
-                  size={23}
-                  color={colors.primary.accent}
-                />
-              ) : (
-                <TaskSymbolView
-                  name={taskListSymbol(taskList!.symbol)}
-                  color={taskListColor(taskList!.color)}
-                  size={23}
-                />
-              )}
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center"
-                }}
-              >
-                <Text
-                  style={{
-                    color: visual.primaryText,
-                    fontSize: 16,
-                    fontWeight: "600"
-                  }}
-                >
-                  {label}
-                </Text>
-                <Text
-                  style={{
-                    color: visual.primaryText,
-                    fontSize: 20,
-                    fontWeight: "700"
-                  }}
-                >
-                  {count}
-                </Text>
-              </View>
-            </Pressable>
-          );
+          return [
+            tile({
+              key: ref,
+              testID: smart
+                ? `task-smart-${smart.id}`
+                : `task-favorite-list-${taskList!.id}`,
+              label: smart ? smart.label() : taskList!.name,
+              count,
+              symbol: smart
+                ? smart.symbol
+                : taskListSymbol(taskList!.symbol),
+              color: smart
+                ? systemColor(smart.color, isDark)
+                : taskListColor(taskList!.color),
+              active,
+              onPress: () => select(next)
+            })
+          ];
         })}
       </View>
       <View
@@ -767,6 +944,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         }}
       >
         <Text
+          accessibilityRole="header"
           style={{
             flex: 1,
             color: visual.primaryText,
@@ -776,111 +954,407 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         >
           {strings.tasksLists()}
         </Text>
-        <Pressable
-          onPress={createList}
-          accessibilityRole="button"
+        <IosBarButton
+          symbol="plus"
           accessibilityLabel={strings.tasksNewList()}
-          style={{ padding: 8 }}
-        >
-          <Icon name="plus" size={23} color={colors.primary.accent} />
-        </Pressable>
+          onPress={createList}
+        />
       </View>
       <View>
         {lists.map((item) => (
-          <Pressable
+          <ContextMenu
             key={item.id}
-            onPress={() => select({ kind: "list", id: item.id })}
-            onLongPress={() => listActions(item)}
-            accessibilityRole="button"
-            accessibilityLabel={item.name}
-            style={{
-              marginHorizontal: 20,
-              minHeight: 52,
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: 12,
-              borderRadius: visual.controlRadius,
-              backgroundColor:
-                selection.kind === "list" && selection.id === item.id
-                  ? visual.selectedSurface
-                  : "transparent"
+            title={item.name}
+            items={[
+              {
+                id: "edit",
+                title: strings.tasksEditList(),
+                symbol: "info.circle"
+              },
+              item.id !== defaultListId && {
+                id: "delete",
+                title: strings.tasksDeleteList(),
+                symbol: "trash",
+                destructive: true
+              }
+            ]}
+            onSelect={(id) => {
+              if (id === "edit") editList(item);
+              else if (id === "delete") deleteList(item);
             }}
+            style={{ marginHorizontal: 20 }}
           >
-            <TaskSymbolView
-              name={taskListSymbol(item.symbol)}
-              size={21}
-              color={taskListColor(item.color)}
-            />
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => select({ kind: "list", id: item.id })}
+              accessibilityRole="button"
+              accessibilityLabel={item.name}
               style={{
-                flex: 1,
-                color: visual.primaryText,
-                fontSize: 16,
-                marginLeft: 12
+                minHeight: 52,
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: 12,
+                borderRadius: visual.controlRadius,
+                backgroundColor:
+                  isTablet &&
+                  selection.kind === "list" &&
+                  selection.id === item.id
+                    ? visual.selectedSurface
+                    : "transparent"
               }}
             >
-              {item.name}
-            </Text>
-            <Icon name="chevron-right" size={19} color={visual.tertiaryText} />
-          </Pressable>
+              <TaskSymbolView
+                name={taskListSymbol(item.symbol)}
+                size={21}
+                color={taskListColor(item.color)}
+              />
+              <Text
+                numberOfLines={1}
+                style={{
+                  flex: 1,
+                  color: visual.primaryText,
+                  fontSize: 16,
+                  marginLeft: 12
+                }}
+              >
+                {item.name}
+              </Text>
+              <TaskSymbolView
+                name="chevron.right"
+                size={13}
+                color={visual.tertiaryText}
+              />
+            </Pressable>
+          </ContextMenu>
         ))}
       </View>
     </ScrollView>
   );
 
-  const list = (
-    <View style={{ flex: 1, paddingBottom: keyboardInset }}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 18,
-          paddingTop: 20,
-          paddingBottom: 12
-        }}
+  const renderTask = (item: Task) => {
+    const checked = item.completed || pendingComplete.has(item.id);
+    const schedule = taskReminderSchedule(item);
+    const overdue = isTaskOverdue(item) && !checked;
+    const listName =
+      selection.kind === "smart" ? listNames.get(item.listId) : undefined;
+    const marks = priorityMarks(item.priority);
+    const menu: NativeMenuItem[] = [
+      {
+        title: "",
+        inline: true,
+        children: [
+          {
+            id: "details",
+            title: strings.tasksDetails(),
+            symbol: "info.circle"
+          }
+        ]
+      },
+      {
+        title: "",
+        inline: true,
+        children: [
+          {
+            id: "complete",
+            title: item.completed
+              ? strings.tasksMarkIncomplete()
+              : strings.tasksComplete(),
+            symbol: item.completed ? "circle" : "checkmark.circle"
+          },
+          {
+            id: "flag",
+            title: item.flagged ? strings.tasksUnflag() : strings.tasksFlag(),
+            symbol: item.flagged ? "flag.slash" : "flag"
+          },
+          {
+            title: strings.tasksPriority(),
+            symbol: "exclamationmark",
+            children: (["none", "low", "medium", "high"] as TaskPriority[]).map(
+              (value) => ({
+                id: `priority:${value}`,
+                title:
+                  value === "none"
+                    ? strings.tasksPriorityNone()
+                    : value === "low"
+                      ? strings.tasksPriorityLow()
+                      : value === "medium"
+                        ? strings.tasksPriorityMedium()
+                        : strings.tasksPriorityHigh(),
+                checked: item.priority === value
+              })
+            )
+          },
+          {
+            title: strings.tasksMoveToList(),
+            symbol: "folder",
+            children: lists.map((list) => ({
+              id: `list:${list.id}`,
+              title: list.name,
+              symbol: taskListSymbol(list.symbol),
+              checked: list.id === item.listId
+            }))
+          }
+        ]
+      },
+      {
+        title: "",
+        inline: true,
+        children: [
+          {
+            id: "delete",
+            title: strings.tasksDelete(),
+            symbol: "trash",
+            destructive: true
+          }
+        ]
+      }
+    ];
+    return (
+      <SwipeRow
+        leading={[
+          {
+            key: "complete",
+            label: item.completed
+              ? strings.tasksMarkIncomplete()
+              : strings.tasksComplete(),
+            symbol: item.completed ? "arrow.uturn.backward" : "checkmark",
+            color: item.completed
+              ? systemColor("gray", isDark)
+              : systemColor("green", isDark),
+            onPress: () => void toggleCompletion(item)
+          }
+        ]}
+        trailing={[
+          {
+            key: "delete",
+            label: strings.delete(),
+            symbol: "trash.fill",
+            color: systemColor("red", isDark),
+            onPress: () => deleteTask(item)
+          },
+          {
+            key: "flag",
+            label: item.flagged ? strings.tasksUnflag() : strings.tasksFlag(),
+            symbol: item.flagged ? "flag.slash.fill" : "flag.fill",
+            color: systemColor("orange", isDark),
+            onPress: () => void toggleFlag(item)
+          },
+          {
+            key: "details",
+            label: strings.tasksDetails(),
+            symbol: "info.circle.fill",
+            color: systemColor("gray", isDark),
+            onPress: () => openDetail(item)
+          }
+        ]}
       >
-        {!isTablet && (
-          <Pressable
-            onPress={() => setShowListOnPhone(false)}
-            accessibilityRole="button"
-            accessibilityLabel={strings.back()}
-            style={{ width: 44, height: 44, justifyContent: "center" }}
-          >
-            <Icon name="arrow-left" size={25} color={visual.primaryText} />
-          </Pressable>
-        )}
-        <View style={{ flex: 1 }}>
-          <Text
-            numberOfLines={1}
+        <ContextMenu
+          title={item.title}
+          items={menu}
+          previewCornerRadius={10}
+          onSelect={(id) => {
+            if (id === "details") openDetail(item);
+            else if (id === "complete") void toggleCompletion(item);
+            else if (id === "flag") void toggleFlag(item);
+            else if (id === "delete") deleteTask(item);
+            else if (id.startsWith("priority:"))
+              void updateTask(item, {
+                priority: id.slice(9) as TaskPriority
+              });
+            else if (id.startsWith("list:"))
+              void updateTask(item, { listId: id.slice(5) });
+          }}
+        >
+          <View
+            testID={`task-row-${item.id}`}
+            accessibilityState={{
+              selected: item.id === highlightedTaskId
+            }}
             style={{
-              color: selectedList
-                ? taskListColor(selectedList.color)
-                : visual.primaryText,
-              fontSize: 32,
-              fontWeight: "700"
+              flexDirection: "row",
+              alignItems: "flex-start",
+              minHeight: 52,
+              paddingLeft: 16,
+              backgroundColor:
+                item.id === highlightedTaskId
+                  ? visual.selectedSurface
+                  : visual.screenBackground
             }}
           >
-            {selectedLabel}
-          </Text>
-          {selection.kind === "list" && !loading && (
-            <Text
-              accessibilityLabel={listSummary}
+            <Pressable
+              onPress={() => toggleCompletion(item)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked }}
+              accessibilityLabel={`${
+                checked ? strings.tasksUncomplete() : strings.tasksComplete()
+              }: ${item.title}`}
+              hitSlop={8}
+              style={({ pressed }) => ({
+                width: 34,
+                paddingTop: 13,
+                opacity: pressed ? 0.55 : 1
+              })}
+            >
+              <View
+                style={{
+                  width: 22,
+                  height: 22,
+                  borderRadius: 11,
+                  borderWidth: 1.5,
+                  borderColor: checked
+                    ? colors.primary.accent
+                    : visual.tertiaryText,
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
+              >
+                {checked && (
+                  <View
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 7,
+                      backgroundColor: colors.primary.accent
+                    }}
+                  />
+                )}
+              </View>
+            </Pressable>
+            <Pressable
+              onPress={() => openDetail(item)}
+              accessibilityRole="button"
+              accessibilityLabel={taskAccessibilityLabel(item, listName)}
+              accessibilityHint={strings.tasksDetails()}
               style={{
-                color: visual.secondaryText,
-                fontSize: 14,
-                marginTop: 2
+                flex: 1,
+                paddingVertical: 12,
+                paddingRight: 16,
+                borderBottomWidth: 0.5,
+                borderBottomColor: visual.separator
               }}
             >
-              {listSummary}
-            </Text>
-          )}
-        </View>
-      </View>
+              <Text
+                style={{
+                  color: checked ? visual.secondaryText : visual.primaryText,
+                  fontSize: 17,
+                  textDecorationLine: checked ? "line-through" : "none"
+                }}
+              >
+                {marks ? (
+                  <Text style={{ color: colors.primary.accent }}>
+                    {marks}{" "}
+                  </Text>
+                ) : null}
+                {item.title}
+              </Text>
+              {item.description ? (
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    color: visual.secondaryText,
+                    fontSize: 15,
+                    marginTop: 2
+                  }}
+                >
+                  {item.description}
+                </Text>
+              ) : null}
+              {schedule.date || item.urgent || item.flagged || listName ? (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    gap: 6,
+                    marginTop: 3,
+                    alignItems: "center",
+                    flexWrap: "wrap"
+                  }}
+                >
+                  {item.urgent && (
+                    <TaskSymbolView
+                      name="alarm.fill"
+                      size={14}
+                      color={systemColor("red", isDark)}
+                      accessibilityLabel={strings.tasksUrgent()}
+                    />
+                  )}
+                  {schedule.date ? (
+                    <Text
+                      style={{
+                        color: overdue
+                          ? systemColor("red", isDark)
+                          : visual.secondaryText,
+                        fontSize: 15
+                      }}
+                    >
+                      {scheduleLabel(item)}
+                    </Text>
+                  ) : null}
+                  {schedule.date && item.recurrenceRule ? (
+                    <TaskSymbolView
+                      name="repeat"
+                      size={12}
+                      color={visual.secondaryText}
+                    />
+                  ) : null}
+                  {listName ? (
+                    <Text style={{ color: visual.secondaryText, fontSize: 15 }}>
+                      {schedule.date ? "· " : ""}
+                      {listName}
+                    </Text>
+                  ) : null}
+                  {item.flagged && (
+                    <TaskSymbolView
+                      name="flag.fill"
+                      size={13}
+                      color={systemColor("orange", isDark)}
+                      accessibilityLabel={strings.tasksFlag()}
+                    />
+                  )}
+                </View>
+              ) : null}
+              {item.urgent && !!item.recurrenceRule && !item.completed && (
+                <Text
+                  style={{
+                    color: visual.secondaryText,
+                    fontSize: 13,
+                    marginTop: 4
+                  }}
+                >
+                  {strings.tasksUrgentRepeatLimit()}
+                </Text>
+              )}
+            </Pressable>
+          </View>
+        </ContextMenu>
+      </SwipeRow>
+    );
+  };
+
+  const canAdd = selection.kind === "list" || selection.id !== "completed";
+  const accent = colors.primary.accent;
+
+  const list = (
+    <View style={{ flex: 1 }}>
+      {!isTablet ? (
+        <IosNavBar
+          backTitle={strings.tasksTitle()}
+          onBack={() => {
+            Keyboard.dismiss();
+            setShowListOnPhone(false);
+          }}
+          trailing={listMenu()}
+        />
+      ) : (
+        <IosNavBar trailing={listMenu()} />
+      )}
+      <IosLargeTitle
+        title={selectedLabel}
+        color={accent}
+        subtitle={selection.kind === "list" && !loading ? listSummary : undefined}
+      />
       {loading ? (
         <ActivityIndicator
           style={{ marginTop: 40 }}
-          color={colors.primary.accent}
+          color={accent}
           accessibilityLabel={strings.tasksLoading()}
         />
       ) : error ? (
@@ -896,282 +1370,119 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       ) : (
         <FlatList
           ref={listRef}
-          data={displayTasks}
+          data={rows}
           keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="interactive"
+          automaticallyAdjustKeyboardInsets
           onScrollToIndexFailed={onScrollToIndexFailed}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
-          contentContainerStyle={{
-            paddingHorizontal: 18,
-            paddingBottom: 80,
-            flexGrow: 1
-          }}
+          contentContainerStyle={{ paddingBottom: bottomInset, flexGrow: 1 }}
           ListEmptyComponent={
-            <Text
-              style={{
-                color: visual.secondaryText,
-                textAlign: "center",
-                marginTop: 50
-              }}
-            >
-              {strings.tasksNoTasks()}
-            </Text>
-          }
-          renderItem={({ item, index }) => (
-            <View>
-              {isScheduled &&
-                scheduledDay(item) &&
-                scheduledDay(item) !==
-                  (index > 0
-                    ? scheduledDay(displayTasks[index - 1])
-                    : undefined) && (
-                  <Text
-                    style={{
-                      color: visual.secondaryText,
-                      fontSize: 13,
-                      fontWeight: "700",
-                      marginTop: index === 0 ? 8 : 22,
-                      marginBottom: 3
-                    }}
-                  >
-                    {dateLabel(scheduledDay(item) as string)}
-                  </Text>
-                )}
-              <View
-                testID={`task-row-${item.id}`}
-                accessibilityState={{
-                  selected: item.id === highlightedTaskId
-                }}
+            canAdd ? null : (
+              <Text
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  borderBottomWidth: 0.5,
-                  borderBottomColor: visual.separator,
-                  minHeight: 68,
-                  borderRadius: visual.controlRadius,
-                  backgroundColor:
-                    item.id === highlightedTaskId
-                      ? visual.selectedSurface
-                      : undefined
+                  color: visual.secondaryText,
+                  textAlign: "center",
+                  marginTop: 50,
+                  fontSize: 17
                 }}
               >
-                <Pressable
-                  onPress={() => toggleCompletion(item)}
-                  accessibilityRole="checkbox"
-                  accessibilityState={{ checked: item.completed }}
-                  accessibilityLabel={`${
-                    item.completed
-                      ? strings.tasksUncomplete()
-                      : strings.tasksComplete()
-                  }: ${item.title}`}
-                  style={({ pressed }) => ({
-                    width: 48,
-                    height: 50,
-                    justifyContent: "center",
-                    opacity: pressed ? 0.55 : 1
-                  })}
-                >
-                  <View
-                    style={{
-                      width: 27,
-                      height: 27,
-                      borderRadius: 14,
-                      borderWidth: 2,
-                      borderColor: item.completed
-                        ? colors.primary.accent
-                        : visual.secondaryText,
-                      backgroundColor: item.completed
-                        ? colors.primary.accent
-                        : "transparent",
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}
-                  >
-                    {item.completed && (
-                      <TaskSymbolView
-                        name="checkmark"
-                        size={15}
-                        color={visual.contentSurface}
-                      />
-                    )}
-                  </View>
-                </Pressable>
-                <Pressable
-                  onPress={() => openDetail(item)}
-                  onLongPress={() => taskActions(item)}
-                  accessibilityRole="button"
-                  accessibilityLabel={taskAccessibilityLabel(item)}
-                  accessibilityHint={strings.tasksEditTask()}
-                  style={{ flex: 1, paddingVertical: 9 }}
-                >
-                  <Text
-                    numberOfLines={2}
-                    style={{
-                      color: visual.primaryText,
-                      fontSize: 16,
-                      textDecorationLine: item.completed
-                        ? "line-through"
-                        : "none"
-                    }}
-                  >
-                    {item.title}
-                  </Text>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 8,
-                      marginTop: 4,
-                      alignItems: "center",
-                      flexWrap: "wrap"
-                    }}
-                  >
-                    {taskReminderSchedule(item).date && (
-                      <View
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 4
-                        }}
-                      >
-                        {isTaskOverdue(item) && (
-                          <TaskSymbolView
-                            name="clock"
-                            size={13}
-                            color={colors.error.paragraph}
-                          />
-                        )}
-                        <Text
-                          style={{
-                            color: isTaskOverdue(item)
-                              ? colors.error.paragraph
-                              : visual.secondaryText,
-                            fontSize: 12
-                          }}
-                        >
-                          {isTaskOverdue(item)
-                            ? `${strings.tasksOverdue()} · `
-                            : ""}
-                          {dateLabel(taskReminderSchedule(item).date!)}
-                          {taskReminderSchedule(item).time
-                            ? ` ${taskReminderSchedule(item).time}`
-                            : ""}
-                        </Text>
-                      </View>
-                    )}
-                    {item.urgent && (
-                      <TaskSymbolView
-                        name="bell"
-                        size={14}
-                        color={colors.primary.accent}
-                        accessibilityLabel="Urgent"
-                      />
-                    )}
-                    {item.flagged && (
-                      <TaskSymbolView
-                        name="flag.fill"
-                        size={13}
-                        color={colors.primary.accent}
-                        accessibilityLabel={strings.tasksFlag()}
-                      />
-                    )}
-                    {item.priority !== "none" && (
-                      <Text
-                        style={{ color: visual.secondaryText, fontSize: 12 }}
-                      >
-                        {item.priority === "high"
-                          ? "!!!"
-                          : item.priority === "medium"
-                            ? "!!"
-                            : "!"}
-                      </Text>
-                    )}
-                  </View>
-                  {item.urgent && !!item.recurrenceRule && !item.completed && (
-                    <Text
-                      style={{
-                        color: visual.secondaryText,
-                        fontSize: 11,
-                        marginTop: 4
-                      }}
-                    >
-                      {strings.tasksUrgentRepeatLimit()}
-                    </Text>
-                  )}
-                </Pressable>
-              </View>
-            </View>
-          )}
+                {strings.tasksSmartListNoCompleted()}
+              </Text>
+            )
+          }
+          ListFooterComponent={
+            canAdd ? (
+              <NewTaskRow
+                key={`${selection.kind}:${selection.id}`}
+                onCreate={createTask}
+                onDetails={(draft) => openDetail(undefined, draft)}
+              />
+            ) : null
+          }
+          renderItem={({ item }) =>
+            item.kind === "header" ? (
+              <Text
+                accessibilityRole="header"
+                style={{
+                  color:
+                    item.section === "overdue"
+                      ? systemColor("red", isDark)
+                      : visual.primaryText,
+                  fontSize: 20,
+                  fontWeight: "700",
+                  paddingHorizontal: 16,
+                  paddingTop: 22,
+                  paddingBottom: 4
+                }}
+              >
+                {sectionTitle(item)}
+              </Text>
+            ) : (
+              renderTask(item.task)
+            )
+          }
         />
-      )}
-      {(selection.kind === "list" || selection.id !== "completed") && (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            margin: 14,
-            borderRadius: visual.controlRadius,
-            backgroundColor: visual.contentSurface,
-            paddingHorizontal: 14,
-            minHeight: 54
-          }}
-        >
-          <Icon name="plus" size={22} color={colors.primary.accent} />
-          <TextInput
-            testID="task-quick-add-input"
-            value={quickTitle}
-            onChangeText={setQuickTitle}
-            onSubmitEditing={addQuickTask}
-            placeholder={strings.tasksQuickAdd()}
-            placeholderTextColor={visual.tertiaryText}
-            accessibilityLabel={strings.tasksQuickAdd()}
-            returnKeyType="done"
-            style={{
-              flex: 1,
-              color: visual.primaryText,
-              fontSize: 16,
-              marginLeft: 10,
-              minHeight: 48
-            }}
-          />
-          <Pressable
-            onPress={() => {
-              const draft = quickTitle.trim();
-              setQuickTitle("");
-              openDetail(undefined, draft);
-            }}
-            accessibilityRole="button"
-            accessibilityLabel={strings.advanced()}
-            style={{ padding: 8, minHeight: 44, justifyContent: "center" }}
-          >
-            <Text style={{ color: colors.primary.accent, fontSize: 14 }}>
-              {strings.advanced()}
-            </Text>
-          </Pressable>
-          <Pressable
-            onPress={addQuickTask}
-            testID="task-quick-add-submit"
-            disabled={quickBusy || !quickTitle.trim()}
-            accessibilityRole="button"
-            accessibilityLabel={strings.tasksAddTask()}
-            style={{ padding: 8 }}
-          >
-            <Icon
-              name="arrow-up-circle"
-              size={27}
-              color={
-                quickTitle.trim() ? colors.primary.accent : visual.tertiaryText
-              }
-            />
-          </Pressable>
-        </View>
       )}
     </View>
   );
 
+  function listMenu() {
+    return (
+      <IosMoreMenu
+        accessibilityLabel={strings.more()}
+        testID="task-list-more"
+        items={[
+          {
+            title: "",
+            inline: true,
+            children: [
+              {
+                id: "toggle-completed",
+                title: includeCompleted
+                  ? strings.tasksHideCompleted()
+                  : strings.tasksShowCompleted(),
+                symbol: includeCompleted ? "eye.slash" : "eye",
+                disabled:
+                  selection.kind === "smart" && selection.id === "completed"
+              }
+            ]
+          },
+          selectedList && {
+            title: "",
+            inline: true,
+            children: [
+              {
+                id: "edit-list",
+                title: strings.tasksEditList(),
+                symbol: "info.circle"
+              },
+              selectedList.id !== defaultListId && {
+                id: "delete-list",
+                title: strings.tasksDeleteList(),
+                symbol: "trash",
+                destructive: true
+              }
+            ].filter(Boolean) as NativeMenuItem[]
+          }
+        ]}
+        onSelect={(id) => {
+          if (id === "toggle-completed") {
+            setLoading(true);
+            setIncludeCompleted((value) => !value);
+          } else if (id === "edit-list" && selectedList) editList(selectedList);
+          else if (id === "delete-list" && selectedList)
+            deleteList(selectedList);
+        }}
+      />
+    );
+  }
+
   return (
     <SafeAreaView
-      ref={screenRef}
-      onLayout={updateKeyboardInset}
+      edges={["top", "left", "right"]}
       style={{
         flex: 1,
         backgroundColor: visual.screenBackground,
@@ -1182,7 +1493,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         <View
           style={{
             flex: 1,
-            maxWidth: isTablet ? 330 : undefined,
+            maxWidth: isTablet ? 340 : undefined,
             borderRightWidth: isTablet ? 0.5 : 0,
             borderRightColor: visual.separator
           }}
@@ -1216,5 +1527,189 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         }}
       />
     </SafeAreaView>
+  );
+}
+
+/**
+ * The Reminders-style "+ New Task" row at the end of a list. Tapping it adds an
+ * inline row; Return saves and starts the next one, ⓘ opens the details.
+ * Dates and times typed in the title ("tomorrow 9am", "morgen 9 Uhr") are
+ * recognised; the chips set them with one tap.
+ */
+function NewTaskRow({
+  onCreate,
+  onDetails
+}: {
+  onCreate: (draft: string) => Promise<boolean>;
+  onDetails: (draft: { title?: string; date?: string; time?: string }) => void;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const [composing, setComposing] = React.useState(false);
+  const [draft, setDraft] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const input = React.useRef<TextInput>(null);
+  const accent = colors.primary.accent;
+  const parsed = draft.trim() ? parseQuickAdd(draft) : undefined;
+
+  const submit = async () => {
+    if (busy) return;
+    if (!draft.trim()) {
+      setComposing(false);
+      Keyboard.dismiss();
+      return;
+    }
+    setBusy(true);
+    const created = await onCreate(draft);
+    setBusy(false);
+    if (created) setDraft("");
+  };
+
+  const chip = (label: string, suffix: string) => (
+    <Pressable
+      key={label}
+      onPress={() => {
+        const base = parseQuickAdd(draft).title;
+        setDraft(`${base ? `${base} ` : ""}${suffix}`);
+        input.current?.focus();
+      }}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => ({
+        paddingHorizontal: 12,
+        minHeight: 32,
+        justifyContent: "center",
+        borderRadius: 16,
+        backgroundColor: pressed
+          ? visual.selectedSurface
+          : isDark
+            ? "#2C2C2E"
+            : "rgba(118,118,128,0.12)"
+      })}
+    >
+      <Text style={{ color: visual.primaryText, fontSize: 15 }}>{label}</Text>
+    </Pressable>
+  );
+
+  if (!composing)
+    return (
+      <Pressable
+        testID="task-new-row"
+        onPress={() => setComposing(true)}
+        accessibilityRole="button"
+        accessibilityLabel={strings.tasksNewTaskRow()}
+        style={({ pressed }) => ({
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          minHeight: 50,
+          paddingHorizontal: 16,
+          opacity: pressed ? 0.5 : 1
+        })}
+      >
+        <TaskSymbolView name="plus.circle.fill" size={23} color={accent} />
+        <Text style={{ color: accent, fontSize: 17, fontWeight: "500" }}>
+          {strings.tasksNewTaskRow()}
+        </Text>
+      </Pressable>
+    );
+
+  return (
+    <View style={{ paddingLeft: 16 }}>
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            borderWidth: 1.5,
+            borderColor: visual.tertiaryText,
+            marginRight: 12
+          }}
+        />
+        <TextInput
+          ref={input}
+          testID="task-quick-add-input"
+          value={draft}
+          onChangeText={setDraft}
+          onSubmitEditing={submit}
+          onBlur={() => {
+            if (!draft.trim()) setComposing(false);
+          }}
+          autoFocus
+          blurOnSubmit={false}
+          returnKeyType="next"
+          textContentType="none"
+          autoComplete="off"
+          importantForAutofill="no"
+          placeholder={strings.tasksNewTaskRow()}
+          placeholderTextColor={visual.tertiaryText}
+          accessibilityLabel={strings.tasksNewTaskRow()}
+          style={{
+            flex: 1,
+            color: visual.primaryText,
+            fontSize: 17,
+            minHeight: 48
+          }}
+        />
+        <Pressable
+          onPress={() => {
+            const value = draft.trim() ? parseQuickAdd(draft) : undefined;
+            setDraft("");
+            setComposing(false);
+            onDetails({
+              title: value?.title,
+              date: value?.date,
+              time: value?.time
+            });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={strings.tasksDetails()}
+          hitSlop={8}
+          style={{
+            minWidth: 44,
+            minHeight: 44,
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: 8
+          }}
+        >
+          <TaskSymbolView name="info.circle" size={22} color={accent} />
+        </Pressable>
+      </View>
+      {parsed?.date ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 5,
+            marginLeft: 34,
+            marginBottom: 4
+          }}
+        >
+          <TaskSymbolView name="calendar" size={13} color={accent} />
+          <Text style={{ color: accent, fontSize: 14 }}>
+            {relativeDateLabel(parsed.date)}
+            {parsed.time ? `, ${timeLabel(parsed.time)}` : ""}
+          </Text>
+        </View>
+      ) : null}
+      <ScrollView
+        horizontal
+        keyboardShouldPersistTaps="always"
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          gap: 8,
+          paddingLeft: 34,
+          paddingRight: 16,
+          paddingBottom: 10
+        }}
+      >
+        {chip(strings.tasksToday(), "today")}
+        {chip(strings.tasksTomorrow(), "tomorrow")}
+        {chip(strings.tasksInOneHour(), "in 1 hour")}
+        {chip(strings.tasksThisEvening(), "this evening")}
+      </ScrollView>
+    </View>
   );
 }

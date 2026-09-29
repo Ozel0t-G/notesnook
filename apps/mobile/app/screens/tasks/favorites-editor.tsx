@@ -24,19 +24,34 @@ import React from "react";
 import { Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { DraxList, DraxProvider } from "react-native-drax";
 import { SafeAreaView } from "react-native-safe-area-context";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { TaskSymbolView } from "../../components/task-symbol-view";
+import { SymbolTile } from "../../components/ui/symbol-tile";
+import {
+  SystemColorName,
+  systemColor
+} from "../../utils/ios-system-colors";
 import { taskListColor, taskListSymbol } from "./list-customization";
 
-const SMART: { id: TaskSmartList; title: () => string; icon: string }[] = [
-  { id: "today", title: strings.tasksToday, icon: "calendar-today" },
-  { id: "scheduled", title: strings.tasksScheduled, icon: "calendar-clock" },
-  { id: "all", title: strings.tasksAll, icon: "tray-full" },
-  { id: "flagged", title: strings.tasksFlagged, icon: "flag-outline" },
+/** Completed is a filter of every list, not a favorite tile. */
+const SMART: {
+  id: TaskSmartList;
+  title: () => string;
+  symbol: string;
+  color: SystemColorName;
+}[] = [
+  { id: "today", title: strings.tasksToday, symbol: "calendar", color: "blue" },
   {
-    id: "completed",
-    title: strings.tasksCompleted,
-    icon: "check-circle-outline"
+    id: "scheduled",
+    title: strings.tasksScheduled,
+    symbol: "calendar",
+    color: "red"
+  },
+  { id: "all", title: strings.tasksAll, symbol: "tray.fill", color: "darkGray" },
+  {
+    id: "flagged",
+    title: strings.tasksFlagged,
+    symbol: "flag.fill",
+    color: "orange"
   }
 ];
 
@@ -53,7 +68,7 @@ export function FavoritesEditor({
   onClose: () => void;
   onSave: (items: TaskFavorite[]) => Promise<void>;
 }) {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
   const [draft, setDraft] = React.useState<TaskFavorite[]>(favorites);
   const [saving, setSaving] = React.useState(false);
   React.useEffect(() => {
@@ -61,7 +76,8 @@ export function FavoritesEditor({
       setDraft(
         favorites.filter(
           (ref) =>
-            ref.startsWith("smart:") ||
+            (ref.startsWith("smart:") &&
+              SMART.some((item) => ref === `smart:${item.id}`)) ||
             lists.some((list) => ref === `list:${list.id}`)
         )
       );
@@ -76,10 +92,14 @@ export function FavoritesEditor({
       : lists.find((item) => item.id === ref.slice(5))?.name || ref;
   const symbol = (ref: TaskFavorite) =>
     ref.startsWith("smart:") ? (
-      <Icon
-        name={SMART.find((item) => item.id === ref.slice(6))?.icon || "star"}
-        size={22}
-        color={colors.primary.accent}
+      <SymbolTile
+        symbol={SMART.find((item) => item.id === ref.slice(6))?.symbol || "star"}
+        color={systemColor(
+          SMART.find((item) => item.id === ref.slice(6))?.color || "gray",
+          isDark
+        )}
+        shape="circle"
+        size={26}
       />
     ) : (
       <TaskSymbolView
@@ -145,7 +165,7 @@ export function FavoritesEditor({
               }
             }}
             accessibilityRole="button"
-            accessibilityLabel={strings.save()}
+            accessibilityLabel={strings.tasksDone()}
             style={{
               minWidth: 70,
               minHeight: 44,
@@ -160,7 +180,7 @@ export function FavoritesEditor({
                 fontWeight: "700"
               }}
             >
-              {strings.save()}
+              {strings.tasksDone()}
             </Text>
           </Pressable>
         </View>
@@ -214,15 +234,15 @@ export function FavoritesEditor({
                   )}`}
                   style={{ padding: 10 }}
                 >
-                  <Icon
-                    name="minus-circle-outline"
+                  <TaskSymbolView
+                    name="minus.circle.fill"
                     size={22}
-                    color={colors.error.paragraph}
+                    color={systemColor("red", isDark)}
                   />
                 </Pressable>
-                <Icon
-                  name="drag-horizontal-variant"
-                  size={24}
+                <TaskSymbolView
+                  name="line.3.horizontal"
+                  size={20}
                   color={colors.secondary.paragraph}
                 />
               </View>
@@ -280,10 +300,10 @@ export function FavoritesEditor({
               >
                 {label(ref)}
               </Text>
-              <Icon
-                name="plus-circle-outline"
+              <TaskSymbolView
+                name="plus.circle.fill"
                 size={22}
-                color={colors.primary.accent}
+                color={systemColor("green", isDark)}
               />
             </Pressable>
           ))}

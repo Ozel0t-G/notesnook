@@ -33,38 +33,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { TaskSymbolView } from "../../components/task-symbol-view";
 
+import {
+  TASK_LIST_COLORS as COLORS,
+  taskListColor,
+  taskListSymbol
+} from "./list-appearance";
+
+export { taskListColor, taskListSymbol };
+
 const SYMBOLS = TASK_LIST_SYMBOLS;
-
-const COLORS = [
-  ["red", "#FF453A"],
-  ["orange", "#FF9F0A"],
-  ["yellow", "#FFD60A"],
-  ["green", "#30D158"],
-  ["mint", "#66D4CF"],
-  ["teal", "#40C8E0"],
-  ["cyan", "#64D2FF"],
-  ["blue", "#0A84FF"],
-  ["indigo", "#5E5CE6"],
-  ["purple", "#BF5AF2"],
-  ["pink", "#FF375F"],
-  ["brown", "#AC8E68"],
-  ["gray", "#8E8E93"]
-] as const;
-
-export function taskListColor(value?: string) {
-  return (
-    COLORS.find(([name]) => name === value)?.[1] ||
-    (/^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value || "")
-      ? value || "#0A84FF"
-      : "#0A84FF")
-  );
-}
-
-export function taskListSymbol(value?: string) {
-  return value && SYMBOLS.includes(value as (typeof SYMBOLS)[number])
-    ? value
-    : "list.bullet";
-}
 
 export function ListCustomization({
   visible,

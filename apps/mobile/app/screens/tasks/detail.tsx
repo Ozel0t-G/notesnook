@@ -32,7 +32,9 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  AppState,
   findNodeHandle,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -43,8 +45,6 @@ import {
   useWindowDimensions,
   View
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { db } from "../../common/database";
 import { ToastManager } from "../../services/event-manager";
 import { NavigationProps } from "../../services/navigation";
@@ -57,6 +57,9 @@ import {
 } from "../../services/task-alarms";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { TaskSymbolView } from "../../components/task-symbol-view";
+import { MenuButton, NativeMenuItem } from "../../components/native-menu";
+import { SymbolTile } from "../../components/ui/symbol-tile";
+import { systemColor } from "../../utils/ios-system-colors";
 import { taskListColor, taskListSymbol } from "./list-customization";
 
 type ScheduledTask = Task & {
@@ -150,6 +153,44 @@ function repeatMode(rule?: string): RepeatMode {
   );
 }
 
+type Snapshot = {
+  title: string;
+  description: string;
+  listId: string;
+  reminderDate?: string;
+  reminderTime?: string;
+  urgent: boolean;
+  rule: string;
+  priority: TaskPriority;
+  flagged: boolean;
+};
+
+function snapshotKey(value: Snapshot) {
+  return JSON.stringify({
+    ...value,
+    title: value.title.trim(),
+    description: value.description.trim()
+  });
+}
+
+/** Explains what an Urgent reminder will actually do, from the live AlarmKit status. */
+export function urgentExplanation(
+  status: UrgentStatus | undefined,
+  hasTime: boolean
+) {
+  if (!hasTime) return strings.tasksUrgentTimeRequired();
+  switch (status) {
+    case "authorized":
+      return strings.tasksUrgentAlarmAuthorized();
+    case "denied":
+      return strings.tasksUrgentAlarmDenied();
+    case "unsupported":
+      return strings.tasksUrgentAlarmUnsupported();
+    default:
+      return strings.tasksUrgentAlarmNotDetermined();
+  }
+}
+
 export default function TaskDetail({
   navigation,
   route
@@ -166,8 +207,12 @@ export default function TaskDetail({
   const [title, setTitle] = React.useState(route.params?.initialTitle || "");
   const [description, setDescription] = React.useState("");
   const [listId, setListId] = React.useState(route.params?.listId || "");
-  const [reminderDate, setReminderDate] = React.useState<string>();
-  const [reminderTime, setReminderTime] = React.useState<string>();
+  const [reminderDate, setReminderDate] = React.useState<string | undefined>(
+    route.params?.initialDate
+  );
+  const [reminderTime, setReminderTime] = React.useState<string | undefined>(
+    route.params?.initialDate ? route.params?.initialTime : undefined
+  );
   const [urgent, setUrgent] = React.useState(false);
   const [urgentStatus, setUrgentStatus] = React.useState<UrgentStatus>();
   const [rule, setRule] = React.useState("");
@@ -180,21 +225,21 @@ export default function TaskDetail({
     "FR"
   ]);
   const [priority, setPriority] = React.useState<TaskPriority>("none");
-  const [flagged, setFlagged] = React.useState(false);
+  const [flagged, setFlagged] = React.useState(
+    !!route.params?.initialFlagged
+  );
   const [expandedPicker, setExpandedPicker] = React.useState<"date" | "time">();
   const [showLists, setShowLists] = React.useState(false);
-  const [choiceSheet, setChoiceSheet] = React.useState<{
-    options: string[];
-    onChoose: (index: number) => void;
-  }>();
   const [loading, setLoading] = React.useState(true);
   const [notFound, setNotFound] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [notificationsDenied, setNotificationsDenied] = React.useState(false);
-  const repeatRow = React.useRef<View>(null);
-  const priorityRow = React.useRef<View>(null);
+  const initialSnapshot = React.useRef<string | undefined>(undefined);
+  const allowLeave = React.useRef(false);
+  const cancelButton = React.useRef<View>(null);
+  const deleteButton = React.useRef<View>(null);
 
-  React.useEffect(() => {
+  const refreshPermissions = React.useCallback(() => {
     notifee
       .getNotificationSettings()
       .then((settings) =>
@@ -209,6 +254,16 @@ export default function TaskDetail({
         setUrgentStatus("unsupported");
       });
   }, []);
+
+  React.useEffect(() => {
+    refreshPermissions();
+    // Returning from the Settings app after "Allow Alarms" must update the
+    // explanation below the Urgent switch.
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refreshPermissions();
+    });
+    return () => subscription.remove();
+  }, [refreshPermissions]);
 
   React.useEffect(() => {
     let active = true;
@@ -257,11 +312,38 @@ export default function TaskDetail({
           }
           setPriority(scheduled.priority);
           setFlagged(scheduled.flagged);
+          initialSnapshot.current = snapshotKey({
+            title: scheduled.title,
+            description: scheduled.description || "",
+            listId: scheduled.listId,
+            reminderDate: schedule.date,
+            reminderTime: schedule.time,
+            urgent: !!scheduled.urgent,
+            rule: scheduled.recurrenceRule || "",
+            priority: scheduled.priority,
+            flagged: scheduled.flagged
+          });
         } else if (taskId || legacyReminderId) {
           setNotFound(true);
-        } else if (!route.params?.listId) {
-          const defaultList = await db.taskLists.default();
-          if (active) setListId(defaultList.id);
+        } else {
+          let initialList = route.params?.listId || "";
+          if (!initialList) {
+            const defaultList = await db.taskLists.default();
+            if (!active) return;
+            initialList = defaultList.id;
+            setListId(initialList);
+          }
+          // A new Task counts as changed as soon as anything was entered,
+          // including a title carried over from Quick Add.
+          initialSnapshot.current = snapshotKey({
+            title: "",
+            description: "",
+            listId: initialList,
+            urgent: false,
+            rule: "",
+            priority: "none",
+            flagged: false
+          });
         }
       } catch {
         if (active)
@@ -275,6 +357,90 @@ export default function TaskDetail({
     };
   }, [taskId, legacyReminderId, route.params?.listId]);
 
+  const currentSnapshot = snapshotKey({
+    title,
+    description,
+    listId,
+    reminderDate,
+    reminderTime,
+    urgent,
+    rule,
+    priority,
+    flagged
+  });
+  const dirty =
+    !loading &&
+    !notFound &&
+    initialSnapshot.current !== undefined &&
+    currentSnapshot !== initialSnapshot.current;
+  const dirtyRef = React.useRef(dirty);
+  dirtyRef.current = dirty;
+
+  // Swiping the sheet down must not silently throw away edits
+  // (isModalInPresentation on iOS).
+  React.useEffect(() => {
+    navigation.setOptions({ gestureEnabled: !dirty });
+  }, [navigation, dirty]);
+
+  const leave = React.useCallback(() => {
+    allowLeave.current = true;
+    navigation.goBack();
+  }, [navigation]);
+
+  const confirmDiscard = React.useCallback(
+    (onDiscard: () => void) => {
+      if (Platform.OS === "ios") {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            title: strings.tasksDiscardChangesTitle(),
+            options: [strings.tasksDiscardChanges(), strings.tasksKeepEditing()],
+            destructiveButtonIndex: 0,
+            cancelButtonIndex: 1,
+            ...(Platform.isPad
+              ? { anchor: findNodeHandle(cancelButton.current) || undefined }
+              : {}),
+            userInterfaceStyle: isDark ? "dark" : "light"
+          },
+          (index) => {
+            if (index === 0) onDiscard();
+          }
+        );
+        return;
+      }
+      Alert.alert(strings.tasksDiscardChangesTitle(), undefined, [
+        { text: strings.tasksKeepEditing(), style: "cancel" },
+        {
+          text: strings.tasksDiscardChanges(),
+          style: "destructive",
+          onPress: onDiscard
+        }
+      ]);
+    },
+    [isDark]
+  );
+
+  // Any other way out (hardware back, programmatic navigation) asks too.
+  React.useEffect(
+    () =>
+      navigation.addListener("beforeRemove", (event) => {
+        if (allowLeave.current || !dirtyRef.current) return;
+        event.preventDefault();
+        confirmDiscard(() => {
+          allowLeave.current = true;
+          navigation.dispatch(event.data.action);
+        });
+      }),
+    [navigation, confirmDiscard]
+  );
+
+  const cancel = () => {
+    if (!dirty) {
+      leave();
+      return;
+    }
+    confirmDiscard(leave);
+  };
+
   const save = async () => {
     if (!title.trim() || saving || notFound) return;
     if (rule.trim() && !reminderDate) {
@@ -283,6 +449,10 @@ export default function TaskDetail({
     }
     if (urgent && !reminderTime) {
       Alert.alert(strings.tasksTitle(), strings.tasksUrgentNeedsTime());
+      return;
+    }
+    if (task && !dirty) {
+      leave();
       return;
     }
     setSaving(true);
@@ -302,7 +472,7 @@ export default function TaskDetail({
       };
       if (task) await db.tasks.update(task.id, input);
       else await db.tasks.create(input);
-      navigation.goBack();
+      leave();
     } catch {
       Alert.alert(
         strings.tasksTitle(),
@@ -327,20 +497,35 @@ export default function TaskDetail({
 
   const remove = () => {
     if (!task) return;
+    const run = async () => {
+      try {
+        await db.tasks.remove(task.id);
+        leave();
+      } catch {
+        Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      }
+    };
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: strings.tasksDeleteConfirm(),
+          options: [strings.tasksDelete(), strings.cancel()],
+          destructiveButtonIndex: 0,
+          cancelButtonIndex: 1,
+          ...(Platform.isPad
+            ? { anchor: findNodeHandle(deleteButton.current) || undefined }
+            : {}),
+          userInterfaceStyle: isDark ? "dark" : "light"
+        },
+        (index) => {
+          if (index === 0) void run();
+        }
+      );
+      return;
+    }
     Alert.alert(strings.tasksDelete(), strings.tasksDeleteConfirm(), [
       { text: strings.cancel(), style: "cancel" },
-      {
-        text: strings.delete(),
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await db.tasks.remove(task.id);
-            navigation.goBack();
-          } catch {
-            Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
-          }
-        }
-      }
+      { text: strings.delete(), style: "destructive", onPress: run }
     ]);
   };
 
@@ -389,12 +574,24 @@ export default function TaskDetail({
       else if (status === "unsupported")
         Alert.alert(strings.tasksUrgent(), strings.tasksUrgentUnavailable());
       else
-        Alert.alert(
-          strings.tasksUrgent(),
-          strings.tasksUrgentPermissionDenied()
-        );
+        Alert.alert(strings.tasksUrgent(), strings.tasksUrgentAlarmDenied(), [
+          { text: strings.cancel(), style: "cancel" },
+          { text: strings.tasksAllowAlarms(), onPress: openAlarmSettings }
+        ]);
     } catch {
       Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+    }
+  };
+
+  const openAlarmSettings = async () => {
+    try {
+      await openAppNotificationSettings();
+    } catch (e) {
+      ToastManager.error(
+        e as Error,
+        strings.tasksNotificationsSettingsError(),
+        "local"
+      );
     }
   };
 
@@ -420,30 +617,6 @@ export default function TaskDetail({
   const mode = repeatMode(rule);
   const selectedList = lists.find((item) => item.id === listId);
 
-  const showChoices = (
-    options: string[],
-    anchor: React.RefObject<View | null>,
-    onChoose: (index: number) => void
-  ) => {
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [...options, strings.cancel()],
-          cancelButtonIndex: options.length,
-          ...(Platform.isPad
-            ? { anchor: findNodeHandle(anchor.current) || undefined }
-            : {}),
-          userInterfaceStyle: isDark ? "dark" : "light"
-        },
-        (index) => {
-          if (index < options.length) onChoose(index);
-        }
-      );
-    } else {
-      setChoiceSheet({ options, onChoose });
-    }
-  };
-
   const chooseRepeat = (next: RepeatMode) => {
     if (next !== "never" && !reminderDate)
       setReminderDate(calendarDate(new Date()));
@@ -457,12 +630,55 @@ export default function TaskDetail({
     else setRule(REPEAT_RULES[next] || "");
   };
 
-  const group = (children: React.ReactNode) => (
+  // Repeat groups mirror Reminders: never · days · weeks · months/years · custom.
+  const repeatGroups: RepeatMode[][] = [
+    ["never"],
+    ["daily", "weekdays", "weekends"],
+    ["weekly", "biweekly"],
+    ["monthly", "quarterly", "halfyearly", "yearly"],
+    ["custom"]
+  ];
+  const repeatMenu: NativeMenuItem[] = repeatGroups.map((group, index) => ({
+    title: "",
+    inline: true,
+    id: `repeat-group-${index}`,
+    children: group.map((value) => ({
+      id: value,
+      title: repeatOptions.find((item) => item.mode === value)?.label || value,
+      checked: mode === value
+    }))
+  }));
+  const priorityMenu: NativeMenuItem[] = [
+    {
+      title: "",
+      inline: true,
+      children: [
+        {
+          id: "none",
+          title: strings.tasksPriorityNone(),
+          checked: priority === "none"
+        }
+      ]
+    },
+    {
+      title: "",
+      inline: true,
+      children: priorityOptions
+        .filter((item) => item.value !== "none")
+        .map((item) => ({
+          id: item.value,
+          title: item.label,
+          checked: priority === item.value
+        }))
+    }
+  ];
+
+  const group = (children: React.ReactNode, marginTop = 20) => (
     <View
       style={{
+        marginTop,
         borderRadius: visual.cardRadius,
         backgroundColor: visual.contentSurface,
-        paddingHorizontal: 16,
         overflow: "hidden"
       }}
     >
@@ -470,132 +686,238 @@ export default function TaskDetail({
     </View>
   );
   const divider = (
-    <View style={{ height: 0.5, backgroundColor: visual.separator }} />
+    <View
+      style={{ height: 0.5, marginLeft: 60, backgroundColor: visual.separator }}
+    />
   );
-  const sectionTitle = (label: string) => (
-    <Text
-      style={{
-        color: visual.secondaryText,
-        fontSize: 14,
-        fontWeight: "600",
-        marginTop: 24,
-        marginBottom: 9,
-        marginLeft: 10
-      }}
-    >
-      {label}
-    </Text>
+
+  const rowLabel = (label: string, subtitle?: string) => (
+    <View style={{ flex: 1, marginLeft: 14, paddingVertical: 10 }}>
+      <Text style={{ color: visual.primaryText, fontSize: 17 }}>{label}</Text>
+      {subtitle ? (
+        <Text
+          style={{ color: colors.primary.accent, fontSize: 14, marginTop: 1 }}
+        >
+          {subtitle}
+        </Text>
+      ) : null}
+    </View>
   );
-  const actionRow = (
-    label: string,
-    value: string,
-    icon: string,
-    onPress: () => void,
-    selected = false
-  ) => (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={`${label}: ${value}`}
-      style={{ minHeight: 57, flexDirection: "row", alignItems: "center" }}
-    >
-      <Icon name={icon} size={22} color={visual.secondaryText} />
-      <Text
-        style={{
-          flex: 1,
-          color: visual.primaryText,
-          fontSize: 16,
-          marginLeft: 14
-        }}
-      >
-        {label}
-      </Text>
-      <Text
-        numberOfLines={1}
-        style={{
-          color: selected ? colors.primary.accent : visual.secondaryText,
-          maxWidth: "43%",
-          fontSize: 15
-        }}
-      >
-        {value}
-      </Text>
-      <Icon name="chevron-right" size={20} color={visual.tertiaryText} />
-    </Pressable>
-  );
+
+  /**
+   * One row = one accessibility element. The label area expands the picker,
+   * the switch area (a generous 44 pt target) toggles. The UISwitch itself
+   * does not take touches so a tap anywhere near it always registers.
+   */
   const toggleRow = ({
-    icon,
+    symbol,
+    tint,
     label,
+    subtitle,
     value,
     onValueChange,
     onPress,
-    subtitle,
-    subtitleColor,
+    disabled,
     accessibilityLabel,
-    disabled
+    accessibilityActions,
+    onAccessibilityAction
   }: {
-    icon: string;
+    symbol: string;
+    tint: string;
     label: string;
+    subtitle?: string;
     value: boolean;
     onValueChange: (value: boolean) => void;
     onPress?: () => void;
-    subtitle?: string;
-    subtitleColor?: string;
-    accessibilityLabel?: string;
     disabled?: boolean;
+    accessibilityLabel?: string;
+    accessibilityActions?: { name: string; label: string }[];
+    onAccessibilityAction?: (name: string) => void;
   }) => (
-    <View style={{ paddingVertical: 6 }}>
-      <View
+    <View
+      accessible
+      accessibilityRole="switch"
+      accessibilityLabel={accessibilityLabel || label}
+      accessibilityValue={subtitle ? { text: subtitle } : undefined}
+      accessibilityState={{ checked: value, disabled: !!disabled }}
+      accessibilityActions={[
+        { name: "activate", label },
+        ...(accessibilityActions || [])
+      ]}
+      onAccessibilityAction={(event) => {
+        const name = event.nativeEvent.actionName;
+        if (name === "activate") {
+          if (!disabled) onValueChange(!value);
+        } else onAccessibilityAction?.(name);
+      }}
+      style={{
+        minHeight: 52,
+        flexDirection: "row",
+        alignItems: "center",
+        paddingLeft: 16
+      }}
+    >
+      <Pressable
+        onPress={onPress || (() => !disabled && onValueChange(!value))}
+        style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
+      >
+        <SymbolTile symbol={symbol} color={tint} />
+        {rowLabel(label, subtitle)}
+      </Pressable>
+      <Pressable
+        onPress={() => !disabled && onValueChange(!value)}
+        hitSlop={4}
         style={{
-          minHeight: 44,
-          flexDirection: "row",
-          alignItems: "center"
+          minHeight: 52,
+          paddingLeft: 10,
+          paddingRight: 16,
+          justifyContent: "center"
         }}
       >
-        <View style={{ width: 22, minHeight: 44, justifyContent: "center" }}>
-          <Icon name={icon} size={22} color={visual.secondaryText} />
+        <View pointerEvents="none">
+          <Switch
+            value={value}
+            disabled={disabled}
+            trackColor={{ true: colors.primary.accent }}
+            importantForAccessibility="no"
+            accessibilityElementsHidden
+          />
         </View>
-        <Pressable
-          onPress={onPress || (() => onValueChange(!value))}
-          disabled={disabled}
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel || label}
+      </Pressable>
+    </View>
+  );
+
+  const valueRow = ({
+    symbol,
+    tint,
+    tile,
+    label,
+    value,
+    onPress,
+    menu,
+    onMenuSelect
+  }: {
+    symbol?: string;
+    tint?: string;
+    tile?: React.ReactNode;
+    label: string;
+    value: string;
+    onPress?: () => void;
+    menu?: NativeMenuItem[];
+    onMenuSelect?: (id: string) => void;
+  }) => {
+    const content = (
+      <View
+        style={{
+          minHeight: 52,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 16
+        }}
+      >
+        {tile || <SymbolTile symbol={symbol!} color={tint!} />}
+        {rowLabel(label)}
+        <Text
+          numberOfLines={1}
           style={{
-            flex: 1,
-            minHeight: 44,
-            justifyContent: "center",
-            marginLeft: 14
+            color: visual.secondaryText,
+            maxWidth: "50%",
+            fontSize: 17,
+            marginRight: 6
           }}
         >
-          <Text style={{ color: visual.primaryText, fontSize: 16 }}>
-            {label}
-          </Text>
-        </Pressable>
-        <Switch
-          value={value}
-          onValueChange={onValueChange}
-          disabled={disabled}
-          trackColor={{ true: colors.primary.accent }}
-          accessibilityLabel={label}
+          {value}
+        </Text>
+        <TaskSymbolView
+          name={menu ? "chevron.up.chevron.down" : "chevron.right"}
+          size={menu ? 15 : 13}
+          color={visual.tertiaryText}
         />
       </View>
-      {subtitle ? (
-        <Pressable
-          onPress={onPress}
-          disabled={!onPress}
-          accessibilityRole={onPress ? "button" : undefined}
-          style={{ paddingLeft: 36, paddingBottom: 6 }}
+    );
+    if (menu && onMenuSelect && Platform.OS === "ios")
+      return (
+        <MenuButton
+          items={menu}
+          accessibilityLabel={`${label}: ${value}`}
+          onSelect={onMenuSelect}
         >
+          {content}
+        </MenuButton>
+      );
+    return (
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`${label}: ${value}`}
+      >
+        {content}
+      </Pressable>
+    );
+  };
+
+  const header = (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 8,
+        minHeight: 56
+      }}
+    >
+      <Pressable
+        ref={cancelButton}
+        onPress={cancel}
+        accessibilityRole="button"
+        accessibilityLabel={strings.cancel()}
+        style={{ paddingHorizontal: 10, paddingVertical: 12, minWidth: 80 }}
+      >
+        <Text style={{ color: colors.primary.accent, fontSize: 17 }}>
+          {strings.cancel()}
+        </Text>
+      </Pressable>
+      <Text
+        accessibilityRole="header"
+        numberOfLines={1}
+        style={{
+          flex: 1,
+          textAlign: "center",
+          color: visual.primaryText,
+          fontSize: 17,
+          fontWeight: "600"
+        }}
+      >
+        {task ? strings.tasksDetails() : strings.tasksNewTask()}
+      </Text>
+      <Pressable
+        onPress={save}
+        disabled={!title.trim() || saving}
+        accessibilityRole="button"
+        accessibilityLabel={strings.tasksDone()}
+        accessibilityState={{ disabled: !title.trim() || saving }}
+        style={{
+          paddingHorizontal: 10,
+          paddingVertical: 12,
+          minWidth: 80,
+          alignItems: "flex-end"
+        }}
+      >
+        {saving ? (
+          <ActivityIndicator color={colors.primary.accent} />
+        ) : (
           <Text
             style={{
-              color: subtitleColor || visual.secondaryText,
-              fontSize: 13
+              color: title.trim() ? colors.primary.accent : visual.tertiaryText,
+              fontSize: 17,
+              fontWeight: "600"
             }}
           >
-            {subtitle}
+            {task || !route.params?.initialTitle
+              ? strings.tasksDone()
+              : strings.tasksAddTask()}
           </Text>
-        </Pressable>
-      ) : null}
+        )}
+      </Pressable>
     </View>
   );
 
@@ -613,7 +935,7 @@ export default function TaskDetail({
     );
   if (notFound)
     return (
-      <SafeAreaView
+      <View
         style={{
           flex: 1,
           backgroundColor: visual.screenBackground,
@@ -623,135 +945,80 @@ export default function TaskDetail({
         }}
       >
         <Text style={{ color: visual.secondaryText, fontSize: 17 }}>
-          {strings.noResultsFound()}
+          {strings.tasksNoLongerAvailable()}
         </Text>
         <Pressable
-          onPress={() => navigation.goBack()}
+          onPress={leave}
           accessibilityRole="button"
-          accessibilityLabel={strings.back()}
+          accessibilityLabel={strings.close()}
           style={{ padding: 16 }}
         >
-          <Text style={{ color: colors.primary.accent }}>{strings.back()}</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
-
-  return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: visual.screenBackground }}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: 16,
-          paddingTop: 10,
-          paddingBottom: 8
-        }}
-      >
-        <Pressable
-          onPress={() => navigation.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel={strings.back()}
-          style={{ width: 46, height: 46, justifyContent: "center" }}
-        >
-          <Icon name="arrow-left" color={visual.primaryText} size={25} />
-        </Pressable>
-        <Text
-          style={{
-            flex: 1,
-            color: visual.primaryText,
-            fontSize: 20,
-            fontWeight: "700"
-          }}
-        >
-          {task ? strings.tasksEditTask() : strings.tasksAddTask()}
-        </Text>
-        <Pressable
-          onPress={save}
-          disabled={!title.trim() || saving}
-          accessibilityRole="button"
-          accessibilityLabel={strings.tasksSave()}
-          style={{ paddingHorizontal: 10, paddingVertical: 12 }}
-        >
-          <Text
-            style={{
-              color: title.trim() ? colors.primary.accent : visual.tertiaryText,
-              fontSize: 16,
-              fontWeight: "700"
-            }}
-          >
-            {strings.save()}
+          <Text style={{ color: colors.primary.accent, fontSize: 17 }}>
+            {strings.close()}
           </Text>
         </Pressable>
       </View>
+    );
+
+  return (
+    <View style={{ flex: 1, backgroundColor: visual.screenBackground }}>
+      {header}
       <ScrollView
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
         contentContainerStyle={{
           alignSelf: "center",
           width: "100%",
           maxWidth: width >= 700 ? 720 : undefined,
-          paddingHorizontal: width >= 700 ? 28 : 20,
-          paddingBottom: 90
+          paddingHorizontal: width >= 700 ? 28 : 16,
+          paddingBottom: 40
         }}
       >
         {group(
-          <>
-            <TextInput
-              value={title}
-              onChangeText={setTitle}
-              placeholder={strings.tasksTaskTitle()}
-              placeholderTextColor={visual.tertiaryText}
-              accessibilityLabel={strings.tasksTaskTitle()}
-              autoFocus={!taskId}
-              multiline
-              blurOnSubmit
-              returnKeyType="done"
-              onSubmitEditing={save}
-              style={{
-                color: visual.primaryText,
-                fontSize: 23,
-                fontWeight: "600",
-                minHeight: 64,
-                paddingTop: 12,
-                paddingBottom: 10
-              }}
-            />
-            {divider}
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder={strings.description()}
-              placeholderTextColor={visual.tertiaryText}
-              accessibilityLabel={strings.description()}
-              multiline
-              style={{
-                color: visual.primaryText,
-                fontSize: 15,
-                minHeight: 57,
-                paddingVertical: 12,
-                textAlignVertical: "top"
-              }}
-            />
-          </>
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder={strings.tasksTaskTitle()}
+            placeholderTextColor={visual.tertiaryText}
+            accessibilityLabel={strings.tasksTaskTitle()}
+            autoFocus={!taskId}
+            multiline
+            blurOnSubmit
+            returnKeyType="done"
+            textContentType="none"
+            autoComplete="off"
+            onSubmitEditing={() => Keyboard.dismiss()}
+            style={{
+              color: visual.primaryText,
+              fontSize: 20,
+              fontWeight: "600",
+              minHeight: 54,
+              paddingHorizontal: 16,
+              paddingTop: 14,
+              paddingBottom: 12
+            }}
+          />,
+          8
         )}
 
         {task?.legacyReminderId && (
           <Text
             style={{
               color: visual.secondaryText,
-              fontSize: 12,
-              paddingHorizontal: 12,
-              paddingTop: 10
+              fontSize: 13,
+              paddingHorizontal: 16,
+              paddingTop: 8
             }}
           >
             {strings.tasksLegacyMigrationNotice()}
           </Text>
         )}
 
-        {sectionTitle(strings.tasksReminder())}
         {group(
           <>
             {toggleRow({
-              icon: "calendar-month-outline",
+              symbol: "calendar",
+              tint: systemColor("red", isDark),
               label: strings.date(),
               value: !!reminderDate,
               onValueChange: setDateEnabled,
@@ -762,20 +1029,22 @@ export default function TaskDetail({
                     expandedPicker === "date" ? undefined : "date"
                   );
               },
-              accessibilityLabel: `${strings.date()}: ${
-                reminderDate
-                  ? dateFromCalendar(reminderDate).toLocaleDateString()
-                  : strings.tasksNone()
-              }`,
+              accessibilityLabel: strings.date(),
+              accessibilityActions: reminderDate
+                ? [{ name: "expand", label: strings.tasksShowDatePicker() }]
+                : undefined,
+              onAccessibilityAction: () =>
+                setExpandedPicker(
+                  expandedPicker === "date" ? undefined : "date"
+                ),
               subtitle: reminderDate
                 ? dateFromCalendar(reminderDate).toLocaleDateString(undefined, {
-                    weekday: "short",
-                    month: "short",
+                    weekday: "long",
+                    month: "long",
                     day: "numeric",
                     year: "numeric"
                   })
-                : undefined,
-              subtitleColor: colors.primary.accent
+                : undefined
             })}
             {reminderDate && expandedPicker === "date" && (
               <DateTimePicker
@@ -783,15 +1052,17 @@ export default function TaskDetail({
                 mode="date"
                 display={Platform.OS === "ios" ? "inline" : "default"}
                 themeVariant={isDark ? "dark" : "light"}
+                accentColor={colors.primary.accent}
                 onChange={(_, value) => {
                   if (value) setReminderDate(calendarDate(value));
                 }}
-                style={{ alignSelf: "stretch" }}
+                style={{ alignSelf: "stretch", marginHorizontal: 8 }}
               />
             )}
             {divider}
             {toggleRow({
-              icon: "clock-outline",
+              symbol: "clock.fill",
+              tint: systemColor("blue", isDark),
               label: strings.time(),
               value: !!reminderTime,
               onValueChange: setTimeEnabled,
@@ -802,16 +1073,20 @@ export default function TaskDetail({
                     expandedPicker === "time" ? undefined : "time"
                   );
               },
-              accessibilityLabel: `${strings.time()}: ${
-                reminderTime || strings.tasksNone()
-              }`,
+              accessibilityLabel: strings.time(),
+              accessibilityActions: reminderTime
+                ? [{ name: "expand", label: strings.tasksShowTimePicker() }]
+                : undefined,
+              onAccessibilityAction: () =>
+                setExpandedPicker(
+                  expandedPicker === "time" ? undefined : "time"
+                ),
               subtitle: reminderTime
                 ? dateFromTime(reminderTime).toLocaleTimeString(undefined, {
                     hour: "numeric",
                     minute: "2-digit"
                   })
-                : undefined,
-              subtitleColor: colors.primary.accent
+                : undefined
             })}
             {reminderTime && expandedPicker === "time" && (
               <DateTimePicker
@@ -827,426 +1102,448 @@ export default function TaskDetail({
             )}
             {divider}
             {toggleRow({
-              icon: "alarm-light-outline",
+              symbol: "alarm.fill",
+              tint: systemColor("red", isDark),
               label: strings.tasksUrgent(),
               value: urgent,
               onValueChange: setUrgentEnabled,
               disabled: !reminderTime || urgentStatus === "unsupported",
-              accessibilityLabel: strings.tasksUrgent(),
-              subtitle: !reminderTime
-                ? strings.tasksUrgentTimeRequired()
-                : strings.tasksUrgentRespectsSilent()
+              accessibilityLabel: strings.tasksUrgent()
             })}
-            {urgent && !!rule && (
-              <Text
+            <View style={{ paddingLeft: 59, paddingRight: 16, paddingBottom: 12 }}>
+              <Text style={{ color: visual.secondaryText, fontSize: 13 }}>
+                {urgentExplanation(urgentStatus, !!reminderTime)}
+              </Text>
+              {reminderTime && urgentStatus === "denied" ? (
+                <Pressable
+                  onPress={openAlarmSettings}
+                  accessibilityRole="button"
+                  accessibilityLabel={strings.tasksAllowAlarms()}
+                  style={{ paddingTop: 6, alignSelf: "flex-start" }}
+                >
+                  <Text
+                    style={{
+                      color: colors.primary.accent,
+                      fontSize: 13,
+                      fontWeight: "600"
+                    }}
+                  >
+                    {strings.tasksAllowAlarms()}
+                  </Text>
+                </Pressable>
+              ) : null}
+              {urgent && !!rule ? (
+                <Text
+                  style={{
+                    color: visual.secondaryText,
+                    fontSize: 13,
+                    marginTop: 6
+                  }}
+                >
+                  {strings.tasksUrgentRepeatLimit()}
+                </Text>
+              ) : null}
+            </View>
+            {divider}
+            {valueRow({
+              symbol: "repeat",
+              tint: systemColor("gray", isDark),
+              label: strings.tasksRepeat(),
+              value:
+                repeatOptions.find((item) => item.mode === mode)?.label ||
+                strings.never(),
+              menu: repeatMenu,
+              onMenuSelect: (id) => chooseRepeat(id as RepeatMode)
+            })}
+            {mode === "custom" && (
+              <View
                 style={{
-                  color: visual.secondaryText,
-                  fontSize: 12,
-                  paddingHorizontal: 16,
-                  paddingBottom: 14
+                  paddingVertical: 14,
+                  paddingLeft: 59,
+                  paddingRight: 16
                 }}
               >
-                {strings.tasksUrgentRepeatLimit()}
-              </Text>
+                <Text
+                  style={{
+                    color: visual.primaryText,
+                    fontSize: 15,
+                    marginBottom: 10
+                  }}
+                >
+                  {strings.tasksRepeatEvery()}
+                </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: 8
+                  }}
+                >
+                  <TextInput
+                    value={customInterval}
+                    onChangeText={(value) => {
+                      const next = value.replace(/\D/g, "").slice(0, 3);
+                      setCustomInterval(next);
+                      setRule(
+                        customRule(customFrequency, next, customWeekdays)
+                      );
+                    }}
+                    keyboardType="number-pad"
+                    accessibilityLabel={strings.tasksRepeatInterval()}
+                    style={{
+                      color: visual.primaryText,
+                      backgroundColor: visual.selectedSurface,
+                      borderRadius: 10,
+                      textAlign: "center",
+                      width: 56,
+                      minHeight: 42,
+                      fontSize: 17
+                    }}
+                  />
+                  {(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const).map(
+                    (freq) => (
+                      <Pressable
+                        key={freq}
+                        onPress={() => {
+                          setCustomFrequency(freq);
+                          setRule(
+                            customRule(freq, customInterval, customWeekdays)
+                          );
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          selected: customFrequency === freq
+                        }}
+                        style={{
+                          paddingHorizontal: 7,
+                          paddingVertical: 10,
+                          borderRadius: 9,
+                          backgroundColor:
+                            customFrequency === freq
+                              ? visual.selectedSurface
+                              : "transparent"
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color:
+                              customFrequency === freq
+                                ? colors.primary.accent
+                                : visual.secondaryText,
+                            fontSize: 14
+                          }}
+                        >
+                          {freq === "DAILY"
+                            ? strings.tasksDays()
+                            : freq === "WEEKLY"
+                              ? strings.tasksWeeks()
+                              : freq === "MONTHLY"
+                                ? strings.tasksMonths()
+                                : strings.tasksYears()}
+                        </Text>
+                      </Pressable>
+                    )
+                  )}
+                </View>
+                {customFrequency === "WEEKLY" && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "space-between",
+                      marginTop: 16
+                    }}
+                  >
+                    {WEEKDAYS.map((day) => (
+                      <Pressable
+                        key={day}
+                        onPress={() => {
+                          const next = customWeekdays.includes(day)
+                            ? customWeekdays.filter((item) => item !== day)
+                            : WEEKDAYS.filter(
+                                (item) =>
+                                  item === day || customWeekdays.includes(item)
+                              );
+                          setCustomWeekdays(next);
+                          setRule(
+                            customRule(customFrequency, customInterval, next)
+                          );
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={day}
+                        accessibilityState={{
+                          selected: customWeekdays.includes(day)
+                        }}
+                        style={{
+                          width: 34,
+                          height: 34,
+                          borderRadius: 17,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: customWeekdays.includes(day)
+                            ? colors.primary.accent
+                            : visual.selectedSurface
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: customWeekdays.includes(day)
+                              ? "#FFFFFF"
+                              : visual.primaryText,
+                            fontSize: 11,
+                            fontWeight: "700"
+                          }}
+                        >
+                          {day}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
             )}
           </>
         )}
         {reminderDate && notificationsDenied && (
           <Pressable
-            onPress={async () => {
-              try {
-                await openAppNotificationSettings();
-              } catch (e) {
-                ToastManager.error(
-                  e as Error,
-                  strings.tasksNotificationsSettingsError(),
-                  "local"
-                );
-              }
-            }}
+            onPress={openAlarmSettings}
             accessibilityRole="button"
             accessibilityLabel={strings.openSettings()}
-            style={{ padding: 12 }}
+            style={{ paddingHorizontal: 16, paddingTop: 8 }}
           >
             <Text style={{ color: visual.secondaryText, fontSize: 13 }}>
-              {strings.tasksNotificationsDisabled()}
-            </Text>
-            <Text
-              style={{
-                color: colors.primary.accent,
-                fontSize: 13,
-                marginTop: 4
-              }}
-            >
-              {strings.openSettings()}
+              {strings.tasksNotificationsDisabled()}{" "}
+              <Text style={{ color: colors.primary.accent }}>
+                {strings.openSettings()}
+              </Text>
             </Text>
           </Pressable>
         )}
 
-        {sectionTitle(strings.tasksRepeat())}
-        <View ref={repeatRow} collapsable={false}>
-          {group(
-            actionRow(
-              strings.tasksRepeat(),
-              repeatOptions.find((item) => item.mode === mode)?.label ||
-                strings.never(),
-              "repeat",
-              () =>
-                showChoices(
-                  repeatOptions.map((item) => item.label),
-                  repeatRow,
-                  (index) => chooseRepeat(repeatOptions[index].mode)
-                )
-            )
-          )}
-        </View>
-        {mode === "custom" &&
-          group(
-            <View style={{ paddingVertical: 14 }}>
-              <Text
-                style={{
-                  color: visual.primaryText,
-                  fontSize: 15,
-                  marginBottom: 10
-                }}
-              >
-                {strings.tasksRepeatEvery()}
-              </Text>
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 8
-                }}
-              >
-                <TextInput
-                  value={customInterval}
-                  onChangeText={(value) => {
-                    const next = value.replace(/\D/g, "").slice(0, 3);
-                    setCustomInterval(next);
-                    setRule(customRule(customFrequency, next, customWeekdays));
-                  }}
-                  keyboardType="number-pad"
-                  accessibilityLabel={strings.tasksRepeatInterval()}
-                  style={{
-                    color: visual.primaryText,
-                    backgroundColor: visual.selectedSurface,
-                    borderRadius: 10,
-                    textAlign: "center",
-                    width: 56,
-                    minHeight: 42,
-                    fontSize: 17
-                  }}
+        {group(
+          <>
+            {valueRow({
+              tile: selectedList ? (
+                <SymbolTile
+                  symbol={taskListSymbol(selectedList.symbol)}
+                  color={taskListColor(selectedList.color)}
+                  shape="circle"
                 />
-                {(["DAILY", "WEEKLY", "MONTHLY", "YEARLY"] as const).map(
-                  (freq) => (
-                    <Pressable
-                      key={freq}
-                      onPress={() => {
-                        setCustomFrequency(freq);
-                        setRule(
-                          customRule(freq, customInterval, customWeekdays)
-                        );
-                      }}
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        selected: customFrequency === freq
-                      }}
-                      style={{
-                        paddingHorizontal: 7,
-                        paddingVertical: 10,
-                        borderRadius: 9,
-                        backgroundColor:
-                          customFrequency === freq
-                            ? visual.selectedSurface
-                            : "transparent"
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color:
-                            customFrequency === freq
-                              ? colors.primary.accent
-                              : visual.secondaryText,
-                          fontSize: 13
-                        }}
-                      >
-                        {freq === "DAILY"
-                          ? strings.tasksDays()
-                          : freq === "WEEKLY"
-                            ? strings.tasksWeeks()
-                            : freq === "MONTHLY"
-                              ? strings.tasksMonths()
-                              : strings.tasksYears()}
-                      </Text>
-                    </Pressable>
-                  )
-                )}
-              </View>
-              {customFrequency === "WEEKLY" && (
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    marginTop: 16
-                  }}
-                >
-                  {WEEKDAYS.map((day) => (
-                    <Pressable
-                      key={day}
-                      onPress={() => {
-                        const next = customWeekdays.includes(day)
-                          ? customWeekdays.filter((item) => item !== day)
-                          : WEEKDAYS.filter(
-                              (item) =>
-                                item === day || customWeekdays.includes(item)
-                            );
-                        setCustomWeekdays(next);
-                        setRule(
-                          customRule(customFrequency, customInterval, next)
-                        );
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={day}
-                      accessibilityState={{
-                        selected: customWeekdays.includes(day)
-                      }}
-                      style={{
-                        width: 36,
-                        height: 36,
-                        borderRadius: 18,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: customWeekdays.includes(day)
-                          ? colors.primary.accent
-                          : visual.selectedSurface
-                      }}
-                    >
-                      <Text
-                        style={{
-                          color: customWeekdays.includes(day)
-                            ? "#FFFFFF"
-                            : visual.primaryText,
-                          fontSize: 11,
-                          fontWeight: "700"
-                        }}
-                      >
-                        {day}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
-            </View>
-          )}
-
-        {sectionTitle(strings.tasksList())}
-        {group(
-          actionRow(
-            strings.tasksList(),
-            selectedList?.name || strings.tasksChooseList(),
-            "format-list-checks",
-            () => setShowLists(true),
-            !!selectedList
-          )
+              ) : (
+                <SymbolTile
+                  symbol="list.bullet"
+                  color={systemColor("blue", isDark)}
+                  shape="circle"
+                />
+              ),
+              label: strings.tasksList(),
+              value: selectedList?.name || strings.tasksChooseList(),
+              onPress: () => setShowLists(true)
+            })}
+            {divider}
+            {valueRow({
+              symbol: "exclamationmark",
+              tint: systemColor("red", isDark),
+              label: strings.tasksPriority(),
+              value:
+                priorityOptions.find((item) => item.value === priority)
+                  ?.label || strings.tasksPriorityNone(),
+              menu: priorityMenu,
+              onMenuSelect: (id) => setPriority(id as TaskPriority)
+            })}
+            {divider}
+            {toggleRow({
+              symbol: "flag.fill",
+              tint: systemColor("orange", isDark),
+              label: strings.tasksFlag(),
+              value: flagged,
+              onValueChange: setFlagged
+            })}
+          </>
         )}
 
-        {sectionTitle(strings.tasksPriority())}
-        <View ref={priorityRow} collapsable={false}>
-          {group(
-            actionRow(
-              strings.tasksPriority(),
-              priorityOptions.find((item) => item.value === priority)?.label ||
-                strings.tasksPriorityNone(),
-              "exclamation",
-              () =>
-                showChoices(
-                  priorityOptions.map((item) => item.label),
-                  priorityRow,
-                  (index) => setPriority(priorityOptions[index].value)
-                )
-            )
-          )}
-        </View>
-
-        {sectionTitle(strings.tasksFlag())}
         {group(
-          toggleRow({
-            icon: "flag-outline",
-            label: strings.tasksFlag(),
-            value: flagged,
-            onValueChange: setFlagged
-          })
-        )}
-
-        {task && (
-          <View style={{ marginTop: 28, gap: 9 }}>
-            {group(
-              <Pressable
-                onPress={toggleComplete}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  task.completed
-                    ? strings.tasksUncomplete()
-                    : strings.tasksComplete()
-                }
-                style={{ paddingVertical: 17 }}
-              >
-                <Text
-                  style={{ color: colors.primary.accent, fontWeight: "600" }}
-                >
-                  {task.completed
-                    ? strings.tasksUncomplete()
-                    : strings.tasksComplete()}
-                </Text>
-              </Pressable>
-            )}
-            {group(
-              <Pressable
-                onPress={remove}
-                accessibilityRole="button"
-                accessibilityLabel={strings.tasksDelete()}
-                style={{ paddingVertical: 17 }}
-              >
-                <Text
-                  style={{ color: colors.error.paragraph, fontWeight: "600" }}
-                >
-                  {strings.tasksDelete()}
-                </Text>
-              </Pressable>
-            )}
-          </View>
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder={strings.tasksNotes()}
+            placeholderTextColor={visual.tertiaryText}
+            accessibilityLabel={strings.tasksNotes()}
+            multiline
+            style={{
+              color: visual.primaryText,
+              fontSize: 17,
+              minHeight: 96,
+              paddingHorizontal: 16,
+              paddingTop: 14,
+              paddingBottom: 14,
+              textAlignVertical: "top"
+            }}
+          />
         )}
       </ScrollView>
 
-      <Modal
-        visible={showLists}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowLists(false)}
-      >
+      {task && (
         <View
           style={{
-            flex: 1,
-            justifyContent: "flex-end",
-            backgroundColor: "#0008"
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingHorizontal: 20,
+            paddingTop: 10,
+            paddingBottom: 10,
+            borderTopWidth: 0.5,
+            borderTopColor: visual.separator,
+            backgroundColor: visual.contentSurface
           }}
         >
-          <View
+          <Pressable
+            onPress={toggleComplete}
+            accessibilityRole="button"
+            accessibilityLabel={
+              task.completed
+                ? strings.tasksMarkIncomplete()
+                : strings.tasksComplete()
+            }
             style={{
-              backgroundColor: visual.contentSurface,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              padding: 18,
-              maxHeight: "65%"
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              minHeight: 44
             }}
           >
+            <TaskSymbolView
+              name={task.completed ? "arrow.uturn.backward.circle" : "checkmark.circle"}
+              size={22}
+              color={colors.primary.accent}
+            />
+            <Text style={{ color: colors.primary.accent, fontSize: 17 }}>
+              {task.completed
+                ? strings.tasksMarkIncomplete()
+                : strings.tasksComplete()}
+            </Text>
+          </Pressable>
+          <Pressable
+            ref={deleteButton}
+            onPress={remove}
+            accessibilityRole="button"
+            accessibilityLabel={strings.tasksDelete()}
+            style={{
+              minWidth: 44,
+              minHeight: 44,
+              alignItems: "flex-end",
+              justifyContent: "center"
+            }}
+          >
+            <TaskSymbolView
+              name="trash"
+              size={22}
+              color={systemColor("red", isDark)}
+            />
+          </Pressable>
+        </View>
+      )}
+
+      <Modal
+        visible={showLists}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowLists(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: visual.screenBackground }}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: 8,
+              minHeight: 56
+            }}
+          >
+            <View style={{ minWidth: 80 }} />
             <Text
+              accessibilityRole="header"
               style={{
+                flex: 1,
+                textAlign: "center",
                 color: visual.primaryText,
-                fontSize: 20,
-                fontWeight: "700",
-                marginBottom: 12
+                fontSize: 17,
+                fontWeight: "600"
               }}
             >
               {strings.tasksChooseList()}
             </Text>
-            <ScrollView>
-              {lists.map((list) => (
-                <Pressable
-                  key={list.id}
-                  onPress={() => {
-                    setListId(list.id);
-                    setShowLists(false);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: listId === list.id }}
-                  accessibilityLabel={list.name}
-                  style={{
-                    minHeight: 54,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    borderBottomColor: visual.separator,
-                    borderBottomWidth: 0.5
-                  }}
-                >
-                  <TaskSymbolView
-                    name={taskListSymbol(list.symbol)}
-                    color={taskListColor(list.color)}
-                    size={22}
-                  />
-                  <Text
-                    style={{ flex: 1, color: visual.primaryText, fontSize: 16 }}
-                  >
-                    {list.name}
-                  </Text>
-                  {list.id === listId && (
-                    <Icon
-                      name="check"
-                      size={22}
-                      color={colors.primary.accent}
-                    />
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-      <Modal
-        visible={!!choiceSheet}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setChoiceSheet(undefined)}
-      >
-        <View
-          style={{
-            flex: 1,
-            justifyContent: "flex-end",
-            backgroundColor: "#0008"
-          }}
-        >
-          <View
-            style={{
-              backgroundColor: visual.contentSurface,
-              borderTopLeftRadius: 20,
-              borderTopRightRadius: 20,
-              paddingHorizontal: 18,
-              paddingTop: 12,
-              maxHeight: "75%"
-            }}
-          >
-            <ScrollView>
-              {choiceSheet?.options.map((option, index) => (
-                <Pressable
-                  key={`${option}-${index}`}
-                  onPress={() => {
-                    choiceSheet.onChoose(index);
-                    setChoiceSheet(undefined);
-                  }}
-                  accessibilityRole="button"
-                  style={{ minHeight: 52, justifyContent: "center" }}
-                >
-                  <Text style={{ color: visual.primaryText, fontSize: 16 }}>
-                    {option}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
             <Pressable
-              onPress={() => setChoiceSheet(undefined)}
+              onPress={() => setShowLists(false)}
               accessibilityRole="button"
-              accessibilityLabel={strings.cancel()}
-              style={{ minHeight: 52, justifyContent: "center" }}
+              accessibilityLabel={strings.tasksDone()}
+              style={{
+                paddingHorizontal: 10,
+                paddingVertical: 12,
+                minWidth: 80,
+                alignItems: "flex-end"
+              }}
             >
-              <Text style={{ color: colors.primary.accent, fontSize: 16 }}>
-                {strings.cancel()}
+              <Text
+                style={{
+                  color: colors.primary.accent,
+                  fontSize: 17,
+                  fontWeight: "600"
+                }}
+              >
+                {strings.tasksDone()}
               </Text>
             </Pressable>
           </View>
+          <ScrollView contentContainerStyle={{ padding: 16 }}>
+            {group(
+              lists.map((list, index) => (
+                <View key={list.id}>
+                  {index > 0 ? divider : null}
+                  <Pressable
+                    onPress={() => {
+                      setListId(list.id);
+                      setShowLists(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: listId === list.id }}
+                    accessibilityLabel={list.name}
+                    style={{
+                      minHeight: 52,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingHorizontal: 16
+                    }}
+                  >
+                    <SymbolTile
+                      symbol={taskListSymbol(list.symbol)}
+                      color={taskListColor(list.color)}
+                      shape="circle"
+                    />
+                    <Text
+                      style={{
+                        flex: 1,
+                        color: visual.primaryText,
+                        fontSize: 17,
+                        marginLeft: 14
+                      }}
+                    >
+                      {list.name}
+                    </Text>
+                    {list.id === listId && (
+                      <TaskSymbolView
+                        name="checkmark"
+                        size={18}
+                        color={colors.primary.accent}
+                      />
+                    )}
+                  </Pressable>
+                </View>
+              )),
+              0
+            )}
+          </ScrollView>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }

@@ -121,7 +121,14 @@ export interface RouteParams extends ParamListBase {
       }
     | undefined;
   TaskDetail:
-    | { taskId?: string; listId?: string; initialTitle?: string }
+    | {
+        taskId?: string;
+        listId?: string;
+        initialTitle?: string;
+        initialDate?: string;
+        initialTime?: string;
+        initialFlagged?: boolean;
+      }
     | undefined;
   SettingsGroup: GenericRouteParam;
   FluidPanelsView: { initialPage?: "editor" | "home"; screen?: "Library" };

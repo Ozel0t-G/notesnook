@@ -38,11 +38,13 @@ type AlarmReport = {
   status: "unsupported" | "notDetermined" | "denied" | "authorized";
   scheduledAlarmKeys?: string[];
   activeAlarmKeys?: string[];
+  unredactedAlarmKeys?: string[];
 };
 type CancelReport = {
   status: AlarmReport["status"];
   cancelledAlarmKeys?: string[];
   retainedAlarmKeys?: string[];
+  notFoundAlarmKeys?: string[];
 };
 
 const mockReplaceAlarms = jest.fn(

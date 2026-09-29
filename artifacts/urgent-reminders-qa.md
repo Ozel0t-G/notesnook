@@ -188,4 +188,8 @@ independent `urgent-specialist` (claude-sonnet-5) review — describe that older
   **NOT ACCEPTED.**
 - **Physical QA**: `PHYSICAL_QA_PENDING`.
 - **Release**: `NOT AUTHORIZED` — local implementation/tests/QA only. No push, no `main` merge, no
-  TestFlight/App Store submission, no production deployment.
+ TestFlight/App Store submission, no production deployment.
+
+## Final urgent-reminder candidate — 2026-09-29
+
+Integration branch `test` now contains signed commits through `9f1243c87` (base `17def76c1`). The final focused regression run passed **35/35 tests in 2 suites**: `task-alarms.test.ts` and `task-notifications.test.ts`. The candidate also has the earlier **357/357 mobile tests in 35 suites** and iPhone/iPad ARM64 simulator build evidence. The latest native corrections close App-Lock redaction failure reporting and post-cancellation bookkeeping pruning; no past-due alarm is rescheduled. Physical device and interactive simulator QA remain `PHYSICAL_QA_PENDING`. Full mobile TypeScript still has one unchanged editor dependency diagnostic at `use-editor.ts:133`; no editor source was changed. Luna Reserve hit its account usage limit before editing; the final correction was completed under the user's explicit “egal wie” instruction. No push, main merge, upload, or deployment occurred.

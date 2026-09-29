@@ -129,7 +129,13 @@ const EXTRA_ICON_NAMES = [
   "image-area",
   "clock-outline",
   "delete-sweep-outline",
-  "sync"
+  "sync",
+  // Passed positionally or through variables, so the name="..." / icon: "..."
+  // scan above cannot see them.
+  "repeat",
+  "exclamation",
+  "star",
+  "account-settings"
 ];
 
 const __filename = fileURLToPath(import.meta.url);

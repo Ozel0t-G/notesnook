@@ -97,9 +97,9 @@ const NoteItem = ({
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const isHomeIOS = visual.ios && isHomeNoteRoute(renderedInRoute);
-  const displayTitle = isHomeIOS
-    ? homeNoteDisplayTitle(item as Note)
-    : item.title;
+  // The first line is the title, everywhere (list, editor, search).
+  const displayTitle =
+    visual.ios && !isTrash ? homeNoteDisplayTitle(item as Note) : item.title;
   const displayHeadline = item.headline
     ? decode(item.headline, { level: EntityLevel.HTML })
     : "";
@@ -457,7 +457,7 @@ const NoteItem = ({
               />
             </View>
           </>
-        ) : (
+        ) : visual.ios && !isTrash ? null : (
           <IconButton
             testID={notesnook.listitem.menu}
             color={colors.secondary.icon}

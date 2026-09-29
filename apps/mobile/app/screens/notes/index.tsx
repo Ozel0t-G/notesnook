@@ -21,11 +21,13 @@ import { resolveItems } from "@notesnook/common";
 import { Color, Note, Tag, VirtualizedGrouping } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import React, { useEffect, useRef, useState } from "react";
+import { Platform } from "react-native";
 import { db } from "../../common/database";
 import { FloatingButton } from "../../components/container/floating-button";
 import DelayLayout from "../../components/delay-layout";
 import { Header } from "../../components/header";
 import List from "../../components/list";
+import { Properties } from "../../components/properties";
 import { PlaceholderData } from "../../components/list/empty";
 import SelectionHeader from "../../components/selection-header";
 import { useNavigationFocus } from "../../hooks/use-navigation-focus";
@@ -191,6 +193,28 @@ const NotesPage = ({
         canGoBack={params?.current?.canGoBack}
         hasSearch={true}
         id={route.name === "Monographs" ? "Monographs" : params?.current?.id}
+        menu={{
+          group: "notes",
+          dataType: "note",
+          selectable: true,
+          ...(item && item.type !== "color"
+            ? {
+                extra: [
+                  {
+                    id: "item-options",
+                    title: strings.listOptions(),
+                    symbol: "info.circle"
+                  }
+                ],
+                onExtra: () => Properties.present(item)
+              }
+            : {})
+        }}
+        onCompose={
+          Platform.OS === "ios" && !isMonograph
+            ? onPressFloatingButton
+            : undefined
+        }
         onSearch={() => {
           if (route.name !== "Monographs" && !item) return;
 
@@ -228,6 +252,7 @@ const NotesPage = ({
         />
 
         {!isMonograph &&
+        Platform.OS !== "ios" &&
         ((notes?.placeholders && (notes?.placeholders?.length || 0) > 0) ||
           isFocused) ? (
           <FloatingButton

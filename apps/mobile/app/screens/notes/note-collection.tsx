@@ -24,9 +24,8 @@ import {
   VirtualizedGrouping
 } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
-import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { BackHandler, Platform, View } from "react-native";
+import { BackHandler, Platform } from "react-native";
 import { db } from "../../common/database";
 import { FloatingButton } from "../../components/container/floating-button";
 import DelayLayout from "../../components/delay-layout";
@@ -34,21 +33,13 @@ import { Header } from "../../components/header";
 import List from "../../components/list";
 import { PlaceholderData } from "../../components/list/empty";
 import SelectionHeader from "../../components/selection-header";
-import Sort from "../../components/sheets/sort";
-import { IconButton } from "../../components/ui/icon-button";
-import Heading from "../../components/ui/typography/heading";
-import Paragraph from "../../components/ui/typography/paragraph";
-import { useIsCompactModeEnabled } from "../../hooks/use-is-compact-mode-enabled";
 import {
   eSubscribeEvent,
-  eUnSubscribeEvent,
-  presentSheet
+  eUnSubscribeEvent
 } from "../../services/event-manager";
 import Navigation from "../../services/navigation";
-import SettingsService from "../../services/settings";
 import useNavigationStore from "../../stores/use-navigation-store";
 import { useSelectionStore } from "../../stores/use-selection-store";
-import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { eGroupOptionsUpdated } from "../../utils/events";
 import { openEditor, setOnFirstSave, setOnFirstSaveUnassigned } from "./common";
 
@@ -82,9 +73,6 @@ export default function NoteCollection({
   placeholder,
   onGoBack
 }: NoteCollectionProps) {
-  const { colors, isDark } = useThemeColors();
-  const visual = getAppleVisualTokens(colors, isDark);
-  const compactMode = useIsCompactModeEnabled("note");
   const selectionMode = useSelectionStore((state) => state.selectionMode);
   const refreshRef = React.useRef(refresh);
   refreshRef.current = refresh;
@@ -156,93 +144,17 @@ export default function NoteCollection({
 
   return (
     <>
-      {Platform.OS === "ios" ? (
-        <View
-          style={{
-            backgroundColor: visual.screenBackground,
-            paddingHorizontal: visual.pagePadding,
-            paddingTop: 16,
-            paddingBottom: 14,
-            flexDirection: "row",
-            alignItems: "flex-end",
-            justifyContent: "space-between"
-          }}
-        >
-          <View
-            style={{
-              flexShrink: 1,
-              flexDirection: "row",
-              alignItems: "center"
-            }}
-          >
-            <IconButton
-              name="chevron-left"
-              size={30}
-              color={colors.primary.accent}
-              accessibilityLabel={strings.routes.Library()}
-              testID="library-collection-back"
-              onPress={onGoBack}
-              style={{ marginLeft: -8, marginRight: 2 }}
-            />
-            <View style={{ flexShrink: 1 }}>
-              <Heading
-                size={32}
-                style={{ fontWeight: "700", letterSpacing: 0.2 }}
-                numberOfLines={1}
-              >
-                {title}
-              </Heading>
-              <Paragraph color={visual.secondaryText} style={{ marginTop: 2 }}>
-                {strings.notes(notes?.length || 0)}
-              </Paragraph>
-            </View>
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <IconButton
-              name="sort-ascending"
-              size={23}
-              color={visual.secondaryText}
-              accessibilityLabel={strings.sortBy()}
-              onPress={() =>
-                presentSheet({
-                  component: (
-                    <Sort screen="Notes" dataType="note" group="home" />
-                  )
-                })
-              }
-            />
-            <IconButton
-              name={compactMode ? "view-list" : "view-list-outline"}
-              size={22}
-              color={visual.secondaryText}
-              accessibilityLabel="Toggle compact note list"
-              onPress={() =>
-                SettingsService.set({
-                  notesListMode: compactMode ? "normal" : "compact"
-                })
-              }
-            />
-            <IconButton
-              name="magnify"
-              size={24}
-              color={visual.secondaryText}
-              accessibilityLabel={strings.searchInRoute(title)}
-              testID="search-header"
-              onPress={openSearch}
-            />
-          </View>
-        </View>
-      ) : (
-        <Header
-          renderedInRoute={id}
-          title={title}
-          canGoBack={true}
-          onLeftMenuButtonPress={onGoBack}
-          hasSearch={true}
-          onSearch={openSearch}
-          id={id}
-        />
-      )}
+      <Header
+        renderedInRoute={id}
+        title={title}
+        canGoBack={true}
+        onLeftMenuButtonPress={onGoBack}
+        hasSearch={true}
+        onSearch={openSearch}
+        id={id}
+        menu={{ group: "home", dataType: "note", selectable: true }}
+        onCompose={openEditor}
+      />
 
       <DelayLayout wait={loading}>
         <List

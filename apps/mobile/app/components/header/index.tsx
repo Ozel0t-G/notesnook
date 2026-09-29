@@ -39,6 +39,26 @@ import Heading from "../ui/typography/heading";
 import Paragraph from "../ui/typography/paragraph";
 import { LeftMenus } from "./left-menus";
 import { RightMenus } from "./right-menus";
+import {
+  IosBarButton,
+  IosLargeTitle,
+  IosMoreMenu,
+  IosNavBar,
+  IosSearchField
+} from "../ios-nav-bar";
+import { ListViewMenuConfig, useListViewMenu } from "../list-view-menu";
+import Navigation from "../../services/navigation";
+
+/** SF Symbols for the Material icon names screens pass as `rightButton`. */
+const IOS_RIGHT_BUTTON_SYMBOLS: Record<string, string> = {
+  "dots-vertical": "ellipsis.circle",
+  "dots-horizontal": "ellipsis.circle",
+  plus: "plus",
+  delete: "trash",
+  restore: "arrow.counterclockwise",
+  magnify: "magnifyingglass",
+  cog: "gearshape"
+};
 
 export const Header = ({
   renderedInRoute,
@@ -48,7 +68,10 @@ export const Header = ({
   canGoBack,
   hasSearch,
   onSearch,
-  rightButton
+  rightButton,
+  backTitle,
+  menu,
+  onCompose
 }: {
   onLeftMenuButtonPress?: () => void;
   renderedInRoute?: RouteName;
@@ -59,6 +82,12 @@ export const Header = ({
   hasSearch?: boolean;
   onSearch?: () => void;
   rightButton?: IconButtonProps;
+  /** iOS: the previous screen's title shown next to the back chevron. */
+  backTitle?: string;
+  /** iOS: the list's "…" menu (Select, view, sort, group). */
+  menu?: ListViewMenuConfig;
+  /** iOS: shows the compose button (square.and.pencil) like in Notes. */
+  onCompose?: () => void;
 }) => {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
@@ -90,6 +119,86 @@ export const Header = ({
   }, [borderHidden, onScroll]);
 
   const HeaderWrapper = hasSearch ? Pressable : View;
+  const listMenu = useListViewMenu(menu);
+  const clearSelection = useSelectionStore((state) => state.clearSelection);
+
+  if (visual.ios) {
+    const back = () => {
+      if (onLeftMenuButtonPress) return onLeftMenuButtonPress();
+      Navigation.goBack();
+    };
+    const iosRight = rightButton
+      ? IOS_RIGHT_BUTTON_SYMBOLS[rightButton.name as string]
+      : undefined;
+    return (
+      <View style={{ backgroundColor: visual.screenBackground }}>
+        <IosNavBar
+          backTitle={
+            selectionMode ? undefined : backTitle || strings.routes.Library()
+          }
+          onBack={selectionMode ? undefined : canGoBack ? back : undefined}
+          title={
+            selectionMode
+              ? strings.selectedCode(selectedItemsList.length)
+              : undefined
+          }
+          trailing={
+            selectionMode ? (
+              <IosBarButton
+                label={strings.done()}
+                bold
+                onPress={() => clearSelection()}
+              />
+            ) : (
+              <>
+                {rightButton ? (
+                  <IosBarButton
+                    symbol={iosRight}
+                    label={iosRight ? undefined : strings.done()}
+                    accessibilityLabel={rightButton.accessibilityLabel}
+                    testID={rightButton.testID}
+                    onPress={() =>
+                      (rightButton.onPress as (() => void) | undefined)?.()
+                    }
+                  />
+                ) : null}
+                {listMenu ? (
+                  <IosMoreMenu
+                    items={listMenu.items}
+                    onSelect={listMenu.onSelect}
+                    accessibilityLabel={strings.more()}
+                    testID="header-more-menu"
+                  />
+                ) : null}
+                {onCompose ? (
+                  <IosBarButton
+                    symbol="square.and.pencil"
+                    accessibilityLabel={strings.newNoteTab()}
+                    testID="header-compose"
+                    onPress={onCompose}
+                  />
+                ) : null}
+              </>
+            )
+          }
+        />
+        {selectionMode ? null : (
+          <>
+            {title ? (
+              <IosLargeTitle title={title} testID="header-large-title" />
+            ) : null}
+            {hasSearch ? (
+              <IosSearchField
+                testID="search-header"
+                placeholder={strings.search()}
+                onPress={() => onSearch?.()}
+              />
+            ) : null}
+          </>
+        )}
+      </View>
+    );
+  }
 
   return (
     <View

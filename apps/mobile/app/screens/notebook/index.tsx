@@ -37,7 +37,7 @@ import useNavigationStore, {
 import { eUpdateNotebookRoute } from "../../utils/events";
 import { findRootNotebookId } from "../../utils/notebooks";
 import { openEditor, setOnFirstSave } from "../notes/common";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { Notebooks } from "../../components/sheets/notebooks";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { rootNavigatorRef } from "../../utils/global-refs";
@@ -163,12 +163,44 @@ const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
         renderedInRoute={route.name}
         title={notebook?.title}
         canGoBack={params?.current?.canGoBack}
-        rightButton={{
-          name: "dots-vertical",
-          onPress: () => {
-            Properties.present(notebook);
-          }
-        }}
+        rightButton={
+          Platform.OS === "ios"
+            ? undefined
+            : {
+                name: "dots-vertical",
+                onPress: () => {
+                  Properties.present(notebook);
+                }
+              }
+        }
+        menu={
+          notebook
+            ? {
+                group: "notes",
+                dataType: "note",
+                groupId: notebook.id,
+                groupType: "notebook",
+                selectable: true,
+                extra: [
+                  {
+                    id: "notebook-options",
+                    title: strings.notebookOptions(),
+                    symbol: "folder.badge.gearshape"
+                  },
+                  {
+                    id: "notebook-tree",
+                    title: strings.dataTypesPluralCamelCase.notebook(),
+                    symbol: "list.bullet.indent"
+                  }
+                ],
+                onExtra: (id) =>
+                  id === "notebook-tree"
+                    ? Notebooks.present(notebook)
+                    : Properties.present(notebook)
+              }
+            : undefined
+        }
+        onCompose={Platform.OS === "ios" ? openEditor : undefined}
         hasSearch={true}
         onSearch={() => {
           if (!notebook) return;
@@ -215,6 +247,8 @@ const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
           }}
         />
       </DelayLayout>
+      {/* iOS: compose sits in the navigation bar, the tree in the "…" menu. */}
+      {Platform.OS === "ios" ? null : (
       <View
         style={{
           position: "absolute",
@@ -249,6 +283,7 @@ const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
           }}
         />
       </View>
+      )}
       <SelectionHeader
         id={route.params?.id}
         items={notes}

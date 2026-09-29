@@ -42,7 +42,11 @@ import {
 } from "../utils/events";
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
-import { AppleTabBar } from "../components/apple-tab-bar";
+import { AppleTabBar, isTopTabBar } from "../components/apple-tab-bar";
+import {
+  SafeAreaInsetsContext,
+  useSafeAreaInsets
+} from "react-native-safe-area-context";
 import {
   AppleTabBarSelection,
   useAppleNavigationStore
@@ -51,6 +55,17 @@ import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import { DDS } from "../services/device-detection";
 
 const RootStack = createNativeStackNavigator();
+
+/**
+ * Task details are a sheet (Reminders pattern), not a pushed full screen:
+ * Cancel / Done in the sheet header, swipe-down blocked while there are
+ * unsaved changes (the screen toggles `gestureEnabled`).
+ */
+const TASK_SHEET_OPTIONS = {
+  presentation: (Platform.OS === "ios" && Platform.isPad
+    ? "formSheet"
+    : "modal") as "formSheet" | "modal"
+};
 const AppStack = createNativeStackNavigator();
 const DEFAULT_HOME: {
   name: string;
@@ -378,6 +393,7 @@ export const RootNavigation = () => {
   ).current;
 
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
+  const safeAreaInsets = useSafeAreaInsets();
   const deviceMode = useSettingStore((state) => state.deviceMode);
   const editorVisible = useAppleNavigationStore((state) => state.editorVisible);
   const [rootRoute, setRootRoute] = React.useState<string>(
@@ -531,11 +547,23 @@ export const RootNavigation = () => {
     Platform.OS === "ios" &&
     introCompleted &&
     !isAppLoading &&
-    ["FluidPanelsView", "Tasks", "GlobalSearch"].includes(rootRoute) &&
+    [
+      "FluidPanelsView",
+      "Tasks",
+      "GlobalSearch",
+      "TaskDetail",
+      "AddReminder"
+    ].includes(rootRoute) &&
     (deviceMode !== "mobile" || !editorVisible);
+
+  const topTabBar = showTabBar && isTopTabBar();
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.primary.background }}>
+      {topTabBar && <AppleTabBar onSelect={selectSection} />}
+      <SafeAreaInsetsContext.Provider
+        value={topTabBar ? { ...safeAreaInsets, top: 0 } : safeAreaInsets}
+      >
       <NavigationContainer
         onReady={() => setNavigationReady(true)}
         onStateChange={onStateChange}
@@ -623,6 +651,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="AddReminder"
+            options={TASK_SHEET_OPTIONS}
             getComponent={() => {
               // Legacy editor entry points navigate here. Present the standalone
               // Task editor without changing the Notes editor bridge.
@@ -651,6 +680,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="TaskDetail"
+            options={TASK_SHEET_OPTIONS}
             getComponent={() => {
               TaskDetail =
                 TaskDetail || require("../screens/tasks/detail").default;
@@ -676,7 +706,8 @@ export const RootNavigation = () => {
           />
         </RootStack.Navigator>
       </NavigationContainer>
-      {showTabBar && <AppleTabBar onSelect={selectSection} />}
+      </SafeAreaInsetsContext.Provider>
+      {showTabBar && !topTabBar && <AppleTabBar onSelect={selectSection} />}
     </View>
   );
 };

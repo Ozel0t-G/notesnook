@@ -28,7 +28,15 @@ import { useSettingStore } from "../../../stores/use-setting-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { Pressable } from "../../ui/pressable";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
+import { Note } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
+import { db } from "../../../common/database";
+import Navigation from "../../../services/navigation";
+import { deleteItems } from "../../../utils/functions";
+import { systemColor } from "../../../utils/ios-system-colors";
+import { ItemContextMenu } from "../../item-actions-menu";
+import { SwipeRow } from "../../swipe-row";
 
 export function selectItem(item: Item) {
   if (useSelectionStore.getState().selectionMode === item.type) {
@@ -87,6 +95,17 @@ const SelectionWrapper = ({
     itemId.current = item.id;
   }
 
+  const selectionMode = useSelectionStore((state) => state.selectionMode);
+  // iOS: long press opens the native context menu (selection lives in the
+  // list's "…" menu). Notes also get swipe actions like in Notes.
+  const nativeMenus =
+    Platform.OS === "ios" &&
+    !isSheet &&
+    (item.type === "note" || item.type === "notebook" || item.type === "tag");
+  // The open note is only marked where the editor is visible next to the
+  // list (iPad). On iPhone a selection must not stay behind after going back.
+  const showEditing = isEditingNote && isTabletPane;
+
   const onLongPress = () => {
     if (isSheet) return;
     if (useSelectionStore.getState().selectionMode !== item.type) {
@@ -95,17 +114,17 @@ const SelectionWrapper = ({
     useSelectionStore.getState().setSelectedItem(item.id);
   };
 
-  return (
+  const row = (
     <Pressable
       customColor={
-        isEditingNote || isSelected
+        showEditing || isSelected
           ? visual.selectionBackground
           : isSheet
           ? colors.primary.hover
           : visual.elevatedSurface
       }
       testID={testID}
-      onLongPress={onLongPress}
+      onLongPress={nativeMenus && !selectionMode ? undefined : onLongPress}
       onPress={onPress}
       customSelectedColor={visual.selectionBackground}
       customAlpha={!isDark ? -0.03 : 0.03}
@@ -157,7 +176,7 @@ const SelectionWrapper = ({
         ...(isSheet || visual.ios ? {} : visual.subtleShadow)
       }}
     >
-      {isEditingNote ? (
+      {showEditing ? (
         <View
           style={{
             backgroundColor: color || colors.selected.accent,
@@ -171,6 +190,56 @@ const SelectionWrapper = ({
       ) : null}
       {children}
     </Pressable>
+  );
+
+  if (!nativeMenus) return row;
+
+  const menu = (
+    <ItemContextMenu
+      item={item}
+      enabled={!selectionMode}
+      previewCornerRadius={10}
+    >
+      {row}
+    </ItemContextMenu>
+  );
+  if (item.type !== "note") return menu;
+  const note = item as Note;
+  return (
+    <SwipeRow
+      enabled={!selectionMode}
+      leading={[
+        {
+          key: "pin",
+          label: note.pinned ? strings.unpin() : strings.pin(),
+          symbol: note.pinned ? "pin.slash.fill" : "pin.fill",
+          color: systemColor("orange", isDark),
+          onPress: async () => {
+            await db.notes.pin(!note.pinned, note.id);
+            Navigation.queueRoutesForUpdate();
+          }
+        }
+      ]}
+      trailing={[
+        {
+          key: "trash",
+          label: strings.delete(),
+          symbol: "trash.fill",
+          color: systemColor("red", isDark),
+          onPress: () => void deleteItems("note", [note.id])
+        },
+        {
+          key: "notebook",
+          label: strings.dataTypesPluralCamelCase.notebook(),
+          symbol: "folder.fill",
+          color: systemColor("indigo", isDark),
+          onPress: () =>
+            Navigation.navigate("LinkNotebooks", { noteIds: [note.id] })
+        }
+      ]}
+    >
+      {menu}
+    </SwipeRow>
   );
 };
 

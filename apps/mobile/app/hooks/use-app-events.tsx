@@ -17,6 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { migrateGeneratedNoteTitles } from "../services/note-title-migration";
+import { adoptDeviceDateFormats } from "../services/device-date-format";
 import {
   EV,
   EVENTS,
@@ -548,6 +550,7 @@ const initializeDatabase = async (password?: string) => {
     Notifications.setupReminders(true);
     DatabaseLogger.info("Database initialized");
     Notifications.restorePinnedNotes();
+    void adoptDeviceDateFormats().then(() => migrateGeneratedNoteTitles());
     expiringNotesTimer();
     deleteDCacheFiles();
   }

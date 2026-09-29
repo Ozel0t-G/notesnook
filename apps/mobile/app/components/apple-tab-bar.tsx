@@ -16,6 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+
 import React from "react";
 import {
   Platform,
@@ -35,7 +36,8 @@ import { notesnook } from "../../e2e/test.ids";
 
 type NativeTabBarProps = {
   selectedSection: AppleTabBarSelection;
-  itemTitles: Record<"library" | "tasks" | "search" | "compose", string>;
+  itemTitles: Record<"library" | "tasks" | "search", string>;
+  tint: string;
   onSelect: (event: { nativeEvent: { section: AppleTabBarSelection } }) => void;
   style: ViewStyle;
 };
@@ -47,7 +49,18 @@ const NativeTabBar =
 
 /** Height of a standard UITabBar, excluding the home indicator inset. */
 export const APPLE_TAB_BAR_HEIGHT = 49;
+/** On iPad the tab bar floats at the top (iPadOS 18+), centered. */
+export const IPAD_TAB_BAR_WIDTH = 380;
 
+export function isTopTabBar() {
+  return Platform.OS === "ios" && Platform.isPad;
+}
+
+/**
+ * The floating tab bar. It is laid over the content (content scrolls beneath
+ * it) instead of reserving an opaque strip: on iPhone at the bottom, on iPad
+ * at the top.
+ */
 export function AppleTabBar({
   onSelect
 }: {
@@ -58,16 +71,44 @@ export function AppleTabBar({
   const { colors } = useThemeColors();
 
   if (!NativeTabBar) return null;
+  if (isTopTabBar()) {
+    // iPad: a bar of its own above the content, centered like iPadOS's
+    // floating tab bar. The screens below start under it.
+    return (
+      <View
+        testID={notesnook.tabbar.id}
+        style={{
+          paddingTop: insets.top + 4,
+          paddingBottom: 4,
+          alignItems: "center",
+          backgroundColor: colors.primary.background
+        }}
+      >
+        <View style={{ width: IPAD_TAB_BAR_WIDTH, height: APPLE_TAB_BAR_HEIGHT }}>
+          <NativeTabBar
+            selectedSection={section}
+            itemTitles={{
+              library: strings.routes.Library(),
+              tasks: strings.tasksTitle(),
+              search: strings.routes.Search()
+            }}
+            tint={colors.primary.accent}
+            onSelect={({ nativeEvent }) => onSelect(nativeEvent.section)}
+            style={StyleSheet.absoluteFill}
+          />
+        </View>
+      </View>
+    );
+  }
   return (
     <View
       testID={notesnook.tabbar.id}
+      pointerEvents="box-none"
       style={[
         styles.container,
         {
-          // The bar floats; the inset area below it must paint the screen
-          // background or it reads as a black strip above the home indicator.
-          height: APPLE_TAB_BAR_HEIGHT + insets.bottom,
-          backgroundColor: colors.primary.background
+          bottom: 0,
+          height: APPLE_TAB_BAR_HEIGHT + insets.bottom
         }
       ]}
     >
@@ -76,9 +117,9 @@ export function AppleTabBar({
         itemTitles={{
           library: strings.routes.Library(),
           tasks: strings.tasksTitle(),
-          search: strings.routes.Search(),
-          compose: strings.newNoteTab()
+          search: strings.routes.Search()
         }}
+        tint={colors.primary.accent}
         onSelect={({ nativeEvent }) => onSelect(nativeEvent.section)}
         style={StyleSheet.absoluteFill}
       />
@@ -88,6 +129,9 @@ export function AppleTabBar({
 
 const styles = StyleSheet.create({
   container: {
-    width: "100%"
+    position: "absolute",
+    left: 0,
+    right: 0,
+    backgroundColor: "transparent"
   }
 });

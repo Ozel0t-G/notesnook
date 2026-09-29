@@ -23,6 +23,8 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
   @objc var selectedSection: String = "library" { didSet { updateSelection() } }
   @objc var onSelect: RCTBubblingEventBlock?
   @objc var itemTitles: NSDictionary = [:] { didSet { updateTitles() } }
+  /// The app's single accent (petrol) for the selected tab.
+  @objc var tint: UIColor? { didSet { tabBar.tintColor = tint } }
 
   override init(frame: CGRect) {
     super.init(frame: frame)
@@ -45,26 +47,13 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
       image: UIImage(systemName: "magnifyingglass"),
       tag: 2
     )
-    let composeItem = UITabBarItem(
-      title: NSLocalizedString("New Note", comment: "New note action in the tab bar"),
-      image: UIImage(systemName: "square.and.pencil"),
-      tag: 3
-    )
     libraryItem.accessibilityIdentifier = "veyran-tab-library"
     tasksItem.accessibilityIdentifier = "veyran-tab-tasks"
     searchItem.accessibilityIdentifier = "veyran-tab-search"
-    composeItem.accessibilityIdentifier = "veyran-tab-compose"
-    composeItem.accessibilityLabel = NSLocalizedString(
-      "New Note",
-      comment: "Accessibility label for the new note action"
-    )
-    composeItem.accessibilityHint = NSLocalizedString(
-      "Creates a new note and opens the editor",
-      comment: "Accessibility hint for the new note action"
-    )
-    composeItem.accessibilityTraits = [.button]
 
-    tabBar.items = [libraryItem, tasksItem, searchItem, composeItem]
+    // Tabs are places, not actions: "New Note" lives in the toolbar
+    // (square.and.pencil) like in Notes.
+    tabBar.items = [libraryItem, tasksItem, searchItem]
     addSubview(tabBar)
     NSLayoutConstraint.activate([
       tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),

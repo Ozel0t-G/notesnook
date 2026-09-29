@@ -178,12 +178,20 @@ function isNotePinnedInNotifications(item: Item) {
 export const useActions = ({
   close,
   item: propItem,
-  customActionHandlers
+  customActionHandlers,
+  presentation = "sheet"
 }: {
   item: Item;
   close: () => void;
   customActionHandlers?: Record<ActionId, () => void>;
+  /**
+   * "menu" when the actions run from a native context/pull-down menu: there is
+   * no properties sheet around, so toasts and dialogs use the global host.
+   */
+  presentation?: "sheet" | "menu";
 }) => {
+  const toastContext = presentation === "menu" ? "global" : "local";
+  const dialogContext = presentation === "menu" ? "global" : "properties";
   const features = useAreFeaturesAvailable([
     "defaultNotebookAndTag",
     "activeReminders",
@@ -306,7 +314,7 @@ export const useActions = ({
           ToastManager.show({
             message: features?.shortcuts.error,
             type: "info",
-            context: "local"
+            context: toastContext
           });
           return;
         }
@@ -390,7 +398,7 @@ export const useActions = ({
         heading: strings.notePublished(),
         message: strings.unpublishToDelete(),
         type: "error",
-        context: "local"
+        context: toastContext
       });
       return;
     }
@@ -464,7 +472,7 @@ export const useActions = ({
           ToastManager.show({
             heading: strings.actions.deleted.unknown(item.itemType, 1),
             type: "success",
-            context: "local"
+            context: toastContext
           });
         });
       },
@@ -570,7 +578,7 @@ export const useActions = ({
               ToastManager.show({
                 message: features.defaultNotebookAndTag.error,
                 type: "info",
-                context: "local"
+                context: toastContext
               });
               return;
             }
@@ -597,7 +605,7 @@ export const useActions = ({
             ToastManager.show({
               message: features.notebooks.error,
               type: "info",
-              context: "local"
+              context: toastContext
             });
             return;
           }
@@ -634,7 +642,7 @@ export const useActions = ({
               ToastManager.show({
                 message: features.defaultNotebookAndTag.error,
                 type: "info",
-                context: "local"
+                context: toastContext
               });
               return;
             }
@@ -705,7 +713,7 @@ export const useActions = ({
           ToastManager.show({
             message: features?.customHomepage.error,
             type: "info",
-            context: "local"
+            context: toastContext
           });
           return;
         }
@@ -766,7 +774,7 @@ export const useActions = ({
       ToastManager.show({
         heading: strings.noteDuplicated(),
         type: "success",
-        context: "local"
+        context: toastContext
       });
       await sleep(500);
       close();
@@ -801,7 +809,7 @@ export const useActions = ({
         ToastManager.show({
           message: features?.pinNoteInNotification.error,
           type: "info",
-          context: "local"
+          context: toastContext
         });
         return;
       }
@@ -817,7 +825,7 @@ export const useActions = ({
         ToastManager.show({
           heading: strings.lockedNotesPinnedFailed(),
           type: "error",
-          context: "local"
+          context: toastContext
         });
         return;
       }
@@ -832,7 +840,7 @@ export const useActions = ({
       if (!user) {
         ToastManager.show({
           heading: strings.loginRequired(),
-          context: "local",
+          context: toastContext,
           func: () => {
             Navigation.navigate("Auth", {
               mode: AuthMode.login
@@ -846,7 +854,7 @@ export const useActions = ({
       if (!user?.isEmailConfirmed) {
         ToastManager.show({
           heading: strings.confirmEmailToPublish(),
-          context: "local"
+          context: toastContext
         });
         return;
       }
@@ -854,7 +862,7 @@ export const useActions = ({
         ToastManager.show({
           heading: strings.lockedNotesPublishFailed(),
           type: "error",
-          context: "local"
+          context: toastContext
         });
         return;
       }
@@ -867,7 +875,7 @@ export const useActions = ({
         if (processingId.current === "shareNote") {
           ToastManager.show({
             heading: strings.pleaseWait() + "...",
-            context: "local"
+            context: toastContext
           });
           return;
         }
@@ -947,7 +955,7 @@ export const useActions = ({
         if (processingId.current === "copyContent") {
           ToastManager.show({
             heading: strings.pleaseWait() + "...",
-            context: "local"
+            context: toastContext
           });
           return;
         }
@@ -969,7 +977,7 @@ export const useActions = ({
           ToastManager.show({
             heading: strings.noteCopied(),
             type: "success",
-            context: "local"
+            context: toastContext
           });
         }
       } catch (e) {
@@ -1146,7 +1154,7 @@ export const useActions = ({
             ToastManager.show({
               message: strings.expiryDateRemoved(),
               type: "success",
-              context: "local"
+              context: toastContext
             });
 
             setItem((await db.notes.note(item.id)) as Item);
@@ -1155,13 +1163,13 @@ export const useActions = ({
               ToastManager.show({
                 message: features?.expiringNotes.error,
                 type: "info",
-                context: "local"
+                context: toastContext
               });
               return;
             }
 
             presentDialog({
-              context: "properties",
+              context: dialogContext,
               component: (close) => (
                 <DatePickerComponent
                   onCancel={() => close?.()}
@@ -1173,7 +1181,7 @@ export const useActions = ({
                     ToastManager.show({
                       message: strings.expiryDateSet(),
                       type: "success",
-                      context: "local"
+                      context: toastContext
                     });
 
                     setItem((await db.notes.note(item.id)) as Item);
@@ -1231,7 +1239,7 @@ export const useActions = ({
           ToastManager.show({
             message: features?.androidLauncherShortcuts.error,
             type: "info",
-            context: "local"
+            context: toastContext
           });
           return;
         }
@@ -1268,7 +1276,7 @@ export const useActions = ({
         ToastManager.show({
           heading: strings.linkCopied(),
           message: link,
-          context: "local",
+          context: toastContext,
           type: "success"
         });
       }
@@ -1285,7 +1293,7 @@ export const useActions = ({
         ToastManager.show({
           heading: strings.idCopied(),
           message: item.id,
-          context: "local",
+          context: toastContext,
           type: "success"
         });
       }

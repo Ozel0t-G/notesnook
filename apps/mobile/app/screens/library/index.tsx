@@ -30,7 +30,18 @@ import { useNotes } from "../../stores/use-notes-store";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { useInboxNotes } from "../../stores/use-inbox-store";
 import NoteCollection from "../notes/note-collection";
-import { openEditor } from "../notes/common";
+import { openEditor, setOnFirstSaveUnassigned } from "../notes/common";
+import {
+  IosBarButton,
+  IosLargeTitle,
+  IosNavBar
+} from "../../components/ios-nav-bar";
+import {
+  APPLE_TAB_BAR_HEIGHT,
+  isTopTabBar
+} from "../../components/apple-tab-bar";
+import { AddNotebookSheet } from "../../components/sheets/add-notebook";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type LibraryDestination = {
   key: string;
@@ -49,6 +60,7 @@ export default function Library({
 }: NavigationProps<"Library">) {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
+  const insets = useSafeAreaInsets();
   const [notebooks, setNotebooks] = React.useState<Notebook[]>([]);
   const [tags, setTags] = React.useState<Tag[]>([]);
   const [counts, setCounts] = React.useState<{
@@ -186,7 +198,7 @@ export default function Library({
     {
       key: "monographs",
       label: strings.routes.Monographs(),
-      symbol: "text.book.closed",
+      symbol: "globe",
       onPress: () =>
         navigation.navigate("Monographs", {
           type: "monograph",
@@ -208,19 +220,37 @@ export default function Library({
     }
   ];
 
-  const sectionTitle = (title: string) => (
-    <Text
+  const sectionTitle = (title: string, onAdd?: () => void) => (
+    <View
       style={{
-        color: visual.secondaryText,
-        fontSize: 13,
-        fontWeight: "600",
-        marginTop: 28,
-        marginBottom: 9,
-        marginHorizontal: 20
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 22,
+        marginBottom: 4,
+        marginLeft: 20,
+        marginRight: 8
       }}
     >
-      {title.toLocaleUpperCase()}
-    </Text>
+      <Text
+        accessibilityRole="header"
+        style={{
+          flex: 1,
+          color: visual.primaryText,
+          fontSize: 20,
+          fontWeight: "700"
+        }}
+      >
+        {title}
+      </Text>
+      {onAdd ? (
+        <IosBarButton
+          symbol="plus"
+          accessibilityLabel={strings.newNotebookRow()}
+          testID="library-new-notebook"
+          onPress={onAdd}
+        />
+      ) : null}
+    </View>
   );
 
   const row = (
@@ -313,54 +343,61 @@ export default function Library({
     <View style={{ flex: 1, backgroundColor: visual.screenBackground }}>
       <ScrollView
         testID="library-scroll"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{
+          paddingBottom:
+            32 + (isTopTabBar() ? 0 : APPLE_TAB_BAR_HEIGHT + insets.bottom)
+        }}
       >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: 20,
-            paddingTop: 20
-          }}
-        >
-          <Text
-            testID="library-heading"
-            style={{
-              flex: 1,
-              color: visual.primaryText,
-              fontSize: 34,
-              fontWeight: "700"
-            }}
-          >
-            {strings.routes.Library()}
-          </Text>
-          <Pressable
-            onPress={() => Navigation.push("Settings", {})}
-            accessibilityRole="button"
-            accessibilityLabel={strings.routes.Settings()}
-            style={{
-              width: 44,
-              height: 44,
-              alignItems: "center",
-              justifyContent: "center"
-            }}
-          >
-            <TaskSymbolView
-              name="gearshape"
-              size={23}
-              color={visual.primaryText}
-            />
-          </Pressable>
-        </View>
+        {/* Settings and compose live in the navigation bar, as in Notes. */}
+        <IosNavBar
+          trailing={
+            <>
+              <IosBarButton
+                symbol="gearshape"
+                accessibilityLabel={strings.routes.Settings()}
+                testID="library-settings"
+                onPress={() => Navigation.push("Settings", {})}
+              />
+              <IosBarButton
+                symbol="square.and.pencil"
+                accessibilityLabel={strings.newNoteTab()}
+                testID="library-compose"
+                onPress={() => {
+                  setOnFirstSaveUnassigned();
+                  openEditor();
+                }}
+              />
+            </>
+          }
+        />
+        <IosLargeTitle
+          title={strings.routes.Library()}
+          testID="library-heading"
+        />
         {collections.map((item, index) => row(item, index, collections.length))}
         {destinations.map((item, index) =>
           row(item, index, destinations.length, visual.sectionSpacing)
         )}
-        {sectionTitle(strings.routes.Notebooks())}
-        {notebookRows.map((item, index) =>
-          row(item, index, notebookRows.length)
+        {sectionTitle(strings.routes.Notebooks(), () =>
+          AddNotebookSheet.present(undefined, undefined, "global", undefined, false)
         )}
-        {sectionTitle(strings.routes.Tags())}
+        {notebookRows.length
+          ? notebookRows.map((item, index) =>
+              row(item, index, notebookRows.length)
+            )
+          : row(
+              {
+                key: "new-notebook",
+                label: strings.newNotebookRow(),
+                symbol: "folder.badge.plus",
+                onPress: () =>
+                  AddNotebookSheet.present(undefined, undefined, "global", undefined, false)
+              },
+              0,
+              1
+            )}
+        {/* An empty Tags section is hidden; tags appear once a note has one. */}
+        {tagRows.length ? sectionTitle(strings.routes.Tags()) : null}
         {tagRows.map((item, index) => row(item, index, tagRows.length))}
       </ScrollView>
     </View>

@@ -57,6 +57,7 @@ export const Favorites = ({
         canGoBack={Platform.OS === "ios"}
         hasSearch={true}
         id={route.name}
+        menu={{ group: "favorites", dataType: "note", selectable: true }}
         onSearch={() => {
           Navigation.push("Search", {
             placeholder: strings.searchInRoute(route.name),

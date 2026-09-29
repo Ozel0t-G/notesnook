@@ -82,10 +82,16 @@ export const Trash = ({ navigation, route }: NavigationProps<"Trash">) => {
     <>
       <Header
         renderedInRoute={route.name}
-        title={route.name}
+        title={strings.routes.Trash()}
         id={route.name}
         canGoBack={Platform.OS === "ios"}
         hasSearch={true}
+        menu={{
+          group: "trash",
+          dataType: "trash",
+          selectable: true,
+          hideGroupOptions: true
+        }}
         onSearch={() => {
           Navigation.push("Search", {
             placeholder: strings.searchInRoute(route.name),

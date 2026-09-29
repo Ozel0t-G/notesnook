@@ -4,6 +4,7 @@
 
 RCT_EXPORT_VIEW_PROPERTY(selectedSection, NSString)
 RCT_EXPORT_VIEW_PROPERTY(itemTitles, NSDictionary)
+RCT_EXPORT_VIEW_PROPERTY(tint, UIColor)
 RCT_EXPORT_VIEW_PROPERTY(onSelect, RCTBubblingEventBlock)
 
 @end

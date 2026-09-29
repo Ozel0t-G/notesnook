@@ -2,7 +2,8 @@
 
 Stand: 2026-09-29  
 Branch: `test`  
-Aktueller Commit: `f82bee0b31eb5a8100022a16e96049af65d1b319`  
+Implementierungsstand: `f82bee0b31eb5a8100022a16e96049af65d1b319`  
+Handoff-Commit: `988bbb446`  
 Basis: `17def76c1e069a72c4b74e9c035a847ff66c286b`
 
 ## Auftrag
@@ -160,5 +161,4 @@ Die folgenden untracked Dateien im Hauptcheckout sind absichtlich erhalten und d
 - `artifacts/.urgent-deepseek-input-05f16225/`
 - `artifacts/.urgent-deepseek-input-3d6a6f1d/`
 - `artifacts/.urgent-deepseek-input-4a52337d/`
-
 

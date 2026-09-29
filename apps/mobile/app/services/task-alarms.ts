@@ -198,9 +198,15 @@ function currentAccountId() {
 export async function reconcileTaskAlarmDelivery(
   tasks: Task[],
   privacyHidden: boolean,
-  fallback?: AlarmFallbackWithdrawal
+  fallback?: AlarmFallbackWithdrawal,
+  listTint?: (listId: string) => string | undefined
 ): Promise<TaskAlarmDelivery> {
-  const desired = desiredTaskAlarms(tasks, privacyHidden);
+  const desired = desiredTaskAlarms(
+    tasks,
+    privacyHidden,
+    Date.now(),
+    listTint
+  );
   const alarmKeys = desired.map((alarm) => alarm.alarmKey);
   // Every occurrence the caller asked about is provably not alarmed when there
   // is no native alarm path at all (a non-Apple build).

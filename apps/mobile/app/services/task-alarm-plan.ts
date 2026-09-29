@@ -16,6 +16,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+import { strings } from "@notesnook/intl";
 import {
   taskReminderSchedule,
   taskReminderTimestamp,
@@ -47,6 +48,15 @@ export function taskAlertTitle(title: string) {
     .slice(0, 120);
 }
 
+/** The App Lock alarm title: says what is due and when, never the Task. */
+export function redactedAlarmTitle(timestamp: number) {
+  const time = new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  return strings.tasksUrgentDueRedacted(time);
+}
+
 export type DesiredTaskAlarm = {
   alarmKey: string;
   taskId: string;
@@ -54,6 +64,10 @@ export type DesiredTaskAlarm = {
   title: string;
   updatedAt: number;
   privacyHidden: boolean;
+  /** The Task's List color (hex), used as the alarm's tint. */
+  tint?: string;
+  /** Neutral but useful alarm title under App Lock ("Urgent Task due (13:20)"). */
+  redactedTitle?: string;
 };
 
 export type OverdueTaskSurface = {
@@ -163,7 +177,8 @@ export function taskReminderOccurrences(
 export function desiredTaskAlarms(
   tasks: Task[],
   privacyHidden: boolean,
-  now = Date.now()
+  now = Date.now(),
+  listTint?: (listId: string) => string | undefined
 ): DesiredTaskAlarm[] {
   const desired = tasks.flatMap((task) => {
     if (task.completed || !task.urgent) return [];
@@ -176,7 +191,11 @@ export function desiredTaskAlarms(
         timestamp: item.timestamp,
         title: taskAlertTitle(task.title),
         updatedAt: task.updatedAt,
-        privacyHidden
+        privacyHidden,
+        ...(privacyHidden
+          ? { redactedTitle: redactedAlarmTitle(item.timestamp) }
+          : {}),
+        ...(listTint?.(task.listId) ? { tint: listTint(task.listId) } : {})
       })
     );
   });

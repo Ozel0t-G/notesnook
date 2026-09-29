@@ -337,6 +337,8 @@ private struct WantedAlarm {
   /// App Lock turning on can tell a presentation that still shows the real Task
   /// title from one that is already redacted.
   let privacyHidden: Bool
+  /// The Task's List color; the alarm is tinted with it.
+  var tint: Color? = nil
 }
 
 @available(iOS 26.0, *)
@@ -366,14 +368,32 @@ private extension TaskAlarmModule {
       CharacterSet.controlCharacters.contains(scalar) || scalar.value == 0x2028 || scalar.value == 0x2029
         ? " " : String(scalar)
     }.joined()
-    let safeTitle = privacyHidden ? "VeyraN Task" : String(cleanedTitle.prefix(120))
+    // Under App Lock the alarm says what is due and when ("Urgent Task due
+    // (13:20)"), never the Task itself.
+    let redactedTitle = (value["redactedTitle"] as? String)
+      .map { String($0.prefix(60)) } ?? "VeyraN Task"
+    let safeTitle = privacyHidden ? redactedTitle : String(cleanedTitle.prefix(120))
+    let tint = (value["tint"] as? String).flatMap(Self.color(hex:))
     let input = "\(timestamp.doubleValue)|\(privacyHidden)|\(updatedAt.doubleValue)"
     let fingerprint = SHA256.hash(data: Data(input.utf8))
       .map { String(format: "%02x", $0) }.joined()
     return WantedAlarm(id: id, taskId: taskId, alarmKey: alarmKey,
                        timestamp: timestamp.doubleValue / 1000,
                        title: safeTitle, fingerprint: fingerprint,
-                       privacyHidden: privacyHidden)
+                       privacyHidden: privacyHidden, tint: tint)
+  }
+
+  static func color(hex: String) -> Color? {
+    var value = hex.trimmingCharacters(in: .whitespaces)
+    guard value.hasPrefix("#") else { return nil }
+    value.removeFirst()
+    if value.count == 3 { value = value.map { "\($0)\($0)" }.joined() }
+    guard value.count == 6 || value.count == 8,
+          let number = UInt64(value, radix: 16) else { return nil }
+    let rgb = value.count == 8 ? number >> 8 : number
+    return Color(red: Double((rgb >> 16) & 0xff) / 255,
+                 green: Double((rgb >> 8) & 0xff) / 255,
+                 blue: Double(rgb & 0xff) / 255)
   }
 
   static func alarmId(accountId: String, alarmKey: String) -> UUID {
@@ -642,7 +662,7 @@ private extension TaskAlarmModule {
           presentation: AlarmPresentation(alert: alert,
                                          countdown: countdown,
                                          paused: paused),
-          tintColor: .green)
+          tintColor: item.tint ?? .green)
         let config = AlarmManager.AlarmConfiguration<TaskAlarmMetadata>(
           countdownDuration: Alarm.CountdownDuration(preAlert: nil,
                                                      postAlert: Self.snoozeInterval),

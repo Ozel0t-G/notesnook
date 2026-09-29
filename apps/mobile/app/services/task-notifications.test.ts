@@ -236,7 +236,8 @@ jest.mock("react-native", () => {
 jest.mock("@notesnook/intl", () => ({
   strings: {
     tasksTitle: () => "VeyraN Task",
-    tasksUrgentFallbackBody: () => "Open VeyraN to view this Task."
+    tasksUrgentFallbackBody: () => "Open VeyraN to view this Task.",
+    tasksUrgentDueRedacted: (time: string) => `Urgent Task due (${time})`
   }
 }));
 
@@ -311,7 +312,8 @@ import { ToastManager } from "./event-manager";
 import { taskAlarmKey, taskReminderOccurrences } from "./task-alarm-plan";
 import {
   TASK_ALARM_UNREDACTED_MESSAGE,
-  TaskNotifications
+  TaskNotifications,
+  isStaleTaskNotification
 } from "./task-notifications";
 
 const database = db as unknown as {
@@ -840,5 +842,30 @@ describe("pending device cleanup obligations", () => {
     await TaskNotifications.reconcile();
 
     expect(pendingCleanup.get(CLEANUP_KEY)).toContain("task notifications");
+  });
+});
+
+describe("stale delivered Task notifications", () => {
+  const tasks = new Map([
+    ["open", { completed: false, updatedAt: 10 }],
+    ["done", { completed: true, updatedAt: 11 }]
+  ]);
+
+  test("keeps the notification of an unchanged open Task", () => {
+    expect(
+      isStaleTaskNotification({ taskId: "open", updatedAt: "10" }, tasks)
+    ).toBe(false);
+  });
+
+  test("withdraws completed, deleted and changed Tasks", () => {
+    expect(
+      isStaleTaskNotification({ taskId: "done", updatedAt: "11" }, tasks)
+    ).toBe(true);
+    expect(
+      isStaleTaskNotification({ taskId: "gone", updatedAt: "1" }, tasks)
+    ).toBe(true);
+    expect(
+      isStaleTaskNotification({ taskId: "open", updatedAt: "9" }, tasks)
+    ).toBe(true);
   });
 });

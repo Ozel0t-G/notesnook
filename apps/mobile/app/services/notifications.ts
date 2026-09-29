@@ -17,6 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import {
+  runTaskNotificationAction,
+  TASK_ACTION_COMPLETE,
+  TASK_ACTION_SNOOZE,
+  TASK_NOTIFICATION_CATEGORY
+} from "./task-notification-actions";
 import { getFormattedDate, getFormattedReminderTime } from "@notesnook/common";
 import {
   getUpcomingReminderTime,
@@ -181,6 +187,10 @@ const onEvent = async ({ type, detail }: Event) => {
 
   if (type === EventType.ACTION_PRESS) {
     notifee.decrementBadgeCount();
+    if (notification?.data?.type === "task") {
+      await runTaskNotificationAction(pressAction?.id, notification.data);
+      return;
+    }
     switch (pressAction?.id) {
       case "REMINDER_SNOOZE": {
         if (!notification?.id) break;
@@ -341,7 +351,12 @@ async function setupIOSCategories() {
     if (Platform.OS === "ios") {
       const categories = await notifee.getNotificationCategories();
       const reminderTime = SettingsService.get().defaultSnoozeTime;
-      if (categories.findIndex((c) => c.id === "REMINDER") === -1) {
+      // setNotificationCategories replaces the whole set, so every category is
+      // written together whenever one of them is missing.
+      if (
+        categories.findIndex((c) => c.id === "REMINDER") === -1 ||
+        categories.findIndex((c) => c.id === TASK_NOTIFICATION_CATEGORY) === -1
+      ) {
         await notifee.setNotificationCategories([
           {
             id: "REMINDER",
@@ -367,6 +382,23 @@ async function setupIOSCategories() {
                 id: "REMINDER_DISABLE",
                 foreground: false,
                 title: strings.disable(),
+                authenticationRequired: false
+              }
+            ]
+          },
+          {
+            id: TASK_NOTIFICATION_CATEGORY,
+            actions: [
+              {
+                id: TASK_ACTION_COMPLETE,
+                foreground: false,
+                title: strings.tasksNotificationActionComplete(),
+                authenticationRequired: false
+              },
+              {
+                id: TASK_ACTION_SNOOZE,
+                foreground: false,
+                title: strings.tasksNotificationActionSnooze(),
                 authenticationRequired: false
               }
             ]

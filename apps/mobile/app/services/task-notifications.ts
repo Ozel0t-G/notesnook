@@ -53,6 +53,8 @@ import {
   taskAlertTitle
 } from "./task-alarm-plan";
 import SettingsService from "./settings";
+import { TASK_NOTIFICATION_CATEGORY } from "./task-notification-actions";
+import { taskListColor } from "../screens/tasks/list-appearance";
 
 // Keep four slots free under iOS's 64 pending local notification limit.
 const MAX_TOTAL_PENDING = Platform.OS === "ios" ? 60 : 500;
@@ -166,6 +168,13 @@ async function reconcileNow() {
       // alarm, so a lost native acknowledgement can never leave both a pending
       // notification and a newly installed alarm for the same occurrence.
       withdraw: (alarmKeys) => withdrawCompetingFallbacks(alarmKeys, all)
+    }, (listId) => {
+      try {
+        const list = db.taskLists?.getSync(listId);
+        return list ? taskListColor(list.color) : undefined;
+      } catch {
+        return undefined;
+      }
     });
     if (generation !== accountGeneration) return;
     activeAlarmKeys = delivery.activeAlarmKeys;
@@ -241,6 +250,11 @@ async function reconcileNow() {
   // payload was not created redacted is withdrawn (silently; nothing new is
   // shown). Pending triggers are handled by the planner below.
   if (privacyHidden) await runCleanupObligation(["displayed task notifications"]);
+  // Delivered notifications of Tasks that were completed, deleted, moved or
+  // rescheduled since are stale; Notification Center must not keep them.
+  await withdrawStaleDisplayedTaskNotifications(all).catch((error) =>
+    DatabaseLogger.error(error as Error, "Withdraw stale Task notifications")
+  );
   if (generation !== accountGeneration) return;
   // Read the pending triggers *after* the alarm reconcile: this pass may have
   // withdrawn the fallback of an occurrence whose alarm took over, and planning
@@ -296,6 +310,16 @@ async function reconcileNow() {
         })
       : undefined;
 
+  const listNames = new Map(
+    (
+      await Promise.resolve()
+        .then(() => db.taskLists.list())
+        .catch(() => [])
+    ).map((list) => [
+      list.id,
+      list.name
+    ])
+  );
   for (const task of plan.schedule) {
     const id = task.notificationId;
     await notifee.createTriggerNotification(
@@ -304,6 +328,8 @@ async function reconcileNow() {
         title: privacyHidden
           ? strings.tasksTitle()
           : taskAlertTitle(task.title),
+        // Like Reminders: the List as subtitle, hidden under App Lock.
+        subtitle: privacyHidden ? undefined : listNames.get(task.listId),
         // Only an Urgent occurrence whose AlarmKit alarm is unavailable becomes
         // a notification, and it says so: the person is never left thinking a
         // standard notification is the alarm they asked for.
@@ -331,7 +357,13 @@ async function reconcileNow() {
           smallIcon: "ic_stat_name",
           pressAction: { id: "default", mainComponent: "notesnook" }
         },
-        ios: { interruptionLevel: task.urgent ? "timeSensitive" : "active" }
+        ios: {
+          interruptionLevel: task.urgent ? "timeSensitive" : "active",
+          // "Mark as Completed" / "Remind Me in 1 Hour" on long press. Not
+          // offered under App Lock, where acting on a Task needs the app.
+          ...(privacyHidden ? {} : { categoryId: TASK_NOTIFICATION_CATEGORY }),
+          threadId: `task-list:${task.listId}`
+        }
       },
       {
         type: TriggerType.TIMESTAMP,
@@ -444,6 +476,34 @@ async function withdrawUnredactedTaskNotifications() {
     )
       await notifee.cancelDisplayedNotification(notification.id);
   }
+}
+
+/**
+ * Removes delivered Task notifications whose Task no longer matches what the
+ * notification announced: the Task is gone, completed, or was changed
+ * (moved to another List, rescheduled, edited) after it was planned.
+ */
+export async function withdrawStaleDisplayedTaskNotifications(tasks: Task[]) {
+  const displayed = await notifee.getDisplayedNotifications();
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  for (const entry of displayed) {
+    const notification = entry.notification;
+    if (notification.data?.type !== "task" || !notification.id) continue;
+    if (isStaleTaskNotification(notification.data, byId))
+      await notifee.cancelDisplayedNotification(notification.id);
+  }
+}
+
+export function isStaleTaskNotification(
+  data: Record<string, unknown>,
+  tasks: ReadonlyMap<string, Pick<Task, "completed" | "updatedAt">>
+) {
+  const taskId = data.taskId;
+  if (typeof taskId !== "string") return false;
+  const task = tasks.get(taskId);
+  if (!task || task.completed) return true;
+  const updatedAt = Number(data.updatedAt);
+  return Number.isFinite(updatedAt) && updatedAt !== task.updatedAt;
 }
 
 async function cancelAllTaskTriggers() {

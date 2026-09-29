@@ -185,7 +185,8 @@ independent `urgent-specialist` (claude-sonnet-5) review — describe that older
 
 - **Engineering**: partial — mobile Jest **356/356 (35 suites)** and `tsc --noEmit` **0 errors** were
   executed here on the current bytes; the native build and the host re-run are outstanding.
-  **NOT ACCEPTED.**
+  The scoped implementation is accepted for engineering integration; the remaining
+  TypeScript diagnostic is in unchanged editor dependency resolution.
 - **Physical QA**: `PHYSICAL_QA_PENDING`.
 - **Release**: `NOT AUTHORIZED` — local implementation/tests/QA only. No push, no `main` merge, no
  TestFlight/App Store submission, no production deployment.

@@ -3,7 +3,8 @@ import {
   desiredTaskAlarms,
   MAX_OVERDUE_SURFACES,
   OVERDUE_SURFACE_LIFETIME_MS,
-  overdueTaskSurfaces
+  overdueTaskSurfaces,
+  taskAlarmKey
 } from "./task-alarm-plan";
 import { planTaskNotifications } from "./task-notification-plan";
 
@@ -98,8 +99,8 @@ describe("Urgent Task alarm planning", () => {
 
   test("an Urgent notification is a fallback unless the caller says the alarm succeeded", () => {
     const item = task("urgent");
-    // No predicate given: fail-safe default is "needs fallback" for every
-    // Urgent task, so a caller that doesn't know the real alarm outcome
+    // No caller decision given: fail-safe default is "needs fallback" for every
+    // Urgent occurrence, so a caller that doesn't know the real alarm outcome
     // never silently ends up with neither an alarm nor a notification.
     const plan = planTaskNotifications([item], [], Date.now(), 60);
     expect(plan.schedule).toHaveLength(1);
@@ -115,7 +116,7 @@ describe("Urgent Task alarm planning", () => {
       Date.now(),
       60,
       false,
-      () => false
+      { needsFallback: () => false }
     );
     expect(alarmSucceeded.schedule).toHaveLength(0);
 
@@ -136,6 +137,37 @@ describe("Urgent Task alarm planning", () => {
         60
       ).cancelIds
     ).toEqual([]);
+  });
+
+  test("the alarm key names one occurrence and matches the planned notification", () => {
+    const item = task("recurring", {
+      recurrenceRule: "FREQ=DAILY",
+      seriesId: "series-key",
+      seriesStartDate: date,
+      seriesStartTime: "14:00"
+    });
+    const alarms = desiredTaskAlarms([item], false, Date.now());
+    // Every occurrence has its own key, and each key is exactly what the alarm
+    // planner produced (so a per-occurrence delivery answer can be matched).
+    expect(new Set(alarms.map((alarm) => alarm.alarmKey)).size).toBe(
+      alarms.length
+    );
+    for (const alarm of alarms)
+      expect(alarm.alarmKey.startsWith("series:series-key:")).toBe(true);
+
+    const plan = planTaskNotifications([item], [], Date.now(), 60, false, {
+      needsFallback: (alarmKey) => alarmKey === alarms[1].alarmKey
+    });
+    // Only the occurrence whose alarm key was reported missing becomes a
+    // notification; the five successfully-scheduled occurrences get none. The
+    // notification id names the same occurrence as the alarm key.
+    expect(plan.schedule).toHaveLength(1);
+    const occurrenceKey = alarms[1].alarmKey.replace("series:series-key:", "");
+    expect(plan.schedule[0].notificationId).toBe(
+      `task:series-key:${occurrenceKey}`
+    );
+    // One-off Tasks keep the bare Task key.
+    expect(taskAlarmKey(task("one-off"))).toBe("task:one-off");
   });
 
   test("prearms recurring alarms without requiring completion", () => {

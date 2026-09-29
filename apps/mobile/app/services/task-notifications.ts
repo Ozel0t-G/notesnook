@@ -31,12 +31,14 @@ import { useUserStore } from "../stores/use-user-store";
 import {
   availableTaskNotificationSlots,
   planTaskNotifications,
-  taskNotificationId
+  taskNotificationId,
+  type UrgentAlarmFallback
 } from "./task-notification-plan";
 import {
   cancelAllTaskAlarms,
   endOverdueActivities,
-  reconcileTaskAlarms,
+  reconcileTaskAlarmDelivery,
+  runIndependentCleanup,
   syncOverdueActivities
 } from "./task-alarms";
 import { overdueTaskSurfaces, taskAlertTitle } from "./task-alarm-plan";
@@ -49,6 +51,13 @@ let started = false;
 let lastPress: { id: string; at: number } | undefined;
 let stopSubscriptions: (() => void) | undefined;
 let lastTruncation = "";
+/**
+ * Bumped as soon as the signed-in account changes (or a logout starts). An
+ * in-flight reconcile pass captures it and refuses to write anything once it
+ * differs, so an old-account pass that resolves late can never re-create alarms,
+ * notifications or Live Activities for the account that was just signed out.
+ */
+let accountGeneration = 0;
 
 export function claimTaskNotificationPress(id: string) {
   const now = Date.now();
@@ -79,9 +88,15 @@ async function requestPermission() {
 
 async function reconcileNow() {
   if (!db.isInitialized || useUserStore.getState().isLoggingOut) return;
+  // Captured with the account id: if the signed-in account changes while this
+  // pass is awaiting, the pass must not write old-account alarms,
+  // notifications or surfaces after the cleanup has already run.
+  const generation = accountGeneration;
   const now = Date.now();
   const all = await db.tasks.list();
+  if (generation !== accountGeneration) return;
   const existing = await notifee.getTriggerNotifications();
+  if (generation !== accountGeneration) return;
   const privacyHidden = Boolean(
     useSettingStore.getState().settings.appLockEnabled
   );
@@ -91,20 +106,37 @@ async function reconcileNow() {
   const accountId = useUserStore.getState().user?.id || "";
   // AlarmKit is the sole audible delivery path for a successfully-scheduled
   // Urgent alarm; a labeled notification is only a fallback for the Urgent
-  // tasks whose native alarm could not be scheduled (unsupported, denied,
-  // or an individual scheduling failure), so there is never a duplicate
-  // audible alert for the same occurrence.
-  let urgentFallbackTaskIds = new Set<string>();
+  // *occurrences* whose native alarm is not scheduled (unsupported, denied, or
+  // an individual scheduling/verification failure). The answer is per
+  // occurrence, so a partially successful recurring series never duplicates
+  // audio for the occurrences that did schedule.
+  let urgentFallback: UrgentAlarmFallback = { needsFallback: () => true };
   try {
-    const result = await reconcileTaskAlarms(all, privacyHidden);
-    urgentFallbackTaskIds = new Set(result.failedTaskIds);
+    const delivery = await reconcileTaskAlarmDelivery(all, privacyHidden);
+    if (generation !== accountGeneration) return;
+    if (delivery.verified) {
+      const scheduled = delivery.scheduledAlarmKeys;
+      urgentFallback = {
+        needsFallback: (alarmKey) => !scheduled.has(alarmKey)
+      };
+      if (delivery.error)
+        DatabaseLogger.warn(
+          "Task alarm reconcile was recovered by verification",
+          { recovered: true }
+        );
+    } else {
+      // The native state could not be determined: never duplicate a
+      // possibly-sounding alarm, and never cancel a working fallback into
+      // silence. Existing fallback triggers are kept exactly as they are.
+      urgentFallback = { needsFallback: () => false, preserveExisting: true };
+      DatabaseLogger.error(
+        delivery.error as Error,
+        "Schedule Task alarms (unverified; no new fallbacks)"
+      );
+    }
   } catch (error) {
+    urgentFallback = { needsFallback: () => false, preserveExisting: true };
     DatabaseLogger.error(error as Error, "Schedule Task alarms");
-    // Fail safe: if we can't tell whether alarms were scheduled, every
-    // Urgent task falls back to a notification rather than risking silence.
-    urgentFallbackTaskIds = new Set(
-      all.filter((task) => task.urgent).map((task) => task.id)
-    );
   }
   // The ongoing overdue Urgent surface (Lock Screen / Dynamic Island),
   // reconciled on the same cadence as alarms and notifications so Urgent being
@@ -116,6 +148,14 @@ async function reconcileNow() {
   } catch (error) {
     DatabaseLogger.error(error as Error, "Reconcile overdue Task surfaces");
   }
+  if (generation !== accountGeneration) return;
+  // A Task notification that is already *displayed* in Notification Center /
+  // the Lock Screen was produced with the real title. Enabling App Lock must not
+  // leave that unredacted copy behind, so any delivered Task notification whose
+  // payload was not created redacted is withdrawn (silently; nothing new is
+  // shown). Pending triggers are handled by the planner below.
+  if (privacyHidden) await withdrawUnredactedTaskNotifications();
+  if (generation !== accountGeneration) return;
   const availableSlots = availableTaskNotificationSlots(
     existing.map((entry) => entry.notification.id || ""),
     MAX_TOTAL_PENDING
@@ -137,7 +177,7 @@ async function reconcileNow() {
     now,
     availableSlots,
     privacyHidden,
-    (taskId) => urgentFallbackTaskIds.has(taskId)
+    urgentFallback
   );
   const eligibleCount = plan.eligibleCount;
   const truncation =
@@ -154,6 +194,7 @@ async function reconcileNow() {
   for (const id of plan.cancelIds) await notifee.cancelTriggerNotification(id);
 
   if (!plan.schedule.length || !(await taskNotificationPermission())) return;
+  if (generation !== accountGeneration) return;
 
   const channelId =
     Platform.OS === "android"
@@ -172,7 +213,12 @@ async function reconcileNow() {
         title: privacyHidden
           ? strings.tasksTitle()
           : taskAlertTitle(task.title),
-        body: task.urgent ? strings.tasksUrgent() : undefined,
+        // Only an Urgent occurrence whose AlarmKit alarm is unavailable becomes
+        // a notification, and it says so: the person is never left thinking a
+        // standard notification is the alarm they asked for.
+        body: task.urgentFallback
+          ? strings.tasksUrgentFallbackBody()
+          : undefined,
         data: {
           type: "task",
           taskId: task.id,
@@ -238,19 +284,15 @@ function start() {
   });
   const userSubscription = useUserStore.subscribe((state, previous) => {
     if (state.user?.id === previous.user?.id) return;
+    accountGeneration++;
     clearTimeout(timer);
     reconciliation = reconciliation
-      .then(async () => {
-        // The signed-in account changed, so every surface that belongs to the
-        // previous account has to go before anything is planned for the new
-        // one: alarms are keyed by account, but a Live Activity created for the
-        // old account would otherwise stay on the Lock Screen (a ghost) until
-        // some later reconcile happened to run.
-        await cancelAllTaskTriggers();
-        await cancelAllTaskAlarms();
-        await endOverdueActivities();
-        lastTruncation = "";
-      })
+      // The signed-in account changed, so every surface that belongs to the
+      // previous account has to go before anything is planned for the new
+      // one. Each mechanism is attempted independently: a rejected
+      // notification cancellation must never leave the old account's native
+      // alarms or Live Activity behind.
+      .then(() => cancelAccountTaskSurfaces("account change"))
       .catch((error) =>
         DatabaseLogger.error(
           error as Error,
@@ -265,19 +307,12 @@ function start() {
   const logoutSubscription = db.eventManager.subscribe(
     EVENTS.userLoggedOut,
     () => {
+      accountGeneration++;
       clearTimeout(timer);
       reconciliation = reconciliation
-        .then(async () => {
-          await cancelAllTaskTriggers();
-          await cancelAllTaskAlarms();
-          await endOverdueActivities();
-          lastTruncation = "";
-        })
+        .then(() => cancelAccountTaskSurfaces("logout"))
         .catch((error) =>
-          DatabaseLogger.error(
-            error as Error,
-            "Cancel Task alerts after logout"
-          )
+          DatabaseLogger.error(error as Error, "Cancel Task alerts after logout")
         );
     }
   );
@@ -292,12 +327,60 @@ function start() {
   queueReconcile();
 }
 
+/**
+ * Withdraws already-displayed Task notifications that carry an unredacted title
+ * (payload `privacyHidden !== "1"`) once App Lock is on. Never throws: a failure
+ * is logged and the planner still re-redacts every pending trigger.
+ */
+async function withdrawUnredactedTaskNotifications() {
+  try {
+    const displayed = await notifee.getDisplayedNotifications();
+    for (const entry of displayed) {
+      const notification = entry.notification;
+      if (
+        notification.data?.type === "task" &&
+        notification.data.privacyHidden !== "1" &&
+        notification.id
+      )
+        await notifee.cancelDisplayedNotification(notification.id);
+    }
+  } catch (error) {
+    DatabaseLogger.error(error as Error, "Redact displayed Task notifications");
+  }
+}
+
 async function cancelAllTaskTriggers() {
   const existing = await notifee.getTriggerNotifications();
   for (const entry of existing) {
     const id = entry.notification.id;
     if (id?.startsWith("task:")) await notifee.cancelTriggerNotification(id);
   }
+}
+
+/**
+ * Removes every Task surface that belongs to the account being left: scheduled
+ * Task notifications, native Urgent alarms and overdue Live Activities. Each is
+ * attempted independently and the failures are reported together, so a single
+ * failing mechanism cannot silently retain the previous account's Lock Screen
+ * content. Never rejects, so callers can chain a re-plan after it.
+ */
+async function cancelAccountTaskSurfaces(context: string): Promise<string[]> {
+  const failures = await runIndependentCleanup([
+    { label: "task notifications", run: cancelAllTaskTriggers },
+    { label: "native alarms", run: cancelAllTaskAlarms },
+    { label: "overdue activities", run: endOverdueActivities }
+  ]);
+  lastTruncation = "";
+  if (failures.length)
+    DatabaseLogger.error(
+      new Error(
+        `Task surface cleanup incomplete after ${context}: ${failures.join(
+          ", "
+        )}`
+      ),
+      "Cancel Task alerts"
+    );
+  return failures;
 }
 
 function stop() {

@@ -98,6 +98,47 @@ new/changed files. Exact re-run commands and the recorded byte digests are in
 `docs/urgent-reminders-architecture.md`. Still **NOT ACCEPTED**: the new bytes need a mobile Jest
 re-run, the native Swift host build re-run, and interactive/physical QA.
 
+**Later bounded milestone (2026-09-29) — alarm-correctness: per-occurrence exclusivity + honest
+unknown state + independent account cleanup.** A further bounded pass (DeepSeek-Flash, HIGH) fixed
+a duplicate-audio defect and hardened the account/unknown paths:
+
+- **Per-occurrence delivery.** `taskAlarmKey()` gives every occurrence one stable identity
+  (`series:<seriesId|id>:<occurrenceKey>` / `task:<id>`). `replaceAlarms` now answers with
+  `scheduledAlarmKeys` — the alarms the system *holds* per occurrence — instead of the old
+  Task-wide `failedTaskIds`, and `planTaskNotifications()` asks `needsFallback(alarmKey)` per
+  occurrence. In a partially successful recurring series only the occurrence whose own alarm is
+  missing gets a notification; the ones that did schedule get none, so there is no duplicate
+  audible alert.
+- **Honest unknown state.** A failed `replaceAlarms` no longer falls *every* Urgent Task back to a
+  notification. The bridge asks `verifyAlarms` what the system still holds; if that fails it
+  `cancelScheduledAlarms` — cancelling **only** `.scheduled` alarms, never an alerting/snoozed/
+  paused one — before an audible fallback; if that also fails the pass is `verified: false`, so no
+  new fallback is scheduled and no existing one is cancelled (`preserveExisting`). Fallback
+  notifications now carry `strings.tasksUrgentFallbackBody()` so a denied/unsupported/failed
+  Urgent occurrence is clearly identified.
+- **Account change / logout.** Each cleanup mechanism (scheduled Task notifications, native
+  alarms, overdue Live Activities) is attempted independently (`runIndependentCleanup` /
+  `Promise.allSettled`) and failing mechanisms are logged, so a rejected notification
+  cancellation cannot leave the old account's alarms or Live Activity behind. A generation counter
+  makes an in-flight reconcile refuse to write once the account has changed.
+- **Redaction / platform truth.** App Lock changes re-create future alarms redacted (the
+  fingerprint includes `privacyHidden`) and update the Live Activity in place; an alarm already
+  alerting/snoozed/paused keeps its presented title because AlarmKit has no public in-place update
+  and the app never silences a live alarm to redact it (documented as a limit; no title is ever
+  persisted). The architecture doc now states the actual foreground/cold/background ActivityKit
+  conditions and public-API limits, with no alarm-callback or cold-start-LiveActivity promise.
+
+`TaskAlarmModule.swift`/`.m` changed (new `verifyAlarms`/`cancelScheduledAlarms`, new result key),
+so the native host build re-run matters more than before. The two `TaskAlarm` Swift files were
+`swiftc -typecheck`ed **clean** against the installed iPhoneOS27 SDK — which ships AlarmKit and
+ActivityKit, so the real `#if canImport` bodies were compiled (the AST contains 258 matches for
+`cancelScheduledAlarms`/`OverdueActivity`/`TaskAlarmRepeatIntent`/`alarmId`); only `React` was
+stubbed with the exact promise typedefs. That is not the full app/target build or the `.m` ObjC
+expansion. Focused Jest suites for `task-alarms`/`task-notification-plan`/`task-alarm-plan` were
+**not** run here (no `node_modules`); an ad-hoc Node harness ran the real planner/bridge bytes and
+passed **27/27** assertions (digests and exact re-run commands in `artifacts/urgent-reminders-qa.md`).
+**Engineering: PARTIAL / NOT ACCEPTED. Physical QA: PHYSICAL_QA_PENDING. Release: NOT AUTHORIZED.**
+
 ## September 28 iOS/iPadOS account lifecycle repair — complete, idle
 
 The physical iPhone screenshots from **3.4.16 (18)** established two account

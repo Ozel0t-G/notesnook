@@ -3,6 +3,7 @@ import { NativeModules, Platform } from "react-native";
 import { useUserStore } from "../stores/use-user-store";
 import {
   desiredTaskAlarms,
+  type DesiredTaskAlarm,
   type OverdueTaskSurface
 } from "./task-alarm-plan";
 
@@ -12,9 +13,20 @@ export type UrgentAlarmStatus =
   | "denied"
   | "authorized";
 
-type ReplaceResult = {
+/**
+ * What the native scheduler reports after a reconcile. `scheduledAlarmKeys` is
+ * the per-occurrence truth: exactly the alarms the system currently holds, so
+ * the caller can give a notification fallback to the occurrences that are *not*
+ * in it and to none of the ones that are (no duplicate audible alert).
+ */
+type AlarmReconcileReport = {
   status: UrgentAlarmStatus;
-  failedTaskIds: string[];
+  scheduledAlarmKeys?: string[];
+};
+
+type AlarmCancellationReport = {
+  status: UrgentAlarmStatus;
+  cancelledAlarmKeys?: string[];
 };
 
 export type OverdueActivityStatus = "unsupported" | "denied" | "authorized";
@@ -36,8 +48,23 @@ type TaskAlarmNative = {
   requestAuthorization(): Promise<UrgentAlarmStatus>;
   replaceAlarms(
     accountId: string,
-    alarms: ReturnType<typeof desiredTaskAlarms>
-  ): Promise<ReplaceResult>;
+    alarms: DesiredTaskAlarm[]
+  ): Promise<AlarmReconcileReport>;
+  /** Which of these alarm keys the system currently holds for this account. */
+  verifyAlarms(
+    accountId: string,
+    alarmKeys: string[]
+  ): Promise<AlarmReconcileReport>;
+  /**
+   * Cancels only alarms that have not started alerting yet (`.scheduled`), so a
+   * notification fallback cannot duplicate an alarm that is still counting down
+   * and so no person's live alarm (alerting, snoozed, paused) is silenced just
+   * to make a fallback possible.
+   */
+  cancelScheduledAlarms(
+    accountId: string,
+    alarmKeys: string[]
+  ): Promise<AlarmCancellationReport>;
   cancelAll(): Promise<void>;
   syncOverdueActivities(
     accountId: string,
@@ -61,22 +88,124 @@ export async function requestUrgentPermission(): Promise<UrgentAlarmStatus> {
   return Native.requestAuthorization();
 }
 
-export async function reconcileTaskAlarms(
+/**
+ * The per-occurrence outcome of one alarm reconcile, plus whether it can be
+ * trusted. `verified` is true when every desired occurrence is either in
+ * `scheduledAlarmKeys` (AlarmKit will deliver it) or known not to be scheduled
+ * (its notification fallback is the sole delivery). When false, the native state
+ * could not be determined this pass and the caller must not duplicate audio.
+ */
+export type TaskAlarmDelivery = {
+  status: UrgentAlarmStatus;
+  scheduledAlarmKeys: Set<string>;
+  verified: boolean;
+  /** Non-fatal cause of an unverified/failed pass, for honest logging. */
+  error?: unknown;
+};
+
+function currentAccountId() {
+  return useUserStore.getState().user?.id || "local";
+}
+
+/**
+ * Reconciles the Urgent occurrences with stable per-occurrence identities and
+ * reports which of them the system actually holds, resolving an unknown native
+ * state honestly instead of guessing Task-wide:
+ *
+ * 1. `replaceAlarms` answers for every occurrence;
+ * 2. if it fails, `verifyAlarms` reports what the system still holds;
+ * 3. if that also fails, only the alarms that have not started alerting are
+ *    cancelled (verified cancellation) before any audible fallback; and
+ * 4. if even that fails, the pass stays unverified: the caller schedules no new
+ *    fallback and cancels no existing one.
+ */
+export async function reconcileTaskAlarmDelivery(
   tasks: Task[],
   privacyHidden: boolean
-): Promise<ReplaceResult> {
+): Promise<TaskAlarmDelivery> {
   const desired = desiredTaskAlarms(tasks, privacyHidden);
   if (!Native)
     return {
       status: "unsupported",
-      failedTaskIds: desired.map((alarm) => alarm.taskId)
+      scheduledAlarmKeys: new Set(),
+      verified: true
     };
-  const accountId = useUserStore.getState().user?.id || "local";
-  return Native.replaceAlarms(accountId, desired);
+  const accountId = currentAccountId();
+  const alarmKeys = desired.map((alarm) => alarm.alarmKey);
+  const verified = (
+    report: AlarmReconcileReport,
+    error?: unknown
+  ): TaskAlarmDelivery => ({
+    status: report.status,
+    // A non-authorized status means this app scheduled nothing, so the empty set
+    // is the truth and every occurrence legitimately needs its fallback.
+    scheduledAlarmKeys:
+      report.status === "authorized"
+        ? new Set(report.scheduledAlarmKeys || [])
+        : new Set(),
+    verified: true,
+    error
+  });
+  let replaceError: unknown;
+  try {
+    return verified(await Native.replaceAlarms(accountId, desired));
+  } catch (error) {
+    replaceError = error;
+  }
+  try {
+    return verified(await Native.verifyAlarms(accountId, alarmKeys), replaceError);
+  } catch {
+    /* fall through to a verified cancellation */
+  }
+  try {
+    const cancelled = await Native.cancelScheduledAlarms(accountId, alarmKeys);
+    // Every future occurrence is now known not to be alarm-scheduled; alarms
+    // already alerting/snoozed/paused are left untouched and belong to
+    // occurrences the planner never turns into a notification.
+    return {
+      status: cancelled.status,
+      scheduledAlarmKeys: new Set(),
+      verified: true,
+      error: replaceError
+    };
+  } catch (cancelError) {
+    return {
+      status: "unsupported",
+      scheduledAlarmKeys: new Set(),
+      verified: false,
+      error: cancelError ?? replaceError
+    };
+  }
 }
 
 export async function cancelAllTaskAlarms() {
   await Native?.cancelAll();
+}
+
+export type CleanupAttempt = {
+  /** Names the mechanism in the honest failure report. */
+  label: string;
+  run: () => Promise<unknown>;
+};
+
+/**
+ * Runs every cleanup attempt even when an earlier one rejects. A single failing
+ * mechanism (e.g. notification cancellation throwing) must never skip the native
+ * alarm and Live Activity cleanup, which would leave the previous account's
+ * content on the Lock Screen. Returns the labels that failed, so the caller can
+ * keep pending failures honest instead of reporting a clean sweep.
+ */
+export async function runIndependentCleanup(
+  attempts: CleanupAttempt[]
+): Promise<string[]> {
+  const outcomes = await Promise.allSettled(
+    attempts.map((attempt) => attempt.run())
+  );
+  return outcomes
+    .map((outcome, index) =>
+      outcome.status === "rejected" ? attempts[index].label : ""
+    )
+    .filter((label) => label.length > 0);
 }
 
 /**
@@ -100,7 +229,7 @@ export async function syncOverdueActivities(
       status: "unsupported",
       failedTaskIds: surfaces.map((surface) => surface.taskId)
     };
-  const accountId = useUserStore.getState().user?.id || "local";
+  const accountId = currentAccountId();
   return Native.syncOverdueActivities(accountId, surfaces, privacyHidden);
 }
 

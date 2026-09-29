@@ -13,6 +13,16 @@ RCT_EXTERN_METHOD(replaceAlarms:(NSString *)accountId
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(verifyAlarms:(NSString *)accountId
+                  alarmKeys:(NSArray *)alarmKeys
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
+RCT_EXTERN_METHOD(cancelScheduledAlarms:(NSString *)accountId
+                  alarmKeys:(NSArray *)alarmKeys
+                  resolver:(RCTPromiseResolveBlock)resolve
+                  rejecter:(RCTPromiseRejectBlock)reject)
+
 RCT_EXTERN_METHOD(cancelAll:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

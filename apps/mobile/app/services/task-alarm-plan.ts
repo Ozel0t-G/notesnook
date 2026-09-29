@@ -70,6 +70,26 @@ export type TaskReminderOccurrence = {
   key: string;
 };
 
+/**
+ * The stable per-occurrence identity shared by the audible alarm and its
+ * notification fallback: one recurring Task contributes several occurrences, so
+ * a Task id alone cannot say which occurrence a scheduler accepted or dropped.
+ *
+ * A recurring occurrence is keyed by `series:<series/task id>:<occurrenceKey>`
+ * (the same local wall-time key both paths derive from the reminder), and a
+ * one-off occurrence by `task:<id>`. The signed-in account is folded into the
+ * native alarm identity (`TaskAlarmModule.alarmId`), so a key is only ever
+ * meaningful together with the account that reconciled it.
+ */
+export function taskAlarmKey(
+  task: Pick<Task, "id" | "seriesId" | "recurrenceRule">,
+  occurrenceKey?: string
+) {
+  return task.recurrenceRule
+    ? `series:${task.seriesId || task.id}:${occurrenceKey ?? ""}`
+    : `task:${task.id}`;
+}
+
 /** Current occurrence plus the next five RRULE occurrences, in local wall time. */
 export function taskReminderOccurrences(
   task: Task,
@@ -140,9 +160,7 @@ export function desiredTaskAlarms(
     if (!schedule.date || !schedule.time) return [];
     return taskReminderOccurrences(task, now).map(
       (item): DesiredTaskAlarm => ({
-        alarmKey: task.recurrenceRule
-          ? `series:${task.seriesId || task.id}:${item.key}`
-          : `task:${task.id}`,
+        alarmKey: taskAlarmKey(task, item.key),
         taskId: task.id,
         timestamp: item.timestamp,
         title: taskAlertTitle(task.title),

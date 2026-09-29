@@ -17,8 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { taskReminderSchedule, type Task } from "@notesnook/core";
-import { taskReminderOccurrences } from "./task-alarm-plan";
+import type { Task } from "@notesnook/core";
+import { taskAlarmKey, taskReminderOccurrences } from "./task-alarm-plan";
 
 export type ExistingTaskTrigger = {
   id: string;
@@ -26,6 +26,34 @@ export type ExistingTaskTrigger = {
   timestamp?: number;
   privacyHidden?: boolean;
   urgentFallback?: boolean;
+};
+
+/**
+ * How the current pass treats the notification fallback for an Urgent
+ * occurrence. `needsFallback` is asked per **occurrence** (by its stable
+ * `taskAlarmKey`), never per Task: one recurring Task can have some occurrences
+ * delivered by a successfully scheduled alarm and others that failed, and only
+ * the failed ones may get a notification -- a Task-wide answer would duplicate
+ * audio for the occurrences whose alarm did schedule.
+ */
+export type UrgentAlarmFallback = {
+  needsFallback: (alarmKey: string) => boolean;
+  /**
+   * Set only when the native alarm state could not be determined. An Urgent
+   * occurrence without fallback news then keeps whatever trigger it already has
+   * (rather than being cancelled into silence) and never gains a second,
+   * duplicate audible alert. Callers that know the alarm state leave this off.
+   */
+  preserveExisting?: boolean;
+};
+
+/**
+ * Fail-safe default for a caller that does not know the real alarm outcome:
+ * every Urgent occurrence is treated as needing the notification fallback, so
+ * an unknown caller never ends up with neither an alarm nor a notification.
+ */
+export const ALWAYS_FALLBACK: UrgentAlarmFallback = {
+  needsFallback: () => true
 };
 
 export function taskNotificationId(id: string, occurrenceKey?: string) {
@@ -49,10 +77,11 @@ export function planTaskNotifications(
   now: number,
   limit: number,
   privacyHidden = false,
-  needsUrgentFallback: (taskId: string) => boolean = () => true
+  urgentFallback: UrgentAlarmFallback = ALWAYS_FALLBACK
 ) {
+  const existingIds = new Set(existing.map((item) => item.id));
   const eligible = tasks
-    .filter((task) => !task.completed && (!task.urgent || needsUrgentFallback(task.id)))
+    .filter((task) => !task.completed)
     .flatMap((task) =>
       taskReminderOccurrences(task, now)
         .filter((occurrence) => occurrence.timestamp > now)
@@ -63,12 +92,25 @@ export function planTaskNotifications(
             task.recurrenceRule ? occurrence.key : undefined
           ),
           timestamp: occurrence.timestamp,
-          // Only urgent tasks that actually need the fallback path reach
-          // this point at all (see the filter above), so every urgent task
-          // here is, by construction, a fallback; non-urgent tasks are
-          // never fallbacks.
-          urgentFallback: Boolean(task.urgent)
+          // A notification is only ever a fallback for the occurrence whose
+          // own alarm is not scheduled, so the decision is taken per
+          // occurrence (stable `taskAlarmKey`), never per Task. Non-urgent
+          // Tasks are their own normal notification path and are never
+          // fallbacks.
+          urgentFallback: Boolean(task.urgent),
+          needsFallback:
+            !task.urgent ||
+            urgentFallback.needsFallback(taskAlarmKey(task, occurrence.key))
         }))
+    )
+    // An Urgent occurrence whose alarm state is unknown is never granted a new
+    // audible fallback, but is kept only if it already has a trigger, so a
+    // working fallback is not cancelled into silence by a failed verification.
+    .filter(
+      (entry) =>
+        entry.needsFallback ||
+        (Boolean(urgentFallback.preserveExisting) &&
+          existingIds.has(entry.notificationId))
     );
   const wanted = eligible
     .sort(
@@ -83,6 +125,9 @@ export function planTaskNotifications(
     .filter((item) => item.id.startsWith("task:") && !wantedIds.has(item.id))
     .map((item) => item.id);
   const schedule = wanted.filter((task) => {
+    // Occurrences kept only to protect an existing trigger from cancellation are
+    // never rewritten: this pass cannot confirm the native alarm state.
+    if (!task.needsFallback) return false;
     const old = existingById.get(task.notificationId);
     if (
       old?.updatedAt === String(task.updatedAt) &&
@@ -94,5 +139,9 @@ export function planTaskNotifications(
     if (old) cancelIds.push(old.id);
     return true;
   });
-  return { cancelIds, schedule, eligibleCount: eligible.length };
+  return {
+    cancelIds,
+    schedule,
+    eligibleCount: eligible.filter((entry) => entry.needsFallback).length
+  };
 }

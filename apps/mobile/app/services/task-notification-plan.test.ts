@@ -5,6 +5,7 @@ This program is free software under the GNU General Public License v3 or later.
 */
 
 import type { Task } from "@notesnook/core";
+import { taskReminderOccurrences } from "./task-alarm-plan";
 import {
   availableTaskNotificationSlots,
   planTaskNotifications,
@@ -93,7 +94,7 @@ describe("Task notification reconciliation", () => {
       NOW,
       50,
       false,
-      (taskId) => taskId === "urgent-failed"
+      { needsFallback: (alarmKey) => alarmKey === "task:urgent-failed" }
     );
     // Only the task whose native alarm failed gets a fallback notification;
     // the successfully-alarmed task gets none (AlarmKit is its sole audible
@@ -117,7 +118,7 @@ describe("Task notification reconciliation", () => {
       Date.parse("2026-09-23T12:00:00"),
       50,
       false,
-      () => true
+      { needsFallback: () => true }
     );
     expect(plan.schedule).toHaveLength(1);
     expect(plan.schedule[0].urgentFallback).toBe(true);
@@ -130,8 +131,100 @@ describe("Task notification reconciliation", () => {
       NOW,
       50,
       false,
-      () => false
+      { needsFallback: () => false }
     );
     expect(plan.schedule).toHaveLength(0);
+  });
+
+  test("a mixed recurring series falls back only for the occurrences whose alarm is missing", () => {
+    // A daily series: every occurrence's alarm is scheduled except one.
+    const recurring = {
+      id: "series-task",
+      title: "series-task",
+      seriesId: "series-a",
+      recurrenceRule: "FREQ=DAILY",
+      scheduleVersion: 2,
+      reminderDate: `${new Date(NOW).getFullYear()}-${String(
+        new Date(NOW).getMonth() + 1
+      ).padStart(2, "0")}-${String(new Date(NOW).getDate()).padStart(2, "0")}`,
+      reminderTime: "14:00",
+      seriesStartDate: `${new Date(NOW).getFullYear()}-${String(
+        new Date(NOW).getMonth() + 1
+      ).padStart(2, "0")}-${String(new Date(NOW).getDate()).padStart(2, "0")}`,
+      seriesStartTime: "14:00",
+      urgent: true,
+      completed: false,
+      updatedAt: 42
+    } as Task;
+    const now = NOW;
+    const occurrences = taskReminderOccurrences(recurring, now);
+    expect(occurrences.length).toBeGreaterThan(2);
+    const missingKey = `series:series-a:${occurrences[1].key}`;
+    const scheduled = new Set(
+      occurrences
+        .map((occurrence) => `series:series-a:${occurrence.key}`)
+        .filter((alarmKey) => alarmKey !== missingKey)
+    );
+
+    const plan = planTaskNotifications([recurring], [], now, 50, false, {
+      needsFallback: (alarmKey) => !scheduled.has(alarmKey)
+    });
+
+    // Exactly one notification, for the missing occurrence. Every occurrence
+    // whose alarm did schedule gets none, so no duplicate audible alert.
+    expect(plan.schedule).toHaveLength(1);
+    expect(plan.schedule[0].notificationId).toBe(
+      `task:series-a:${occurrences[1].key}`
+    );
+  });
+
+  test("an unknown native state keeps an existing fallback and adds none", () => {
+    const urgent = { ...task("urgent", NOW + 1000), urgent: true };
+    const existingTrigger = {
+      id: "task:urgent",
+      updatedAt: "42",
+      timestamp: NOW + 1000,
+      urgentFallback: true
+    };
+    const keep = planTaskNotifications([urgent], [existingTrigger], NOW, 50, false, {
+      needsFallback: () => false,
+      preserveExisting: true
+    });
+    // The occurrence is not granted a second audible alert and the working
+    // fallback is not cancelled into silence, even though the plan cannot tell
+    // whether the native alarm is scheduled.
+    expect(keep.schedule).toEqual([]);
+    expect(keep.cancelIds).toEqual([]);
+
+    // With nothing already scheduled, an unknown state schedules nothing.
+    const none = planTaskNotifications([urgent], [], NOW, 50, false, {
+      needsFallback: () => false,
+      preserveExisting: true
+    });
+    expect(none.schedule).toEqual([]);
+    expect(none.cancelIds).toEqual([]);
+  });
+
+  test("a verified failure answer still cancels a fallback the alarm has taken over", () => {
+    const urgent = { ...task("urgent", NOW + 1000), urgent: true };
+    const plan = planTaskNotifications(
+      [urgent],
+      [
+        {
+          id: "task:urgent",
+          updatedAt: "42",
+          timestamp: NOW + 1000,
+          urgentFallback: true
+        }
+      ],
+      NOW,
+      50,
+      false,
+      // The alarm is now confirmed scheduled for this occurrence, so the old
+      // fallback must go instead of firing alongside it.
+      { needsFallback: () => false }
+    );
+    expect(plan.cancelIds).toEqual(["task:urgent"]);
+    expect(plan.schedule).toEqual([]);
   });
 });

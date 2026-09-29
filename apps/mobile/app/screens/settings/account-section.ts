@@ -123,6 +123,7 @@ export function createLocalDataSection(
     sections: [
       {
         id: "delete-data",
+        type: "danger",
         name: strings.deleteLocalData(),
         description: strings.deleteLocalDataDesc(),
         icon: "delete",

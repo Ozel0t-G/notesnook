@@ -29,6 +29,8 @@ import useNavigationStore from "../../stores/use-navigation-store";
 import { components } from "./components";
 import { SectionItem } from "./section-item";
 import { RouteParams, SettingSection } from "./types";
+import { IosSettingsCard } from "./ios-appearance";
+import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 
@@ -49,7 +51,12 @@ const Group = ({
       return false;
     }
   });
-  const renderItem = ({ item }: { item: SettingSection; index: number }) => (
+  const renderItem = ({ item }: { item: SettingSection; index: number }) =>
+    visual.ios ? (
+      <IosSettingsCard>
+        <SectionItem item={item} />
+      </IosSettingsCard>
+    ) : (
     <View
       style={
         visual.ios
@@ -64,15 +71,20 @@ const Group = ({
     >
       <SectionItem item={item} />
     </View>
-  );
+    );
 
   return (
     <>
       {route.params.hideHeader ? null : (
         <Header
           renderedInRoute="Settings"
-          title={route.params.name as string}
+          title={
+            typeof route.params.name === "function"
+              ? (route.params.name as () => string)()
+              : (route.params.name as string)
+          }
           canGoBack={true}
+          backTitle={strings.routes.Settings()}
           id="Settings"
         />
       )}

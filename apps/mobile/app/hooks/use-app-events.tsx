@@ -988,7 +988,11 @@ export const useAppEvents = () => {
           // Reset the editor if the app has been in background for more than 10 minutes.
           eSendEvent(eEditorReset);
         }
-      } else {
+      } else if (state === "background") {
+        // Only a real trip to the background locks the app. A system dialog
+        // (permission prompt, Face ID) only makes it "inactive" and must not
+        // lock an app the user never left (willResignActive vs
+        // didEnterBackground).
         if (
           SettingsService.canLockAppInBackground() &&
           !useSettingStore.getState().requestBiometrics &&

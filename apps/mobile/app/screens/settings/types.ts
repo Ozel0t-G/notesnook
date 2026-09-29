@@ -34,6 +34,8 @@ export type SettingSection = {
     | "dropdown-selector";
   name?: string | ((current?: unknown) => string);
   description?: string | ((current: unknown) => string);
+  /** iOS: a secondary value shown at the trailing edge of the row. */
+  value?: (current: unknown) => string;
   icon?: string;
   iconFamily?: IconProps["iconFamily"];
   iconSize?: number;

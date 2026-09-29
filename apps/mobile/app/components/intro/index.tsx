@@ -20,183 +20,168 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { useWindowDimensions, View } from "react-native";
-import { SwiperFlatList } from "react-native-swiper-flatlist";
-import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
-import Navigation from "../../services/navigation";
-import { AppFontSize } from "../../utils/size";
-import { DefaultAppStyles } from "../../utils/styles";
-import { AuthMode } from "../auth/common";
-import { Button } from "../ui/button";
-import Heading from "../ui/typography/heading";
-import Paragraph from "../ui/typography/paragraph";
-import SettingsService from "../../services/settings";
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  Text,
+  useWindowDimensions,
+  View
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import Navigation from "../../services/navigation";
+import SettingsService from "../../services/settings";
+import { AuthMode, hideAuth } from "../auth/common";
+import { TaskSymbolView } from "../task-symbol-view";
 
+/**
+ * A single "What's New"-style welcome page (Notes, Reminders, Journal): app
+ * icon, three features, Continue. Nothing forces an account; signing in is
+ * offered from Settings and the "Sign in to sync" hint.
+ */
 const Intro = () => {
   const { colors } = useThemeColors();
   const { width } = useWindowDimensions();
-  const insets = useGlobalSafeAreaInsets();
-  const isTablet = width > 600;
+  const contentWidth = Math.min(width - 48, 440);
+  const accent = colors.primary.accent;
 
-  const renderItem = React.useCallback(
-    ({ item }: { item: (typeof strings.introData)[0] }) => (
-      <View
-        style={{
-          justifyContent: "center",
-          width: isTablet ? width / 2 : width,
-          paddingHorizontal: isTablet ? (width / 2) * 0.05 : width * 0.05
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row"
-          }}
-        >
-          <View
-            style={{
-              width: 100,
-              height: 5,
-              backgroundColor: colors.primary.accent,
-              borderRadius: 2,
-              marginRight: 7
-            }}
-          />
+  const features = [
+    {
+      symbol: "note.text",
+      title: strings.welcomeNotesTitle(),
+      body: strings.welcomeNotesBody()
+    },
+    {
+      symbol: "alarm",
+      title: strings.welcomeTasksTitle(),
+      body: strings.welcomeTasksBody()
+    },
+    {
+      symbol: "lock.shield",
+      title: strings.welcomeEncryptedTitle(),
+      body: strings.welcomeEncryptedBody()
+    }
+  ];
 
-          <View
-            style={{
-              width: 20,
-              height: 5,
-              backgroundColor: colors.secondary.background,
-              borderRadius: 2
-            }}
-          />
-        </View>
-        <View
-          style={{
-            marginTop: DefaultAppStyles.GAP_VERTICAL,
-            maxWidth: "90%",
-            width: "100%"
-          }}
-        >
-          {item.headings?.map((heading) => (
-            <Heading
-              key={heading()}
-              style={{
-                marginBottom: 5
-              }}
-              extraBold
-              size={AppFontSize.xxl}
-            >
-              {heading()}
-            </Heading>
-          ))}
-
-          {item.body ? (
-            <Paragraph size={AppFontSize.sm}>{item.body()}</Paragraph>
-          ) : null}
-
-        </View>
-      </View>
-    ),
-    [colors.primary.accent, colors.secondary.background, isTablet, width]
-  );
+  const finish = () => {
+    SettingsService.set({ introCompleted: true });
+    hideAuth("intro", true);
+  };
 
   return (
     <SafeAreaView
-      style={{
-        flex: 1,
-        height: "100%",
-        backgroundColor: colors.primary.background
-      }}
+      testID="notesnook.splashscreen"
+      style={{ flex: 1, backgroundColor: colors.primary.background }}
     >
-      <View
-        testID="notesnook.splashscreen"
-        style={{
-          flex: 1
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          alignItems: "center",
+          paddingTop: 56,
+          paddingBottom: 24
         }}
       >
-        <View
-          style={[
-            {
-              width: "100%",
-              borderBottomWidth: 1,
-              borderBottomColor: colors.primary.border,
-              paddingTop: insets.top + 10,
-              paddingBottom: insets.top + 10,
-              flexGrow: 1
-            },
-            isTablet && {
-              width: width / 2,
-              alignSelf: "center",
-              borderWidth: 1,
-              borderColor: colors.primary.border,
-              borderRadius: 20,
-              marginTop: 50
-            }
-          ]}
-        >
-          <SwiperFlatList
-            autoplay
-            autoplayDelay={10}
-            autoplayLoop={true}
-            index={0}
-            useReactNativeGestureHandler={true}
-            showPagination
-            data={strings.introData}
-            paginationActiveColor={colors.primary.accent}
-            paginationStyleItem={{
-              width: 10,
-              height: 5,
-              marginRight: 4,
-              marginLeft: 4
-            }}
-            paginationDefaultColor={colors.primary.border}
-            renderItem={renderItem}
-          />
-        </View>
-      </View>
-      <View
-        style={{
-          width: isTablet ? "50%" : "100%",
-          justifyContent: "center",
-          gap: DefaultAppStyles.GAP_VERTICAL,
-          paddingHorizontal: isTablet ? 0 : DefaultAppStyles.GAP,
-          paddingVertical: DefaultAppStyles.GAP_VERTICAL,
-          flexShrink: 1,
-          alignSelf: "center"
-        }}
-      >
-        <Button
-          style={{
-            width: "100%"
-          }}
-          onPress={async () => {
-            SettingsService.set({ introCompleted: true });
-            Navigation.push("Auth", {
-              mode: AuthMode.welcomeSignup
-            });
-          }}
-          type="accent"
-          title={strings.getStarted()}
+        <Image
+          source={require("../../assets/images/veyran-icon.png")}
+          accessibilityIgnoresInvertColors
+          style={{ width: 88, height: 88, borderRadius: 20 }}
         />
-
-        <Button
+        <Text
+          accessibilityRole="header"
           style={{
-            width: "100%"
+            width: contentWidth,
+            marginTop: 24,
+            textAlign: "center",
+            color: colors.primary.heading,
+            fontSize: 34,
+            fontWeight: "700"
           }}
-          title={strings.iAlreadyHaveAnAccount()}
-          type="secondary"
+        >
+          {strings.welcomeTitle()}
+        </Text>
+        <View style={{ width: contentWidth, marginTop: 40, gap: 28 }}>
+          {features.map((feature) => (
+            <View
+              key={feature.symbol}
+              accessible
+              accessibilityLabel={`${feature.title}. ${feature.body}`}
+              style={{ flexDirection: "row", alignItems: "center", gap: 18 }}
+            >
+              <View style={{ width: 44, alignItems: "center" }}>
+                <TaskSymbolView name={feature.symbol} size={34} color={accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: colors.primary.heading,
+                    fontSize: 17,
+                    fontWeight: "600"
+                  }}
+                >
+                  {feature.title}
+                </Text>
+                <Text
+                  style={{
+                    color: colors.secondary.paragraph,
+                    fontSize: 15,
+                    marginTop: 2
+                  }}
+                >
+                  {feature.body}
+                </Text>
+              </View>
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+      <View
+        style={{
+          width: contentWidth,
+          alignSelf: "center",
+          paddingBottom: 12,
+          gap: 6
+        }}
+      >
+        <Pressable
+          testID="intro-continue"
+          onPress={finish}
+          accessibilityRole="button"
+          accessibilityLabel={strings.welcomeContinue()}
+          style={({ pressed }) => ({
+            minHeight: 50,
+            borderRadius: 14,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: accent,
+            opacity: pressed ? 0.8 : 1
+          })}
+        >
+          <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "600" }}>
+            {strings.welcomeContinue()}
+          </Text>
+        </Pressable>
+        <Pressable
+          testID="intro-sign-in"
           onPress={() => {
-            SettingsService.set({
-              introCompleted: true
-            });
+            SettingsService.set({ introCompleted: true });
             Navigation.push("Auth", {
               mode: AuthMode.welcomeLogin,
               context: "intro"
             });
           }}
-        />
+          accessibilityRole="button"
+          accessibilityLabel={strings.iAlreadyHaveAnAccount()}
+          style={({ pressed }) => ({
+            minHeight: 44,
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: pressed ? 0.5 : 1
+          })}
+        >
+          <Text style={{ color: accent, fontSize: 17 }}>
+            {strings.iAlreadyHaveAnAccount()}
+          </Text>
+        </Pressable>
       </View>
     </SafeAreaView>
   );

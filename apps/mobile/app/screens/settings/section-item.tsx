@@ -24,7 +24,17 @@ import {
   useNavigation
 } from "@react-navigation/native";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Switch,
+  Text,
+  TextInput,
+  View
+} from "react-native";
+import { TaskSymbolView } from "../../components/task-symbol-view";
+import { SymbolTile } from "../../components/ui/symbol-tile";
+import { systemColor } from "../../utils/ios-system-colors";
+import { iosSettingSymbol, useSettingsFooter } from "./ios-appearance";
 import { FeatureResult, useIsFeatureAvailable } from "@notesnook/common";
 //@ts-ignore
 import ToggleSwitch from "toggle-switch-react-native";
@@ -45,9 +55,16 @@ import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { components } from "./components";
 import { RouteParams, SettingSection } from "./types";
 
-const _SectionItem = ({ item }: { item: SettingSection }) => {
+const _SectionItem = ({
+  item,
+  last = true
+}: {
+  item: SettingSection;
+  last?: boolean;
+}) => {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
+  const registerFooter = useSettingsFooter();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const isFeatureAvailable = item.featureId
     ? // eslint-disable-next-line react-hooks/rules-of-hooks
@@ -96,11 +113,12 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
   };
 
   const styles =
-    item.type === "danger"
+    item.type === "danger" && !visual.ios
       ? {
           backgroundColor: colors.error.background
         }
       : {};
+  const [iosSymbol, iosTint] = iosSettingSymbol(item.id);
 
   const updateInput = (value: any) => {
     inputRef?.current?.setNativeProps({
@@ -130,6 +148,27 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
     );
   }, [current, item, itemProperty, isFeatureAvailable?.isAllowed]);
 
+  const inlineDescription =
+    !visual.ios ||
+    item.type === "component" ||
+    item.type === "input" ||
+    item.type === "input-selector";
+  const descriptionText = item.description
+    ? typeof item.description === "function"
+      ? item.description(current)
+      : item.description
+    : undefined;
+  // iOS: explanations go to the group's footer, not under each row. Screens
+  // (rows that open a page) show theirs on that page instead.
+  useEffect(() => {
+    if (!registerFooter || inlineDescription) return;
+    registerFooter(
+      item.id,
+      !isHidden && item.type !== "screen" ? descriptionText : undefined
+    );
+    return () => registerFooter(item.id, undefined);
+  }, [registerFooter, inlineDescription, isHidden, descriptionText, item]);
+
   const checkIsFeatureAvailable = React.useCallback(() => {
     if (!isFeatureAvailable) return false;
     if (isFeatureAvailable && !isFeatureAvailable?.isAllowed) {
@@ -153,12 +192,18 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
       style={{
         width: "100%",
         alignItems: "center",
-        padding: visual.ios ? visual.rowPadding : DefaultAppStyles.GAP,
+        padding: visual.ios ? 0 : DefaultAppStyles.GAP,
+        paddingLeft: visual.ios ? 16 : DefaultAppStyles.GAP,
+        paddingRight: visual.ios ? 16 : DefaultAppStyles.GAP,
         flexDirection: "row",
         justifyContent: "space-between",
-        paddingVertical: visual.ios ? 14 : DefaultAppStyles.GAP,
+        paddingVertical: visual.ios ? 9 : DefaultAppStyles.GAP,
+        minHeight: visual.ios ? 48 : undefined,
         borderRadius: 0,
         overflow: "hidden",
+        ...(visual.ios && !last
+          ? { borderBottomWidth: 0.5, borderBottomColor: visual.separator }
+          : {}),
         ...styles
       }}
       onPress={async () => {
@@ -223,6 +268,11 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
           flexShrink: 1
         }}
       >
+        {visual.ios ? (
+          <View style={{ marginRight: 14, justifyContent: "center" }}>
+            <SymbolTile symbol={iosSymbol} color={systemColor(iosTint, isDark)} />
+          </View>
+        ) : (
         <View
           style={{
             width: 40,
@@ -250,6 +300,7 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
             />
           )}
         </View>
+        )}
 
         <View
           style={{
@@ -258,7 +309,19 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
             flex: item.type === "component" ? 1 : 0
           }}
         >
-          {item.name ? (
+          {item.name && visual.ios ? (
+            <Text
+              style={{
+                fontSize: 17,
+                color:
+                  item.type === "danger"
+                    ? systemColor("red", isDark)
+                    : colors.primary.heading
+              }}
+            >
+              {typeof item.name === "function" ? item.name(current) : item.name}
+            </Text>
+          ) : item.name ? (
             <Heading
               color={
                 item.type === "danger"
@@ -271,7 +334,7 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
             </Heading>
           ) : null}
 
-          {!!item.description && (
+          {!!item.description && inlineDescription && (
             <Paragraph
               color={
                 item.type === "danger"
@@ -413,7 +476,45 @@ const _SectionItem = ({ item }: { item: SettingSection }) => {
         </View>
       </View>
 
-      {item.type === "switch" && !loading && (
+      {visual.ios && item.value ? (
+        <Text
+          numberOfLines={1}
+          style={{
+            color: visual.secondaryText,
+            fontSize: 17,
+            marginLeft: 8,
+            flexShrink: 1
+          }}
+        >
+          {item.value(current)}
+        </Text>
+      ) : null}
+
+      {visual.ios && item.type === "screen" ? (
+        <TaskSymbolView
+          name="chevron.right"
+          size={13}
+          color={visual.tertiaryText}
+        />
+      ) : null}
+
+      {item.type === "switch" && !loading && visual.ios ? (
+        <Switch
+          value={
+            !!(item.getter
+              ? item.getter(item.property || current)
+              : settings[item?.property as never])
+          }
+          onValueChange={onChangeSettings}
+          disabled={!!isDisabled}
+          trackColor={{ true: colors.primary.accent }}
+          accessibilityLabel={
+            typeof item.name === "function" ? item.name(current) : item.name
+          }
+        />
+      ) : null}
+
+      {item.type === "switch" && !loading && !visual.ios && (
         <ToggleSwitch
           isOn={
             item.getter

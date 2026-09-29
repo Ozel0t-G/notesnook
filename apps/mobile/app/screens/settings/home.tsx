@@ -30,6 +30,7 @@ import { RouteParams, SettingSection } from "./types";
 import { LegendList } from "@legendapp/list";
 import { useThemeColors } from "@notesnook/theme";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import Navigation from "../../services/navigation";
 
 const keyExtractor = (item: SettingSection) => item.id;
 
@@ -55,9 +56,18 @@ const Home = ({
       <Header
         renderedInRoute="Settings"
         title={strings.routes.Settings()}
-        canGoBack={true}
+        canGoBack={!visual.ios}
         hasSearch={false}
         id="Settings"
+        rightButton={
+          visual.ios
+            ? {
+                name: "done",
+                accessibilityLabel: strings.done(),
+                onPress: () => Navigation.goBack()
+              }
+            : undefined
+        }
       />
       <DelayLayout type="settings">
         <LegendList

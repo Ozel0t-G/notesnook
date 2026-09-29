@@ -44,6 +44,24 @@ async function isBiometryAvailable() {
   }
 }
 
+export type BiometryKind = "faceId" | "touchId" | "opticId" | "none";
+
+/**
+ * Which biometry this device uses (LABiometryType), so the UI can say
+ * "Face ID" with the Face ID symbol instead of a generic fingerprint.
+ */
+async function biometryKind(): Promise<BiometryKind> {
+  try {
+    const type = String(await FingerprintScanner.isSensorAvailable());
+    if (/face/i.test(type)) return "faceId";
+    if (/optic/i.test(type)) return "opticId";
+    if (/touch|finger|biometrics/i.test(type)) return "touchId";
+    return "none";
+  } catch (e) {
+    return "none";
+  }
+}
+
 async function enableFingerprintAuth() {
   if (!isBiometryAvailable()) return;
   await Storage.write("fingerprintAuthEnabled", "enabled");
@@ -176,6 +194,7 @@ async function validateUser(title: string, description?: string) {
 }
 
 const BiometricService = {
+  biometryKind,
   isBiometryAvailable,
   enableFingerprintAuth,
   isFingerprintAuthEnabled,

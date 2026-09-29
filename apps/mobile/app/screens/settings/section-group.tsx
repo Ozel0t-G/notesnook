@@ -24,6 +24,7 @@ import { useThemeColors } from "@notesnook/theme";
 import { AppFontSize } from "../../utils/size";
 import { SectionItem } from "./section-item";
 import { SettingSection } from "./types";
+import { IosSettingsCard } from "./ios-appearance";
 import { DefaultAppStyles } from "../../utils/styles";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 export const SectionGroup = ({ item }: { item: SettingSection }) => {
@@ -31,6 +32,19 @@ export const SectionGroup = ({ item }: { item: SettingSection }) => {
   const visual = getAppleVisualTokens(colors, isDark);
   const current = item.useHook && item.useHook();
   const isHidden = item.hidden && item.hidden(current);
+  if (isHidden) return null;
+  if (visual.ios && item.sections)
+    return (
+      <IosSettingsCard header={item.name as string | undefined}>
+        {item.sections.map((row, index) => (
+          <SectionItem
+            key={row.id}
+            item={row}
+            last={index === (item.sections?.length || 0) - 1}
+          />
+        ))}
+      </IosSettingsCard>
+    );
   return isHidden ? null : (
     <View
       style={{

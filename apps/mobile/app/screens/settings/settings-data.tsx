@@ -67,6 +67,11 @@ import { useDragState } from "./editor/state";
 import { verifyUser, verifyUserWithApplock } from "./functions";
 import { logoutUser } from "./logout";
 import { SettingSection } from "./types";
+import {
+  cachedBiometryLockTitle,
+  cachedBiometryName
+} from "../../hooks/use-biometry";
+import { useNotificationAlarmStatus } from "./notification-alarm-status";
 import { AuthMode } from "../../components/auth/common";
 import {
   createAccountSection,
@@ -762,21 +767,6 @@ export const settingsGroups: SettingSection[] = [
         hidden: (current) => !current
       },
       {
-        id: "cors-bypass",
-        type: "input",
-        name: strings.corsBypass(),
-        description: strings.corsBypassDesc(),
-        inputProperties: {
-          defaultValue: "",
-          autoCorrect: false,
-          keyboardType: "url"
-        },
-        property: "corsProxy",
-        icon: "arrow-decision-outline",
-        hidden: () => !__DEV__ && !SettingsService.getProperty("corsProxy")
-      },
-
-      {
         id: "vault",
         type: "screen",
         name: strings.vault(),
@@ -894,7 +884,7 @@ export const settingsGroups: SettingSection[] = [
       },
       {
         id: "app-lock",
-        name: strings.appLock(),
+        name: Platform.OS === "ios" ? cachedBiometryLockTitle : strings.appLock(),
         type: "screen",
         description: strings.appLockDesc(),
         icon: "lock",
@@ -903,7 +893,10 @@ export const settingsGroups: SettingSection[] = [
           {
             id: "app-lock-mode",
             name: strings.enableAppLock(),
-            description: strings.appLockDesc(),
+            description: () =>
+              Platform.OS === "ios" && cachedBiometryName()
+                ? strings.appLockBiometryDesc(cachedBiometryName())
+                : strings.appLockDesc(),
             icon: "lock",
             type: "switch",
             property: "appLockEnabled",
@@ -1013,7 +1006,10 @@ export const settingsGroups: SettingSection[] = [
           },
           {
             id: "app-lock-fingerprint",
-            name: strings.unlockWithBiometrics(),
+            name: () =>
+              cachedBiometryName()
+                ? strings.unlockWithBiometryName(cachedBiometryName())
+                : strings.unlockWithBiometrics(),
             description: strings.unlockWithBiometricsDesc(),
             type: "switch",
             property: "biometricsAuthEnabled",
@@ -1268,9 +1264,11 @@ export const settingsGroups: SettingSection[] = [
       },
       {
         id: "task-notifications-ios",
-        name: strings.tasksTitle(),
+        name: strings.notificationsAndAlarms(),
+        value: (current) => (current as string) || "",
         icon: "format-list-checks",
-        description: strings.tasksNotificationsSettingsDesc(),
+        description: strings.notificationsAndAlarmsDesc(),
+        useHook: useNotificationAlarmStatus,
         hidden: () => Platform.OS !== "ios",
         showActionProgress: true,
         modifer: async () => {
@@ -1279,7 +1277,7 @@ export const settingsGroups: SettingSection[] = [
           } catch (e) {
             DatabaseLogger.error(e as Error, "openAppNotificationSettings");
             Alert.alert(
-              strings.tasksTitle(),
+              strings.notificationsAndAlarms(),
               strings.tasksNotificationsSettingsError()
             );
           }
@@ -1350,6 +1348,27 @@ export const settingsGroups: SettingSection[] = [
             }
           }
         ]
+      }
+    ]
+  },
+  {
+    // Developer options live here, not next to privacy settings.
+    id: "advanced",
+    name: strings.advanced(),
+    sections: [
+      {
+        id: "cors-bypass",
+        type: "input",
+        name: strings.corsBypass(),
+        description: strings.corsBypassDesc(),
+        inputProperties: {
+          defaultValue: "",
+          autoCorrect: false,
+          keyboardType: "url"
+        },
+        property: "corsProxy",
+        icon: "arrow-decision-outline",
+        hidden: () => !__DEV__ && !SettingsService.getProperty("corsProxy")
       }
     ]
   },

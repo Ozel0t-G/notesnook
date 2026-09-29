@@ -61,6 +61,13 @@ const RootStack = createNativeStackNavigator();
  * Cancel / Done in the sheet header, swipe-down blocked while there are
  * unsaved changes (the screen toggles `gestureEnabled`).
  */
+/** Settings is a sheet with "Done" (iOS Settings-in-app pattern). */
+const SETTINGS_SHEET_OPTIONS = {
+  presentation: (Platform.OS === "ios" ? "modal" : "card") as
+    | "modal"
+    | "card"
+};
+
 const TASK_SHEET_OPTIONS = {
   presentation: (Platform.OS === "ios" && Platform.isPad
     ? "formSheet"
@@ -552,7 +559,8 @@ export const RootNavigation = () => {
       "Tasks",
       "GlobalSearch",
       "TaskDetail",
-      "AddReminder"
+      "AddReminder",
+      "Settings"
     ].includes(rootRoute) &&
     (deviceMode !== "mobile" || !editorVisible);
 
@@ -634,6 +642,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="Settings"
+            options={SETTINGS_SHEET_OPTIONS}
             getComponent={() => {
               Settings = Settings || require("../screens/settings").default;
               return Settings;

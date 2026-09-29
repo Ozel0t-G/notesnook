@@ -20,11 +20,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import React, { useCallback, useEffect, useRef } from "react";
 import {
   AppStateStatus,
+  Image,
   Platform,
+  Pressable,
+  Text,
   TextInput,
   useWindowDimensions,
   View
 } from "react-native";
+import { useBiometry } from "../../hooks/use-biometry";
+import { TaskSymbolView } from "../task-symbol-view";
 //@ts-ignore
 import { useThemeColors } from "@notesnook/theme";
 import { DatabaseLogger } from "../../common/database";
@@ -46,9 +51,7 @@ import { useUserStore } from "../../stores/use-user-store";
 import { NotesnookModule } from "../../utils/notesnook-module";
 import { Toast } from "../toast";
 import { Button } from "../ui/button";
-import { IconButton } from "../ui/icon-button";
 import Input from "../ui/input";
-import Seperator from "../ui/seperator";
 import Heading from "../ui/typography/heading";
 import Paragraph from "../ui/typography/paragraph";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
@@ -96,6 +99,7 @@ const AppLocked = () => {
   const lastAppState = useRef<AppStateStatus>(appState);
   const biometricUnlockAwaitingUserInput = useRef(false);
   const { height } = useWindowDimensions();
+  const biometry = useBiometry();
   const keyboardType = useSettingStore(
     (state) => state.settings.applockKeyboardType
   );
@@ -133,7 +137,7 @@ const AppLocked = () => {
     useSettingStore.getState().setRequestBiometrics(true);
 
     const unlocked = await BiometricService.validateUser(
-      "Unlock to access your notes",
+      strings.unlockNotes(),
       ""
     );
     if (unlocked) {
@@ -208,10 +212,12 @@ const AppLocked = () => {
         DatabaseLogger.info("Biometric unlock request");
         onUnlockAppRequested();
       }
-    } else {
+    } else if (appState === "background") {
       SettingsService.appEnteredBackground();
     }
   }, [appState, onUnlockAppRequested, appLocked]);
+
+  const passwordField = user || appLockHasPasswordSecurity;
 
   return appLocked ? (
     <KeyboardAwareScrollView
@@ -223,7 +229,6 @@ const AppLocked = () => {
         zIndex: 999
       }}
       contentContainerStyle={{
-        justifyContent: "center",
         minHeight: height
       }}
       keyboardDismissMode="interactive"
@@ -233,122 +238,128 @@ const AppLocked = () => {
       <View
         style={{
           flex: 1,
-          justifyContent: "center",
+          // Content sits in the upper third: the system Face ID animation
+          // appears in the middle of the screen and must not cover the title.
+          paddingTop: Math.max(72, height * 0.12),
           width:
             deviceMode !== "mobile"
               ? "50%"
               : Platform.OS == "ios"
-                ? "95%"
+                ? "90%"
                 : "100%",
-          paddingHorizontal: 12,
-          marginBottom: 30,
-          marginTop: 15,
-          alignSelf: "center"
+          alignSelf: "center",
+          alignItems: "center"
         }}
       >
-        <IconButton
-          name="fingerprint"
-          size={100}
-          style={{
-            width: 100,
-            height: 100,
-            marginBottom: 20,
-            marginTop: user ? 0 : 50
-          }}
-          onPress={onUnlockAppRequested}
-          color={colors.primary.border}
+        <Image
+          source={require("../../assets/images/veyran-icon.png")}
+          accessibilityIgnoresInvertColors
+          style={{ width: 72, height: 72, borderRadius: 16 }}
         />
         <Heading
           color={colors.primary.heading}
           style={{
-            alignSelf: "center",
+            marginTop: 20,
             textAlign: "center"
           }}
         >
-          {strings.unlockNotes()}
+          {strings.appLockLockedTitle()}
         </Heading>
 
         <Paragraph
           style={{
-            alignSelf: "center",
+            marginTop: 6,
             textAlign: "center",
             maxWidth: "90%"
           }}
         >
-          {strings.verifyItsYou()}
+          {biometricsAuthEnabled && biometry.kind !== "none"
+            ? strings.appLockBiometryDesc(biometry.name)
+            : strings.verifyItsYou()}
         </Paragraph>
-        <Seperator />
-        <View
-          style={{
-            width: "100%",
-            padding: 12,
-            backgroundColor: colors.primary.background
-          }}
-        >
-          {user || appLockHasPasswordSecurity ? (
-            <>
-              <Input
-                fwdRef={passwordInputRef}
-                secureTextEntry
-                keyboardType={
-                  appLockHasPasswordSecurity ? keyboardType : "default"
+
+        <View style={{ width: "100%", marginTop: 32 }}>
+          {passwordField ? (
+            <Input
+              fwdRef={passwordInputRef}
+              secureTextEntry
+              keyboardType={
+                appLockHasPasswordSecurity ? keyboardType : "default"
+              }
+              onLayout={async () => {
+                if (
+                  !biometricsAuthEnabled ||
+                  !(await BiometricService.isBiometryAvailable())
+                ) {
+                  setTimeout(() => {
+                    passwordInputRef.current?.focus();
+                  }, 32);
                 }
-                onLayout={async () => {
-                  if (
-                    !biometricsAuthEnabled ||
-                    !(await BiometricService.isBiometryAvailable())
-                  ) {
-                    setTimeout(() => {
-                      passwordInputRef.current?.focus();
-                    }, 32);
-                  }
-                }}
-                placeholder={
-                  appLockHasPasswordSecurity
-                    ? keyboardType === "numeric"
-                      ? strings.enterApplockPassword()
-                      : strings.enterApplockPin()
-                    : strings.enterAccountPassword()
-                }
-                onChangeText={(v) => (password.current = v)}
-                onSubmit={() => {
-                  onSubmit();
-                }}
-              />
-            </>
+              }}
+              placeholder={
+                appLockHasPasswordSecurity
+                  ? keyboardType === "numeric"
+                    ? strings.enterApplockPassword()
+                    : strings.enterApplockPin()
+                  : strings.enterAccountPassword()
+              }
+              onChangeText={(v) => (password.current = v)}
+              onSubmit={() => {
+                onSubmit();
+              }}
+            />
           ) : null}
 
-          <View
-            style={{
-              marginTop: user ? 25 : 25
-            }}
-          >
-            {user || appLockHasPasswordSecurity ? (
-              <>
-                <Button
-                  title={strings.continue()}
-                  type="accent"
-                  onPress={onSubmit}
-                  width={250}
-                  height={45}
-                  style={{
-                    borderRadius: 150,
-                    marginBottom: 10
-                  }}
-                />
-              </>
-            ) : null}
+          {passwordField ? (
+            <Button
+              title={strings.continue()}
+              type="accent"
+              onPress={onSubmit}
+              width="100%"
+              height={50}
+              style={{
+                borderRadius: 14,
+                marginTop: 16
+              }}
+            />
+          ) : null}
 
-            {biometricsAuthEnabled ? (
-              <Button
-                title={strings.unlockWithBiometrics()}
-                width={250}
-                onPress={onUnlockAppRequested}
-                icon={"fingerprint"}
-                type="transparent"
+          {biometricsAuthEnabled ? (
+            <Pressable
+              testID="app-lock-biometry"
+              onPress={onUnlockAppRequested}
+              accessibilityRole="button"
+              accessibilityLabel={biometry.unlockTitle}
+              style={({ pressed }) => ({
+                marginTop: 12,
+                minHeight: 50,
+                borderRadius: 14,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                backgroundColor: passwordField
+                  ? "transparent"
+                  : colors.primary.accent,
+                opacity: pressed ? 0.7 : 1
+              })}
+            >
+              <TaskSymbolView
+                name={biometry.symbol}
+                size={22}
+                color={passwordField ? colors.primary.accent : "#FFFFFF"}
               />
-            ) : null}
-          </View>
+              <Text
+                style={{
+                  color: passwordField ? colors.primary.accent : "#FFFFFF",
+                  fontSize: 17,
+                  fontWeight: "600"
+                }}
+              >
+                {biometry.unlockTitle}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
       </View>
     </KeyboardAwareScrollView>

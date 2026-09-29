@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { ScopedThemeProvider, useThemeColors } from "@notesnook/theme";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import useNavigationStore from "../../stores/use-navigation-store";
@@ -38,7 +38,8 @@ export const Settings = () => {
       style={{
         flex: 1,
         backgroundColor: visual.screenBackground,
-        paddingTop: insets.top,
+        // iOS presents Settings as a sheet, which is not under the status bar.
+        paddingTop: Platform.OS === "ios" ? 0 : insets.top,
         paddingBottom: insets.bottom,
         paddingLeft: insets.left,
         paddingRight: insets.right

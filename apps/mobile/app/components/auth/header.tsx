@@ -16,6 +16,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+import { Platform } from "react-native";
+import { IosBarButton } from "../ios-nav-bar";
 import { useThemeColors } from "@notesnook/theme";
 import { useRoute } from "@react-navigation/native";
 import React from "react";
@@ -46,7 +48,15 @@ export const AuthHeader = (props: { welcome?: boolean }) => {
           justifyContent: !props.welcome ? "space-between" : "flex-end"
         }}
       >
-        {props.welcome ? null : (
+        {props.welcome ? null : Platform.OS === "ios" ? (
+          <IosBarButton
+            label={strings.cancel()}
+            testID="auth-cancel"
+            onPress={() => {
+              hideAuth((route.params as AuthParams)?.context);
+            }}
+          />
+        ) : (
           <IconButton
             name="arrow-left"
             onPress={() => {

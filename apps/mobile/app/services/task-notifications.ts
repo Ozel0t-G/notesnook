@@ -207,6 +207,8 @@ async function reconcileNow() {
           message: TASK_ALARM_UNREDACTED_MESSAGE,
           type: "error"
         });
+    } else if (!delivery.unredactedAlarmKeys.size) {
+      lastUnredactedNotice = "";
     }
   } catch (error) {
     // The reconcile produced no per-occurrence answer at all: keep every

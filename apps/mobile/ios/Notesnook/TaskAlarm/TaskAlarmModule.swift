@@ -166,7 +166,7 @@ final class TaskAlarmModule: NSObject {
           if !requested.contains(key) { requested.append(key) }
         }
         let alarms = try manager.alarms
-        let heldIds = Set(alarms.map { $0.id.uuidString })
+        let initiallyHeldIds = Set(alarms.map { $0.id.uuidString })
         var cancelled = [String]()
         var retained = [String]()
         for alarm in alarms {
@@ -195,15 +195,16 @@ final class TaskAlarmModule: NSObject {
         var notFound = [String]()
         for key in requested {
           let id = Self.alarmId(accountId: accountId, alarmKey: key)
-          if !heldIds.contains(id.uuidString) { notFound.append(key) }
+          if !initiallyHeldIds.contains(id.uuidString) { notFound.append(key) }
         }
         // Bookkeeping for an owned alarm the system no longer holds (it ended,
         // was dismissed, or was cancelled from elsewhere) is stale and is
         // pruned here, so it can never make a later pass believe it still owns
         // a presentation that is gone.
-        owned = owned.filter { heldIds.contains($0) }
-        fingerprints = fingerprints.filter { heldIds.contains($0.key) }
-        redacted = redacted.filter { heldIds.contains($0) }
+        let remainingHeldIds = Set((try manager.alarms).map { $0.id.uuidString })
+        owned = owned.filter { remainingHeldIds.contains($0) }
+        fingerprints = fingerprints.filter { remainingHeldIds.contains($0.key) }
+        redacted = redacted.filter { remainingHeldIds.contains($0) }
         UserDefaults.standard.set(fingerprints, forKey: Self.fingerprintKey)
         UserDefaults.standard.set(Array(redacted), forKey: Self.redactedIdsKey)
         UserDefaults.standard.set(Array(owned), forKey: Self.ownedIdsKey)
@@ -445,13 +446,23 @@ private extension TaskAlarmModule {
             // Still held and not presenting: it is reported as held (so no
             // fallback duplicates it) but never as `active`, because a
             // `.scheduled` alarm is not presenting.
-            if let key { scheduled.append(key) }
+            if let key {
+              scheduled.append(key)
+              if desired[alarm.id]?.privacyHidden == true &&
+                 !redacted.contains(alarm.id.uuidString) {
+                unredacted.append(key)
+              }
+            }
           }
         } else if let key {
           // A presentation the person is engaged with (alerting, counting down
           // after a Snooze, or paused) is retained, and it *is* presenting now.
           scheduled.append(key)
           active.append(key)
+          if desired[alarm.id]?.privacyHidden == true &&
+             !redacted.contains(alarm.id.uuidString) {
+            unredacted.append(key)
+          }
         }
       }
       UserDefaults.standard.set(fingerprints, forKey: fingerprintKey)

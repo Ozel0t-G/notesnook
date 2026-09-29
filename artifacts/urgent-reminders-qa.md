@@ -194,3 +194,30 @@ independent `urgent-specialist` (claude-sonnet-5) review — describe that older
 ## Final urgent-reminder candidate — 2026-09-29
 
 Integration branch `test` now contains signed commits through `9f1243c87` (base `17def76c1`). The final focused regression run passed **35/35 tests in 2 suites**: `task-alarms.test.ts` and `task-notifications.test.ts`. The candidate also has the earlier **357/357 mobile tests in 35 suites** and iPhone/iPad ARM64 simulator build evidence. The latest native corrections close App-Lock redaction failure reporting and post-cancellation bookkeeping pruning; no past-due alarm is rescheduled. Physical device and interactive simulator QA remain `PHYSICAL_QA_PENDING`. Full mobile TypeScript still has one unchanged editor dependency diagnostic at `use-editor.ts:133`; no editor source was changed. Luna Reserve hit its account usage limit before editing; the final correction was completed under the user's explicit “egal wie” instruction. No push, main merge, upload, or deployment occurred.
+
+## Claude verification pass — 2026-09-29 (after `8e1002068`)
+
+Executed on `test` with release Xcode 27.0 (27A266a), each native build in its own fresh DerivedData.
+
+| Check | Result |
+| --- | --- |
+| iPhone ARM64 simulator build (fresh DerivedData) | **BUILD SUCCEEDED** |
+| iPad ARM64 simulator build (fresh DerivedData, sequential) | **BUILD SUCCEEDED** |
+| Focused Jest (`task-alarms`, `task-notifications`) | **35/35, 2 suites** |
+| Mobile Jest `app/` (with the notifee module mapper above) | **360/360, 35 suites** (`__tests__/App-test.js`, an unchanged 2023 upstream smoke test outside `app/`, does not parse) |
+| `tsc --noEmit` (mobile) | **0 errors** after `224c21c41` (test-local mock types lacked `unredactedAlarmKeys` / `notFoundAlarmKeys`); the `use-editor.ts:133` diagnostic no longer reproduces |
+| Simulator launch | launched normally; launchd error 163 did **not** reproduce |
+
+Interactive simulator QA (debug build, "VeyraN Urgent QA iPhone 20260929", no account):
+
+- New note save → reopen: content intact.
+- Notification tap, warm (app backgrounded on Library): opens the Task's list, row highlighted and the highlight clears after ~2 s; no editor, no keyboard.
+- Cold start (app terminated) on stale notifications: completed Task → current list with the Task shown completed; moved Task → its **new** list, not the payload's; deleted Task → safe Tasks destination.
+- Widget deep link `ShareMedia://TaskWidget?id=<unknown>` → "This Task is no longer available." toast, stays on Tasks.
+- App Lock (simulated Face ID): enabling works; the Urgent alarm fired at the due minute as an AlarmKit alarm titled **"VeyraN Task"** (real title redacted) with Stop / Snooze; after unlock the Task is still open.
+- AlarmKit permission prompt appears only when toggling Urgent.
+- Found and fixed (`3fe6065c7`): Task editor showed "?" boxes for Date / Urgent / Repeat / Priority because the committed icon-font subset lacked those glyphs.
+
+Not verifiable in the simulator: synthetic taps do not reach the system alarm platter (Stop/Snooze), widget installation/completion, Live Activity/Dynamic Island, sound/haptics/silent mode. These stay on the physical checklist.
+
+Observations (not changed): granting a system permission prompt with App Lock set to "Immediately" locks the app once (form state survives); the new-list name field dropped characters under very fast synthetic typing (re-check by hand).

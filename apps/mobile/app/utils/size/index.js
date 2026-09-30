@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { Dimensions, PixelRatio, Platform } from "react-native";
 import { DDS } from "../../services/device-detection";
+import { isMacCatalyst } from "../constants";
 
 export const scale = {
   fontScale: 1
@@ -34,7 +35,11 @@ export const getDeviceSize = () => {
   let diagonalSize = Math.sqrt(
     Math.pow(deviceWidthInInches, 2) + Math.pow(deviceHeightInInches, 2)
   );
-  return Platform.isPad ? diagonalSize + 2 : diagonalSize;
+  // Mac Catalyst used to answer `Platform.isPad` (the app was built to scale
+  // the iPad UI); with the Mac interface it reports the Mac idiom instead, so
+  // the +2 that makes the font normalizer treat it as a tablet-sized screen has
+  // to be asked for by name. iPhone/iPad keep their exact previous values.
+  return Platform.isPad || isMacCatalyst() ? diagonalSize + 2 : diagonalSize;
 };
 
 const getDpi = (pd) => {

@@ -110,7 +110,13 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
     canvasView.backgroundColor = .clear
     canvasView.isOpaque = false
     // `.default` respects the user's "Only Draw with Apple Pencil" setting.
-    canvasView.drawingPolicy = .default
+    // On Mac (Mac interface idiom) there is no Apple Pencil: `.default` would
+    // leave the canvas unable to take any input at all, so the pointer draws.
+    #if targetEnvironment(macCatalyst)
+      canvasView.drawingPolicy = .anyInput
+    #else
+      canvasView.drawingPolicy = .default
+    #endif
     canvasView.drawing = initialDrawing
     canvasView.delegate = self
     canvasView.minimumZoomScale = 1

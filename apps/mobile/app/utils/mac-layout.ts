@@ -45,15 +45,27 @@ export const MAC_TITLEBAR_HEIGHT = 52;
 
 /**
  * Where the section control starts inside the title bar row: right of the
- * traffic lights, which end at x 70.
+ * traffic lights, which occupy x 12-72 in window points.
  */
-export const MAC_TITLEBAR_CONTROL_LEFT = 84;
+export const MAC_TITLEBAR_CONTROL_LEFT = 88;
 
 /** Gap between the section control and the column's right edge. */
 export const MAC_TITLEBAR_CONTROL_RIGHT = 12;
 
 /** Height of the section control (and of its segments). */
 export const MAC_TITLEBAR_CONTROL_HEIGHT = 24;
+
+/** Label and symbol size inside the section control. */
+export const MAC_TITLEBAR_CONTROL_FONT_SIZE = 12;
+
+/**
+ * Horizontal inset of the Mac source lists (Library and the note list). The
+ * rows own the full width of the list column otherwise, which puts their icons
+ * hard against the window edge and the rounded selection highlight flush with
+ * the column's sides. 10 pt of margin around the column's content keeps both
+ * inside, with the rows' own 8 pt of inner padding on top of it.
+ */
+export const MAC_SOURCE_LIST_INSET = 10;
 
 /** Width of the Library/list column: iPad's tablet-mode proportion. */
 export const macListWidth = (windowWidth: number) => windowWidth * 0.3;

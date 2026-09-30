@@ -69,6 +69,7 @@ import { HtmlLoadingWebViewAgent, fetchHandle } from "./fetch-webview";
 import { Search } from "./search";
 import { initDatabase, useShareStore } from "./store";
 import { isTablet } from "react-native-device-info";
+import { isMacCatalyst } from "../utils/constants";
 import { NotesnookModule } from "../utils/notesnook-module";
 import { DefaultAppStyles } from "../utils/styles";
 import { encodeHTML5 } from "entities";
@@ -917,7 +918,15 @@ const ShareView = () => {
 
               <View
                 style={{
-                  height: isTablet() ? 150 : Platform.OS === "ios" ? 110 : 0
+                  // Mac keeps the tablet's trailing space: it answered
+                  // `isTablet()` while the app scaled the iPad UI and its Mac
+                  // interface build reports the Mac idiom instead.
+                  height:
+                    isTablet() || isMacCatalyst()
+                      ? 150
+                      : Platform.OS === "ios"
+                      ? 110
+                      : 0
                 }}
               />
             </View>

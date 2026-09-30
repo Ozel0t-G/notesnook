@@ -43,6 +43,7 @@ import {
 import { AddNotebookSheet } from "../../components/sheets/add-notebook";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isMacCatalyst } from "../../utils/constants";
+import { MAC_SOURCE_LIST_INSET } from "../../utils/mac-layout";
 import useNavigationStore from "../../stores/use-navigation-store";
 
 type LibraryDestination = {
@@ -70,12 +71,18 @@ const MAC_SELECTED_ROUTE_ID: Record<string, string> = {
   trash: "Trash"
 };
 
-/** Mac source list metrics (see `mac-layout.ts` for the window chrome). */
+/**
+ * Mac source list metrics (see `mac-layout.ts` for the window chrome and for
+ * `MAC_SOURCE_LIST_INSET`, the 10 pt margin the rows sit in).
+ */
 const MAC_ROW_HEIGHT = 28;
 const MAC_ROW_RADIUS = 6;
 const MAC_ROW_FONT_SIZE = 13;
 const MAC_ROW_ICON_SIZE = 16;
+/** Inner padding of a row: the icon/text inset inside the highlight. */
 const MAC_ROW_PADDING = 8;
+/** Text of a row/section header, measured from the column's edge. */
+const MAC_LIST_TEXT_LEFT = MAC_SOURCE_LIST_INSET + MAC_ROW_PADDING;
 
 export default function Library({
   navigation,
@@ -269,8 +276,10 @@ export default function Library({
         alignItems: "center",
         marginTop: isMac ? 14 : 22,
         marginBottom: isMac ? 2 : 4,
-        marginLeft: isMac ? MAC_ROW_PADDING : 20,
-        marginRight: isMac ? MAC_ROW_PADDING : 8
+        // Section headers line up with the rows' content (and their trailing
+        // "+" with the row counts), not with the column's edges.
+        marginLeft: isMac ? MAC_LIST_TEXT_LEFT : 20,
+        marginRight: isMac ? MAC_LIST_TEXT_LEFT : 8
       }}
     >
       <Text
@@ -327,7 +336,9 @@ export default function Library({
                 height: MAC_ROW_HEIGHT,
                 flexDirection: "row",
                 alignItems: "center",
-                marginHorizontal: 0,
+                // 10 pt of margin around the column so the rounded highlight
+                // sits inside it and the icons clear the window edge.
+                marginHorizontal: MAC_SOURCE_LIST_INSET,
                 // Only the first row of a group keeps a gap: source lists have
                 // no card, so the group break is the only separation left.
                 marginTop: index === 0 && marginTop ? 8 : 0,
@@ -458,7 +469,7 @@ export default function Library({
                   color: visual.secondaryText,
                   fontSize: 13,
                   fontWeight: "600",
-                  paddingLeft: MAC_ROW_PADDING
+                  paddingLeft: MAC_LIST_TEXT_LEFT
                 }}
               >
                 {strings.routes.Library()}

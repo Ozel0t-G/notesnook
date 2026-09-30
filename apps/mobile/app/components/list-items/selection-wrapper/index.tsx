@@ -36,11 +36,12 @@ import Navigation from "../../../services/navigation";
 import { isMacCatalyst } from "../../../utils/constants";
 import { deleteItems } from "../../../utils/functions";
 import { systemColor } from "../../../utils/ios-system-colors";
+import { MAC_SOURCE_LIST_INSET } from "../../../utils/mac-layout";
 import { ItemContextMenu } from "../../item-actions-menu";
 import { SwipeRow } from "../../swipe-row";
 
-/** Mac note list row metrics. */
-const MAC_NOTE_ROW_PADDING = 10;
+/** Mac note list row metrics (same shape as the Library source list). */
+const MAC_NOTE_ROW_PADDING = 8;
 const MAC_NOTE_ROW_PADDING_VERTICAL = 10;
 const MAC_NOTE_ROW_RADIUS = 6;
 
@@ -181,7 +182,13 @@ const SelectionWrapper = ({
             ? 17
             : 10
           : visual.cardRadius,
-        marginHorizontal: isSheet || macRow ? 0 : visual.listInset,
+        // Mac rows sit in the source list's 10 pt margin: without it the row
+        // runs edge to edge and its rounded highlight touches the window.
+        marginHorizontal: isSheet
+          ? 0
+          : macRow
+          ? MAC_SOURCE_LIST_INSET
+          : visual.listInset,
         marginBottom: macRow
           ? 0
           : isSheet

@@ -47,6 +47,7 @@ import {
 } from "react-native";
 import { db } from "../../common/database";
 import { ToastManager } from "../../services/event-manager";
+import { isMacCatalyst } from "../../utils/constants";
 import { NavigationProps } from "../../services/navigation";
 import { openAppNotificationSettings } from "../../services/notification-settings";
 import { TaskNotifications } from "../../services/task-notifications";
@@ -396,7 +397,11 @@ export default function TaskDetail({
             options: [strings.tasksDiscardChanges(), strings.tasksKeepEditing()],
             destructiveButtonIndex: 0,
             cancelButtonIndex: 1,
-            ...(Platform.isPad
+            // An action sheet is a popover on the wide layouts, which UIKit
+            // anchors to a source view. Mac Catalyst needs that anchor too now
+            // that it draws with the Mac interface (`Platform.isPad` is false
+            // there); without it the popover has nothing to point at.
+            ...(Platform.isPad || isMacCatalyst()
               ? { anchor: findNodeHandle(cancelButton.current) || undefined }
               : {}),
             userInterfaceStyle: isDark ? "dark" : "light"
@@ -512,7 +517,8 @@ export default function TaskDetail({
           options: [strings.tasksDelete(), strings.cancel()],
           destructiveButtonIndex: 0,
           cancelButtonIndex: 1,
-          ...(Platform.isPad
+          // See the discard sheet above: iPad and Mac present popovers.
+          ...(Platform.isPad || isMacCatalyst()
             ? { anchor: findNodeHandle(deleteButton.current) || undefined }
             : {}),
           userInterfaceStyle: isDark ? "dark" : "light"

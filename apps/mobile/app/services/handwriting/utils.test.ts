@@ -77,12 +77,21 @@ describe("handwriting filenames", () => {
 });
 
 describe("platform guard", () => {
-  test("only iPad is supported", () => {
+  test("only iPad and Mac are supported", () => {
     expect(isHandwritingSupported({ OS: "ios", isPad: true })).toBe(true);
     expect(isHandwritingSupported({ OS: "ios", isPad: false })).toBe(false);
     expect(isHandwritingSupported({ OS: "ios" })).toBe(false);
     expect(isHandwritingSupported({ OS: "android", isPad: true })).toBe(false);
     expect(isHandwritingSupported({ OS: "web", isPad: true })).toBe(false);
+  });
+
+  test("Mac Catalyst is supported like iPad", () => {
+    expect(
+      isHandwritingSupported({ OS: "ios", isPad: false, isMacCatalyst: true })
+    ).toBe(true);
+    expect(
+      isHandwritingSupported({ OS: "ios", isPad: false, isMacCatalyst: false })
+    ).toBe(false);
   });
 });
 

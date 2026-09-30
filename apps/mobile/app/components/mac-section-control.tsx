@@ -28,6 +28,7 @@ import {
 } from "../stores/use-apple-navigation-store";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import {
+  MAC_TITLEBAR_CONTROL_FONT_SIZE,
   MAC_TITLEBAR_CONTROL_HEIGHT,
   MAC_TITLEBAR_CONTROL_LEFT
 } from "../utils/mac-layout";
@@ -133,14 +134,14 @@ export function MacSectionControl({
             ) : null}
             <TaskSymbolView
               name={item.symbol}
-              size={12}
+              size={MAC_TITLEBAR_CONTROL_FONT_SIZE}
               color={active ? colors.primary.accent : visual.secondaryText}
             />
             <Text
               numberOfLines={1}
               style={{
                 color: active ? visual.primaryText : visual.secondaryText,
-                fontSize: 12,
+                fontSize: MAC_TITLEBAR_CONTROL_FONT_SIZE,
                 fontWeight: active ? "600" : "400"
               }}
             >

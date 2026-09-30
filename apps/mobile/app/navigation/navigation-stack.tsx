@@ -133,8 +133,14 @@ const SETTINGS_SHEET_OPTIONS = {
     | "card"
 };
 
+/**
+ * Task detail is a centered form sheet on the wide-screen layouts (iPad and
+ * Mac's Mac interface) and a full-screen modal on iPhone. Mac is included by
+ * name: `Platform.isPad` stopped being true there when the app switched to the
+ * Mac interface, but a full-bleed sheet would be wrong in a Mac window.
+ */
 const TASK_SHEET_OPTIONS = {
-  presentation: (Platform.OS === "ios" && Platform.isPad
+  presentation: (Platform.OS === "ios" && (Platform.isPad || isMacCatalyst())
     ? "formSheet"
     : "modal") as "formSheet" | "modal"
 };

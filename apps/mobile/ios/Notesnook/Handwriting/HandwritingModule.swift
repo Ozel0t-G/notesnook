@@ -38,11 +38,26 @@ final class HandwritingModule: NSObject {
 
   @objc static func requiresMainQueueSetup() -> Bool { true }
 
+  /// Where the handwriting editor can run: iPad, and Mac Catalyst.
+  ///
+  /// Mac used to report `.pad` here because the app scaled the iPad UI; with
+  /// "Optimize Interface for Mac" the user interface idiom is `.mac`, so the
+  /// idiom alone would silently take handwriting away on Mac. The PencilKit
+  /// canvas itself is available in both Catalyst builds (see the drawing
+  /// policy in `HandwritingViewController`).
+  private static var isSupportedIdiom: Bool {
+    #if targetEnvironment(macCatalyst)
+      return true
+    #else
+      return UIDevice.current.userInterfaceIdiom == .pad
+    #endif
+  }
+
   @objc(isAvailable:rejecter:)
   func isAvailable(
     _ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
-    resolve(UIDevice.current.userInterfaceIdiom == .pad)
+    resolve(HandwritingModule.isSupportedIdiom)
   }
 
   @objc(create:resolver:rejecter:)
@@ -84,8 +99,8 @@ final class HandwritingModule: NSObject {
   ) {
     DispatchQueue.main.async { [weak self] in
       guard let self = self else { return }
-      guard UIDevice.current.userInterfaceIdiom == .pad else {
-        return reject("E_UNSUPPORTED", "Handwriting is only available on iPad", nil)
+      guard HandwritingModule.isSupportedIdiom else {
+        return reject("E_UNSUPPORTED", "Handwriting is only available on iPad and Mac", nil)
       }
       guard !self.isPresenting, let presenter = Self.topViewController() else {
         return reject("E_BUSY", "Cannot present the handwriting editor", nil)

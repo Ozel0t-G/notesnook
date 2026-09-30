@@ -82,12 +82,24 @@ export function isHandwritingImage(
   return parseHandwritingFilename(filename)?.kind === "png";
 }
 
-/** Handwriting is only offered on iPad. iPhone and Android are untouched. */
+/**
+ * Handwriting is offered on iPad and on Mac Catalyst. iPhone and Android are
+ * untouched.
+ *
+ * Mac has to be named explicitly: it used to answer `isPad` while the app
+ * scaled the iPad UI, and the "Optimize Interface for Mac" build reports the
+ * Mac idiom instead. PencilKit's canvas is present in that build too (the
+ * native module switches its drawing policy to accept the pointer).
+ */
 export function isHandwritingSupported(platform: {
   OS: string;
   isPad?: boolean;
+  isMacCatalyst?: boolean;
 }): boolean {
-  return platform.OS === "ios" && platform.isPad === true;
+  return (
+    platform.OS === "ios" &&
+    (platform.isPad === true || platform.isMacCatalyst === true)
+  );
 }
 
 export type AttachmentLike = {

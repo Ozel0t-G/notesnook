@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { Dimensions, PixelRatio, Platform } from "react-native";
 import DeviceInfo from "react-native-device-info";
+import { isMacCatalyst } from "../utils/constants";
 
 let windowSize = Dimensions.get("window");
 let screenSize = Dimensions.get("screen");
@@ -27,8 +28,17 @@ export class DeviceDetectionService {
     this.setNewValues();
   }
 
+  /**
+   * Mac Catalyst is reported as a tablet on purpose. The Mac build is the
+   * "Optimize Interface for Mac" build, so `UIDevice.userInterfaceIdiom` is
+   * `.mac` and react-native-device-info answers `false` here - but the Mac
+   * window lays out like the iPad (three panes side by side, dialogs and
+   * sheets at tablet widths, no phone chrome). Every `DDS.isTab` call site
+   * wants that answer on Mac, and iPhone/iPad are untouched because
+   * `isMacCatalyst()` is false there.
+   */
   isTablet() {
-    return DeviceInfo.isTablet();
+    return DeviceInfo.isTablet() || isMacCatalyst();
   }
   setNewValues() {
     screenSize = Dimensions.get("screen");
@@ -73,6 +83,21 @@ export class DeviceDetectionService {
   };
 
   checkSmallTab(orientation) {
+    /**
+     * Mac Catalyst is always the large-tablet layout: the window is a desktop
+     * window (mac-layout.ts sizes the panes from its width) and the app pins
+     * `deviceMode` to `tablet` there, so the phone/small-tablet heuristics
+     * below - which are driven by the window's diagonal in inches - must not
+     * apply. Left to them, every common Mac window width would read as a small
+     * tablet. iPhone/iPad never enter this branch.
+     */
+    if (isMacCatalyst()) {
+      this.isTab = true;
+      this.isPhone = false;
+      this.isSmallTab = false;
+      return;
+    }
+
     let deviceSize = this.getDeviceSize();
 
     const isLandscape = orientation?.startsWith("LANDSCAPE");

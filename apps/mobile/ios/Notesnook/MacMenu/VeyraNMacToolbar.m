@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /// Toolbar item identifiers, all namespaced to the app's own items.
 static NSToolbarItemIdentifier const VeyraNSectionsIdentifier =
     @"veyran.sections";
+static NSToolbarItemIdentifier const VeyraNSearchIdentifier = @"veyran.search";
 static NSToolbarItemIdentifier const VeyraNNewItemIdentifier = @"veyran.newItem";
 static NSToolbarIdentifier const VeyraNToolbarIdentifier = @"veyran.main";
 
@@ -76,11 +77,39 @@ static NSUInteger VeyraNSectionIndex(NSString *section) {
   return NSNotFound;
 }
 
+/**
+ * Search field metrics. The field is a view the toolbar is handed, not a
+ * system search item, so it has to size itself: a standard search field width
+ * (the one Finder and Mail give theirs) and the height of a small control. The
+ * width is a constraint with a low enough priority to let the toolbar compress
+ * it before clipping the item, and it is also what the item uses to measure
+ * itself.
+ */
+static const CGFloat VeyraNSearchFieldWidth = 220;
+static const CGFloat VeyraNSearchFieldHeight = 28;
+
+/**
+ * The toolbar owns the search field and is its delegate for Return
+ * (-textFieldShouldReturn:); edits are reported through target/action on the
+ * field itself.
+ */
+@interface VeyraNMacToolbar () <UITextFieldDelegate>
+@end
+
 @implementation VeyraNMacToolbar {
   NSToolbar *_toolbar;
   /// The newest segmented control. Recreated whenever the toolbar asks for the
   /// item again, so it is only a shortcut for the live one (see -sectionsItem).
   NSToolbarItemGroup *_sectionsItem;
+  /// The newest search field (see -makeSearchItem), the one the toolbar is
+  /// showing and the one the section click focuses.
+  UISearchTextField *_searchField;
+  /// What is currently typed in the search field. Held here because the field
+  /// is rebuilt whenever the toolbar asks for the item again, and because the
+  /// Search screen keeps its query when another section takes over.
+  NSString *_searchText;
+  /// Whether this process can show a search field at all (Mac Catalyst 16+).
+  BOOL _searchAvailable;
   /// The newest leading action item (see -newItem).
   NSToolbarItem *_newItem;
   /// Whether that item is the Tasks one (icon, title and command all follow
@@ -97,10 +126,38 @@ static NSUInteger VeyraNSectionIndex(NSString *section) {
  */
 static __weak VeyraNMacToolbar *currentInstance = nil;
 
+/**
+ * Whether the live toolbar carries a search field. Read by
+ * +toolbarSearchAvailable (and through it by JS) from the React queue, written
+ * once on the main queue while the scene connects, before React Native starts.
+ */
+static BOOL currentSearchAvailable = NO;
+
++ (BOOL)toolbarSearchAvailable {
+  return currentSearchAvailable;
+}
+
 - (instancetype)initWithWindowScene:(UIWindowScene *)windowScene {
   if (self = [super init]) {
     currentInstance = self;
     _selectedSection = VeyraNSectionNames[0];
+    /**
+     * The toolbar's search field is a `UISearchTextField` hosted by an
+     * `NSUIViewToolbarItem`: on Mac Catalyst the toolbar items are the only
+     * AppKit chrome in the window and a UIKit view can only get into them
+     * through that item, which exists from Mac Catalyst 16 (macOS 13) on.
+     *
+     * `NSSearchToolbarItem` looks like the natural fit, but AppKit marks it
+     * unavailable on Mac Catalyst and its Catalyst implementation is the
+     * AppKit one: its `searchField` setter messages the field as an
+     * `NSSearchField` (`-cell`) and raises on a UIKit field. The custom-view
+     * item above is the supported route on this platform.
+     */
+    if (@available(macCatalyst 16.0, *)) {
+      _searchAvailable = YES;
+    }
+    currentSearchAvailable = _searchAvailable;
+    _searchText = @"";
 
     NSToolbar *toolbar =
         [[NSToolbar alloc] initWithIdentifier:VeyraNToolbarIdentifier];
@@ -200,7 +257,37 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
   // selection: the click has to.
   [self selectIndex:(NSUInteger)index onGroup:group];
   [self applyNewItemForSection:section];
+  // Picking Search puts the cursor in the toolbar's own field, the way
+  // Ctrl-Cmd-F does in Mail and Finder. Other section changes never touch the
+  // field, and JavaScript pushing a section back (a deep link, the section
+  // store, the tab bar) does not either - only the user's click does.
+  if ([section isEqualToString:VeyraNSectionNames[2]]) {
+    [self focusSearchField];
+  }
   [VeyraNMacMenu sendCommand:[@"section:" stringByAppendingString:section]];
+}
+
+/**
+ * Makes the search field the first responder. (`NSSearchToolbarItem`'s
+ * `beginSearchInteraction` is the AppKit spelling of this and is unavailable
+ * on Catalyst, like the class itself; here the focus is put on the field
+ * directly.) The click that switched sections arrives before the item is on
+ * screen the first time, so a field that refuses focus is asked again on the
+ * next runloop turn.
+ */
+- (void)focusSearchField {
+  if (!_searchAvailable) {
+    return;
+  }
+  if (@available(macCatalyst 16.0, *)) {
+    UISearchTextField *field = _searchField;
+    if (field == nil || [field becomeFirstResponder]) {
+      return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [field becomeFirstResponder];
+    });
+  }
 }
 
 /**
@@ -229,6 +316,9 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
   if ([itemIdentifier isEqualToString:VeyraNSectionsIdentifier]) {
     return [self makeSectionsItem];
   }
+  if ([itemIdentifier isEqualToString:VeyraNSearchIdentifier]) {
+    return [self makeSearchItem];
+  }
   if ([itemIdentifier isEqualToString:VeyraNNewItemIdentifier]) {
     return [self makeNewItem];
   }
@@ -237,11 +327,19 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:
     (NSToolbar *)toolbar {
-  // Sections on the left, the compose action on the right.
-  return @[
-    VeyraNSectionsIdentifier, NSToolbarFlexibleSpaceItemIdentifier,
-    VeyraNNewItemIdentifier
-  ];
+  // Sections on the left, the search field and the compose action on the
+  // right (the flexible space pulls everything after it over).
+  NSMutableArray<NSToolbarItemIdentifier> *identifiers = [NSMutableArray
+      arrayWithObjects:VeyraNSectionsIdentifier,
+                       NSToolbarFlexibleSpaceItemIdentifier, nil];
+  // The field only exists where it can be built; on Mac Catalyst 15 the
+  // identifier is left out rather than returned as a nil item (AppKit raises
+  // on a missing item).
+  if (_searchAvailable) {
+    [identifiers addObject:VeyraNSearchIdentifier];
+  }
+  [identifiers addObject:VeyraNNewItemIdentifier];
+  return identifiers;
 }
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarAllowedItemIdentifiers:
@@ -319,6 +417,118 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
 
   _sectionsItem = group;
   return group;
+}
+
+/**
+ * The search field, at the trailing side of the toolbar and before the New
+ * button, the way Finder, Mail and Notes carry theirs.
+ *
+ * `NSSearchToolbarItem` is AppKit's search item, but AppKit marks it
+ * unavailable on Mac Catalyst and its Catalyst implementation is the AppKit
+ * one: `-setSearchField:` messages the field as an `NSSearchField` (`-cell`
+ * and friends) and raises on the `UISearchTextField` this platform has. The
+ * supported Catalyst equivalent is `NSUIViewToolbarItem`, which hosts a UIKit
+ * view in the toolbar (Mac Catalyst 16 and newer).
+ *
+ * The item is rebuilt whenever the toolbar asks for it, so the text typed so
+ * far is carried over from -searchFieldDidChange: through `_searchText`. The
+ * field is the toolbar's own control: text goes to JS as "search" while it is
+ * typed and as "searchSubmit" on Return, and JavaScript pushes the section
+ * changes back (see hooks/use-mac-menu-commands.ts).
+ */
+- (NSToolbarItem *)makeSearchItem {
+  if (!_searchAvailable) {
+    // Never reached: the identifier is only handed out where the item can be
+    // built (see -toolbarDefaultItemIdentifiers:), and AppKit raises on a nil
+    // item.
+    return nil;
+  }
+  if (@available(macCatalyst 16.0, *)) {
+    UISearchTextField *field = [self makeSearchField];
+    _searchField = field;
+    NSUIViewToolbarItem *item = [[NSUIViewToolbarItem alloc]
+        initWithItemIdentifier:VeyraNSearchIdentifier
+                        uiView:field];
+    item.label = @"Search";
+    item.paletteLabel = @"Search";
+    item.toolTip = @"Search";
+    return item;
+  }
+  return nil;
+}
+
+/**
+ * The field itself: a standard `UISearchTextField` (magnifier, clear button,
+ * rounded search background) with its text carried over, wired to the toolbar
+ * for edits and shaped by two constraints so the hosting item can measure it.
+ */
+- (UISearchTextField *)makeSearchField {
+  CGRect frame =
+      CGRectMake(0, 0, VeyraNSearchFieldWidth, VeyraNSearchFieldHeight);
+  UISearchTextField *field = [[UISearchTextField alloc] initWithFrame:frame];
+  field.placeholder = @"Search";
+  field.returnKeyType = UIReturnKeySearch;
+  field.clearButtonMode = UITextFieldViewModeWhileEditing;
+  field.text = _searchText;
+  field.accessibilityLabel = @"Search";
+  // The item is the field's delegate only for Return (see
+  // -textFieldShouldReturn:); edits are reported through target/action.
+  field.delegate = self;
+  [field addTarget:self
+                action:@selector(searchFieldDidBeginEditing:)
+      forControlEvents:UIControlEventEditingDidBegin];
+  [field addTarget:self
+                action:@selector(searchFieldDidChange:)
+      forControlEvents:UIControlEventEditingChanged];
+
+  // A search field has no intrinsic width, and the hosting item measures the
+  // view it is given: the width constraint is what keeps the field 220 pt wide
+  // in the toolbar. It yields to the field's own content compression before
+  // the item would be clipped, and the height is what stops the field from
+  // being stretched to the toolbar's full height.
+  NSLayoutConstraint *width =
+      [field.widthAnchor constraintEqualToConstant:VeyraNSearchFieldWidth];
+  width.priority = UILayoutPriorityDefaultHigh;
+  NSLayoutConstraint *height =
+      [field.heightAnchor constraintEqualToConstant:VeyraNSearchFieldHeight];
+  [NSLayoutConstraint activateConstraints:@[ width, height ]];
+  return field;
+}
+
+/**
+ * The user's edit began: JavaScript switches to the Search section (the field
+ * is usable before the section is), with whatever the field already holds.
+ */
+- (void)searchFieldDidBeginEditing:(UISearchTextField *)field {
+  [self sendSearchCommand:@"search" fromField:field];
+}
+
+/**
+ * The field's text changed (a keystroke, the clear button, a paste). The text
+ * is kept here so a rebuilt field keeps it, and sent to JavaScript; an empty
+ * field keeps the Search section but empties the query.
+ */
+- (void)searchFieldDidChange:(UISearchTextField *)field {
+  [self sendSearchCommand:@"search" fromField:field];
+}
+
+/**
+ * Return in the search field. The query is already known to JavaScript (every
+ * keystroke sends it); this is the explicit "run it now" the Search screen uses
+ * to skip its typing debounce.
+ */
+- (BOOL)textFieldShouldReturn:(UITextField *)textField {
+  [self sendSearchCommand:@"searchSubmit" fromField:textField];
+  return YES;
+}
+
+/**
+ * Sends `command` with the field's current text, and keeps that text for the
+ * next field.
+ */
+- (void)sendSearchCommand:(NSString *)command fromField:(UITextField *)field {
+  _searchText = field.text ?: @"";
+  [VeyraNMacMenu sendCommand:command text:_searchText];
 }
 
 /**

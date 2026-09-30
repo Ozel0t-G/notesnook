@@ -51,6 +51,20 @@ static __weak VeyraNMacMenu *currentInstance = nil;
   return @[ @"VeyraNMacMenuCommand" ];
 }
 
+/**
+ * Constants JS reads before any command arrives. `toolbarSearch` says whether
+ * the window toolbar carries its own search field: the Search screen hides its
+ * in-app title and field only when it does (see
+ * +[VeyraNMacToolbar toolbarSearchAvailable]).
+ */
+- (NSDictionary *)constantsToExport {
+#if TARGET_OS_MACCATALYST
+  return @{@"toolbarSearch" : @([VeyraNMacToolbar toolbarSearchAvailable])};
+#else
+  return @{@"toolbarSearch" : @NO};
+#endif
+}
+
 - (void)startObserving {
   currentInstance = self;
   _hasListeners = YES;
@@ -61,12 +75,22 @@ static __weak VeyraNMacMenu *currentInstance = nil;
 }
 
 + (void)sendCommand:(NSString *)command {
+  [self sendCommand:command text:nil];
+}
+
++ (void)sendCommand:(NSString *)command text:(NSString *)text {
   VeyraNMacMenu *instance = currentInstance;
   if (instance == nil || !instance->_hasListeners) {
     // No JS listener attached (or the bridge is gone): drop the event.
     return;
   }
-  [instance sendEventWithName:@"VeyraNMacMenuCommand" body:@{@"command" : command}];
+  // Every command keeps the same two keys: commands without a payload get an
+  // empty string rather than a missing key, so JS never has to guard for it.
+  [instance sendEventWithName:@"VeyraNMacMenuCommand"
+                         body:@{
+                           @"command" : command ?: @"",
+                           @"text" : text ?: @""
+                         }];
 }
 
 /**

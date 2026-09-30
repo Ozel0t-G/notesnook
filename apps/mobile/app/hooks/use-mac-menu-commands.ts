@@ -29,6 +29,7 @@ import {
   AppleSection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
+import { useGlobalSearchStore } from "../stores/use-global-search-store";
 import { useMacSidebarStore } from "../stores/use-mac-sidebar-store";
 import { eCreateTaskRequest } from "../utils/events";
 import { rootNavigatorRef } from "../utils/global-refs";
@@ -46,6 +47,15 @@ const DISMISSABLE_ROUTES = new Set(["Settings", "TaskDetail", "AddReminder"]);
  * section it switched to follows it ("section:library").
  */
 const SECTION_COMMAND_PREFIX = "section:";
+
+/**
+ * The window toolbar's search field, with the text it holds in the event body:
+ * "search" on every keystroke (and when an edit starts), "searchSubmit" on
+ * Return. Both write the Search section's query; typing also brings that
+ * section forward, the way typing in Mail's toolbar field does.
+ */
+const SEARCH_COMMAND = "search";
+const SEARCH_SUBMIT_COMMAND = "searchSubmit";
 
 /**
  * Mirrors pressing Escape on iOS: close the topmost sheet or modal. Sheets and
@@ -69,8 +79,9 @@ function closeTopmostSheetOrModal() {
  * Handles the commands sent by the Mac Catalyst window chrome through the
  * VeyraNMacMenu native module: the menu bar (File > New Note, Edit > Find in
  * Notes, the Note menu, the View sections and Toggle Sidebar, Settings…,
- * Escape) and the window toolbar (the Library/Tasks/Search segmented control
- * and New Note / New Task).
+ * Escape) and the window toolbar (the Library/Tasks/Search segmented control,
+ * New Note / New Task, and the search field - "search" while it is typed in,
+ * "searchSubmit" on Return, both with the field's text in the event body).
  * Inert on iPhone and iPad.
  *
  * Everything that acts on a note (Pin, Add to Favorites, Move to Trash) goes
@@ -108,8 +119,31 @@ export const useMacMenuCommands = () => {
     const emitter = new NativeEventEmitter(NativeModules.VeyraNMacMenu);
     const subscription = emitter.addListener(
       "VeyraNMacMenuCommand",
-      (body: { command?: string }) => {
+      (body: { command?: string; text?: string }) => {
         const command = body?.command;
+        if (command === SEARCH_COMMAND || command === SEARCH_SUBMIT_COMMAND) {
+          if (!useSettingStore.getState().settings.introCompleted) {
+            // There is no Search section before onboarding is done, so there is
+            // nothing for the toolbar field to drive yet.
+            return;
+          }
+          // The toolbar field *is* the Search screen's query while the window
+          // carries it, so the text goes straight into the shared state. An
+          // emptied field (Escape, the clear button) empties the query but
+          // keeps the section.
+          useGlobalSearchStore.getState().setQuery(body?.text ?? "");
+          if (command === SEARCH_SUBMIT_COMMAND) {
+            // Return: skip the screen's typing debounce.
+            useGlobalSearchStore.getState().submitQuery();
+          }
+          // Editing the field moves to the Search section, like pressing the
+          // segment would (selectAppleSection is the same handler the iPad tab
+          // bar uses).
+          if (useAppleNavigationStore.getState().section !== "search") {
+            selectAppleSection("search");
+          }
+          return;
+        }
         if (command?.startsWith(SECTION_COMMAND_PREFIX)) {
           if (!useSettingStore.getState().settings.introCompleted) {
             // There is no section to switch to before onboarding is done (the

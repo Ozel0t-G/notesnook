@@ -28,11 +28,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * Catalyst window (UITitlebarToolbarStyleUnified).
  *
  * It carries the three top-level sections as a segmented control (Library /
- * Tasks / Search) and one leading action button. Both report to JavaScript
- * through [VeyraNMacMenu sendCommand:]: the sections as "section:library",
- * "section:tasks" and "section:search", the button as "newNote" (the same
- * command the File menu's Cmd-N item sends) or as "newTask" in the Tasks
- * section, where it does what the Tasks screen's own "+ New Task" row does.
+ * Tasks / Search), a search field, and one trailing action button. All three
+ * report to JavaScript through [VeyraNMacMenu sendCommand:]: the sections as
+ * "section:library", "section:tasks" and "section:search", the button as
+ * "newNote" (the same command the File menu's Cmd-N item sends) or as
+ * "newTask" in the Tasks section, where it does what the Tasks screen's own
+ * "+ New Task" row does, and the search field as "search" (every keystroke,
+ * and the start of an edit) or "searchSubmit" (Return), both carrying the
+ * field's text (see +sendCommand:text:).
  *
  * Installing it also stops the macOS title bar material from floating over the
  * React content: Catalyst lays the window's content out below the toolbar, so
@@ -65,6 +68,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * no-op when no toolbar is alive, so it is safe from the module's queue.
  */
 + (void)setSelectedSection:(NSString *)section;
+
+/**
+ * Whether the toolbar this process built carries a search field, i.e. whether
+ * the Search screen's in-app title and field are redundant. The custom-view
+ * toolbar item it is built from (`NSUIViewToolbarItem`) only exists on Mac
+ * Catalyst 16 and newer, so on Mac Catalyst 15 the toolbar has no search field
+ * and the Search screen keeps its own (see VeyraNMacMenu's `toolbarSearch`
+ * constant).
+ *
+ * Safe to call from any thread before the toolbar is built (it simply answers
+ * NO until there is one) - JS asks for it while the module is initialising.
+ */
++ (BOOL)toolbarSearchAvailable;
 
 @end
 

@@ -21,15 +21,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
  * Forwards Mac Catalyst commands to JavaScript as the "VeyraNMacMenuCommand"
- * event. The sources are AppDelegate's UIMenuBuilder ("newNote", "findInNotes",
- * "pinNote", "toggleFavorite", "moveToTrash", "section:library",
- * "section:tasks", "section:search", "openSettings" and "escape") and the
- * window toolbar (MacMenu/VeyraNMacToolbar.{h,m}, "newNote", "newTask" and the
- * same three "section:" commands).
+ * event, with the body { command, text }. The sources are AppDelegate's
+ * UIMenuBuilder ("newNote", "findInNotes", "pinNote", "toggleFavorite",
+ * "moveToTrash", "section:library", "section:tasks", "section:search",
+ * "openSettings" and "escape") and the window toolbar
+ * (MacMenu/VeyraNMacToolbar.{h,m}: "newNote", "newTask", the same three
+ * "section:" commands, and the toolbar search field's "search"/"searchSubmit"
+ * commands, whose payload is the field's text).
  *
  * Also carries the reverse direction: `setSelectedSection`, which JS calls
  * when the app changes sections on its own so the toolbar's segmented control
- * follows.
+ * follows. Its `toolbarSearch` constant tells JS whether the window toolbar
+ * carries the search field (Mac Catalyst 16 and newer), in which case the
+ * Search screen hides its own field.
  *
  * Only fed on Mac Catalyst, but the module compiles (and stays inert) on iOS
  * as well, so the JS side can look it up unconditionally.
@@ -37,8 +41,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 @interface VeyraNMacMenu : RCTEventEmitter <RCTBridgeModule>
 
 /**
- * Sends a command to JS. No-op when the module has no live instance or JS is
- * not observing the event.
+ * Sends the command's payload with it. `text` may be nil for commands that
+ * carry none. No-op when the module has no live instance or JS is not
+ * observing the event.
+ */
++ (void)sendCommand:(NSString *)command text:(NSString *)text;
+
+/**
+ * Sends a command without a payload. No-op when the module has no live
+ * instance or JS is not observing the event.
  */
 + (void)sendCommand:(NSString *)command;
 

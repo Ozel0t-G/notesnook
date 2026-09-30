@@ -577,6 +577,7 @@
 				240525450DF9ABA0F332B52E /* [CP] Copy Pods Resources */,
 				65A7F34B255687E600699170 /* Embed App Extensions */,
 				48C834D962D612F18A0388B3 /* [CP] Embed Pods Frameworks */,
+				D7A10000000000000000A001 /* Prune App Group Info.plist keys (Mac Catalyst) */,
 			);
 			buildRules = (
 			);
@@ -1020,6 +1021,25 @@
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
+		};
+		D7A10000000000000000A001 /* Prune App Group Info.plist keys (Mac Catalyst) */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Prune App Group Info.plist keys (Mac Catalyst)";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\n\n# Mac Catalyst only: the Mac App ID is provisioned without an App Group, so the\n# group container is found but is not writable. MMKV and quick-sqlite choose\n# between the App Group and the app own sandbox container by the mere\n# *presence* of an Info.plist key (both compare against nil, so an empty\n# string would still be used as a group id and break them: MMKV ends up with a\n# nil rootDir, quick-sqlite returns NO from install):\n#   react-native-mmkv-storage/ios/MMKVStorage.mm:58,61  key appGroupId\n#   react-native-quick-sqlite/ios/QuickSQLite.mm:35,38  key ReactNativeQuickSQLite_AppGroup\n# Deleting the keys makes each library fall back to its default location inside\n# the app own sandbox container: MMKV <container>/Library/mmkv, SQLite\n# <container>/Documents. iPhone/iPad builds are left untouched and keep using\n# the App Group exactly as before.\n\nINFO_PLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\n\ncase \"${EFFECTIVE_PLATFORM_NAME}\" in\n-maccatalyst | macosx) ;;\n*)\n  # iPhone/iPad: keep the App Group exactly as it is.\n  exit 0\n  ;;\nesac\n\nif [ ! -f \"${INFO_PLIST}\" ]; then\n  echo \"warning: ${INFO_PLIST} not found; the App Group keys were left in place.\" >&2\n  exit 0\nfi\n\n# Both deletes are idempotent: on an incremental build Process Info.plist may\n# have regenerated the keys, and if it did not the keys are already gone.\n/usr/libexec/PlistBuddy -c \"Delete :appGroupId\" \"${INFO_PLIST}\" > /dev/null 2>&1 || true\n/usr/libexec/PlistBuddy -c \"Delete :ReactNativeQuickSQLite_AppGroup\" \"${INFO_PLIST}\" > /dev/null 2>&1 || true\n\n/usr/bin/plutil -lint \"${INFO_PLIST}\" > /dev/null\n\nremaining=\"\"\nfor key in appGroupId ReactNativeQuickSQLite_AppGroup; do\n  if /usr/libexec/PlistBuddy -c \"Print :${key}\" \"${INFO_PLIST}\" > /dev/null 2>&1; then\n    remaining=\"${remaining} ${key}\"\n  fi\ndone\nif [ -n \"${remaining}\" ]; then\n  echo \"error: could not remove${remaining} from ${INFO_PLIST} (is User Script Sandboxing enabled?).\" >&2\n  exit 1\nfi\n\necho \"note: Mac Catalyst: removed the App Group Info.plist keys; the app uses its own container.\"\n";
 		};
 		E81EC4451F76606456BCA61F /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;

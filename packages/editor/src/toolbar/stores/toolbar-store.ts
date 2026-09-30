@@ -35,6 +35,14 @@ interface ToolbarState {
   isMobile: boolean;
   openedPopups: Record<string, PopupRef | false | undefined>;
   setIsMobile: (isMobile: boolean) => void;
+  /**
+   * The embedding app runs in a Mac Catalyst window, where the toolbar is a
+   * desktop format bar at the top of the editor instead of the iOS keyboard
+   * toolbar: a single non-scrolling row of compact buttons whose trailing
+   * groups collapse into the "more" popup. See `Toolbar`.
+   */
+  macCatalyst: boolean;
+  setMacCatalyst: (macCatalyst: boolean) => void;
   toolbarLocation: ToolbarLocation;
   setToolbarLocation: (location: ToolbarLocation) => void;
   isPopupOpen: (popupId: string) => boolean;
@@ -54,6 +62,8 @@ export const useToolbarStore = create<ToolbarState>((set, get) => ({
   openedPopups: {},
   setDownloadOptions: (options) => set({ downloadOptions: options }),
   setIsMobile: (isMobile) => set({ isMobile }),
+  macCatalyst: false,
+  setMacCatalyst: (macCatalyst) => set({ macCatalyst }),
   toolbarLocation: "top",
   setToolbarLocation: (location) => set({ toolbarLocation: location }),
   closePopup: (id) =>
@@ -108,6 +118,10 @@ export function useToolbarLocation() {
 
 export function useIsMobile() {
   return useToolbarStore((store) => store.isMobile);
+}
+
+export function useIsMacCatalyst() {
+  return useToolbarStore((store) => store.macCatalyst);
 }
 
 export function usePopupManager(options: {

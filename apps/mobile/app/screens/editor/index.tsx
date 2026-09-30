@@ -66,6 +66,8 @@ import { useVaultStatus } from "../../hooks/use-vault-status";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { NativeEvents } from "@notesnook/editor-mobile/src/utils/native-events";
 import { isHandwritingSupported } from "../../services/handwriting/utils";
+import { useThemeEngineStore } from "@notesnook/theme";
+import { isMacCatalyst } from "../../utils/constants";
 
 const style: ViewStyle = {
   height: "100%",
@@ -112,6 +114,15 @@ const Editor = React.memo(
         noToolbar,
         noHeader
       });
+      /**
+       * The theme the window is actually showing (it follows the system
+       * appearance). It is handed to the WebView before the bundle runs, so
+       * the editor's first frame is painted with it instead of the theme the
+       * webview cached in a previous session - the `native:theme` message
+       * arrives only after the first paint and used to leave the editor's
+       * sticky header in the previous theme's background.
+       */
+      const theme = useThemeEngineStore((state) => state.theme);
       const [renderKey, setRenderKey] = useState(
         randId("editor-id") + editorId
       );
@@ -160,6 +171,14 @@ const Editor = React.memo(
               globalThis.noToolbar=${noToolbar};
               globalThis.noHeader=${noHeader};
               globalThis.handwriting=${isHandwritingSupported(Platform as any)};
+              // Mac gets its own editor chrome (a 52pt header in the window's
+              // title bar row, see MAC_TITLEBAR_HEIGHT). It is a property of the
+              // window rather than of the session, so it is set before the
+              // bundle runs: the first frame is laid out for Mac even when the
+              // settings message (which also carries the flag) is still cached
+              // from a previous session.
+              globalThis.isMacCatalyst=${isMacCatalyst()};
+              globalThis.DEFAULT_THEME = ${JSON.stringify(theme)};
               globalThis.LINGUI_LOCALE = "${i18n.locale}";
               globalThis.LINGUI_LOCALE_DATA = ${JSON.stringify({
                 [i18n.locale]: i18n.messages

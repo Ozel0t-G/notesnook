@@ -478,6 +478,12 @@ export const RootNavigation = () => {
   // window resizes without re-rendering the navigator on every height change.
   const windowWidth = useSettingStore((state) => state.dimensions.width);
   const editorVisible = useAppleNavigationStore((state) => state.editorVisible);
+  /**
+   * A fullscreen editor covers the whole window, so its pane starts at x 0 and
+   * there is no list column left to carry the title bar row (see
+   * `macInlineTitleBar`).
+   */
+  const fullscreen = useSettingStore((state) => state.fullscreen);
   const [rootRoute, setRootRoute] = React.useState<string>(
     introCompleted ? "FluidPanelsView" : "Welcome"
   );
@@ -607,19 +613,28 @@ export const RootNavigation = () => {
    * and Search take over the content below it.
    */
   const macSectionControl = isMacCatalyst() && introCompleted && !isAppLoading;
+  /**
+   * Mac's unified title bar. On the list + editor split the row belongs to the
+   * list column, which draws it itself (fluid-panels-view.tsx): that is what
+   * lets the editor pane next to it keep the full window height and paint its
+   * own 52 pt half of the same band. This copy is for the screens that cover
+   * the whole window - Tasks, Search and the pushed sheets - and for the
+   * fullscreen editor, where the list column has no width left to draw into.
+   * There the row stays in the flow above the navigator, exactly as before.
+   */
+  const macInlineTitleBar =
+    macSectionControl && (rootRoute !== "FluidPanelsView" || fullscreen);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.primary.background }}>
       {topTabBar && <AppleTabBar onSelect={selectAppleSection} />}
       {/*
-        Mac's unified title bar: one full-width row at the top of the window,
-        painted with the list column's background. The window has no title and
-        no toolbar, so its first row of pixels is y 0 - the row is sized by
-        height alone (no padding in between) to start there exactly, and the
-        content below it starts at y MAC_TITLEBAR_HEIGHT. Everything left of
-        the control stays empty, so the traffic lights keep their corner.
+        The in-flow title bar row: the window has no title and no toolbar, so
+        its first row of pixels is y 0. The row is sized by height alone (no
+        padding in between) and everything left of the control stays empty, so
+        the traffic lights keep their corner.
       */}
-      {macSectionControl ? (
+      {macInlineTitleBar ? (
         <View
           pointerEvents="box-none"
           style={{

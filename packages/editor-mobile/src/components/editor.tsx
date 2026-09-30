@@ -48,6 +48,7 @@ import StatusBar from "./statusbar";
 import Tags from "./tags";
 import TiptapEditorWrapper from "./tiptap";
 import Title from "./title";
+import { MAC_TOOLBAR_HEIGHT } from "../utils/mac";
 
 globalThis.toBlobURL = toBlobURL as typeof globalThis.toBlobURL;
 
@@ -476,7 +477,12 @@ const Tiptap = ({
           display: isFocused ? "flex" : "none",
           flex: 1,
           flexDirection: "column",
-          maxWidth: "100vw"
+          maxWidth: "100vw",
+          /**
+           * Mac pins the formatting toolbar to the top of this pane (see
+           * `tiptap.tsx`), so the pane has to be its containing block.
+           */
+          ...(settings.isMacCatalyst ? { position: "relative" } : {})
         }}
         spellCheck={!tab.session?.spellCheckDisabled}
         ref={editorRoot}
@@ -596,7 +602,13 @@ const Tiptap = ({
             display: "flex",
             flexDirection: "column",
             position: "relative",
-            paddingTop: "12px"
+            /**
+             * Mac's format bar is pinned over the top of this scroller, so the
+             * note keeps its usual 12 pt of breathing room *below* the bar.
+             */
+            paddingTop: settings.isMacCatalyst
+              ? `${12 + MAC_TOOLBAR_HEIGHT}px`
+              : "12px"
           }}
         >
           {settings.noHeader || tab.session?.locked ? null : (

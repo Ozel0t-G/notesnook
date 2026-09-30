@@ -40,6 +40,14 @@ export type Settings = {
   readonly: boolean;
   fullscreen: boolean;
   deviceMode: "mobile" | "smallTablet" | "tablet";
+  /**
+   * True in the Mac Catalyst app (see `apps/mobile/app/utils/constants.ts`).
+   * Mac gets a desktop editor chrome: a fixed 52 pt header that lines up with
+   * the window's traffic lights/section control, and the formatting toolbar as
+   * a single row at the top of the pane instead of the iOS keyboard toolbar.
+   * Absent (falsy) on iPhone and iPad, which keep the existing layout.
+   */
+  isMacCatalyst: boolean;
   premium: boolean;
   tools: ToolbarGroupDefinition[];
   noToolbar?: boolean;
@@ -86,6 +94,17 @@ declare global {
   var noToolbar: boolean;
   var handwriting: boolean;
   var noHeader: boolean;
+  /**
+   * True in the Mac Catalyst app. Injected by the WebView before this bundle
+   * runs (see `apps/mobile/app/screens/editor/index.tsx`), so the Mac editor
+   * chrome is laid out correctly on the very first frame.
+   */
+  var isMacCatalyst: boolean | undefined;
+  /**
+   * Theme the native app is showing right now, injected alongside
+   * `isMacCatalyst` (see `App.tsx`).
+   */
+  var DEFAULT_THEME: ThemeDefinition | undefined;
   function toBlobURL(dataurl: string, id?: string): string | undefined;
   var pendingResolvers: { [name: string]: (value: any) => void };
 

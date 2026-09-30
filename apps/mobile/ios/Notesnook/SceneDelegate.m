@@ -22,6 +22,14 @@
   // give the window a sensible minimum size.
   windowScene.titlebar.titleVisibility = UITitlebarTitleVisibilityHidden;
   windowScene.titlebar.toolbar = nil;
+  // The title bar also draws a lighter, translucent band across the top ~30pt
+  // of the React content and ends it with a hairline separator. The editor pane
+  // paints its own 52pt header in that row (see MAC_TITLEBAR_HEIGHT), so the
+  // band is removed: no separator and no title bar background, which lets the
+  // header be the window's first row.
+  if (@available(macCatalyst 14.0, *)) {
+    windowScene.titlebar.separatorStyle = UITitlebarSeparatorStyleNone;
+  }
   windowScene.sizeRestrictions.minimumSize = CGSizeMake(900, 600);
 #endif
 

@@ -34,6 +34,7 @@ import { useSettingStore } from "../../stores/use-setting-store";
 import { editorRef } from "../../utils/global-refs";
 import { editorController, textInput } from "./tiptap/utils";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../../utils/constants";
 
 export type PaneWidths = {
   mobile: {
@@ -103,7 +104,17 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
               ]?.editor,
           height: "100%",
           minHeight: "100%",
-          backgroundColor: visual.ios
+          /**
+           * The editor WebView is transparent and paints its own background, so
+           * whatever shows through it (a rounding gap, the 0.5px hairline under
+           * the header, the row the window's title bar used to cover) has to be
+           * the editor's own background. `editorSurround` - the iPad choice - is
+           * a different (lighter) surface and showed up as a strip above the
+           * header on Mac, whose 52pt header starts at the window's top edge.
+           */
+          backgroundColor: isMacCatalyst()
+            ? visual.contentSurface
+            : visual.ios
             ? visual.editorSurround
             : toolBarColors.primary.background,
           paddingLeft: isFullscreen

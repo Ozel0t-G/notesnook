@@ -35,11 +35,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * Mac Catalyst hides the window title and drops the toolbar, so React owns the
  * whole content area and its first row of pixels is the window's top edge. The
  * traffic lights keep floating there (x 8-70, y 8-24 in window points), so the
- * app draws a title bar row of its own: full width, 52 pt tall, with the
- * section control centered in it and the window content starting below it.
+ * app draws a title bar row of its own: 52 pt tall, with the section control in
+ * it at MAC_TITLEBAR_CONTROL_LEFT.
  *
- * The row is a sibling of the navigator with an explicit height - no padding
- * in between - so nothing in the panes (or an ancestor's insets) can shift it.
+ * On the list + editor split the row is painted over the list column only
+ * (macListWidth wide, see navigation-stack.tsx) and the editor pane starts at
+ * the window's top edge, painting its own 52 pt half of the same band
+ * (`MAC_EDITOR_HEADER_HEIGHT` in packages/editor-mobile/src/utils/mac.ts). On
+ * every other screen the row is a sibling of the navigator with an explicit
+ * height - no padding in between - so nothing in the panes (or an ancestor's
+ * insets) can shift it.
  */
 export const MAC_TITLEBAR_HEIGHT = 52;
 

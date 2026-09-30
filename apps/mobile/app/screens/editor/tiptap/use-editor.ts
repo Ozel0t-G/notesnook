@@ -60,6 +60,7 @@ import {
   eShowMergeDialog,
   eUpdateNoteInEditor
 } from "../../../utils/events";
+import { isMacCatalyst } from "../../../utils/constants";
 import { fluidTabsRef } from "../../../utils/global-refs";
 import { sleep } from "../../../utils/time";
 import { unlockVault } from "../../../utils/unlock-vault";
@@ -157,6 +158,22 @@ export const useEditor = (
   const state = useRef<Partial<EditorState>>(defaultState);
   const tags = useTagStore((state) => state.items);
   const insets = useGlobalSafeAreaInsets();
+  /**
+   * The insets handed to the editor WebView.
+   *
+   * On Mac Catalyst the window's title bar is hidden but still floats over the
+   * top ~30pt of the React content, which react-native-safe-area-context
+   * reports as `insets.top`. The editor pane owns that row itself with a fixed
+   * 52pt web header (`MAC_EDITOR_HEADER_HEIGHT` in
+   * @notesnook/editor-mobile/src/utils/mac.ts), so the WebView must not add the
+   * window's inset on top of it - the header would be pushed below the title
+   * bar row and the format bar below it would sit under the header. iPhone and
+   * iPad keep the inset.
+   */
+  const webviewInsets = useMemo(
+    () => (isMacCatalyst() ? { ...insets, top: 0 } : insets),
+    [insets]
+  );
   const isDefaultEditor = editorId === "";
   const saveCount = useRef<Record<string, number>>({});
   const lastContentChangeTime = useRef<Record<string, number>>({});
@@ -182,9 +199,11 @@ export const useEditor = (
 
   useEffect(() => {
     commands.setInsets(
-      isDefaultEditor ? insets : { top: 0, left: 0, right: 0, bottom: 0 }
+      isDefaultEditor
+        ? webviewInsets
+        : { top: 0, left: 0, right: 0, bottom: 0 }
     );
-  }, [commands, insets, isDefaultEditor]);
+  }, [commands, webviewInsets, isDefaultEditor]);
 
   useEffect(() => {
     postMessage(NativeEvents.theme, theme);
@@ -1126,7 +1145,9 @@ export const useEditor = (
       postMessage(NativeEvents.theme, theme);
     });
     commands.setInsets(
-      isDefaultEditor ? insets : { top: 0, left: 0, right: 0, bottom: 0 }
+      isDefaultEditor
+        ? webviewInsets
+        : { top: 0, left: 0, right: 0, bottom: 0 }
     );
     await commands.setSettings();
 
@@ -1179,7 +1200,7 @@ export const useEditor = (
   }, [
     commands,
     isDefaultEditor,
-    insets,
+    webviewInsets,
     postMessage,
     theme,
     overlay,

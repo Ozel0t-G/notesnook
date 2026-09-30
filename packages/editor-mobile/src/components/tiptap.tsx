@@ -21,6 +21,10 @@ import { useEffect } from "react";
 import { useTabContext } from "../hooks/useTabStore";
 import { EmotionEditorToolbarTheme } from "../theme-factory";
 import { Settings } from "../utils";
+import {
+  MAC_EDITOR_HEADER_HEIGHT,
+  MAC_TOOLBAR_HEIGHT
+} from "../utils/mac";
 export default function TiptapEditorWrapper(props: {
   options: Partial<TiptapOptions>;
   onEditorUpdate: (editor: Editor) => void;
@@ -29,6 +33,13 @@ export default function TiptapEditorWrapper(props: {
   const tab = useTabContext();
   const editor = useTiptap(props.options, [props.options]);
   globalThis.editors[tab.id] = editor;
+  const isMac = props.settings.isMacCatalyst;
+  /**
+   * Top of the Mac format bar: directly under the editor header, which fills
+   * the window's title bar row (`header.tsx`) - or nothing when the header is
+   * hidden, in which case the bar starts at the top of the pane itself.
+   */
+  const macToolbarTop = props.settings.noHeader ? 0 : MAC_EDITOR_HEADER_HEIGHT;
 
   useEffect(() => {
     props.onEditorUpdate(editor);
@@ -40,19 +51,37 @@ export default function TiptapEditorWrapper(props: {
         <EmotionEditorToolbarTheme>
           <Toolbar
             className="theme-scope-editorToolbar"
+            macCatalyst={isMac}
             sx={{
               display: props.settings.noToolbar ? "none" : "flex",
               overflowY: "hidden",
-              minHeight: "45px",
-              ...(globalThis.__PLATFORM__ === "ios" && {
-                position: "absolute",
-                bottom: 0,
-                left: 0,
-                right: 0
-              })
+              minHeight: isMac ? MAC_TOOLBAR_HEIGHT : "45px",
+              ...(isMac
+                ? {
+                    /**
+                     * The Mac format bar is pinned to the top of the editor,
+                     * right under the 52 pt header, the way Pages and Notes
+                     * put it. It does not scroll: the editor's content is
+                     * padded down by its height (see `editor.tsx`) and then
+                     * scrolls underneath it.
+                     */
+                    position: "absolute",
+                    top: macToolbarTop,
+                    left: 0,
+                    right: 0,
+                    zIndex: 998,
+                    height: MAC_TOOLBAR_HEIGHT,
+                    alignItems: "center"
+                  }
+                : globalThis.__PLATFORM__ === "ios" && {
+                    position: "absolute",
+                    bottom: 0,
+                    left: 0,
+                    right: 0
+                  })
             }}
             editor={editor}
-            location="bottom"
+            location={isMac ? "top" : "bottom"}
             tools={
               Array.isArray(props.settings.tools)
                 ? [...props.settings.tools]

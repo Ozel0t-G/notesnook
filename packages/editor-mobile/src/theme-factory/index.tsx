@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { PropsWithChildren, useMemo } from "react";
 import { Theme, ThemeFactory, useThemeColors } from "@notesnook/theme";
 import { ThemeProvider as EmotionThemeProvider } from "@emotion/react";
+import { MAC_TOOLBAR_GAP, MAC_TOOLBAR_ICON_SIZE } from "../utils/mac";
 
 const modifyToolbarTheme = (toolbarTheme: Theme) => {
   toolbarTheme.space = [0, 10, 12, 18];
@@ -33,11 +34,21 @@ const modifyToolbarTheme = (toolbarTheme: Theme) => {
   const fontScale = settingsController.previous?.fontScale
     ? settingsController.previous?.fontScale
     : 1;
+  /**
+   * Mac's format bar uses compact desktop metrics (see `Toolbar`): 16 pt
+   * icons and 4 pt gaps, which makes a 28 pt button. iPhone and iPad keep the
+   * larger finger-sized buttons.
+   */
+  const isMac = settingsController.previous?.isMacCatalyst;
   toolbarTheme.iconSizes = {
-    big: 20 * fontScale,
-    medium: 18 * fontScale,
-    small: 18 * fontScale
+    big: (isMac ? MAC_TOOLBAR_ICON_SIZE : 20) * fontScale,
+    medium: (isMac ? MAC_TOOLBAR_ICON_SIZE : 18) * fontScale,
+    small: (isMac ? MAC_TOOLBAR_ICON_SIZE : 18) * fontScale
   };
+  if (isMac) {
+    toolbarTheme.space = [0, MAC_TOOLBAR_GAP, 12, 18];
+    toolbarTheme.space.small = `${MAC_TOOLBAR_GAP}px`;
+  }
   toolbarTheme.fontSizes = {
     ...toolbarTheme.fontSizes,
     subBody: "0.8rem",

@@ -31,7 +31,7 @@ import { EditorEvents } from "@notesnook/editor-mobile/src/utils/editor-events";
 import { Attachment } from "@notesnook/editor";
 import downloadAttachment from "../../common/filesystem/download-attachment";
 import { NativeEvents } from "@notesnook/editor-mobile/src/utils/native-events";
-import { useThemeColors } from "@notesnook/theme";
+import { useThemeColors, useThemeEngineStore } from "@notesnook/theme";
 import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
 import { db } from "../../common/database";
 import { i18n } from "@lingui/core";
@@ -63,6 +63,9 @@ export function ReadonlyEditor(props: {
   editorId: string;
 }) {
   const { colors } = useThemeColors();
+  // Handed to the WebView before its bundle runs so the first frame uses the
+  // current appearance (see the main editor WebView for the details).
+  const theme = useThemeEngineStore((state) => state.theme);
   const editorRef = useRef<WebView>(null);
   const [loading, setLoading] = useState(true);
   const insets = useGlobalSafeAreaInsets();
@@ -146,6 +149,7 @@ export function ReadonlyEditor(props: {
         injectedJavaScript={`
         globalThis.__DEV__ = ${__DEV__}
         globalThis.readonlyEditor=true;
+        globalThis.DEFAULT_THEME = ${JSON.stringify(theme)};
         globalThis.LINGUI_LOCALE = "${i18n.locale}";
         globalThis.LINGUI_LOCALE_DATA = ${JSON.stringify({
           [i18n.locale]: i18n.messages

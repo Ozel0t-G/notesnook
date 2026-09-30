@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import "./polyfill";
 import { Global, css } from "@emotion/react";
 import {
+  getThemeScope,
   ScopedThemeProvider,
   themeToCSS,
   useThemeEngineStore
@@ -31,11 +32,24 @@ import Tiptap from "./components/editor";
 import { TabContext, useTabStore } from "./hooks/useTabStore";
 import { EmotionEditorTheme } from "./theme-factory";
 import { getTheme } from "./utils";
+import { injectCss, transform } from "./utils/css";
 import { ReadonlyEditorProvider } from "./components/readonly-editor";
 
-const currentTheme = getTheme();
+/**
+ * The theme the native app is showing right now, injected into the WebView
+ * before this bundle runs (see `apps/mobile/app/screens/editor/index.tsx`).
+ * It follows the system appearance, so it is newer than the copy the webview
+ * cached in a previous session. Without it the first frame would paint the
+ * previous session's theme: the CSS custom properties (`--nn_*`) the editor's
+ * sticky header reads are only injected by each tab's controller, i.e. in an
+ * effect *after* the first paint.
+ */
+const currentTheme = globalThis.DEFAULT_THEME || getTheme();
 if (currentTheme) {
   useThemeEngineStore.getState().setTheme(currentTheme);
+  // Paint the custom properties before React renders anything so the first
+  // frame - the editor header in particular - already uses the current theme.
+  injectCss(transform(getThemeScope("editor", currentTheme).colors));
 }
 
 class ExceptionHandler extends React.Component<{

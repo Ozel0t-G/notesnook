@@ -72,6 +72,7 @@ import {
   eUnlockWithBiometrics,
   eUnlockWithPassword
 } from "../../../utils/events";
+import { isMacCatalyst } from "../../../utils/constants";
 import { openLinkInBrowser } from "../../../utils/functions";
 import { fluidTabsRef } from "../../../utils/global-refs";
 import { sleep } from "../../../utils/time";
@@ -215,6 +216,10 @@ export const useEditorEvents = (
 
     editor.commands.setSettings({
       deviceMode: deviceMode || "mobile",
+      // Mac Catalyst gets its own editor chrome: a 52 pt web header in the
+      // window's title bar band and the formatting toolbar at the top of the
+      // pane. iPhone and iPad keep the keyboard-toolbar layout.
+      isMacCatalyst: isMacCatalyst(),
       fullscreen: fullscreen || false,
       premium: false,
       readonly: false,

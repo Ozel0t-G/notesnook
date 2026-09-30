@@ -33,10 +33,12 @@ import PlusIcon from "mdi-react/PlusIcon";
 import PencilLockIcon from "mdi-react/PencilLockIcon";
 import TableOfContentsIcon from "mdi-react/TableOfContentsIcon";
 import React, { useRef, useState } from "react";
+import { useThemeColors } from "@notesnook/theme";
 import { useSafeArea } from "../hooks/useSafeArea";
 import { useTabContext, useTabStore } from "../hooks/useTabStore";
 import { Settings } from "../utils";
 import { EditorEvents } from "../utils/editor-events";
+import { MAC_EDITOR_HEADER_HEIGHT } from "../utils/mac";
 import styles from "./styles.module.css";
 import { strings } from "@notesnook/intl";
 
@@ -141,6 +143,17 @@ function Header({
   const editor = editors[tab.id];
   const tableOfContents = editorControllers[tab.id]?.getTableOfContents?.();
   const insets = useSafeArea();
+  const { colors } = useThemeColors("editor");
+  /**
+   * Mac Catalyst: the editor pane owns the full window height and its header
+   * is the continuation of the window's title bar row. A fixed 52 pt puts the
+   * header icons in the same band as the traffic lights and the section
+   * control that the list column draws, and Mac windows have no home indicator
+   * to inset for.
+   */
+  const isMac = settings.isMacCatalyst;
+  const topInset = isMac ? 0 : insets.top;
+  const headerHeight = isMac ? MAC_EDITOR_HEADER_HEIGHT : 50;
   const openedTabsCount = useTabStore((state) => state.tabs.length);
   const [isOpen, setOpen] = useState(false);
   const btnRef = useRef(null);
@@ -156,12 +169,27 @@ function Header({
       style={{
         display: "flex",
         alignItems: "center",
-        height: noHeader ? `${insets.top}px` : `${50 + insets.top}px`,
-        backgroundColor: "var(--nn_primary_background)",
+        height: noHeader ? `${topInset}px` : `${headerHeight + topInset}px`,
+        /**
+         * The theme's colours are used directly instead of their
+         * `--nn_*` custom properties: a sticky element whose background came
+         * from a variable was left painted in the previous theme in WKWebView
+         * when the theme changed (a grey band across the top of a dark
+         * editor until the theme was toggled again). Reading them here makes
+         * the theme change a normal React re-render of this element.
+         */
+        backgroundColor: colors.primary.background,
         position: "sticky",
         width: "100vw",
         zIndex: 999,
-        borderBottom: "0.5px solid var(--nn_primary_border)"
+        borderBottom: `0.5px solid ${colors.primary.border}`,
+        /**
+         * Mac's format bar is positioned at exactly this row's height (see
+         * `tiptap.tsx`), so the header must not be shrunk by the pane's flex
+         * layout: it is a 52pt flex item next to a 100% tall scroller, which is
+         * a shrinking flex container.
+         */
+        ...(isMac ? { flexShrink: 0 } : {})
       }}
     >
       {noHeader ? null : (
@@ -171,8 +199,8 @@ function Header({
             width: "100%",
             justifyContent: "space-between",
             flexDirection: "row",
-            paddingTop: insets.top,
-            height: 50,
+            paddingTop: topInset,
+            height: headerHeight,
             alignItems: "center",
             paddingLeft: 12,
             paddingRight: 16

@@ -25,6 +25,9 @@ const settingsJson = localStorage.getItem("editorSettings");
 const initialState: Partial<Settings> = {
   fullscreen: false,
   deviceMode: "mobile",
+  // Set before the bundle runs (see `apps/mobile/app/screens/editor/index.tsx`);
+  // false on iPhone and iPad.
+  isMacCatalyst: globalThis.isMacCatalyst ?? false,
   premium: false,
   tools: JSON.parse(JSON.stringify(getDefaultPresets().default)),
   noToolbar: globalThis.noToolbar,
@@ -43,6 +46,11 @@ global.settingsController = {
   update: (settings) => {
     const nextSettings = {
       ...settings,
+      // Mac Catalyst's editor chrome (see `utils/mac.ts`) is a property of the
+      // window, so a settings object cached by an older session cannot turn it
+      // off. `??` keeps the value boolean (the global is absent in WebViews
+      // that do not inject it).
+      isMacCatalyst: globalThis.isMacCatalyst ?? settings.isMacCatalyst,
       noToolbar: globalThis.noToolbar || settings.noToolbar,
       noHeader: globalThis.noHeader || settings.noHeader,
       readonly: globalThis.readonly || settings.readonly
@@ -67,6 +75,10 @@ global.settingsController = {
 global.settingsController.previous.noHeader = globalThis.noHeader;
 global.settingsController.previous.noToolbar = globalThis.noToolbar;
 global.settingsController.previous.readonly = globalThis.readonly;
+// The cached settings of a session that predates the Mac editor chrome would
+// otherwise lay the first frame out for iPhone/iPad.
+global.settingsController.previous.isMacCatalyst =
+  globalThis.isMacCatalyst ?? global.settingsController.previous.isMacCatalyst;
 
 export const useSettings = (): Settings => {
   const [settings, setSettings] = useState({

@@ -63,13 +63,19 @@ import {
 } from "../utils/events";
 import { valueLimiter } from "../utils/functions";
 import { fluidTabsRef } from "../utils/global-refs";
-import { AppNavigationStack } from "./navigation-stack";
+import { AppNavigationStack, selectAppleSection } from "./navigation-stack";
 import type { PaneWidths } from "../screens/editor/wrapper";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { NavigationProps } from "../services/navigation";
 import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
 import { isMacCatalyst } from "../utils/constants";
-import { macEditorWidth, macListWidth } from "../utils/mac-layout";
+import {
+  MAC_TITLEBAR_HEIGHT,
+  macEditorWidth,
+  macListWidth,
+  macSectionControlWidth
+} from "../utils/mac-layout";
+import { MacSectionControl } from "../components/mac-section-control";
 
 /**
  * iPhone has no drawer: the bottom bar owns top-level navigation, so the
@@ -99,6 +105,9 @@ export const FluidPanelsView = React.memo(
       Orientation.getInitialOrientation()
     );
     const appLoading = useSettingStore((state) => state.isAppLoading);
+    const introCompleted = useSettingStore(
+      (state) => state.settings.introCompleted
+    );
     const [isLoading, setIsLoading] = useState(false);
     /**
      * The drawer is an iPad-only affordance now. On iPhone the bottom bar is
@@ -111,6 +120,17 @@ export const FluidPanelsView = React.memo(
      */
     const drawerEnabled =
       !isMacCatalyst() && (Platform.OS !== "ios" || deviceMode !== "mobile");
+
+    /**
+     * Mac draws the window's title bar row (section control + the traffic-light
+     * gutter) at the top of the list column: it is the same 52 pt band the
+     * editor pane's own header fills on the right, which is what makes the two
+     * look like one title bar and lets the editor start at y 0. The exact
+     * complement of `macInlineTitleBar` in navigation-stack.tsx, which draws the
+     * row itself for the full-window screens and for the fullscreen editor.
+     */
+    const macTitleBar =
+      isMacCatalyst() && introCompleted && !appLoading && !fullscreen;
 
     const toggleView = useCallback(
       (show: boolean) => {
@@ -421,12 +441,42 @@ export const FluidPanelsView = React.memo(
                     ref={overlayRef}
                   />
                 ) : null}
+                {/*
+                  Mac's half of the window's unified title bar. It lives *inside*
+                  the list column instead of spanning the window (see
+                  `macInlineTitleBar` in navigation-stack.tsx), which is what
+                  lets the editor pane to the right start at y 0 and paint its
+                  own 52 pt header in this same band. The column's rows are laid
+                  out below it, and the traffic lights keep their corner because
+                  the control starts at MAC_TITLEBAR_CONTROL_LEFT. In a
+                  fullscreen editor the column has no width and navigation-stack
+                  draws the row instead.
+                */}
+                {macTitleBar ? (
+                  // Title bar chrome, not list content: the control keeps the
+                  // window's (base) colors instead of this pane's list colors.
+                  <ScopedThemeProvider value="base">
+                    <View
+                      style={{
+                        height: MAC_TITLEBAR_HEIGHT,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        backgroundColor: visual.screenBackground
+                      }}
+                    >
+                      <MacSectionControl
+                        width={macSectionControlWidth(dimensions.width)}
+                        onSelect={selectAppleSection}
+                      />
+                    </View>
+                  </ScopedThemeProvider>
+                ) : null}
                 <View
                   style={{
                     flex: 1,
-                    // Mac's title bar row is a sibling above these panes (see
-                    // MAC_TITLEBAR_HEIGHT), so the column starts right under
-                    // it and adds no inset of its own.
+                    // Mac's title bar row is a sibling above this column (see
+                    // MAC_TITLEBAR_HEIGHT), so the list starts right under it
+                    // and adds no inset of its own.
                     paddingTop: isMacCatalyst() ? 0 : insets.top,
                     // On iOS the bottom bar is laid out below this pane and
                     // already covers the home indicator; padding here as well

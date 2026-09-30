@@ -25,7 +25,7 @@ import { IconNames, Icons } from "../icons.js";
 import { ToolButtonVariant } from "../types.js";
 import { Button } from "../../components/button.js";
 import { Icon } from "@notesnook/ui";
-import { useIsMobile } from "../stores/toolbar-store.js";
+import { useIsMacCatalyst, useIsMobile } from "../stores/toolbar-store.js";
 
 export type ToolButtonProps = ButtonProps & {
   icon: IconNames;
@@ -49,6 +49,7 @@ export const ToolButton = React.memo(
       ...buttonProps
     } = props;
     const isMobile = useIsMobile();
+    const isMacCatalyst = useIsMacCatalyst();
 
     return (
       <Button
@@ -61,9 +62,18 @@ export const ToolButton = React.memo(
           flexShrink: 0,
           p: variant === "small" ? "small" : 1,
           borderRadius: variant === "small" ? "small" : "default",
+          ...(isMacCatalyst
+            ? {
+                // The Mac format bar's buttons are 28 pt (a 16 pt icon plus
+                // 6 pt of padding) and are spaced by their group's 4 pt gap.
+                p: "6px",
+                mr: 0,
+                borderRadius: "5px"
+              }
+            : {}),
           m: 0,
           bg: toggled ? "background-selected" : "transparent",
-          mr: variant === "small" ? 0 : 1,
+          mr: variant === "small" ? 0 : isMacCatalyst ? 0 : 1,
           ":last-of-type": {
             mr: 0
           },

@@ -20,14 +20,16 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { useEffect } from "react";
 import { NativeEventEmitter, NativeModules, Platform } from "react-native";
 import { hideDialog } from "../components/dialog/functions";
+import { runMacNoteAction } from "../components/mac-note-commands";
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
-import { hideSheet } from "../services/event-manager";
+import { eSendEvent, hideSheet } from "../services/event-manager";
 import Navigation from "../services/navigation";
 import { useSettingStore } from "../stores/use-setting-store";
 import {
   AppleSection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
+import { eCreateTaskRequest } from "../utils/events";
 import { rootNavigatorRef } from "../utils/global-refs";
 import { selectAppleSection } from "../navigation/navigation-stack";
 
@@ -64,9 +66,15 @@ function closeTopmostSheetOrModal() {
 
 /**
  * Handles the commands sent by the Mac Catalyst window chrome through the
- * VeyraNMacMenu native module: the menu bar (Cmd+N, Cmd+, and Escape) and the
- * window toolbar (the Library/Tasks/Search segmented control and New Note).
+ * VeyraNMacMenu native module: the menu bar (File > New Note, Edit > Find in
+ * Notes, the Note menu, the View sections, Settings…, Escape) and the window
+ * toolbar (the Library/Tasks/Search segmented control and New Note / New Task).
  * Inert on iPhone and iPad.
+ *
+ * Everything that acts on a note (Pin, Add to Favorites, Move to Trash) goes
+ * through components/mac-note-commands.tsx, which runs the very actions the
+ * note list's context menu runs; with no note open it is a no-op, so those
+ * commands are ignored rather than applied to nothing.
  *
  * The reverse direction is handled here too: the toolbar only knows about the
  * sections it switched to itself, so every change to the section store is
@@ -120,6 +128,29 @@ export const useMacMenuCommands = () => {
             // Same action as the compose button in the Library nav bar.
             setOnFirstSaveUnassigned();
             openEditor();
+            break;
+          case "newTask":
+            // The Tasks screen reveals its own inline "+ New Task" row (the
+            // same thing tapping that row does). No-op while nothing listens,
+            // i.e. while the Tasks screen is not on screen.
+            eSendEvent(eCreateTaskRequest);
+            break;
+          case "findInNotes":
+            // Edit > Find in Notes (Cmd-Shift-F): the Search section.
+            selectAppleSection("search");
+            break;
+          case "pinNote":
+            // The open note's own Pin/Unpin action.
+            runMacNoteAction("pin");
+            break;
+          case "toggleFavorite":
+            runMacNoteAction("favorite");
+            break;
+          case "moveToTrash":
+            // The note list's delete: the item action both the row's context
+            // menu and its swipe action run (vault, published and undo
+            // handling included).
+            runMacNoteAction("trash");
             break;
           case "openSettings":
             // Same action as the Settings button in the Library nav bar.

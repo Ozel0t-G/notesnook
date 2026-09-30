@@ -28,8 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /// Toolbar item identifiers, all namespaced to the app's own items.
 static NSToolbarItemIdentifier const VeyraNSectionsIdentifier =
     @"veyran.sections";
-static NSToolbarItemIdentifier const VeyraNNewNoteIdentifier =
-    @"veyran.newNote";
+static NSToolbarItemIdentifier const VeyraNNewItemIdentifier = @"veyran.newItem";
 static NSToolbarIdentifier const VeyraNToolbarIdentifier = @"veyran.main";
 
 /**
@@ -45,6 +44,25 @@ static NSString *const VeyraNSectionSymbols[] = { @"books.vertical",
                                                   @"checklist",
                                                   @"magnifyingglass" };
 static const NSUInteger VeyraNSectionCount = 3;
+
+/**
+ * Leading action of each section: adding a note in Library and Search, adding a
+ * Task in Tasks (the same thing the Tasks screen's own "+ New Task" row does).
+ * The title, the SF Symbol and the command JavaScript receives all come from
+ * these two entries.
+ */
+static NSString *const VeyraNNewItemTitles[] = { @"New Note", @"New Task" };
+static NSString *const VeyraNNewItemSymbols[] = { @"square.and.pencil",
+                                                  @"plus" };
+static NSString *const VeyraNNewItemCommands[] = { @"newNote", @"newTask" };
+
+/**
+ * Index into the arrays above for `section`: the Task action in Tasks, the Note
+ * action in Library and Search alike.
+ */
+static NSUInteger VeyraNNewItemIndex(NSString *section) {
+  return [section isEqualToString:VeyraNSectionNames[1]] ? 1 : 0;
+}
 
 /**
  * Index of `section` in `VeyraNSectionNames`, or NSNotFound.
@@ -63,6 +81,11 @@ static NSUInteger VeyraNSectionIndex(NSString *section) {
   /// The newest segmented control. Recreated whenever the toolbar asks for the
   /// item again, so it is only a shortcut for the live one (see -sectionsItem).
   NSToolbarItemGroup *_sectionsItem;
+  /// The newest leading action item (see -newItem).
+  NSToolbarItem *_newItem;
+  /// Whether that item is the Tasks one (icon, title and command all follow
+  /// this; see -applyNewItemForSection:).
+  BOOL _newItemIsTask;
   /// The section the control should show, kept here so a selection that
   /// arrives before the toolbar is built is not lost.
   NSString *_selectedSection;
@@ -118,8 +141,9 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
     return;
   }
   _selectedSection = section;
-  // The control only exists once the toolbar has been laid out; until then
-  // _selectedSection is applied when the item is built.
+  // Both items only exist once the toolbar has been laid out; until then
+  // _selectedSection is applied when they are built.
+  [self applyNewItemForSection:section];
   NSToolbarItemGroup *group = [self sectionsItem];
   if (group == nil) {
     return;
@@ -141,18 +165,60 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
   return _sectionsItem;
 }
 
+/**
+ * The leading action item currently on the toolbar, or nil before the toolbar
+ * asked for it.
+ */
+- (NSToolbarItem *)newItem {
+  for (NSToolbarItem *item in _toolbar.items) {
+    if ([item.itemIdentifier isEqualToString:VeyraNNewItemIdentifier]) {
+      return item;
+    }
+  }
+  return _newItem;
+}
+
 - (void)selectSectionFromToolbar:(id)sender {
-  // The group reports the click for the whole segmented control, so the new
-  // selection is read off it rather than off the clicked segment.
-  NSInteger index = [sender isKindOfClass:[NSToolbarItemGroup class]]
-                        ? ((NSToolbarItemGroup *)sender).selectedIndex
-                        : [self sectionsItem].selectedIndex;
+  NSToolbarItemGroup *group = [self sectionsItem];
+  // Each segment is a toolbar item of its own and reports itself through its
+  // tag; when the segmented control reports for the whole group (the group is
+  // its view's target), the selection is read off the group instead.
+  NSInteger index = -1;
+  if ([sender isKindOfClass:[NSToolbarItemGroup class]]) {
+    index = ((NSToolbarItemGroup *)sender).selectedIndex;
+  } else if ([sender isKindOfClass:[NSToolbarItem class]]) {
+    index = ((NSToolbarItem *)sender).tag;
+  } else {
+    index = group.selectedIndex;
+  }
   if (index < 0 || (NSUInteger)index >= VeyraNSectionCount) {
     return;
   }
   NSString *section = VeyraNSectionNames[index];
   _selectedSection = section;
+  // The segments are items of the group, so the group does not move its own
+  // selection: the click has to.
+  [self selectIndex:(NSUInteger)index onGroup:group];
+  [self applyNewItemForSection:section];
   [VeyraNMacMenu sendCommand:[@"section:" stringByAppendingString:section]];
+}
+
+/**
+ * Marks `index` as the group's selected segment and clears the other ones.
+ * NSNotFound (a section before the first -setSelectedSection:) falls back to
+ * the first segment, which is the section the toolbar starts on.
+ */
+- (void)selectIndex:(NSUInteger)index onGroup:(NSToolbarItemGroup *)group {
+  if (group == nil) {
+    return;
+  }
+  if (index == NSNotFound || index >= VeyraNSectionCount) {
+    index = 0;
+  }
+  for (NSUInteger segment = 0; segment < VeyraNSectionCount; segment++) {
+    [group setSelected:segment == index atIndex:(NSInteger)segment];
+  }
+  group.selectedIndex = (NSInteger)index;
 }
 
 #pragma mark - Items
@@ -163,8 +229,8 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
   if ([itemIdentifier isEqualToString:VeyraNSectionsIdentifier]) {
     return [self makeSectionsItem];
   }
-  if ([itemIdentifier isEqualToString:VeyraNNewNoteIdentifier]) {
-    return [self makeNewNoteItem];
+  if ([itemIdentifier isEqualToString:VeyraNNewItemIdentifier]) {
+    return [self makeNewItem];
   }
   return nil;
 }
@@ -174,7 +240,7 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
   // Sections on the left, the compose action on the right.
   return @[
     VeyraNSectionsIdentifier, NSToolbarFlexibleSpaceItemIdentifier,
-    VeyraNNewNoteIdentifier
+    VeyraNNewItemIdentifier
   ];
 }
 
@@ -186,22 +252,31 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
 }
 
 /**
- * The three sections as one segmented control. `selectionMode` keeps exactly
- * one segment on, and the whole group reports through a single action that
- * reads the new `selectedIndex`.
+ * The three sections as one segmented control.
  *
- * Each segment is named after the section it switches to: the label, palette
- * label and tool tip of the segment's own toolbar item, plus the accessibility
- * description of its image. An SF Symbol carries a description of the picture
- * ("Books standing vertically on a shelf", "Checklist with checkmarks"), and
- * that - not the icon's purpose - is what VoiceOver reads out otherwise.
+ * Its segments are built here as individual NSToolbarItems rather than by the
+ * `groupWithItemIdentifier:images:selectionMode:labels:` convenience
+ * constructor: the constructor's segments are auto-created and take the name
+ * VoiceOver reads straight from the SF Symbol's own description ("Books
+ * standing vertically on a shelf", "Checklist with checkmarks"), which no
+ * label - not on the segment item, not on its image - replaces. A group whose
+ * subitems are items of its own exposes each segment's `label` instead, so
+ * VoiceOver says "Library", "Tasks" and "Search".
+ *
+ * Because the group does not own the click (each segment carries the group's
+ * action, and the group's action is what its segmented control forwards to),
+ * the selection is moved by -selectIndex:onGroup: on every click and on every
+ * section change; `selectionMode` and `selectedIndex` stay in sync with it.
  */
 - (NSToolbarItem *)makeSectionsItem {
-  NSMutableArray<UIImage *> *images =
-      [NSMutableArray arrayWithCapacity:VeyraNSectionCount];
-  NSMutableArray<NSString *> *labels =
+  NSMutableArray<NSToolbarItem *> *segments =
       [NSMutableArray arrayWithCapacity:VeyraNSectionCount];
   for (NSUInteger index = 0; index < VeyraNSectionCount; index++) {
+    NSToolbarItem *segment = [[NSToolbarItem alloc]
+        initWithItemIdentifier:[NSString
+                                   stringWithFormat:@"%@.%lu",
+                                                    VeyraNSectionsIdentifier,
+                                                    (unsigned long)index]];
     UIImage *image = [UIImage systemImageNamed:VeyraNSectionSymbols[index]];
     // A missing symbol would leave a blank (or crash on a nil array member):
     // circle is the oldest SF Symbol and always resolves.
@@ -209,57 +284,81 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
       image = [UIImage systemImageNamed:@"circle"];
     }
     image.accessibilityLabel = VeyraNSectionLabels[index];
-    [images addObject:image];
-    [labels addObject:VeyraNSectionLabels[index]];
-  }
-
-  NSToolbarItemGroup *group = [NSToolbarItemGroup
-      groupWithItemIdentifier:VeyraNSectionsIdentifier
-                       images:images
-                selectionMode:NSToolbarItemGroupSelectionModeSelectOne
-                       labels:labels
-                       target:self
-                       action:@selector(selectSectionFromToolbar:)];
-  group.label = @"Sections";
-  group.paletteLabel = @"Sections";
-  group.toolTip = @"Sections";
-  // The segments are toolbar items of their own (and the accessibility
-  // elements the group exposes): give each one its section's name.
-  NSArray<NSToolbarItem *> *segments = group.subitems;
-  for (NSUInteger index = 0;
-       index < VeyraNSectionCount && index < segments.count; index++) {
-    NSToolbarItem *segment = segments[index];
+    segment.image = image;
+    // What VoiceOver reads for the segment, and what a tooltip shows.
     segment.label = VeyraNSectionLabels[index];
     segment.paletteLabel = VeyraNSectionLabels[index];
     segment.toolTip = VeyraNSectionLabels[index];
+    // The section this segment switches to, read back off the sender.
+    segment.tag = (NSInteger)index;
+    segment.target = self;
+    segment.action = @selector(selectSectionFromToolbar:);
+    [segments addObject:segment];
   }
-  NSUInteger selected = VeyraNSectionIndex(_selectedSection);
-  group.selectedIndex = (NSInteger)(selected == NSNotFound ? 0 : selected);
+
+  NSToolbarItemGroup *group =
+      [[NSToolbarItemGroup alloc] initWithItemIdentifier:VeyraNSectionsIdentifier];
+  group.subitems = segments;
+  group.selectionMode = NSToolbarItemGroupSelectionModeSelectOne;
+  group.label = @"Sections";
+  group.paletteLabel = @"Sections";
+  group.toolTip = @"Sections";
+  // Clicks a segmented control reports for the group itself arrive here too.
+  group.target = self;
+  group.action = @selector(selectSectionFromToolbar:);
+  [self selectIndex:VeyraNSectionIndex(_selectedSection) onGroup:group];
 
   _sectionsItem = group;
   return group;
 }
 
-- (NSToolbarItem *)makeNewNoteItem {
+/**
+ * The leading action of the toolbar: "New Note" (square.and.pencil) in Library
+ * and Search, "New Task" (plus) in Tasks. The section decides its title,
+ * symbol and the command JavaScript receives; see -applyNewItemForSection:.
+ */
+- (NSToolbarItem *)makeNewItem {
   NSToolbarItem *item =
-      [[NSToolbarItem alloc] initWithItemIdentifier:VeyraNNewNoteIdentifier];
-  // Icon-only item: the label, palette label, tool tip and the image's
-  // accessibility description all have to name the action ("square.and.pencil"
-  // would otherwise be announced as the symbol's own description).
-  UIImage *image = [UIImage systemImageNamed:@"square.and.pencil"];
-  image.accessibilityLabel = @"New Note";
-  item.label = @"New Note";
-  item.paletteLabel = @"New Note";
-  item.toolTip = @"New Note";
-  item.image = image;
+      [[NSToolbarItem alloc] initWithItemIdentifier:VeyraNNewItemIdentifier];
   item.target = self;
-  item.action = @selector(newNoteFromToolbar:);
+  item.action = @selector(newItemFromToolbar:);
+  _newItem = item;
+  [self applyNewItemForSection:_selectedSection];
   return item;
 }
 
-- (void)newNoteFromToolbar:(id)sender {
-  // Same command as File > New Note (Cmd-N).
-  [VeyraNMacMenu sendCommand:@"newNote"];
+/**
+ * Points the leading item at `section`'s action. Called when the section
+ * changes (including every change JavaScript pushes through
+ * +setSelectedSection:) and while the item is built, so a section that arrives
+ * before the toolbar is laid out is not lost.
+ */
+- (void)applyNewItemForSection:(NSString *)section {
+  NSUInteger index = VeyraNNewItemIndex(section);
+  _newItemIsTask = index == 1;
+
+  NSToolbarItem *item = [self newItem];
+  if (item == nil) {
+    return;
+  }
+  // Icon-only item: the label, palette label, tool tip and the image's
+  // accessibility description all have to name the action ("square.and.pencil"
+  // and "plus" would otherwise be announced as the symbol's own description).
+  UIImage *image = [UIImage systemImageNamed:VeyraNNewItemSymbols[index]];
+  if (image == nil) {
+    image = [UIImage systemImageNamed:@"plus"];
+  }
+  image.accessibilityLabel = VeyraNNewItemTitles[index];
+  item.image = image;
+  item.label = VeyraNNewItemTitles[index];
+  item.paletteLabel = VeyraNNewItemTitles[index];
+  item.toolTip = VeyraNNewItemTitles[index];
+}
+
+- (void)newItemFromToolbar:(id)sender {
+  // "newNote" is the same command as File > New Note (Cmd-N); "newTask" is the
+  // Tasks screen's own "+ New Task" row.
+  [VeyraNMacMenu sendCommand:VeyraNNewItemCommands[_newItemIsTask ? 1 : 0]];
 }
 
 @end

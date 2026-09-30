@@ -177,3 +177,10 @@ export const eOnExitEditor = "622";
 export const eEditorReset = "623";
 export const eAfterSync = "624";
 export const eMenuItemUpdate = "625";
+
+/**
+ * Ask the Tasks screen to start a new Task: it reveals the same inline "+ New
+ * Task" row a tap on that row reveals (Mac's window toolbar sends it, see
+ * hooks/use-mac-menu-commands.ts).
+ */
+export const eCreateTaskRequest = "626";

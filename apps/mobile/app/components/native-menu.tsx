@@ -20,12 +20,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import React from "react";
 import {
   Platform,
+  Pressable,
   requireNativeComponent,
   StyleProp,
   StyleSheet,
   View,
   ViewStyle
 } from "react-native";
+import { MacHoverHighlight, useMacHover } from "./mac-hover";
 
 /**
  * One entry of a native UIMenu. An entry with `children` is a submenu;
@@ -118,8 +120,24 @@ export function MenuButton({
   testID?: string;
 }) {
   const menuItems = React.useMemo(() => compactMenu(items), [items]);
+  /**
+   * The native overlay that opens the menu covers the button's own content, so
+   * only this wrapper can see the pointer: on Mac it draws the hover highlight
+   * the rest of the app's bar buttons have. It handles no presses (the overlay
+   * does), hence the plain View-with-handlers Pressable.
+   */
+  const { hovered, hoverProps } = useMacHover();
   return (
-    <View style={style} testID={testID}>
+    /* `accessible={false}`: a Pressable is an accessibility element by default,
+       which would hide the native overlay's own button (and its
+       accessibilityTitle, see VeyraNMenu.swift) from VoiceOver. */
+    <Pressable
+      accessible={false}
+      style={style}
+      testID={testID}
+      {...hoverProps}
+    >
+      <MacHoverHighlight visible={hovered} />
       {children}
       {NativeMenuButton ? (
         <NativeMenuButton
@@ -132,7 +150,7 @@ export function MenuButton({
           style={StyleSheet.absoluteFill}
         />
       ) : null}
-    </View>
+    </Pressable>
   );
 }
 

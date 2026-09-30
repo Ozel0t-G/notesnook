@@ -21,10 +21,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
  * Forwards Mac Catalyst commands to JavaScript as the "VeyraNMacMenuCommand"
- * event. The sources are AppDelegate's UIMenuBuilder ("newNote",
- * "openSettings" and "escape") and the window toolbar
- * (MacMenu/VeyraNMacToolbar.{h,m}, "newNote" and "section:library",
- * "section:tasks", "section:search").
+ * event. The sources are AppDelegate's UIMenuBuilder ("newNote", "findInNotes",
+ * "pinNote", "toggleFavorite", "moveToTrash", "section:library",
+ * "section:tasks", "section:search", "openSettings" and "escape") and the
+ * window toolbar (MacMenu/VeyraNMacToolbar.{h,m}, "newNote", "newTask" and the
+ * same three "section:" commands).
  *
  * Also carries the reverse direction: `setSelectedSection`, which JS calls
  * when the app changes sections on its own so the toolbar's segmented control

@@ -29,6 +29,7 @@ import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { hexToRGBA, RGB_Linear_Shade } from "../../../utils/colors";
 import { AppFontSize } from "../../../utils/size";
 import NativeTooltip from "../../../utils/tooltip";
+import { MacHoverHighlight, useMacHover } from "../../mac-hover";
 import { Pressable, PressableProps } from "../pressable";
 export interface IconButtonProps extends PressableProps {
   name: string;
@@ -83,9 +84,13 @@ export const IconButton = ({
     }
   };
 
+  // Mac: header/list icon buttons draw a 6 pt hover highlight under the
+  // pointer (inert on iPhone/iPad, which never fire the hover events).
+  const { hovered, hoverProps } = useMacHover();
   return (
     <Pressable
       {...restProps}
+      {...hoverProps}
       fwdRef={fwdRef || localRef}
       onPress={onPress}
       hitSlop={{ top: top, left: left, right: right, bottom: bottom }}
@@ -100,6 +105,7 @@ export const IconButton = ({
         ...style
       }}
     >
+      <MacHoverHighlight visible={hovered && !restProps.disabled} />
       <Icon
         name={name}
         style={iconStyle as any}

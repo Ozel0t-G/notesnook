@@ -29,6 +29,7 @@ import {
 } from "react-native";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
+import { MacHoverHighlight, useMacHover } from "./mac-hover";
 import { MenuButton, NativeMenuItem } from "./native-menu";
 import { TaskSymbolView } from "./task-symbol-view";
 
@@ -148,8 +149,12 @@ export function IosBarButton({
 }) {
   const { colors } = useThemeColors();
   const tint = disabled ? colors.secondary.icon : colors.primary.accent;
+  // Mac: a bar button draws the 6 pt hover highlight the mouse pointer asks for
+  // (inert on iPhone/iPad, which never fire the hover events).
+  const { hovered, hoverProps } = useMacHover();
   return (
     <Pressable
+      {...hoverProps}
       onPress={onPress}
       disabled={disabled}
       testID={testID}
@@ -166,6 +171,7 @@ export function IosBarButton({
         opacity: pressed ? 0.4 : 1
       })}
     >
+      <MacHoverHighlight visible={hovered && !disabled} />
       {symbol ? (
         <TaskSymbolView name={symbol} size={iconSize} color={tint} />
       ) : (

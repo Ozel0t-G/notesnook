@@ -21,6 +21,7 @@ import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
+import { Item } from "@notesnook/core";
 import { TaskSymbolView } from "./task-symbol-view";
 import { IosBarButton, IosNavBar } from "./ios-nav-bar";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
@@ -31,6 +32,8 @@ import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
 import { AddNotebookSheet } from "./sheets/add-notebook";
 import useGlobalSafeAreaInsets from "../hooks/use-global-safe-area-insets";
 import { MAC_SOURCE_LIST_INSET, macToolbarInset } from "../utils/mac-layout";
+import { ItemContextMenu } from "./item-actions-menu";
+import { MacHoverHighlight, useMacHover } from "./mac-hover";
 
 type LibraryDestination = {
   key: string;
@@ -38,6 +41,13 @@ type LibraryDestination = {
   symbol: string;
   count?: number;
   onPress: () => void;
+  /**
+   * The notebook/tag a row stands for. Rows backed by an item get the same
+   * right-click menu as their equivalents in the note list (see
+   * components/item-actions-menu.tsx); the plain Library destinations (All
+   * Notes, Inbox, Favorites, ...) have no item to act on.
+   */
+  item?: Item;
 };
 
 /**
@@ -193,96 +203,11 @@ export function MacSidebar() {
     </View>
   );
 
-  /**
-   * One Library destination as a source-list row: 28 pt tall, no card
-   * background, no separators, a 6 pt rounded accent highlight when the route it
-   * opens is the one on screen, and counts right-aligned in the secondary color.
-   */
-  const row = (
-    item: LibraryDestination,
-    index: number,
-    marginTop = 0
-  ) => {
-    const selected = isCurrentDestination(item.key);
-    return (
-      <Pressable
-        key={item.key}
-        onPress={item.onPress}
-        accessibilityRole="button"
-        accessibilityState={{ selected }}
-        accessibilityLabel={
-          item.count === undefined
-            ? item.label
-            : `${item.label}, ${strings.notes(item.count)}`
-        }
-        style={{
-          height: MAC_ROW_HEIGHT,
-          flexDirection: "row",
-          alignItems: "center",
-          // 10 pt of margin around the column so the rounded highlight sits
-          // inside it and the icons clear the window edge.
-          marginHorizontal: MAC_SOURCE_LIST_INSET,
-          // Only the first row of a group keeps a gap: source lists have no
-          // card, so the group break is the only separation left.
-          marginTop: index === 0 && marginTop ? 8 : 0,
-          paddingHorizontal: MAC_ROW_PADDING,
-          borderRadius: MAC_ROW_RADIUS,
-          backgroundColor: "transparent",
-          overflow: "hidden"
-        }}
-      >
-        {/* Accent at low opacity: a layer of its own so custom themes (and
-            their non-hex colors) keep working. */}
-        {selected ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: MAC_ROW_RADIUS,
-              backgroundColor: colors.primary.accent,
-              opacity: 0.2
-            }}
-          />
-        ) : null}
-        <TaskSymbolView
-          name={item.symbol}
-          size={MAC_ROW_ICON_SIZE}
-          color={colors.primary.accent}
-        />
-        <Text
-          numberOfLines={1}
-          style={{
-            flex: 1,
-            color: visual.primaryText,
-            fontSize: MAC_ROW_FONT_SIZE,
-            marginLeft: 8
-          }}
-        >
-          {item.label}
-        </Text>
-        {item.count === undefined ? null : (
-          <Text
-            style={{
-              color: visual.secondaryText,
-              fontSize: MAC_ROW_FONT_SIZE,
-              marginLeft: 8
-            }}
-          >
-            {item.count}
-          </Text>
-        )}
-      </Pressable>
-    );
-  };
-
   const notebookRows: LibraryDestination[] = notebooks.map((item) => ({
     key: `notebook:${item.id}`,
     label: item.title,
     symbol: "book.closed",
+    item,
     onPress: () =>
       openMacList("Notebook", { id: item.id, canGoBack: true }, item.id)
   }));
@@ -290,6 +215,7 @@ export function MacSidebar() {
     key: `tag:${item.id}`,
     label: item.title,
     symbol: "number",
+    item,
     onPress: () =>
       openMacList(
         "TaggedNotes",
@@ -332,27 +258,171 @@ export function MacSidebar() {
             </Text>
           }
         />
-        {collections.map((item, index) => row(item, index))}
-        {destinations.map((item, index) =>
-          row(item, index, visual.sectionSpacing)
-        )}
+        {collections.map((item, index) => (
+          <MacRow
+            key={item.key}
+            item={item}
+            index={index}
+            selected={isCurrentDestination(item.key)}
+          />
+        ))}
+        {destinations.map((item, index) => (
+          <MacRow
+            key={item.key}
+            item={item}
+            index={index}
+            marginTop={visual.sectionSpacing}
+            selected={isCurrentDestination(item.key)}
+          />
+        ))}
         {sectionTitle(strings.routes.Notebooks(), presentNewNotebook)}
-        {notebookRows.length
-          ? notebookRows.map((item, index) => row(item, index))
-          : row(
-              {
-                key: "new-notebook",
-                label: strings.newNotebookRow(),
-                symbol: "folder.badge.plus",
-                onPress: presentNewNotebook
-              },
-              0
-            )}
+        {notebookRows.length ? (
+          notebookRows.map((item, index) => (
+            <MacRow
+              key={item.key}
+              item={item}
+              index={index}
+              selected={isCurrentDestination(item.key)}
+            />
+          ))
+        ) : (
+          <MacRow
+            item={{
+              key: "new-notebook",
+              label: strings.newNotebookRow(),
+              symbol: "folder.badge.plus",
+              onPress: presentNewNotebook
+            }}
+            index={0}
+            selected={false}
+          />
+        )}
         {/* An empty Tags section is hidden; tags appear once a note has one. */}
         {tagRows.length ? sectionTitle(strings.routes.Tags()) : null}
-        {tagRows.map((item, index) => row(item, index))}
+        {tagRows.map((item, index) => (
+          <MacRow
+            key={item.key}
+            item={item}
+            index={index}
+            selected={isCurrentDestination(item.key)}
+          />
+        ))}
       </ScrollView>
     </View>
+  );
+}
+
+/**
+ * One Library destination as a source-list row: 28 pt tall, no card
+ * background, no separators, a 6 pt rounded accent highlight when the route it
+ * opens is the one on screen, and counts right-aligned in the secondary color.
+ *
+ * The pointer draws the same 6 pt highlight in the theme's hover color while
+ * it is over the row; a selected row keeps its accent (the hover layer is only
+ * rendered when the row is not selected). Notebook and tag rows additionally
+ * carry their item's context menu, so right-click / control-click offers the
+ * same actions as the row has in the note list (see item-actions-menu.tsx).
+ */
+function MacRow({
+  item,
+  index,
+  marginTop = 0,
+  selected
+}: {
+  item: LibraryDestination;
+  index: number;
+  marginTop?: number;
+  selected: boolean;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const { hovered, hoverProps } = useMacHover();
+
+  const row = (
+    <Pressable
+      {...hoverProps}
+      onPress={item.onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={
+        item.count === undefined
+          ? item.label
+          : `${item.label}, ${strings.notes(item.count)}`
+      }
+      style={{
+        height: MAC_ROW_HEIGHT,
+        flexDirection: "row",
+        alignItems: "center",
+        // 10 pt of margin around the column so the rounded highlight sits
+        // inside it and the icons clear the window edge.
+        marginHorizontal: MAC_SOURCE_LIST_INSET,
+        // Only the first row of a group keeps a gap: source lists have no
+        // card, so the group break is the only separation left.
+        marginTop: index === 0 && marginTop ? 8 : 0,
+        paddingHorizontal: MAC_ROW_PADDING,
+        borderRadius: MAC_ROW_RADIUS,
+        backgroundColor: "transparent",
+        overflow: "hidden"
+      }}
+    >
+      {/* Pointer feedback under the selection highlight, so a hovered row can
+          never hide the row that is actually on screen. */}
+      <MacHoverHighlight
+        visible={hovered && !selected}
+        radius={MAC_ROW_RADIUS}
+      />
+      {/* Accent at low opacity: a layer of its own so custom themes (and
+          their non-hex colors) keep working. */}
+      {selected ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: MAC_ROW_RADIUS,
+            backgroundColor: colors.primary.accent,
+            opacity: 0.2
+          }}
+        />
+      ) : null}
+      <TaskSymbolView
+        name={item.symbol}
+        size={MAC_ROW_ICON_SIZE}
+        color={colors.primary.accent}
+      />
+      <Text
+        numberOfLines={1}
+        style={{
+          flex: 1,
+          color: visual.primaryText,
+          fontSize: MAC_ROW_FONT_SIZE,
+          marginLeft: 8
+        }}
+      >
+        {item.label}
+      </Text>
+      {item.count === undefined ? null : (
+        <Text
+          style={{
+            color: visual.secondaryText,
+            fontSize: MAC_ROW_FONT_SIZE,
+            marginLeft: 8
+          }}
+        >
+          {item.count}
+        </Text>
+      )}
+    </Pressable>
+  );
+
+  if (!item.item) return row;
+  return (
+    <ItemContextMenu item={item.item} previewCornerRadius={MAC_ROW_RADIUS}>
+      {row}
+    </ItemContextMenu>
   );
 }
 

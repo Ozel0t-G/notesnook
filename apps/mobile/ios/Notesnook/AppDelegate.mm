@@ -130,8 +130,34 @@ static BOOL VeyraNIsTextInputFirstResponder(UIView *view) {
   return NO;
 }
 
+/**
+ * The identifier of the app's own "Note" menu (see -buildMenuWithBuilder:).
+ * Namespaced like the toolbar's identifiers.
+ */
+static UIMenuIdentifier const VeyraNNoteMenuIdentifier = @"veyran.note";
+
 - (void)veyranNewNote:(id)sender {
   [VeyraNMacMenu sendCommand:@"newNote"];
+}
+
+- (void)veyranFindInNotes:(id)sender {
+  [VeyraNMacMenu sendCommand:@"findInNotes"];
+}
+
+- (void)veyranSelectLibrary:(id)sender {
+  [VeyraNMacMenu sendCommand:@"section:library"];
+}
+
+- (void)veyranSelectTasks:(id)sender {
+  [VeyraNMacMenu sendCommand:@"section:tasks"];
+}
+
+- (void)veyranSelectSearch:(id)sender {
+  [VeyraNMacMenu sendCommand:@"section:search"];
+}
+
+- (void)veyranMoveToTrash:(id)sender {
+  [VeyraNMacMenu sendCommand:@"moveToTrash"];
 }
 
 - (void)veyranOpenSettings:(id)sender {
@@ -147,14 +173,42 @@ static BOOL VeyraNIsTextInputFirstResponder(UIView *view) {
 }
 
 /**
+ * Builds one titled menu command: `input` is the key equivalent that runs it
+ * (the empty string for an item that has none) and `action` is the AppDelegate
+ * selector that forwards the command to JavaScript.
+ */
+static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
+                                       UIKeyModifierFlags modifiers,
+                                       SEL action) {
+  return [UIKeyCommand commandWithTitle:title
+                                  image:nil
+                                 action:action
+                                  input:input
+                          modifierFlags:modifiers
+                           propertyList:nil];
+}
+
+/**
  * Rebuilds the Catalyst main menu:
  *  - removes the document commands that UISupportsDocumentBrowser /
  *    LSSupportsOpeningDocumentsInPlace add (Open..., Open Recent, Duplicate,
  *    Rename..., Move..., Export As...) since the app is a note library, not a
  *    document browser;
  *  - adds File > New Note (Cmd-N);
+ *  - adds Edit > Find in Notes (Cmd-Shift-F), which switches the app to its
+ *    Search section;
+ *  - adds a "Note" menu (UIMenuEdit's sibling, right after Edit) with the
+ *    actions on the note open in the editor: Pin Note, Add to Favorites and
+ *    Move to Trash (Cmd-Delete). They stay enabled - JavaScript finds nothing
+ *    to act on when no note is open and ignores them (see
+ *    app/hooks/use-mac-menu-commands.ts);
+ *  - adds View > Library / Tasks / Search (Cmd-1/2/3), the same three
+ *    sections as the window toolbar's segmented control;
  *  - adds application menu > Settings... (Cmd-,) right after About;
  *  - adds a hidden Escape command that closes the topmost sheet/modal.
+ *
+ * Everything but the document-command removals ends up in JavaScript, which
+ * owns the app state.
  */
 - (void)buildMenuWithBuilder:(id<UIMenuBuilder>)builder {
   [super buildMenuWithBuilder:builder];
@@ -190,6 +244,77 @@ static BOOL VeyraNIsTextInputFirstResponder(UIView *view) {
                                         options:UIMenuOptionsDisplayInline
                                        children:@[ newNote ]];
     [builder insertChildMenu:newNoteMenu atStartOfMenuForIdentifier:UIMenuFile];
+  }
+
+  // Edit > Find in Notes (Cmd-Shift-F): the app's Search section, the Mac
+  // counterpart of "Find in Note".
+  if ([builder menuForIdentifier:UIMenuEdit]) {
+    UIKeyCommand *findInNotes =
+        VeyraNMenuCommand(@"Find in Notes", @"f",
+                          UIKeyModifierCommand | UIKeyModifierShift,
+                          @selector(veyranFindInNotes:));
+    UIMenu *findInNotesMenu = [UIMenu menuWithTitle:@""
+                                              image:nil
+                                         identifier:nil
+                                            options:UIMenuOptionsDisplayInline
+                                           children:@[ findInNotes ]];
+    [builder insertChildMenu:findInNotesMenu
+       atEndOfMenuForIdentifier:UIMenuEdit];
+  }
+
+  // The "Note" menu, right after Edit: the actions on the note open in the
+  // editor. Pin/Favorite are UIActions because they have no key equivalent of
+  // their own; Move to Trash is Cmd-Delete, like in Notes.
+  UIAction *pinNote =
+      [UIAction actionWithTitle:@"Pin Note"
+                          image:nil
+                     identifier:nil
+                        handler:^(__kindof UIAction *_Nonnull action) {
+                          [VeyraNMacMenu sendCommand:@"pinNote"];
+                        }];
+  UIAction *toggleFavorite =
+      [UIAction actionWithTitle:@"Add to Favorites"
+                          image:nil
+                     identifier:nil
+                        handler:^(__kindof UIAction *_Nonnull action) {
+                          [VeyraNMacMenu sendCommand:@"toggleFavorite"];
+                        }];
+  UIKeyCommand *moveToTrash =
+      VeyraNMenuCommand(@"Move to Trash", UIKeyInputDelete,
+                        UIKeyModifierCommand, @selector(veyranMoveToTrash:));
+  UIMenu *noteMenu = [UIMenu menuWithTitle:@"Note"
+                                     image:nil
+                                identifier:VeyraNNoteMenuIdentifier
+                                   options:0
+                                  children:@[
+                                    pinNote, toggleFavorite, moveToTrash
+                                  ]];
+  if ([builder menuForIdentifier:UIMenuEdit]) {
+    [builder insertSiblingMenu:noteMenu afterMenuForIdentifier:UIMenuEdit];
+  }
+
+  // View > Library / Tasks / Search (Cmd-1/2/3): the sections the window
+  // toolbar's segmented control switches between.
+  UIKeyCommand *librarySection =
+      VeyraNMenuCommand(@"Library", @"1", UIKeyModifierCommand,
+                        @selector(veyranSelectLibrary:));
+  UIKeyCommand *tasksSection =
+      VeyraNMenuCommand(@"Tasks", @"2", UIKeyModifierCommand,
+                        @selector(veyranSelectTasks:));
+  UIKeyCommand *searchSection =
+      VeyraNMenuCommand(@"Search", @"3", UIKeyModifierCommand,
+                        @selector(veyranSelectSearch:));
+  UIMenu *sectionsMenu = [UIMenu menuWithTitle:@""
+                                         image:nil
+                                    identifier:nil
+                                       options:UIMenuOptionsDisplayInline
+                                      children:@[
+                                        librarySection, tasksSection,
+                                        searchSection
+                                      ]];
+  if ([builder menuForIdentifier:UIMenuView]) {
+    [builder insertChildMenu:sectionsMenu
+     atStartOfMenuForIdentifier:UIMenuView];
   }
 
   // Application menu > Settings..., right after About.

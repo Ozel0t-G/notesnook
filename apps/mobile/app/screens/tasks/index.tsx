@@ -38,10 +38,12 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  StyleProp,
   Text,
   TextInput,
   useWindowDimensions,
-  View
+  View,
+  ViewStyle
 } from "react-native";
 import {
   SafeAreaView,
@@ -58,12 +60,14 @@ import {
 import { ContextMenu, NativeMenuItem } from "../../components/native-menu";
 import { SwipeRow } from "../../components/swipe-row";
 import { TaskSymbolView } from "../../components/task-symbol-view";
+import { MacHoverHighlight, useMacHover } from "../../components/mac-hover";
 import { SymbolTile } from "../../components/ui/symbol-tile";
-import { ToastManager } from "../../services/event-manager";
+import { eSubscribeEvent, ToastManager } from "../../services/event-manager";
 import Navigation, { NavigationProps } from "../../services/navigation";
 import { TaskNotifications } from "../../services/task-notifications";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../utils/constants";
+import { eCreateTaskRequest } from "../../utils/events";
 import { SystemColorName, systemColor } from "../../utils/ios-system-colors";
 import { FavoritesEditor } from "./favorites-editor";
 import {
@@ -279,7 +283,8 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const refreshGeneration = React.useRef(0);
   const listRef = React.useRef<FlatList<TaskListRow>>(null);
   const dismissedFocusRequest = React.useRef<string | undefined>(undefined);
-  const focusTaskId = route.params?.focusTaskId ?? route.params?.highlightTaskId;
+  const focusTaskId =
+    route.params?.focusTaskId ?? route.params?.highlightTaskId;
   const focusRequestId = route.params?.focusRequestId ?? focusTaskId;
   const focusSession = React.useRef<TaskFocusSession | undefined>(undefined);
   if (!focusSession.current) {
@@ -467,6 +472,36 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     setHighlightedTaskId(undefined);
     focusSession.current?.cancel();
   };
+
+  // The request handler runs long after this render: read the latest `select`
+  // (it only touches setters and the focus session ref, so any instance does).
+  const selectRef = React.useRef(select);
+  selectRef.current = select;
+
+  /**
+   * Mac's window toolbar sends "newTask" for its "New Task" button
+   * (hooks/use-mac-menu-commands.ts): the same thing tapping the inline
+   * "+ New Task" row does. The request is a counter rather than a flag so two
+   * presses in a row both land.
+   */
+  const [composeRequest, setComposeRequest] = React.useState(0);
+  React.useEffect(() => {
+    const subscription = eSubscribeEvent(eCreateTaskRequest, () => {
+      const current = selectionRef.current;
+      // The Completed smart list is the one selection without a "+ New Task"
+      // row (see `canAdd`); Today is where an added Task belongs, so land
+      // there before revealing the row.
+      if (current.kind === "smart" && current.id === "completed") {
+        selectRef.current({ kind: "smart", id: "today" });
+      }
+      setComposeRequest((request) => request + 1);
+      // The inline row grows the list's footer: bring it into view.
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+    });
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   const selectedSmart =
     selection.kind === "smart"
@@ -747,9 +782,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   }).current;
   const onViewableItemsChanged = React.useCallback<
     NonNullable<
-      React.ComponentProps<
-        typeof FlatList<TaskListRow>
-      >["onViewableItemsChanged"]
+      React.ComponentProps<typeof FlatList<TaskListRow>>["onViewableItemsChanged"]
     >
   >((info) => {
     focusSession.current?.watchViewable(
@@ -837,7 +870,12 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
               alignItems: "flex-start"
             }}
           >
-            <SymbolTile symbol={symbol} color={color} shape="circle" size={32} />
+            <SymbolTile
+              symbol={symbol}
+              color={color}
+              shape="circle"
+              size={32}
+            />
             <Text
               numberOfLines={1}
               style={{
@@ -925,9 +963,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                 : `task-favorite-list-${taskList!.id}`,
               label: smart ? smart.label() : taskList!.name,
               count,
-              symbol: smart
-                ? smart.symbol
-                : taskListSymbol(taskList!.symbol),
+              symbol: smart ? smart.symbol : taskListSymbol(taskList!.symbol),
               color: smart
                 ? systemColor(smart.color, isDark)
                 : taskListColor(taskList!.color),
@@ -1167,11 +1203,9 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
               void updateTask(item, { listId: id.slice(5) });
           }}
         >
-          <View
+          <TaskRowSurface
             testID={`task-row-${item.id}`}
-            accessibilityState={{
-              selected: item.id === highlightedTaskId
-            }}
+            highlighted={item.id === highlightedTaskId}
             style={{
               flexDirection: "row",
               alignItems: "flex-start",
@@ -1243,9 +1277,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                 }}
               >
                 {marks ? (
-                  <Text style={{ color: colors.primary.accent }}>
-                    {marks}{" "}
-                  </Text>
+                  <Text style={{ color: colors.primary.accent }}>{marks} </Text>
                 ) : null}
                 {item.title}
               </Text>
@@ -1326,7 +1358,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                 </Text>
               )}
             </Pressable>
-          </View>
+          </TaskRowSurface>
         </ContextMenu>
       </SwipeRow>
     );
@@ -1352,7 +1384,9 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       <IosLargeTitle
         title={selectedLabel}
         color={accent}
-        subtitle={selection.kind === "list" && !loading ? listSummary : undefined}
+        subtitle={
+          selection.kind === "list" && !loading ? listSummary : undefined
+        }
       />
       {loading ? (
         <ActivityIndicator
@@ -1402,6 +1436,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                 key={`${selection.kind}:${selection.id}`}
                 onCreate={createTask}
                 onDetails={(draft) => openDetail(undefined, draft)}
+                composeRequest={composeRequest}
               />
             ) : null
           }
@@ -1534,17 +1569,60 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
 }
 
 /**
+ * One Task row's hover shell. It handles no presses of its own - the circle and
+ * the title inside the row do - so it exists only to draw the Mac pointer
+ * highlight (`onHoverIn`/`onHoverOut`; inert on iPhone/iPad). A highlighted
+ * (focused) row keeps its selection background: the hover layer is only
+ * rendered while the row is not the highlighted one.
+ */
+function TaskRowSurface({
+  testID,
+  highlighted,
+  style,
+  children
+}: {
+  testID: string;
+  highlighted: boolean;
+  style: StyleProp<ViewStyle>;
+  children: React.ReactNode;
+}) {
+  const { hovered, hoverProps } = useMacHover();
+  return (
+    /* `accessible={false}`: a Pressable is an accessibility element by default
+       and would hide the row's own checkbox and title (the two Pressables
+       inside) from VoiceOver. The row is a container, as it was before it
+       gained the pointer handlers. */
+    <Pressable
+      {...hoverProps}
+      accessible={false}
+      testID={testID}
+      accessibilityState={{ selected: highlighted }}
+      style={style}
+    >
+      <MacHoverHighlight visible={hovered && !highlighted} />
+      {children}
+    </Pressable>
+  );
+}
+
+/**
  * The Reminders-style "+ New Task" row at the end of a list. Tapping it adds an
  * inline row; Return saves and starts the next one, ⓘ opens the details.
  * Dates and times typed in the title ("tomorrow 9am", "morgen 9 Uhr") are
  * recognised; the chips set them with one tap.
+ *
+ * `composeRequest` is a counter the Mac toolbar bumps (see eCreateTaskRequest in
+ * utils/events.js): a change reveals the same inline row a tap would, without
+ * the caller having to reach into this component.
  */
 function NewTaskRow({
   onCreate,
-  onDetails
+  onDetails,
+  composeRequest = 0
 }: {
   onCreate: (draft: string) => Promise<boolean>;
   onDetails: (draft: { title?: string; date?: string; time?: string }) => void;
+  composeRequest?: number;
 }) {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
@@ -1554,6 +1632,11 @@ function NewTaskRow({
   const input = React.useRef<TextInput>(null);
   const accent = colors.primary.accent;
   const parsed = draft.trim() ? parseQuickAdd(draft) : undefined;
+
+  React.useEffect(() => {
+    // 0 is the initial value (nothing was requested yet).
+    if (composeRequest > 0) setComposing(true);
+  }, [composeRequest]);
 
   const submit = async () => {
     if (busy) return;

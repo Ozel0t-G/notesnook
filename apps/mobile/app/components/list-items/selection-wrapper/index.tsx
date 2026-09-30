@@ -38,6 +38,7 @@ import { deleteItems } from "../../../utils/functions";
 import { systemColor } from "../../../utils/ios-system-colors";
 import { MAC_SOURCE_LIST_INSET } from "../../../utils/mac-layout";
 import { ItemContextMenu } from "../../item-actions-menu";
+import { MacHoverHighlight, useMacHover } from "../../mac-hover";
 import { SwipeRow } from "../../swipe-row";
 
 /** Mac note list row metrics (same shape as the Library source list). */
@@ -120,6 +121,9 @@ const SelectionWrapper = ({
    */
   const macRow = isMacCatalyst() && isNoteItem && !isSheet;
   const macHighlighted = macRow && (showEditing || isSelected);
+  // Pointer feedback for the Mac rows only: iPhone/iPad rows have no pointer
+  // to hover with, and a sheet's rows keep the iOS look.
+  const { hovered, hoverProps } = useMacHover(macRow);
 
   const onLongPress = () => {
     if (isSheet) return;
@@ -131,6 +135,7 @@ const SelectionWrapper = ({
 
   const row = (
     <Pressable
+      {...hoverProps}
       customColor={
         macRow
           ? "transparent"
@@ -210,6 +215,12 @@ const SelectionWrapper = ({
         ...(isSheet || visual.ios ? {} : visual.subtleShadow)
       }}
     >
+      {/* Pointer feedback under the selection highlight, so hovering a row
+          never hides the note that is actually open. */}
+      <MacHoverHighlight
+        visible={hovered && !macHighlighted}
+        radius={MAC_NOTE_ROW_RADIUS}
+      />
       {macHighlighted ? (
         /* Accent at low opacity: a layer of its own so custom themes (and
            their non-hex colors) keep working. */

@@ -25,6 +25,7 @@ import "react-native-gesture-handler";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import DialogProvider from "./components/dialog-provider";
+import { MacNoteCommands } from "./components/mac-note-commands";
 import { withErrorBoundry } from "./components/exception-handler";
 import GlobalSafeAreaProvider from "./components/globalsafearea";
 import { Toast } from "./components/toast";
@@ -101,6 +102,10 @@ const App = (props: { configureMode: "note-preview" }) => {
         ) : (
           <RootNavigation />
         )}
+        {/* The Mac menu bar's "Note" menu (Pin / Add to Favorites / Move to
+            Trash) runs the open note's item actions; this publishes them.
+            Renders nothing, and only mounts a host while a note is open. */}
+        <MacNoteCommands />
         <ScopedThemeProvider value="dialog">
           <Toast />
         </ScopedThemeProvider>

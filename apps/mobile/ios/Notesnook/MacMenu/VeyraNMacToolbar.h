@@ -28,10 +28,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * Catalyst window (UITitlebarToolbarStyleUnified).
  *
  * It carries the three top-level sections as a segmented control (Library /
- * Tasks / Search) and a New Note button. Both report to JavaScript through
- * [VeyraNMacMenu sendCommand:]: the sections as "section:library",
- * "section:tasks" and "section:search", the button as "newNote" - the same
- * command the File menu's Cmd-N item sends.
+ * Tasks / Search) and one leading action button. Both report to JavaScript
+ * through [VeyraNMacMenu sendCommand:]: the sections as "section:library",
+ * "section:tasks" and "section:search", the button as "newNote" (the same
+ * command the File menu's Cmd-N item sends) or as "newTask" in the Tasks
+ * section, where it does what the Tasks screen's own "+ New Task" row does.
  *
  * Installing it also stops the macOS title bar material from floating over the
  * React content: Catalyst lays the window's content out below the toolbar, so
@@ -55,8 +56,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
  * Moves the segmented control's selection to `section` ("library", "tasks" or
- * "search") without going through the toolbar, for section changes the window
- * chrome did not make itself (the section store, deep links, the tab bar).
+ * "search") - and the leading action button to that section's action ("New
+ * Note" / "New Task") - without going through the toolbar, for section changes
+ * the window chrome did not make itself (the section store, deep links, the tab
+ * bar).
  *
  * Called from JavaScript through VeyraNMacMenu. Hops to the main queue and is a
  * no-op when no toolbar is alive, so it is safe from the module's queue.

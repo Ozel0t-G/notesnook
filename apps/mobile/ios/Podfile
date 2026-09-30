@@ -63,9 +63,8 @@ post_install do |installer|
   react_native_post_install(
       installer,
       react_native_path = rn_path,
-      # Set `mac_catalyst_enabled` to `true` in order to apply patches
-      # necessary for Mac Catalyst builds
-      :mac_catalyst_enabled => false,
+      # Apply patches necessary for Mac Catalyst builds
+      :mac_catalyst_enabled => true,
       # :ccache_enabled => true
     )
 
@@ -75,10 +74,14 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
   target.build_configurations.each do |config|
       config.build_settings['APPLICATION_EXTENSION_API_ONLY'] = 'NO'
+      config.build_settings['SUPPORTS_MACCATALYST'] = 'YES'
       # LOCAL TOOLCHAIN WORKAROUND (Xcode 27 beta): SDK rejects deployment targets < 15.0
       if config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f < 15.0
         config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       end
+      # Mac Catalyst: Apple Silicon only; match the app's iOS 15.6 so Xcode maps it to macOS 12.5 (the SDK has no Catalyst 15.1 mapping).
+      config.build_settings['EXCLUDED_ARCHS[sdk=macosx*]'] = 'x86_64'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET[sdk=macosx*]'] = '15.6'
     end
   end
   installer.pods_project.targets.each do |target|

@@ -25,11 +25,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /// binaries. It therefore must stay free of React Native and other app-only
 /// imports. See `docs/urgent-reminders-architecture.md`.
 
+// AlarmKit/ActivityKit import on Mac Catalyst but their types are unavailable there.
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
+#endif
+
 import AppIntents
 import Foundation
 
-#if canImport(AlarmKit)
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
 import AlarmKit
 
 /// Metadata for an Urgent Task alarm. Deliberately empty: Task titles and every
@@ -139,6 +143,7 @@ struct TaskAlarmRepeatIntent: LiveActivityIntent {
 }
 #endif
 
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 /// Attributes for the "Task is overdue and still incomplete" Live Activity.
 ///
 /// Only the opaque Task id is static. The Task title lives in `ContentState` so
@@ -160,3 +165,4 @@ struct OverdueTaskActivityAttributes: ActivityAttributes {
   /// to correlate the activity with its Task. Never user content.
   var taskId: String
 }
+#endif

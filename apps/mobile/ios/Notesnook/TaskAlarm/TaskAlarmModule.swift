@@ -2,11 +2,12 @@ import CryptoKit
 import Foundation
 import React
 
-#if canImport(ActivityKit)
+// AlarmKit/ActivityKit import on Mac Catalyst but their types are unavailable there.
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
 
-#if canImport(AlarmKit)
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
 import AlarmKit
 import SwiftUI
 #endif
@@ -39,7 +40,7 @@ final class TaskAlarmModule: NSObject {
   @objc(status:rejecter:)
   func status(_ resolve: @escaping RCTPromiseResolveBlock,
               rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(AlarmKit)
+    #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 26.0, *) {
       resolve(Self.statusName(AlarmManager.shared.authorizationState))
       return
@@ -51,7 +52,7 @@ final class TaskAlarmModule: NSObject {
   @objc(requestAuthorization:rejecter:)
   func requestAuthorization(_ resolve: @escaping RCTPromiseResolveBlock,
                             rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(AlarmKit)
+    #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 26.0, *) {
       Task {
         do {
@@ -80,7 +81,7 @@ final class TaskAlarmModule: NSObject {
                      alarms rawAlarms: [NSDictionary],
                      resolver resolve: @escaping RCTPromiseResolveBlock,
                      rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(AlarmKit)
+    #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 26.0, *) {
       Task {
         do {
@@ -112,7 +113,7 @@ final class TaskAlarmModule: NSObject {
                     alarmKeys rawKeys: [String],
                     resolver resolve: @escaping RCTPromiseResolveBlock,
                     rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(AlarmKit)
+    #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 26.0, *) {
       do {
         let manager = AlarmManager.shared
@@ -152,7 +153,7 @@ final class TaskAlarmModule: NSObject {
                              alarmKeys rawKeys: [String],
                              resolver resolve: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(AlarmKit)
+    #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 26.0, *) {
       do {
         let manager = AlarmManager.shared
@@ -225,7 +226,7 @@ final class TaskAlarmModule: NSObject {
   @objc(cancelAll:rejecter:)
   func cancelAll(_ resolve: @escaping RCTPromiseResolveBlock,
                  rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(AlarmKit)
+    #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 26.0, *) {
       do {
         let manager = AlarmManager.shared
@@ -282,7 +283,7 @@ final class TaskAlarmModule: NSObject {
                              privacyHidden: Bool,
                              resolver resolve: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(ActivityKit)
+    #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 16.2, *) {
       Task {
         do {
@@ -306,7 +307,7 @@ final class TaskAlarmModule: NSObject {
   @objc(endOverdueActivities:rejecter:)
   func endOverdueActivities(_ resolve: @escaping RCTPromiseResolveBlock,
                             rejecter reject: @escaping RCTPromiseRejectBlock) {
-    #if canImport(ActivityKit)
+    #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     if #available(iOS 16.2, *) {
       Task {
         do {
@@ -322,7 +323,7 @@ final class TaskAlarmModule: NSObject {
   }
 }
 
-#if canImport(AlarmKit)
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
 @available(iOS 26.0, *)
 private struct WantedAlarm {
   let id: UUID
@@ -697,7 +698,7 @@ private extension TaskAlarmModule {
 }
 #endif
 
-#if canImport(ActivityKit)
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 /// The ongoing "Task is overdue and still incomplete" surface.
 ///
 /// This is the only public mechanism that keeps an overdue Task visible on the

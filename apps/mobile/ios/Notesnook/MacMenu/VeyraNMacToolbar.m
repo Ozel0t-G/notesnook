@@ -256,12 +256,19 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
  *
  * Its segments are built here as individual NSToolbarItems rather than by the
  * `groupWithItemIdentifier:images:selectionMode:labels:` convenience
- * constructor: the constructor's segments are auto-created and take the name
- * VoiceOver reads straight from the SF Symbol's own description ("Books
- * standing vertically on a shelf", "Checklist with checkmarks"), which no
- * label - not on the segment item, not on its image - replaces. A group whose
- * subitems are items of its own exposes each segment's `label` instead, so
- * VoiceOver says "Library", "Tasks" and "Search".
+ * constructor, so each segment keeps its own tag along with the group's action
+ * (see -selectSectionFromToolbar:).
+ *
+ * Known limitation: VoiceOver still names each segment after the SF Symbol's
+ * own description ("Books standing vertically on a shelf", "Checklist with
+ * checkmarks"). AppKit takes an image segment's name from its NSImage's
+ * `accessibilityDescription` (see -[NSSegmentedControl
+ * segmentedControlWithImages:...]), but on Catalyst NSToolbarItem.image is a
+ * UIImage: UIKit exposes no accessibility description for an image and no
+ * public UIImage/NSImage conversion, so neither `image.accessibilityLabel` nor
+ * the segment's label/paletteLabel/toolTip replaces it. The three labels are
+ * still set (they are the item's label in text mode and its tooltip); nothing
+ * more can be done from public API today.
  *
  * Because the group does not own the click (each segment carries the group's
  * action, and the group's action is what its segmented control forwards to),
@@ -285,7 +292,9 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
     }
     image.accessibilityLabel = VeyraNSectionLabels[index];
     segment.image = image;
-    // What VoiceOver reads for the segment, and what a tooltip shows.
+    // The item's label in text mode and its tooltip. (Neither these nor the
+    // image's accessibility label rename the segment for VoiceOver; see the
+    // note on -makeSectionsItem.)
     segment.label = VeyraNSectionLabels[index];
     segment.paletteLabel = VeyraNSectionLabels[index];
     segment.toolTip = VeyraNSectionLabels[index];

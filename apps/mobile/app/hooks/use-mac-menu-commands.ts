@@ -29,6 +29,7 @@ import {
   AppleSection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
+import { useMacSidebarStore } from "../stores/use-mac-sidebar-store";
 import { eCreateTaskRequest } from "../utils/events";
 import { rootNavigatorRef } from "../utils/global-refs";
 import { selectAppleSection } from "../navigation/navigation-stack";
@@ -67,8 +68,9 @@ function closeTopmostSheetOrModal() {
 /**
  * Handles the commands sent by the Mac Catalyst window chrome through the
  * VeyraNMacMenu native module: the menu bar (File > New Note, Edit > Find in
- * Notes, the Note menu, the View sections, Settings…, Escape) and the window
- * toolbar (the Library/Tasks/Search segmented control and New Note / New Task).
+ * Notes, the Note menu, the View sections and Toggle Sidebar, Settings…,
+ * Escape) and the window toolbar (the Library/Tasks/Search segmented control
+ * and New Note / New Task).
  * Inert on iPhone and iPad.
  *
  * Everything that acts on a note (Pin, Add to Favorites, Move to Trash) goes
@@ -155,6 +157,11 @@ export const useMacMenuCommands = () => {
           case "openSettings":
             // Same action as the Settings button in the Library nav bar.
             Navigation.push("Settings", {});
+            break;
+          case "toggleSidebar":
+            // View > Toggle Sidebar (Ctrl-Cmd-S): the Library source list pane
+            // collapses to zero width (see navigation/fluid-panels-view.tsx).
+            useMacSidebarStore.getState().toggle();
             break;
           case "escape":
             closeTopmostSheetOrModal();

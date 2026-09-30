@@ -69,6 +69,7 @@ import type { PaneWidths } from "../screens/editor/wrapper";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { NavigationProps } from "../services/navigation";
 import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
+import { useMacSidebarStore } from "../stores/use-mac-sidebar-store";
 import { isMacCatalyst } from "../utils/constants";
 import {
   macEditorWidth,
@@ -106,6 +107,11 @@ export const FluidPanelsView = React.memo(
      */
     const section = useAppleNavigationStore((state) => state.section);
     const macSection = isMacCatalyst() && section !== "library";
+    /**
+     * View > Toggle Sidebar's flag. Mac only: it decides whether the source
+     * list pane is part of the layout (see PANE_WIDTHS below).
+     */
+    const macSidebarVisible = useMacSidebarStore((state) => state.visible);
     const insets = useGlobalSafeAreaInsets();
     const animatedOpacity = useSharedValue(0);
     const animatedTranslateY = useSharedValue(-9999);
@@ -310,18 +316,22 @@ export const FluidPanelsView = React.memo(
          * The three widths add up to the window width (see mac-layout.ts), which
          * is what keeps the editor's right edge - the "Add tag" button and the
          * header menu - inside the window; the clamped iPad widths overflowed it.
+         *
+         * With the sidebar hidden (View > Toggle Sidebar) its width is 0 and
+         * the editor grows by that much, so the note list keeps its width and
+         * the two remaining panes fill the window.
          */
         const macPanes = {
-          sidebar: macSidebarWidth(dimensions.width),
+          sidebar: macSidebarWidth(dimensions.width, macSidebarVisible),
           list: macListWidth(dimensions.width),
-          editor: macEditorWidth(dimensions.width)
+          editor: macEditorWidth(dimensions.width, macSidebarVisible)
         };
         panes.smallTablet = macPanes;
         panes.tablet = macPanes;
       }
 
       return panes;
-    }, [dimensions.width]);
+    }, [dimensions.width, macSidebarVisible]);
 
     const onScroll = React.useCallback(
       (scrollOffset: number) => {
@@ -391,12 +401,22 @@ export const FluidPanelsView = React.memo(
                 key="1"
                 style={{
                   height: "100%",
+                  // 0 both when the editor takes the whole window and when the
+                  // sidebar is hidden (View > Toggle Sidebar, which makes
+                  // PANE_WIDTHS.sidebar 0 as well).
                   width: fullscreen
                     ? 0
                     : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]
                         ?.sidebar,
-                  borderRightWidth: 0.5,
-                  borderRightColor: visual.separator
+                  // The hairline separates the source list from the note list,
+                  // so it goes away with the sidebar.
+                  borderRightWidth: macSidebarVisible ? 0.5 : 0,
+                  borderRightColor: visual.separator,
+                  // A zero-width pane keeps its children mounted (the source
+                  // list keeps its scroll position), and iOS Views do not clip
+                  // by default: without this the list would still paint over
+                  // the note list.
+                  overflow: macSidebarVisible ? "visible" : "hidden"
                 }}
               >
                 <ScopedThemeProvider value="list">

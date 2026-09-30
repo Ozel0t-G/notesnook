@@ -164,12 +164,35 @@ static UIMenuIdentifier const VeyraNNoteMenuIdentifier = @"veyran.note";
   [VeyraNMacMenu sendCommand:@"openSettings"];
 }
 
+- (void)veyranToggleSidebar:(id)sender {
+  [VeyraNMacMenu sendCommand:@"toggleSidebar"];
+}
+
 - (void)veyranEscape:(id)sender {
   // Never steal Escape from a real UIKit text field.
   if ([self veyran_isTextInputFirstResponder]) {
     return;
   }
   [VeyraNMacMenu sendCommand:@"escape"];
+}
+
+/**
+ * Escape closes the topmost sheet/modal. This is a key command on the app
+ * delegate - the last responder in the chain - rather than a menu item:
+ * Catalyst lists a UIKeyCommand even when it is marked
+ * UIMenuElementAttributesHidden, which left a "Close Sheet" item in the View
+ * menu, and a menu is the only place the command can hide from the menu bar.
+ * The text-input guard lives in -veyranEscape:.
+ */
+- (NSArray<UIKeyCommand *> *)keyCommands {
+  UIKeyCommand *escape =
+      [UIKeyCommand keyCommandWithInput:UIKeyInputEscape
+                          modifierFlags:0
+                                 action:@selector(veyranEscape:)];
+  if (@available(iOS 15.0, *)) {
+    escape.wantsPriorityOverSystemBehavior = YES;
+  }
+  return @[ escape ];
 }
 
 /**
@@ -203,9 +226,14 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
  *    to act on when no note is open and ignores them (see
  *    app/hooks/use-mac-menu-commands.ts);
  *  - adds View > Library / Tasks / Search (Cmd-1/2/3), the same three
- *    sections as the window toolbar's segmented control;
- *  - adds application menu > Settings... (Cmd-,) right after About;
- *  - adds a hidden Escape command that closes the topmost sheet/modal.
+ *    sections as the window toolbar's segmented control, and View > Toggle
+ *    Sidebar (Ctrl-Cmd-S);
+ *  - removes Catalyst's own View > Show Sidebar (UIMenuSidebar), which drives
+ *    a UISplitViewController the app does not have and therefore did nothing;
+ *  - adds application menu > Settings... (Cmd-,) right after About.
+ *
+ * Escape is not a menu item at all (see -keyCommands): a hidden UIKeyCommand is
+ * still listed by Catalyst, so it is handled as a key command on this delegate.
  *
  * Everything but the document-command removals ends up in JavaScript, which
  * owns the app state.
@@ -333,22 +361,27 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
     [builder replaceMenuForIdentifier:UIMenuPreferences withMenu:settingsMenu];
   }
 
-  // Hidden Escape key command, flattened into the View menu. Not listed in the
-  // menu bar but still routed to -veyranEscape:.
-  UIKeyCommand *escape = [UIKeyCommand keyCommandWithInput:UIKeyInputEscape
-                                             modifierFlags:0
-                                                    action:@selector(veyranEscape:)];
-  escape.attributes = UIMenuElementAttributesHidden;
+  // Catalyst ships its own View > Show Sidebar item, which drives a
+  // UISplitViewController. This app has none, so the item did nothing: remove
+  // it and put the app's own Toggle Sidebar (Ctrl-Cmd-S) in its place.
   if (@available(iOS 15.0, *)) {
-    escape.wantsPriorityOverSystemBehavior = YES;
+    if ([builder menuForIdentifier:UIMenuSidebar]) {
+      [builder removeMenuForIdentifier:UIMenuSidebar];
+    }
   }
   if ([builder menuForIdentifier:UIMenuView]) {
-    UIMenu *closeSheetMenu = [UIMenu menuWithTitle:@"Close Sheet"
-                                             image:nil
-                                        identifier:nil
-                                           options:UIMenuOptionsDisplayInline
-                                          children:@[ escape ]];
-    [builder insertChildMenu:closeSheetMenu atEndOfMenuForIdentifier:UIMenuView];
+    UIKeyCommand *toggleSidebar =
+        VeyraNMenuCommand(@"Toggle Sidebar", @"s",
+                          UIKeyModifierControl | UIKeyModifierCommand,
+                          @selector(veyranToggleSidebar:));
+    UIMenu *toggleSidebarMenu =
+        [UIMenu menuWithTitle:@""
+                        image:nil
+                   identifier:nil
+                      options:UIMenuOptionsDisplayInline
+                     children:@[ toggleSidebar ]];
+    [builder insertChildMenu:toggleSidebarMenu
+       atEndOfMenuForIdentifier:UIMenuView];
   }
 }
 #endif

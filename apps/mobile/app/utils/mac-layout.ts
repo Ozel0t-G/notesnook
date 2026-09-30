@@ -93,9 +93,13 @@ export const MAC_SOURCE_LIST_INSET = 10;
  * The Mac window cannot be narrower than 900 pt (SceneDelegate's
  * `sizeRestrictions.minimumSize`), and at 900 pt the two clamps bottom out at
  * 200 + 260, so the editor always keeps at least 440 pt.
+ *
+ * `visible` is View > Toggle Sidebar's flag: a hidden sidebar is 0 pt wide and
+ * the space goes to the note list and the editor (see `macEditorWidth`), so the
+ * source list is gone from the layout rather than collapsed to a sliver.
  */
-export const macSidebarWidth = (windowWidth: number) =>
-  clampWidth(windowWidth * 0.2, 200, 260);
+export const macSidebarWidth = (windowWidth: number, visible = true) =>
+  visible ? clampWidth(windowWidth * 0.2, 200, 260) : 0;
 
 /**
  * Width of the note list column (the middle one): 300 pt at a typical window
@@ -123,7 +127,11 @@ export const macSectionControlWidth = (windowWidth: number) =>
  * it from the window (instead of a fraction of it) is what keeps the editor's
  * right edge - the "Add tag" button and the header menu - inside the window:
  * `macSidebarWidth + macListWidth + macEditorWidth` is exactly the window
- * width, so the editor pane fills the rest of the window after every resize.
+ * width, so the editor pane fills the rest of the window after every resize
+ * (including when the sidebar is hidden, where the whole sidebar width is what
+ * the editor grows by).
  */
-export const macEditorWidth = (windowWidth: number) =>
-  windowWidth - macSidebarWidth(windowWidth) - macListWidth(windowWidth);
+export const macEditorWidth = (windowWidth: number, sidebarVisible = true) =>
+  windowWidth -
+  macSidebarWidth(windowWidth, sidebarVisible) -
+  macListWidth(windowWidth);

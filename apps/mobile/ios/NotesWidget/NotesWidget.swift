@@ -85,96 +85,194 @@ private struct QuickNoteWidget: Widget {
 
 // MARK: - Reminder snapshot
 
+/// Presentation of the four smart lists the Tasks screen shows. The colors and
+/// symbols mirror `SMART_LISTS` in `app/screens/tasks/index.tsx`.
+private extension TaskWidgetList {
+  var title: LocalizedStringKey {
+    switch self {
+    case .today: return "Today"
+    case .scheduled: return "Scheduled"
+    case .all: return "All"
+    case .flagged: return "Flagged"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .today, .scheduled: return "calendar"
+    case .all: return "tray.fill"
+    case .flagged: return "flag.fill"
+    }
+  }
+
+  /// UIKit system colors so tinted and accented rendering modes keep working;
+  /// `all` uses the app's dark gray tile color instead of a semantic gray.
+  var color: Color {
+    switch self {
+    case .today: return Color(UIColor.systemBlue)
+    case .scheduled: return Color(UIColor.systemRed)
+    case .all: return Color(hex: "#636366")
+    case .flagged: return Color(UIColor.systemOrange)
+    }
+  }
+}
+
 private struct ReminderEntry: TimelineEntry {
   let date: Date
   let state: ReminderSnapshotState
+  let list: TaskWidgetList
 }
 
-private struct ReminderProvider: TimelineProvider {
-  func placeholder(in context: Context) -> ReminderEntry {
-    Self.previewEntry
-  }
-
-  func getSnapshot(
-    in context: Context,
-    completion: @escaping (ReminderEntry) -> Void
-  ) {
-    let now = Date()
-    let state = context.isPreview
-      ? Self.previewEntry.state
-      : ReminderSnapshotStore.load(at: now)
-    completion(ReminderEntry(date: now, state: state))
-  }
-
-  func getTimeline(
-    in context: Context,
-    completion: @escaping (Timeline<ReminderEntry>) -> Void
-  ) {
-    let now = Date()
-    let state = ReminderSnapshotStore.load(at: now)
-    let nextMidnight = TaskWidgetClock.nextMidnight(after: now)
-    var entries = [ReminderEntry(date: now, state: state)]
-    if case let .available(snapshot) = state {
-      var dueChanges = Set(snapshot.tasks.compactMap(TaskWidgetClock.dueInstant).map {
+/// The entries every provider shares: the snapshot now, one entry per due time
+/// and per completion retry, midnight, and a periodic 15 minute refresh.
+private func reminderTimeline(
+  state: ReminderSnapshotState,
+  list: TaskWidgetList,
+  now: Date
+) -> Timeline<ReminderEntry> {
+  let nextMidnight = TaskWidgetClock.nextMidnight(after: now)
+  var entries = [ReminderEntry(date: now, state: state, list: list)]
+  if case let .available(snapshot) = state {
+    let tasks = TaskWidgetClock.tasks(snapshot, list: list, at: now)
+    var changes = Set(
+      tasks.compactMap(TaskWidgetClock.dueInstant).map {
         $0.addingTimeInterval(1)
-      }.filter { $0 > now && $0 < nextMidnight })
-      if let scope = snapshot.accountScope {
-        for item in TaskWidgetClock.visibleTasks(snapshot, at: now) {
-          guard let rawRevision = item.updatedAt,
-                let revision = Int(exactly: rawRevision),
-                let retryDate = WidgetCompletionQueue.retryDate(
-                  id: item.id, scope: scope, updatedAt: revision
-                ) else { continue }
-          let retryEntry = retryDate.addingTimeInterval(1)
-          if retryEntry > now && retryEntry < nextMidnight {
-            dueChanges.insert(retryEntry)
-          }
+      }.filter { $0 > now && $0 < nextMidnight }
+    )
+    if let scope = snapshot.accountScope {
+      for item in tasks {
+        guard let rawRevision = item.updatedAt,
+              let revision = Int(exactly: rawRevision),
+              let retryDate = WidgetCompletionQueue.retryDate(
+                id: item.id, scope: scope, updatedAt: revision
+              ) else { continue }
+        let retryEntry = retryDate.addingTimeInterval(1)
+        if retryEntry > now && retryEntry < nextMidnight {
+          changes.insert(retryEntry)
         }
       }
-      entries.append(contentsOf: dueChanges.sorted().map {
-        ReminderEntry(date: $0, state: state)
-      })
     }
-    // Re-evaluate the cached local schedules at midnight, even when the host
-    // app remains closed. Incomplete overdue Tasks remain visible.
-    entries.append(ReminderEntry(date: nextMidnight, state: state))
-    let periodicRefresh = now.addingTimeInterval(15 * 60)
-    completion(
-      Timeline(
-        entries: entries,
-        policy: .after(min(nextMidnight.addingTimeInterval(1), periodicRefresh))
-      )
-    )
+    entries.append(contentsOf: changes.sorted().map {
+      ReminderEntry(date: $0, state: state, list: list)
+    })
+  }
+  // Re-evaluate the cached local schedules at midnight, even when the host app
+  // remains closed. Overdue Tasks remain visible in their list.
+  entries.append(ReminderEntry(date: nextMidnight, state: state, list: list))
+  let periodicRefresh = now.addingTimeInterval(15 * 60)
+  return Timeline(
+    entries: entries,
+    policy: .after(min(nextMidnight.addingTimeInterval(1), periodicRefresh))
+  )
+}
+
+/// The list the user picked in the widget's configuration.
+@available(iOSApplicationExtension 17.0, *)
+enum TaskWidgetListOption: String, AppEnum {
+  case today
+  case scheduled
+  case all
+  case flagged
+
+  static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "List")
+
+  // App Intents metadata needs literal values here.
+  static let caseDisplayRepresentations: [TaskWidgetListOption: DisplayRepresentation] = [
+    .today: DisplayRepresentation(title: "Today", image: .init(systemName: "calendar")),
+    .scheduled: DisplayRepresentation(title: "Scheduled", image: .init(systemName: "calendar")),
+    .all: DisplayRepresentation(title: "All", image: .init(systemName: "tray.fill")),
+    .flagged: DisplayRepresentation(title: "Flagged", image: .init(systemName: "flag.fill"))
+  ]
+
+  var list: TaskWidgetList {
+    switch self {
+    case .today: return .today
+    case .scheduled: return .scheduled
+    case .all: return .all
+    case .flagged: return .flagged
+    }
+  }
+}
+
+@available(iOSApplicationExtension 17.0, *)
+struct TaskWidgetConfigurationIntent: WidgetConfigurationIntent {
+  static let title: LocalizedStringResource = "Tasks"
+  static let description = IntentDescription(
+    "Choose which Task list the widget shows."
+  )
+
+  /// Apple Reminders opens on the whole list, so "All" is the default here too.
+  @Parameter(title: "List", default: .all)
+  var list: TaskWidgetListOption
+
+  init() {}
+
+  init(list: TaskWidgetListOption) {
+    self.list = list
+  }
+}
+
+@available(iOSApplicationExtension 17.0, *)
+private struct ReminderIntentProvider: AppIntentTimelineProvider {
+  func placeholder(in context: Context) -> ReminderEntry {
+    ReminderPreview.entry(for: .all)
   }
 
-  static let previewEntry = makePreviewEntry()
+  func snapshot(
+    for configuration: TaskWidgetConfigurationIntent,
+    in context: Context
+  ) async -> ReminderEntry {
+    let now = Date()
+    let state = context.isPreview
+      ? ReminderPreview.state
+      : ReminderSnapshotStore.load(at: now)
+    return ReminderEntry(date: now, state: state, list: configuration.list.list)
+  }
 
-  private static func makePreviewEntry() -> ReminderEntry {
+  func timeline(
+    for configuration: TaskWidgetConfigurationIntent,
+    in context: Context
+  ) async -> Timeline<ReminderEntry> {
+    let now = Date()
+    return reminderTimeline(
+      state: ReminderSnapshotStore.load(at: now),
+      list: configuration.list.list,
+      now: now
+    )
+  }
+}
+
+/// Placeholder and preview bytes: dated, overdue and undated sample Tasks, so
+/// the gallery preview shows every row variant.
+private enum ReminderPreview {
+  static var state: ReminderSnapshotState {
     let now = Date()
     let today = TaskWidgetClock.localDate(now)
     let yesterday = TaskWidgetClock.localDate(
       TaskWidgetClock.calendar.date(byAdding: .day, value: -1, to: now) ?? now
     )
-    let previewData: [(String, String, String)] = [
-      ("1", "Review proposal", today),
-      ("2", "Pick up groceries", today),
-      ("3", "Call Alex", yesterday)
+    let tomorrow = TaskWidgetClock.localDate(
+      TaskWidgetClock.calendar.date(byAdding: .day, value: 1, to: now) ?? now
+    )
+    let samples: [(String, String, String?, String?, Bool)] = [
+      ("1", "Review the proposal", today, "09:30", false),
+      ("2", "Pick up groceries", yesterday, nil, true),
+      ("3", "Call Alex about the launch", today, nil, false),
+      ("4", "Book the dentist", nil, nil, false),
+      ("5", "Send the quarterly report", tomorrow, "16:00", true),
+      ("6", "Water the plants", nil, nil, false)
     ]
-    var tasks: [ReminderSnapshotItem] = []
-    for (id, title, dueDate) in previewData {
-      tasks.append(
-        ReminderSnapshotItem(
-          id: id,
-          updatedAt: nil,
-          title: title,
-          dueDate: dueDate,
-          dueTime: nil,
-          flagged: id == "1",
-          priority: "none"
-        )
+    let tasks = samples.map { id, title, dueDate, dueTime, flagged in
+      ReminderSnapshotItem(
+        id: id,
+        updatedAt: nil,
+        title: title,
+        dueDate: dueDate,
+        dueTime: dueTime,
+        flagged: flagged,
+        priority: "none"
       )
     }
-
     let snapshot = ReminderSnapshot(
       schemaVersion: 3,
       privacyHidden: false,
@@ -183,14 +281,21 @@ private struct ReminderProvider: TimelineProvider {
       generatedForDate: today,
       generatedForTimeZone: TimeZone.autoupdatingCurrent.identifier,
       utcOffsetMinutes: TaskWidgetClock.utcOffsetMinutes(now),
-      count: tasks.count,
+      count: 3,
       appearance: "system",
       accentLight: "#008837",
       accentDark: "#20A65A",
-      upcomingCounts: nil,
-      tasks: tasks
+      upcomingCounts: [tomorrow: 1],
+      tasks: tasks,
+      totalOpen: tasks.count,
+      flaggedOpen: 2,
+      generatedDayCount: 2
     )
-    return ReminderEntry(date: now, state: .available(snapshot))
+    return .available(snapshot)
+  }
+
+  static func entry(for list: TaskWidgetList) -> ReminderEntry {
+    ReminderEntry(date: Date(), state: state, list: list)
   }
 }
 
@@ -202,34 +307,49 @@ private struct ReminderWidgetEntryView: View {
 
   let entry: ReminderEntry
 
+  private var referenceDate: Date { max(entry.date, Date()) }
+
   private var snapshot: ReminderSnapshot? {
     if case let .available(snapshot) = entry.state,
-       TaskWidgetClock.isFresh(snapshot, at: max(entry.date, Date())) {
+       TaskWidgetClock.isFresh(snapshot, at: referenceDate) {
       return snapshot
     }
     return nil
   }
 
-  private var visibleCount: Int {
+  private var list: TaskWidgetList { entry.list }
+
+  /// Rows that fit below the header without clipping; extra large splits its
+  /// rows into two columns.
+  private var rowLimit: Int {
     switch family {
-    case .systemSmall: return 2
-    case .systemMedium: return 4
-    case .systemLarge: return 8
-    default: return 2
+    case .systemSmall: return 3
+    case .systemMedium: return 3
+    case .systemLarge: return 10
+    case .systemExtraLarge: return 20
+    default: return 3
     }
   }
 
-  private var scheduledTasks: [ReminderSnapshotItem] {
+  private var columnCount: Int { family == .systemExtraLarge ? 2 : 1 }
+  private var compact: Bool { family == .systemSmall }
+
+  private var rows: [ReminderSnapshotItem] {
     guard let snapshot else { return [] }
-    return TaskWidgetClock.visibleTasks(snapshot, at: max(entry.date, Date()))
+    return Array(
+      TaskWidgetClock.tasks(snapshot, list: list, at: referenceDate)
+        .prefix(rowLimit)
+    )
   }
 
-  private var accent: Color {
-    let hex = effectiveColorScheme == .dark
-      ? snapshot?.accentDark
-      : snapshot?.accentLight
-    return Color(hex: hex ?? "#008837")
+  private var totalCount: Int {
+    guard let snapshot, snapshot.privacyHidden != true else { return 0 }
+    return TaskWidgetClock.count(snapshot, list: list, at: referenceDate)
   }
+
+  private var overflow: Int { max(0, totalCount - rows.count) }
+
+  private var accent: Color { list.color }
 
   private var effectiveColorScheme: ColorScheme {
     switch snapshot?.appearance {
@@ -240,125 +360,150 @@ private struct ReminderWidgetEntryView: View {
   }
 
   var body: some View {
-    ZStack(alignment: .bottomTrailing) {
-      VStack(spacing: family == .systemSmall ? 7 : 8) {
-        header
-        content
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-
-      Link(destination: WidgetURLs.newReminder) {
-        Image(systemName: "plus")
-          .font(.system(size: plusSize * 0.55, weight: .medium))
-          .foregroundStyle(.white)
-          .frame(width: plusSize, height: plusSize)
-          .background(accent)
-          .clipShape(Circle())
-          .accessibilityLabel(Text("New task"))
-      }
-      .buttonStyle(.plain)
+    VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+      header
+      content
+      Spacer(minLength: 0)
     }
-    .padding(family == .systemSmall ? 11 : 13)
-    .widgetSurface()
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    .legacyWidgetPadding(compact ? 12 : 14)
+    .reminderWidgetBackground()
+    // The app's own light/dark choice wins over the system's, including for
+    // the container background.
     .environment(\.colorScheme, effectiveColorScheme)
   }
 
-  private var plusSize: CGFloat {
-    family == .systemSmall ? 27 : 31
-  }
-
+  /// The list's colored circle, its name and the exact count, like the smart
+  /// list tiles on the app's Tasks screen. The header opens the Tasks screen.
   private var header: some View {
-    Link(destination: WidgetURLs.reminders) {
-      HStack(spacing: 8) {
-        ZStack {
-          RoundedRectangle(cornerRadius: family == .systemSmall ? 7 : 8)
-            .fill(accent)
-          Image("icon")
-            .resizable()
-            .scaledToFit()
-            .padding(family == .systemSmall ? 5 : 6)
-        }
-        .frame(
-          width: family == .systemSmall ? 25 : 29,
-          height: family == .systemSmall ? 25 : 29
-        )
+    HStack(spacing: compact ? 6 : 8) {
+      Link(destination: WidgetURLs.reminders) {
+        HStack(spacing: compact ? 6 : 8) {
+          ZStack {
+            Circle().fill(accent)
+            Image(systemName: list.symbol)
+              .font(.system(size: compact ? 11 : 13, weight: .semibold))
+              .foregroundStyle(.white)
+          }
+          .frame(width: compact ? 24 : 28, height: compact ? 24 : 28)
+          .widgetAccented()
 
-        VStack(alignment: .leading, spacing: -1) {
-          Text("VeyraN")
-            .font(.system(size: family == .systemSmall ? 13 : 15, weight: .semibold))
-            .foregroundStyle(.primary)
-          Text("Tasks · Today")
-            .font(.system(size: family == .systemSmall ? 9 : 10.5))
-            .foregroundStyle(.secondary)
+          Text(list.title)
+            .font(.system(compact ? .subheadline : .headline, design: .rounded).weight(.bold))
+            .foregroundStyle(accent)
+            .widgetAccented()
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
         }
-        .lineLimit(1)
-
-        Spacer(minLength: 4)
-
-        if let snapshot, snapshot.privacyHidden != true {
-          Text("\(TaskWidgetClock.visibleCount(snapshot, at: max(entry.date, Date())))")
-            .font(.system(size: family == .systemSmall ? 11 : 12, weight: .semibold))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, family == .systemSmall ? 8 : 10)
-            .frame(height: family == .systemSmall ? 23 : 25)
-            .background(accent.opacity(effectiveColorScheme == .dark ? 0.28 : 0.16))
-            .clipShape(Capsule())
-            .accessibilityLabel(Text("\(TaskWidgetClock.visibleCount(snapshot, at: max(entry.date, Date()))) tasks today"))
-        }
+        .contentShape(Rectangle())
       }
-      .contentShape(Rectangle())
+      .buttonStyle(.plain)
+      .accessibilityLabel(Text(list.title))
+
+      Spacer(minLength: 4)
+
+      if snapshot != nil, snapshot?.privacyHidden != true {
+        Text("\(totalCount)")
+          .font(.system(compact ? .title2 : .title, design: .rounded).weight(.bold))
+          .foregroundStyle(.primary)
+          .monospacedDigit()
+          .lineLimit(1)
+          .accessibilityLabel(Text("\(totalCount) tasks"))
+      }
+
+      if !compact {
+        Link(destination: WidgetURLs.newReminder) {
+          Image(systemName: "plus.circle.fill")
+            .font(.system(size: 22))
+            .foregroundStyle(accent)
+            .widgetAccented()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("New task"))
+      }
     }
-    .buttonStyle(.plain)
   }
 
   @ViewBuilder private var content: some View {
-    if let snapshot {
-      if snapshot.privacyHidden == true {
-        emptyState(title: "Tasks hidden by App Lock")
-      } else if scheduledTasks.isEmpty {
-        emptyState(title: "No tasks today")
-      } else {
-        reminderLayout(Array(scheduledTasks.prefix(visibleCount)))
-      }
+    if snapshot?.privacyHidden == true {
+      emptyState(symbol: "lock.fill", title: "Locked")
+    } else if snapshot == nil {
+      emptyState(symbol: "arrow.clockwise", title: "Open VeyraN to load tasks")
+    } else if rows.isEmpty {
+      emptyState(symbol: "checkmark.circle", title: "No Tasks", tinted: true)
     } else {
-      emptyState(title: "Open VeyraN to refresh tasks")
+      listBody
     }
   }
 
-  private func emptyState(title: LocalizedStringKey) -> some View {
-    Text(title)
-      .font(.system(size: family == .systemSmall ? 11 : 13, weight: .medium))
-      .foregroundStyle(.secondary)
-      .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-      .padding(.bottom, plusSize)
+  private func emptyState(
+    symbol: String,
+    title: LocalizedStringKey,
+    tinted: Bool = false
+  ) -> some View {
+    VStack(spacing: 6) {
+      Image(systemName: symbol)
+        .font(.system(size: compact ? 22 : 26))
+        .foregroundStyle(tinted ? AnyShapeStyle(accent) : AnyShapeStyle(.tertiary))
+        .widgetAccented(tinted)
+      Text(title)
+        .font(.system(compact ? .footnote : .subheadline))
+        .foregroundStyle(.secondary)
+    }
+    .multilineTextAlignment(.center)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 
-  @ViewBuilder private func reminderLayout(
-    _ reminders: [ReminderSnapshotItem]
-  ) -> some View {
-    VStack(spacing: 0) {
-      ForEach(Array(reminders.enumerated()), id: \.element.id) { index, reminder in
+  private var listBody: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      if columnCount == 1 {
+        rowsView(rows)
+      } else {
+        let split = (rows.count + 1) / 2
+        HStack(alignment: .top, spacing: 18) {
+          rowsView(Array(rows.prefix(split)))
+          rowsView(Array(rows.dropFirst(split)))
+        }
+      }
+      // Small and medium widgets have no room for a footer; the header count
+      // already says how many Tasks the list holds.
+      if overflow > 0, family == .systemLarge || family == .systemExtraLarge {
+        Text("+\(overflow) more")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .padding(.top, 4)
+          .padding(.leading, 30)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+  }
+
+  private func rowsView(_ items: [ReminderSnapshotItem]) -> some View {
+    VStack(alignment: .leading, spacing: 0) {
+      ForEach(Array(items.enumerated()), id: \.element.id) { index, reminder in
         ReminderRow(
           reminder: reminder,
           accountScope: snapshot?.accountScope,
-          referenceDate: max(entry.date, Date()),
-          accent: accent,
-          compact: family == .systemSmall,
-          drawDivider: index < reminders.count - 1
+          referenceDate: referenceDate,
+          compact: compact,
+          showsDate: !compact,
+          drawDivider: index < items.count - 1
         )
       }
-      Spacer(minLength: plusSize - 2)
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    .frame(maxWidth: .infinity, alignment: .topLeading)
   }
 }
 
+/// One Task, laid out like a row in Apple Reminders: a gray ring, the title,
+/// and its date on the trailing edge. Tapping the ring completes the Task on
+/// iOS 27; tapping the row opens it in the app.
 private struct ReminderRow: View {
   let reminder: ReminderSnapshotItem
   let accountScope: String?
   let referenceDate: Date
-  let accent: Color
   let compact: Bool
+  let showsDate: Bool
   let drawDivider: Bool
 
   private var isOverdue: Bool {
@@ -380,95 +525,142 @@ private struct ReminderRow: View {
   }
 
   var body: some View {
-    HStack(spacing: compact ? 6 : 9) {
-      Group {
-        if #available(iOSApplicationExtension 27.0, *),
-           let accountScope, let rawRevision = reminder.updatedAt,
-           let updatedAt = Int(exactly: rawRevision) {
-          Button(intent: CompleteTaskWidgetIntent(
-            id: reminder.id, scope: accountScope, updatedAt: updatedAt)) {
-            completionImage
-          }
-          .disabled(isPending)
-        }
-      }
-      .accessibilityLabel(Text(isPending ? "Completion pending" :
-        needsRetry ? "Retry completion for \(reminder.title)" : "Complete \(reminder.title)"))
+    HStack(spacing: compact ? 6 : 8) {
+      completionControl
+        .accessibilityLabel(Text(isPending ? "Completion pending" :
+          needsRetry ? "Retry completion for \(reminder.title)" : "Complete \(reminder.title)"))
 
       Link(destination: WidgetURLs.reminder(id: reminder.id)) {
-      VStack(alignment: .leading, spacing: compact ? 1 : 2) {
-        HStack(spacing: compact ? 3 : 4) {
-          if reminder.flagged {
-            Image(systemName: "flag.fill")
-              .font(.system(size: compact ? 10 : 12, weight: .semibold))
-              .foregroundStyle(Color(UIColor.systemOrange))
-              .frame(width: compact ? 11 : 13)
-              .accessibilityHidden(true)
-          }
-
+        HStack(spacing: 6) {
           Text(reminder.title)
-            .font(.system(size: compact ? 12 : 14, weight: .medium))
+            .font(.system(compact ? .footnote : .subheadline))
             .foregroundStyle(.primary)
             .lineLimit(1)
             .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+          if let status = statusText {
+            Text(status)
+              .font(.system(compact ? .caption2 : .caption))
+              .foregroundStyle(statusIsWarning ? Color(UIColor.systemRed) : Color.secondary)
+              .lineLimit(1)
+              .layoutPriority(1)
+          }
+
+          if reminder.flagged {
+            Image(systemName: "flag.fill")
+              .font(.system(size: compact ? 10 : 11, weight: .semibold))
+              .foregroundStyle(Color(UIColor.systemOrange))
+              .accessibilityHidden(true)
+          }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        Text(isPending ? String(localized: "Completion pending") :
-          needsRetry ? String(localized: "Completion not saved · Tap to retry") : secondaryText)
-          .font(.system(size: compact ? 9.5 : 11))
-          .foregroundStyle(
-            (needsRetry || (isOverdue && !isPending)) ? Color(UIColor.systemRed) : Color.secondary
-          )
-          .lineLimit(1)
-      }
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .padding(.vertical, compact ? 4 : 7)
-      .contentShape(Rectangle())
-      .overlay(alignment: .bottom) {
-        if drawDivider {
-          Rectangle()
-            .fill(Color.secondary.opacity(0.18))
-            .frame(height: 0.5)
+        .frame(maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .overlay(alignment: .bottom) {
+          if drawDivider {
+            Rectangle()
+              .fill(Color.secondary.opacity(0.2))
+              .frame(height: 0.5)
+          }
         }
       }
-      }
+      .buttonStyle(.plain)
       .accessibilityLabel(accessibilityLabel)
     }
-    .buttonStyle(.plain)
+    .frame(height: compact ? 25 : 28)
+  }
+
+  @ViewBuilder private var completionControl: some View {
+    if #available(iOSApplicationExtension 27.0, *),
+       let accountScope, let rawRevision = reminder.updatedAt,
+       let updatedAt = Int(exactly: rawRevision) {
+      Button(intent: CompleteTaskWidgetIntent(
+        id: reminder.id, scope: accountScope, updatedAt: updatedAt)) {
+        completionImage
+      }
+      .buttonStyle(.plain)
+      .disabled(isPending)
+    } else {
+      // Older systems cannot run the completion intent, but the row still
+      // reads as a Task rather than a bare line of text.
+      completionImage
+    }
   }
 
   private var completionImage: some View {
     Image(systemName: isPending ? "clock" : needsRetry ? "arrow.clockwise.circle" : "circle")
-      .font(.system(size: compact ? 18 : 21))
-      .foregroundStyle(accent)
-      .frame(width: compact ? 24 : 30, height: compact ? 28 : 34)
+      .font(.system(size: compact ? 16 : 19, weight: .light))
+      .foregroundStyle(needsRetry ? Color(UIColor.systemRed) : Color.secondary)
+      .frame(width: compact ? 18 : 22)
       .contentShape(Rectangle())
   }
 
-  private var accessibilityLabel: String {
-    if isOverdue {
-      return "\(String(localized: "Overdue")), \(reminder.title), \(secondaryText)"
-    }
-    return "\(reminder.title), \(secondaryText)"
+  private var statusIsWarning: Bool {
+    needsRetry || (isOverdue && !isPending)
   }
 
-  private var secondaryText: String {
-    if isOverdue { return String(localized: "Overdue") }
-    if let time = reminder.dueTime { return "\(String(localized: "Today")) · \(time)" }
-    return String(localized: "Today")
+  /// Pending and retry states always show; the due date only where there is
+  /// room for it. Undated Tasks have no date text at all.
+  private var statusText: String? {
+    if isPending { return String(localized: "Completion pending") }
+    if needsRetry { return String(localized: "Completion not saved · Tap to retry") }
+    guard showsDate else { return nil }
+    return dueText
+  }
+
+  private var dueText: String? {
+    guard let dueDate = reminder.dueDate else { return nil }
+    let day: String
+    if isOverdue && dueDate < TaskWidgetClock.localDate(referenceDate) {
+      day = String(localized: "Overdue")
+    } else if dueDate == TaskWidgetClock.localDate(referenceDate) {
+      day = String(localized: "Today")
+    } else if let tomorrow = TaskWidgetClock.calendar.date(byAdding: .day, value: 1, to: referenceDate),
+              dueDate == TaskWidgetClock.localDate(tomorrow) {
+      day = String(localized: "Tomorrow")
+    } else {
+      day = Self.shortDate(dueDate) ?? dueDate
+    }
+    guard let time = reminder.dueTime else { return day }
+    return "\(day) · \(time)"
+  }
+
+  private static func shortDate(_ value: String) -> String? {
+    let parts = value.split(separator: "-").compactMap { Int($0) }
+    guard parts.count == 3,
+          let date = TaskWidgetClock.calendar.date(
+            from: DateComponents(year: parts[0], month: parts[1], day: parts[2]))
+    else { return nil }
+    let formatter = DateFormatter()
+    formatter.calendar = TaskWidgetClock.calendar
+    formatter.timeZone = TaskWidgetClock.calendar.timeZone
+    formatter.setLocalizedDateFormatFromTemplate("d MMM")
+    return formatter.string(from: date)
+  }
+
+  private var accessibilityLabel: String {
+    var parts = [reminder.title]
+    if let dueText { parts.append(dueText) }
+    if reminder.flagged { parts.append(String(localized: "Flagged")) }
+    return parts.joined(separator: ", ")
   }
 }
 
+@available(iOSApplicationExtension 17.0, *)
 private struct ReminderWidget: Widget {
   let kind = "ReminderWidget"
 
   var body: some WidgetConfiguration {
-    StaticConfiguration(kind: kind, provider: ReminderProvider()) { entry in
+    AppIntentConfiguration(
+      kind: kind,
+      intent: TaskWidgetConfigurationIntent.self,
+      provider: ReminderIntentProvider()
+    ) { entry in
       ReminderWidgetEntryView(entry: entry)
     }
     .configurationDisplayName("Tasks")
-    .description("See today's tasks and create a task. Complete tasks here on iOS 27.")
-    .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
+    .description("See your Tasks at a glance and check them off.")
+    .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge])
   }
 }
 
@@ -527,6 +719,33 @@ private struct WidgetSurfaceModifier: ViewModifier {
 private extension View {
   func widgetSurface() -> some View {
     modifier(WidgetSurfaceModifier())
+  }
+
+  /// Plain system background, like Apple's own list widgets.
+  @ViewBuilder func reminderWidgetBackground() -> some View {
+    if #available(iOSApplicationExtension 17.0, *) {
+      containerBackground(for: .widget) { Color(UIColor.systemBackground) }
+    } else {
+      background(Color(UIColor.systemBackground))
+    }
+  }
+
+  /// iOS 17 adds system content margins; earlier systems need our own.
+  @ViewBuilder func legacyWidgetPadding(_ length: CGFloat) -> some View {
+    if #available(iOSApplicationExtension 17.0, *) {
+      self
+    } else {
+      padding(length)
+    }
+  }
+
+  /// Keeps list colors in the accent group in tinted and clear rendering.
+  @ViewBuilder func widgetAccented(_ enabled: Bool = true) -> some View {
+    if #available(iOSApplicationExtension 16.0, *) {
+      widgetAccentable(enabled)
+    } else {
+      self
+    }
   }
 }
 
@@ -781,7 +1000,9 @@ private struct OverdueTaskLiveActivity: Widget {
 struct NotesWidgetBundle: WidgetBundle {
   var body: some Widget {
     QuickNoteWidget()
-    ReminderWidget()
+    if #available(iOSApplicationExtension 17.0, *) {
+      ReminderWidget()
+    }
     if #available(iOSApplicationExtension 16.2, *) {
       OverdueTaskLiveActivity()
     }
@@ -800,11 +1021,11 @@ struct NotesWidgetBundle: WidgetBundle {
 struct NotesWidget_Previews: PreviewProvider {
   static var previews: some View {
     Group {
-      ReminderWidgetEntryView(entry: ReminderProvider.previewEntry)
+      ReminderWidgetEntryView(entry: ReminderPreview.entry(for: .all))
         .previewContext(WidgetPreviewContext(family: .systemSmall))
-      ReminderWidgetEntryView(entry: ReminderProvider.previewEntry)
+      ReminderWidgetEntryView(entry: ReminderPreview.entry(for: .all))
         .previewContext(WidgetPreviewContext(family: .systemMedium))
-      ReminderWidgetEntryView(entry: ReminderProvider.previewEntry)
+      ReminderWidgetEntryView(entry: ReminderPreview.entry(for: .all))
         .previewContext(WidgetPreviewContext(family: .systemLarge))
     }
   }

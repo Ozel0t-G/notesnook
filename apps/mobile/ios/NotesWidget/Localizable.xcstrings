@@ -23,7 +23,21 @@
     "Tasks · Today" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Aufgaben · Heute" } } } },
     "See upcoming reminders and create a new reminder." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Zeigt anstehende Erinnerungen und erstellt neue." } } } },
     "Today" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Heute" } } } },
-    "Tomorrow" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Morgen" } } } }
+    "Tomorrow" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Morgen" } } } },
+    "%lld tasks" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "%lld Aufgaben" } } } },
+    "+%lld more" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "+%lld weitere" } } } },
+    "All" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Alle" } } } },
+    "Choose which Task list the widget shows." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Wähle, welche Aufgabenliste das Widget zeigt." } } } },
+    "Completion not saved · Tap to retry" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Nicht gespeichert · Tippen zum Wiederholen" } } } },
+    "Completion pending" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Wird abgeschlossen" } } } },
+    "Flagged" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Markiert" } } } },
+    "List" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Liste" } } } },
+    "Locked" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Gesperrt" } } } },
+    "No Tasks" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine Aufgaben" } } } },
+    "Open VeyraN to load tasks" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "VeyraN öffnen, um Aufgaben zu laden" } } } },
+    "Retry completion for %@" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Abschließen erneut versuchen: %@" } } } },
+    "Scheduled" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Geplant" } } } },
+    "See your Tasks at a glance and check them off." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Deine Aufgaben auf einen Blick – direkt abhaken." } } } }
   },
   "version" : "1.0"
 }

@@ -36,6 +36,11 @@ struct ReminderSnapshot: Codable {
   let accentDark: String
   let upcomingCounts: [String: Int]?
   let tasks: [ReminderSnapshotItem]
+  // Additive v3 counts: exact totals for the "All" and "Flagged" smart lists,
+  // and how many cached Tasks fall on the snapshot's own generation day.
+  let totalOpen: Int?
+  let flaggedOpen: Int?
+  let generatedDayCount: Int?
 }
 
 struct ReminderSnapshotItem: Codable, Identifiable {
@@ -51,6 +56,15 @@ struct ReminderSnapshotItem: Codable, Identifiable {
 enum ReminderSnapshotState {
   case unavailable
   case available(ReminderSnapshot)
+}
+
+/// The app's four Reminders-style smart lists, in the order its Tasks screen
+/// shows them. `completed` and custom lists are out of scope for the widget.
+enum TaskWidgetList: String, CaseIterable {
+  case today
+  case scheduled
+  case all
+  case flagged
 }
 
 enum TaskWidgetClock {
@@ -104,6 +118,89 @@ enum TaskWidgetClock {
     // Old v3 files have no date counts. Their generation-day total is still
     // authoritative; after midnight use the rows present in the old cache.
     return snapshot.generatedForDate == localDate(date) ? max(snapshot.count, cachedCount) : cachedCount
+  }
+
+  /// The app's row order inside one list: due date, then due time (a Task with
+  /// no time sorts after the timed ones), and finally the cached order as a
+  /// stable tie-break. Overdue and today end up before later dates for free.
+  static func dueOrder(_ items: [ReminderSnapshotItem]) -> [ReminderSnapshotItem] {
+    items.enumerated().sorted { left, right in
+      let aDate = left.element.dueDate ?? ""
+      let bDate = right.element.dueDate ?? ""
+      if aDate != bDate { return aDate < bDate }
+      let aTime = left.element.dueTime ?? "99:99"
+      let bTime = right.element.dueTime ?? "99:99"
+      if aTime != bTime { return aTime < bTime }
+      return left.offset < right.offset
+    }.map(\.element)
+  }
+
+  /// The rows one smart list shows at `date`. `today` and `scheduled` split on
+  /// the render day so a cached snapshot keeps rolling over at midnight; `all`
+  /// puts every undated Task after the dated ones, in cached order.
+  static func tasks(
+    _ snapshot: ReminderSnapshot, list: TaskWidgetList, at date: Date
+  ) -> [ReminderSnapshotItem] {
+    if snapshot.privacyHidden == true { return [] }
+    let today = localDate(date)
+    switch list {
+    case .today:
+      return dueOrder(snapshot.tasks.filter { item in
+        guard let dueDate = item.dueDate else { return false }
+        return dueDate <= today
+      })
+    case .scheduled:
+      return dueOrder(snapshot.tasks.filter { item in
+        guard let dueDate = item.dueDate else { return false }
+        return dueDate >= today
+      })
+    case .all:
+      let dated = snapshot.tasks.filter { $0.dueDate != nil }
+      let undated = snapshot.tasks.filter { $0.dueDate == nil }
+      return dueOrder(dated) + undated
+    case .flagged:
+      let flagged = snapshot.tasks.filter(\.flagged)
+      let dated = flagged.filter { $0.dueDate != nil }
+      let undated = flagged.filter { $0.dueDate == nil }
+      return dueOrder(dated) + undated
+    }
+  }
+
+  /// How many cached rows fall on the snapshot's own generation day, used when
+  /// an older snapshot has no additive `generatedDayCount`.
+  private static func cachedGeneratedDayCount(_ snapshot: ReminderSnapshot) -> Int {
+    snapshot.tasks.filter { $0.dueDate == snapshot.generatedForDate }.count
+  }
+
+  static func count(
+    _ snapshot: ReminderSnapshot, list: TaskWidgetList, at date: Date
+  ) -> Int {
+    if snapshot.privacyHidden == true { return 0 }
+    let cachedCount = tasks(snapshot, list: list, at: date).count
+    let today = localDate(date)
+    switch list {
+    case .today:
+      // The Today list is the badge count the host writes: dated and due by
+      // the generation day, plus anything the histogram proves has arrived.
+      return visibleCount(snapshot, at: date)
+    case .all:
+      return max(snapshot.totalOpen ?? cachedCount, cachedCount)
+    case .flagged:
+      return max(snapshot.flaggedOpen ?? cachedCount, cachedCount)
+    case .scheduled:
+      // Scheduled counts today plus every future date. The histogram only
+      // carries future dates relative to the day it was written, so its
+      // remaining days are still exact after midnight; the generation day's
+      // own rows come from the additive counter instead.
+      guard let upcomingCounts = snapshot.upcomingCounts else { return cachedCount }
+      var total = upcomingCounts.reduce(0) { sum, pair in
+        sum + (pair.key >= today ? max(0, pair.value) : 0)
+      }
+      if today == snapshot.generatedForDate {
+        total += snapshot.generatedDayCount ?? cachedGeneratedDayCount(snapshot)
+      }
+      return max(total, cachedCount)
+    }
   }
 
   static func nextMidnight(after date: Date) -> Date {

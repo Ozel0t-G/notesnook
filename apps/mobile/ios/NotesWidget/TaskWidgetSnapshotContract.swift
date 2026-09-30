@@ -30,6 +30,12 @@ struct TaskWidgetSnapshotContract {
     case .unavailable:
       result = ["available": false]
     case let .available(snapshot):
+      func listPayload(_ list: TaskWidgetList) -> [String: Any] {
+        [
+          "count": TaskWidgetClock.count(snapshot, list: list, at: now),
+          "ids": TaskWidgetClock.tasks(snapshot, list: list, at: now).map(\.id)
+        ]
+      }
       result = [
         "available": true,
         "privacyHidden": snapshot.privacyHidden == true,
@@ -39,7 +45,13 @@ struct TaskWidgetSnapshotContract {
         "revisions": Dictionary(uniqueKeysWithValues:
           TaskWidgetClock.visibleTasks(snapshot, at: now).compactMap { item in
             item.updatedAt.map { (item.id, Int($0)) }
-          })
+          }),
+        "lists": [
+          "today": listPayload(.today),
+          "scheduled": listPayload(.scheduled),
+          "all": listPayload(.all),
+          "flagged": listPayload(.flagged)
+        ]
       ]
     }
     let output = try JSONSerialization.data(withJSONObject: result)

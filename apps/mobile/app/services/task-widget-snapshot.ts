@@ -45,11 +45,22 @@ export type TaskWidgetSnapshot = {
   accentDark: string;
   upcomingCounts: Record<string, number>;
   tasks: TaskWidgetItem[];
+  // Additive v3 counts. The extension renders the "All" and "Flagged" smart
+  // lists from these even when the capped cache cannot hold every Task.
+  totalOpen?: number;
+  flaggedOpen?: number;
+  generatedDayCount?: number;
 };
 
 // Keep a small cache of future schedules so WidgetKit can roll into the next
 // local day while the app is closed. The extension filters this cache at render.
 const MAX_CACHED_TASKS = 64;
+// Undated Tasks are the common case for people who never set a reminder, so
+// they are cached after the dated window instead of being dropped.
+const MAX_CACHED_UNDATED_TASKS = 32;
+// Flagged Tasks are the "Flagged" smart list; cache a few beyond the windows
+// above so that list is never empty while its exact count stays exact.
+const MAX_CACHED_FLAGGED_TASKS = 16;
 // Preserve exact badge counts for a year of day rollovers without allowing an
 // unbounded date histogram to exceed the native 256 KiB snapshot limit.
 const MAX_UPCOMING_COUNT_DATES = 366;
@@ -82,11 +93,9 @@ export function buildTaskWidgetSnapshot(
 ): TaskWidgetSnapshot {
   const now = options.now ?? Date.now();
   const today = localDate(now);
-  const scheduled = tasks
-    .filter((task) => {
-      const date = taskReminderSchedule(task).date;
-      return !task.completed && !!date;
-    })
+  const open = tasks.filter((task) => !task.completed);
+  const scheduled = open
+    .filter((task) => !!taskReminderSchedule(task).date)
     .sort((a, b) => {
       const aSchedule = taskReminderSchedule(a);
       const bSchedule = taskReminderSchedule(b);
@@ -99,8 +108,14 @@ export function buildTaskWidgetSnapshot(
         a.id.localeCompare(b.id)
       );
     });
+  // Undated Tasks keep the order the database handed them over in; the app
+  // shows them in that same manual order below the dated sections.
+  const undated = open.filter((task) => !taskReminderSchedule(task).date);
   const visibleCount = scheduled.filter(
     (task) => taskReminderSchedule(task).date! <= today
+  ).length;
+  const generatedDayCount = scheduled.filter(
+    (task) => taskReminderSchedule(task).date === today
   ).length;
   const upcomingCounts: Record<string, number> = {};
   let countedDates = 0;
@@ -115,6 +130,17 @@ export function buildTaskWidgetSnapshot(
     upcomingCounts[date]++;
   }
 
+  // Dated rows first (sorted by due), then undated rows in input order, then
+  // any flagged row the two windows above could not fit. The extension sorts
+  // whatever it receives into the smart-list order at render time.
+  const cached = scheduled.slice(0, MAX_CACHED_TASKS);
+  const cachedIds = new Set(cached.map((task) => task.id));
+  const cachedUndated = undated.slice(0, MAX_CACHED_UNDATED_TASKS);
+  for (const task of cachedUndated) cachedIds.add(task.id);
+  const extraFlagged = open
+    .filter((task) => task.flagged && !cachedIds.has(task.id))
+    .slice(0, MAX_CACHED_FLAGGED_TASKS);
+
   return {
     schemaVersion: 3,
     accountScope: options.accountScope,
@@ -127,9 +153,12 @@ export function buildTaskWidgetSnapshot(
     accentLight: normalizeHexColor(options.accentLight),
     accentDark: normalizeHexColor(options.accentDark),
     upcomingCounts,
-    tasks: scheduled.slice(0, MAX_CACHED_TASKS).map((task) => {
+    totalOpen: open.length,
+    flaggedOpen: open.filter((task) => task.flagged).length,
+    generatedDayCount,
+    tasks: [...cached, ...cachedUndated, ...extraFlagged].map((task) => {
       const schedule = taskReminderSchedule(task);
-      return {
+      const item: TaskWidgetItem = {
         id: task.id,
         updatedAt: task.updatedAt,
         title: task.title
@@ -137,12 +166,14 @@ export function buildTaskWidgetSnapshot(
           .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, " ")
           .trim()
           .slice(0, 120),
-        // v3 wire keys are retained for the existing WidgetKit decoder.
-        dueDate: schedule.date,
-        dueTime: schedule.time,
         flagged: task.flagged,
         priority: task.priority
       };
+      // v3 wire keys are retained for the existing WidgetKit decoder. An
+      // undated Task omits them entirely.
+      if (schedule.date) item.dueDate = schedule.date;
+      if (schedule.time) item.dueTime = schedule.time;
+      return item;
     })
   };
 }

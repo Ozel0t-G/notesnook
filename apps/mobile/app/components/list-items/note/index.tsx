@@ -48,6 +48,7 @@ import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
 import { useSelectionStore } from "../../../stores/use-selection-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../../../utils/constants";
 import { Properties } from "../../properties";
 import AppIcon from "../../ui/AppIcon";
 import { IconButton } from "../../ui/icon-button";
@@ -61,6 +62,10 @@ import {
   homeNoteDisplayTitle,
   isHomeNoteRoute
 } from "../../../utils/home-note-presentation";
+
+/** Mac note row typography (see SelectionWrapper for the row metrics). */
+const MAC_NOTE_TITLE_SIZE = 13;
+const MAC_NOTE_PREVIEW_SIZE = 12;
 
 type NoteItemProps = {
   item: Note | BaseTrashItem<Note>;
@@ -97,6 +102,9 @@ const NoteItem = ({
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const isHomeIOS = visual.ios && isHomeNoteRoute(renderedInRoute);
+  // Mac's source list rows are compact: a 13 pt title with an 11-12 pt
+  // secondary preview/date underneath.
+  const isMac = isMacCatalyst();
   // The first line is the title, everywhere (list, editor, search).
   const displayTitle =
     visual.ios && !isTrash ? homeNoteDisplayTitle(item as Note) : item.title;
@@ -151,7 +159,9 @@ const NoteItem = ({
             color={color?.colorCode || primaryColors.heading}
             size={isHomeIOS ? AppFontSize.md : AppFontSize.sm}
             style={{
-              paddingRight: 10
+              paddingRight: 10,
+              // 13 pt semibold: Heading already carries the 600 weight.
+              ...(isMac ? { fontSize: MAC_NOTE_TITLE_SIZE } : {})
             }}
           >
             {displayTitle}
@@ -163,6 +173,7 @@ const NoteItem = ({
             style={{
               flexWrap: "wrap",
               color: visual.secondaryText,
+              fontSize: isMac ? MAC_NOTE_PREVIEW_SIZE : undefined,
               marginTop: visual.ios ? 4 : 0
             }}
             color={visual.secondaryText}
@@ -176,8 +187,15 @@ const NoteItem = ({
           <Paragraph
             numberOfLines={isHomeIOS ? 1 : undefined}
             style={{
-              fontSize: isHomeIOS ? AppFontSize.xs : AppFontSize.xxxs,
-              color: isHomeIOS ? visual.secondaryText : visual.tertiaryText,
+              fontSize: isMac
+                ? MAC_NOTE_PREVIEW_SIZE
+                : isHomeIOS
+                ? AppFontSize.xs
+                : AppFontSize.xxxs,
+              color:
+                isMac || isHomeIOS
+                  ? visual.secondaryText
+                  : visual.tertiaryText,
               marginTop: isHomeIOS ? 5 : 7
             }}
           >

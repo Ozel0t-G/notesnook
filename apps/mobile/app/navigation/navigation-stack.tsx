@@ -43,6 +43,13 @@ import {
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { AppleTabBar, isTopTabBar } from "../components/apple-tab-bar";
+import { MacSectionControl } from "../components/mac-section-control";
+import {
+  MAC_TITLEBAR_HEIGHT,
+  macSectionControlWidth
+} from "../utils/mac-layout";
+import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../utils/constants";
 import {
   SafeAreaInsetsContext,
   useSafeAreaInsets
@@ -55,6 +62,64 @@ import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import { DDS } from "../services/device-detection";
 
 const RootStack = createNativeStackNavigator();
+
+/**
+ * Where a compose action launched from Tasks or Search returns to once the
+ * editor is dismissed. Module scope so the section handler below can be shared
+ * between the native tab bar and Mac's section control.
+ */
+const composeReturnSection: { current: "tasks" | "search" | null } = {
+  current: null
+};
+
+/**
+ * Switches the top-level section. This is the handler the floating tab bar
+ * calls on iPhone/iPad and the one Mac's section control calls, so all three
+ * sections behave identically on both.
+ */
+export const selectAppleSection = (selection: AppleTabBarSelection) => {
+  if (selection === "compose") {
+    // An action, not a section: the previously selected tab stays selected
+    // and is what the user returns to once the editor is dismissed.
+    const currentRoot = rootNavigatorRef.current?.getCurrentRoute()?.name;
+    if (currentRoot === "Tasks" || currentRoot === "GlobalSearch") {
+      composeReturnSection.current =
+        currentRoot === "Tasks" ? "tasks" : "search";
+      // Neither is a note context. Drop any first-save hook a notebook list
+      // left behind so the note is created unassigned.
+      setOnFirstSaveUnassigned();
+    } else if (useNavigationStore.getState().currentRoute !== "Notebook") {
+      // Library root, All Notes, and Inbox create unassigned notes.
+      setOnFirstSaveUnassigned();
+    }
+    if (currentRoot !== "FluidPanelsView") {
+      rootNavigatorRef.current?.navigate("FluidPanelsView" as any);
+    }
+    if (DDS.isTab) {
+      // The split editor is persistently visible on iPad and has no close
+      // control. A global compose action needs a dismissible editor so the
+      // previous top-level destination can be restored.
+      setTimeout(() => eSendEvent(eOpenFullscreenEditor), 100);
+    }
+    openEditor();
+    return;
+  }
+
+  useAppleNavigationStore.getState().setSection(selection);
+  if (selection === "tasks") {
+    rootNavigatorRef.current?.navigate("Tasks" as any);
+  } else if (selection === "search") {
+    rootNavigatorRef.current?.navigate("GlobalSearch" as any);
+  } else {
+    fluidTabsRef.current?.goToPage("home", true);
+    rootNavigatorRef.current?.navigate(
+      "FluidPanelsView" as any,
+      {
+        screen: "Library"
+      } as any
+    );
+  }
+};
 
 /**
  * Task details are a sheet (Reminders pattern), not a pushed full screen:
@@ -390,7 +455,8 @@ let Tasks: any = null;
 let TaskDetail: any = null;
 let GlobalSearch: any = null;
 export const RootNavigation = () => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
   );
@@ -402,6 +468,9 @@ export const RootNavigation = () => {
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
   const safeAreaInsets = useSafeAreaInsets();
   const deviceMode = useSettingStore((state) => state.deviceMode);
+  // Width only: the Mac section control is sized from it and must follow
+  // window resizes without re-rendering the navigator on every height change.
+  const windowWidth = useSettingStore((state) => state.dimensions.width);
   const editorVisible = useAppleNavigationStore((state) => state.editorVisible);
   const [rootRoute, setRootRoute] = React.useState<string>(
     introCompleted ? "FluidPanelsView" : "Welcome"
@@ -410,7 +479,6 @@ export const RootNavigation = () => {
   const [navigationReady, setNavigationReady] = React.useState(false);
   const clearSelection = useSelectionStore((state) => state.clearSelection);
   const resetTimer = React.useRef<NodeJS.Timeout>(undefined);
-  const composeReturnSection = React.useRef<"tasks" | "search" | null>(null);
 
   React.useEffect(() => {
     const returnFromCompose = () => {
@@ -506,52 +574,14 @@ export const RootNavigation = () => {
 
   const initialRouteName = !introCompleted ? "Welcome" : "FluidPanelsView";
 
-  const selectSection = React.useCallback((selection: AppleTabBarSelection) => {
-    if (selection === "compose") {
-      // An action, not a section: the previously selected tab stays selected
-      // and is what the user returns to once the editor is dismissed.
-      const currentRoot = rootNavigatorRef.current?.getCurrentRoute()?.name;
-      if (currentRoot === "Tasks" || currentRoot === "GlobalSearch") {
-        composeReturnSection.current =
-          currentRoot === "Tasks" ? "tasks" : "search";
-        // Neither is a note context. Drop any first-save hook a notebook list
-        // left behind so the note is created unassigned.
-        setOnFirstSaveUnassigned();
-      } else if (useNavigationStore.getState().currentRoute !== "Notebook") {
-        // Library root, All Notes, and Inbox create unassigned notes.
-        setOnFirstSaveUnassigned();
-      }
-      if (currentRoot !== "FluidPanelsView") {
-        rootNavigatorRef.current?.navigate("FluidPanelsView" as any);
-      }
-      if (DDS.isTab) {
-        // The split editor is persistently visible on iPad and has no close
-        // control. A global compose action needs a dismissible editor so the
-        // previous top-level destination can be restored.
-        setTimeout(() => eSendEvent(eOpenFullscreenEditor), 100);
-      }
-      openEditor();
-      return;
-    }
-
-    useAppleNavigationStore.getState().setSection(selection);
-    if (selection === "tasks") {
-      rootNavigatorRef.current?.navigate("Tasks" as any);
-    } else if (selection === "search") {
-      rootNavigatorRef.current?.navigate("GlobalSearch" as any);
-    } else {
-      fluidTabsRef.current?.goToPage("home", true);
-      rootNavigatorRef.current?.navigate(
-        "FluidPanelsView" as any,
-        {
-          screen: "Library"
-        } as any
-      );
-    }
-  }, []);
-
+  /**
+   * The floating bar is an iPhone/iPad affordance. Mac renders the sections in
+   * the list column instead (see MacSectionControl), so no bar - and no bar
+   * strip above the panes - is mounted there.
+   */
   const showTabBar =
     Platform.OS === "ios" &&
+    !isMacCatalyst() &&
     introCompleted &&
     !isAppLoading &&
     [
@@ -565,13 +595,56 @@ export const RootNavigation = () => {
     (deviceMode !== "mobile" || !editorVisible);
 
   const topTabBar = showTabBar && isTopTabBar();
+  /**
+   * Mac shows the three sections as a segmented control in the window's title
+   * bar row. It lives here, above the navigator, so it stays put while Tasks
+   * and Search take over the content below it.
+   */
+  const macSectionControl = isMacCatalyst() && introCompleted && !isAppLoading;
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.primary.background }}>
-      {topTabBar && <AppleTabBar onSelect={selectSection} />}
+      {topTabBar && <AppleTabBar onSelect={selectAppleSection} />}
+      {/*
+        Mac's unified title bar: one full-width row at the top of the window,
+        painted with the list column's background. The window has no title and
+        no toolbar, so its first row of pixels is y 0 - the row is sized by
+        height alone (no padding in between) to start there exactly, and the
+        content below it starts at y MAC_TITLEBAR_HEIGHT. Everything left of
+        the control stays empty, so the traffic lights keep their corner.
+      */}
+      {macSectionControl ? (
+        <View
+          pointerEvents="box-none"
+          style={{
+            width: "100%",
+            height: MAC_TITLEBAR_HEIGHT,
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: visual.screenBackground
+          }}
+        >
+          <MacSectionControl
+            width={macSectionControlWidth(windowWidth)}
+            onSelect={selectAppleSection}
+          />
+        </View>
+      ) : null}
       <SafeAreaInsetsContext.Provider
-        value={topTabBar ? { ...safeAreaInsets, top: 0 } : safeAreaInsets}
+        value={
+          topTabBar || macSectionControl
+            ? { ...safeAreaInsets, top: 0 }
+            : safeAreaInsets
+        }
       >
+      {/*
+        The navigator is given flex: 1 so it takes exactly what the title bar
+        row (and the iPad bar strip) leaves, instead of the whole window: its
+        own view is sized with height 100%, which is 100% of *this* wrapper.
+        Without it the Mac panes would start at y 52 and run 52 pt past the
+        bottom of the window.
+      */}
+      <View style={{ flex: 1 }}>
       <NavigationContainer
         onReady={() => setNavigationReady(true)}
         onStateChange={onStateChange}
@@ -715,8 +788,11 @@ export const RootNavigation = () => {
           />
         </RootStack.Navigator>
       </NavigationContainer>
+      </View>
       </SafeAreaInsetsContext.Provider>
-      {showTabBar && !topTabBar && <AppleTabBar onSelect={selectSection} />}
+      {showTabBar && !topTabBar && (
+        <AppleTabBar onSelect={selectAppleSection} />
+      )}
     </View>
   );
 };

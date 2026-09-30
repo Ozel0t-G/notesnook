@@ -21,6 +21,7 @@ import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import { useMessageStore } from "../../../stores/use-message-store";
 import { RouteParams } from "../../../stores/use-navigation-store";
+import { isMacCatalyst } from "../../../utils/constants";
 import { Announcement } from "../../announcements/announcement";
 import { Card } from "../../list/card";
 
@@ -43,6 +44,15 @@ export const Header = React.memo(
     const { colors } = useThemeColors();
     const announcements = useMessageStore((state) => state.announcements);
     const messageId = useMessageStore((state) => state.message.id);
+    /**
+     * Mac has no room for the "Sign in to encrypt and sync notes" banner at
+     * the top of a 28 pt source list, and it is reachable from Settings
+     * (Account) there, so the list never shows it. Announcements stay.
+     */
+    const showMessageCard =
+      messageCard &&
+      !isMacCatalyst() &&
+      !(screen === "Notes" && messageId === "rate-app");
 
     return (
       <>
@@ -50,8 +60,7 @@ export const Header = React.memo(
           <Announcement />
         ) : (screen as any) === "Search" ? null : !shouldShow ? (
           <>
-            {messageCard &&
-            !(screen === "Notes" && messageId === "rate-app") ? (
+            {showMessageCard ? (
               <Card color={color || colors.primary.accent} />
             ) : null}
           </>

@@ -28,15 +28,21 @@ import { useSettingStore } from "../../../stores/use-setting-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { Pressable } from "../../ui/pressable";
-import { Platform, View } from "react-native";
+import { Platform, StyleSheet, View } from "react-native";
 import { Note } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { db } from "../../../common/database";
 import Navigation from "../../../services/navigation";
+import { isMacCatalyst } from "../../../utils/constants";
 import { deleteItems } from "../../../utils/functions";
 import { systemColor } from "../../../utils/ios-system-colors";
 import { ItemContextMenu } from "../../item-actions-menu";
 import { SwipeRow } from "../../swipe-row";
+
+/** Mac note list row metrics. */
+const MAC_NOTE_ROW_PADDING = 10;
+const MAC_NOTE_ROW_PADDING_VERTICAL = 10;
+const MAC_NOTE_ROW_RADIUS = 6;
 
 export function selectItem(item: Item) {
   if (useSelectionStore.getState().selectionMode === item.type) {
@@ -83,6 +89,7 @@ const SelectionWrapper = ({
       state.tabs.find((t) => t.id === state.currentTab)?.session?.noteId ===
       item.id
   );
+  const isNoteItem = ((item as TrashItem).itemType || item.type) === "note";
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
   );
@@ -105,6 +112,13 @@ const SelectionWrapper = ({
   // The open note is only marked where the editor is visible next to the
   // list (iPad). On iPhone a selection must not stay behind after going back.
   const showEditing = isEditingNote && isTabletPane;
+  /**
+   * Mac's note list rows are source-list rows: no card background, 10 pt of
+   * vertical padding, a hairline separator between rows, and the open note
+   * marked with the accent at 20% instead of the iPad's 5 pt side bar.
+   */
+  const macRow = isMacCatalyst() && isNoteItem && !isSheet;
+  const macHighlighted = macRow && (showEditing || isSelected);
 
   const onLongPress = () => {
     if (isSheet) return;
@@ -117,7 +131,9 @@ const SelectionWrapper = ({
   const row = (
     <Pressable
       customColor={
-        showEditing || isSelected
+        macRow
+          ? "transparent"
+          : showEditing || isSelected
           ? visual.selectionBackground
           : isSheet
           ? colors.primary.hover
@@ -126,7 +142,9 @@ const SelectionWrapper = ({
       testID={testID}
       onLongPress={nativeMenus && !selectionMode ? undefined : onLongPress}
       onPress={onPress}
-      customSelectedColor={visual.selectionBackground}
+      customSelectedColor={
+        macRow ? visual.hoverSurface : visual.selectionBackground
+      }
       customAlpha={!isDark ? -0.03 : 0.03}
       customOpacity={1}
       hitSlop={
@@ -144,24 +162,29 @@ const SelectionWrapper = ({
         width: isSheet ? "100%" : "auto",
         alignSelf: "center",
         overflow: "hidden",
-        paddingHorizontal: visual.rowInset,
-        paddingVertical: compactMode
+        paddingHorizontal: macRow ? MAC_NOTE_ROW_PADDING : visual.rowInset,
+        paddingVertical: macRow
+          ? MAC_NOTE_ROW_PADDING_VERTICAL
+          : compactMode
           ? visual.ios
             ? 8
             : 6
           : homeNote
           ? 15
           : visual.rowPadding,
-        borderRadius:
-          visual.ios && isTabletPane && !isSheet
-            ? 0
-            : visual.ios && !isSheet
-            ? homeNote
-              ? 17
-              : 10
-            : visual.cardRadius,
-        marginHorizontal: isSheet ? 0 : visual.listInset,
-        marginBottom: isSheet
+        borderRadius: macRow
+          ? MAC_NOTE_ROW_RADIUS
+          : visual.ios && isTabletPane && !isSheet
+          ? 0
+          : visual.ios && !isSheet
+          ? homeNote
+            ? 17
+            : 10
+          : visual.cardRadius,
+        marginHorizontal: isSheet || macRow ? 0 : visual.listInset,
+        marginBottom: macRow
+          ? 0
+          : isSheet
           ? DefaultAppStyles.GAP_VERTICAL
           : visual.ios
           ? isTabletPane
@@ -170,13 +193,34 @@ const SelectionWrapper = ({
             ? 7
             : 2
           : visual.rowSpacing,
-        borderWidth: isSheet || visual.ios ? 0 : 0.5,
-        borderBottomWidth: visual.ios && isTabletPane && !isSheet ? 0.5 : 0,
+        borderWidth: macRow ? 0 : isSheet || visual.ios ? 0 : 0.5,
+        borderBottomWidth: macRow
+          ? StyleSheet.hairlineWidth
+          : visual.ios && isTabletPane && !isSheet
+          ? 0.5
+          : 0,
         borderColor: visual.separator,
         ...(isSheet || visual.ios ? {} : visual.subtleShadow)
       }}
     >
-      {showEditing ? (
+      {macHighlighted ? (
+        /* Accent at low opacity: a layer of its own so custom themes (and
+           their non-hex colors) keep working. */
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: MAC_NOTE_ROW_RADIUS,
+            backgroundColor: colors.primary.accent,
+            opacity: 0.2
+          }}
+        />
+      ) : null}
+      {showEditing && !macRow ? (
         <View
           style={{
             backgroundColor: color || colors.selected.accent,

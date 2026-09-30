@@ -33,6 +33,7 @@ import {
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
 import { notesnook } from "../../e2e/test.ids";
+import { isMacCatalyst } from "../utils/constants";
 
 type NativeTabBarProps = {
   selectedSection: AppleTabBarSelection;
@@ -52,8 +53,22 @@ export const APPLE_TAB_BAR_HEIGHT = 49;
 /** On iPad the tab bar floats at the top (iPadOS 18+), centered. */
 export const IPAD_TAB_BAR_WIDTH = 380;
 
+/**
+ * iPadOS 18 floats the tab bar at the top of the window. Mac Catalyst does not
+ * show the native bar at all - its sections live in the Mac section control at
+ * the top of the Library/list column - so nothing is "top" there.
+ */
 export function isTopTabBar() {
-  return Platform.OS === "ios" && Platform.isPad;
+  return Platform.OS === "ios" && Platform.isPad && !isMacCatalyst();
+}
+
+/**
+ * Whether a screen has to reserve room at the bottom of its scroll view for
+ * the floating tab bar: only iPhone docks the bar at the bottom. iPad floats
+ * it at the top and Mac shows no bar at all, so neither reserves anything.
+ */
+export function hasBottomTabBar() {
+  return Platform.OS === "ios" && !Platform.isPad && !isMacCatalyst();
 }
 
 /**

@@ -68,6 +68,8 @@ import type { PaneWidths } from "../screens/editor/wrapper";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { NavigationProps } from "../services/navigation";
 import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
+import { isMacCatalyst } from "../utils/constants";
+import { macEditorWidth, macListWidth } from "../utils/mac-layout";
 
 /**
  * iPhone has no drawer: the bottom bar owns top-level navigation, so the
@@ -102,8 +104,13 @@ export const FluidPanelsView = React.memo(
      * The drawer is an iPad-only affordance now. On iPhone the bottom bar is
      * the only top-level navigation, so the sidebar pane and the
      * swipe-to-open gesture are both gone.
+     *
+     * Mac has no drawer either: its sections live in the section control at the
+     * top of the list column, so the sidebar pane (and the sliver of it that
+     * used to peek in at x 0) is not mounted at all.
      */
-    const drawerEnabled = Platform.OS !== "ios" || deviceMode !== "mobile";
+    const drawerEnabled =
+      !isMacCatalyst() && (Platform.OS !== "ios" || deviceMode !== "mobile");
 
     const toggleView = useCallback(
       (show: boolean) => {
@@ -219,7 +226,14 @@ export const FluidPanelsView = React.memo(
       (size: { width: number; height: number }) => {
         if (DDS.width === size.width && orientation === DDS.orientation) return;
         DDS.setSize(size, orientation);
-        const nextDeviceMode = DDS.isLargeTablet()
+        /**
+         * Mac always lays out like the tablet: the three panes sit side by
+         * side and the pager stays at x 0, so nothing can slide over the
+         * editor or push it out of the window.
+         */
+        const nextDeviceMode = isMacCatalyst()
+          ? "tablet"
+          : DDS.isLargeTablet()
           ? "tablet"
           : DDS.isSmallTab
           ? "smallTablet"
@@ -251,8 +265,8 @@ export const FluidPanelsView = React.memo(
       [setDimensions]
     );
 
-    const PANE_WIDTHS: PaneWidths = useMemo(
-      () => ({
+    const PANE_WIDTHS: PaneWidths = useMemo(() => {
+      const panes: PaneWidths = {
         mobile: {
           sidebar: dimensions.width * MOBILE_SIDEBAR_SIZE,
           list: dimensions.width,
@@ -269,9 +283,26 @@ export const FluidPanelsView = React.memo(
           list: dimensions.width * 0.3,
           editor: dimensions.width * 0.48
         }
-      }),
-      [dimensions.width]
-    );
+      };
+
+      if (isMacCatalyst()) {
+        /**
+         * Mac: the Library/list column starts at x 0 (no sidebar rail) and the
+         * editor takes exactly what is left of the window. The clamped iPad
+         * widths overflowed the window, which clipped the editor's right edge
+         * (the "Add tag" button and the header menu).
+         */
+        const macPanes = {
+          sidebar: 0,
+          list: macListWidth(dimensions.width),
+          editor: macEditorWidth(dimensions.width)
+        };
+        panes.smallTablet = macPanes;
+        panes.tablet = macPanes;
+      }
+
+      return panes;
+    }, [dimensions.width]);
 
     const onScroll = React.useCallback(
       (scrollOffset: number) => {
@@ -393,7 +424,10 @@ export const FluidPanelsView = React.memo(
                 <View
                   style={{
                     flex: 1,
-                    paddingTop: insets.top,
+                    // Mac's title bar row is a sibling above these panes (see
+                    // MAC_TITLEBAR_HEIGHT), so the column starts right under
+                    // it and adds no inset of its own.
+                    paddingTop: isMacCatalyst() ? 0 : insets.top,
                     // On iOS the bottom bar is laid out below this pane and
                     // already covers the home indicator; padding here as well
                     // would leave a dead strip above the bar.

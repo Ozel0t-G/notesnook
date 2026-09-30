@@ -132,7 +132,8 @@ export function IosBarButton({
   accessibilityLabel,
   bold,
   disabled,
-  testID
+  testID,
+  iconSize = 23
 }: {
   symbol?: string;
   label?: string;
@@ -141,6 +142,8 @@ export function IosBarButton({
   bold?: boolean;
   disabled?: boolean;
   testID?: string;
+  /** SF Symbol size. Mac's title bar row uses the 16 pt toolbar size. */
+  iconSize?: number;
 }) {
   const { colors } = useThemeColors();
   const tint = disabled ? colors.secondary.icon : colors.primary.accent;
@@ -163,7 +166,7 @@ export function IosBarButton({
       })}
     >
       {symbol ? (
-        <TaskSymbolView name={symbol} size={23} color={tint} />
+        <TaskSymbolView name={symbol} size={iconSize} color={tint} />
       ) : (
         <Text
           style={{

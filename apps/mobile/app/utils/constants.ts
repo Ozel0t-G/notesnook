@@ -36,7 +36,7 @@ const APPLE_TEAM_ID = "QXCNJY73A8";
 /** Mac Catalyst is an iOS build whose Mac App ID has no App Group in its
  * provisioning profile, so the shared container and the unprefixed keychain
  * access group behave differently there. iPhone/iPad must not be affected. */
-function isMacCatalyst() {
+export function isMacCatalyst() {
   return Platform.OS === "ios" && Platform.isMacCatalyst;
 }
 

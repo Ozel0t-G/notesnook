@@ -63,6 +63,7 @@ import { ToastManager } from "../../services/event-manager";
 import Navigation, { NavigationProps } from "../../services/navigation";
 import { TaskNotifications } from "../../services/task-notifications";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../../utils/constants";
 import { SystemColorName, systemColor } from "../../utils/ios-system-colors";
 import { FavoritesEditor } from "./favorites-editor";
 import {
@@ -758,8 +759,10 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     );
   }, []);
 
+  // No bar ever floats over the bottom on Mac (it shows the sections in the
+  // list column instead), so there is nothing to scroll clear of there.
   const bottomInset =
-    (Platform.OS === "ios" ? APPLE_TAB_BAR_HEIGHT : 0) +
+    (Platform.OS === "ios" && !isMacCatalyst() ? APPLE_TAB_BAR_HEIGHT : 0) +
     safeAreaInsets.bottom +
     24;
 

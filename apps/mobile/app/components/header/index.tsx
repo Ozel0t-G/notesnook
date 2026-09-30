@@ -47,6 +47,7 @@ import {
   IosSearchField
 } from "../ios-nav-bar";
 import { ListViewMenuConfig, useListViewMenu } from "../list-view-menu";
+import { isMacCatalyst } from "../../utils/constants";
 import Navigation from "../../services/navigation";
 
 /** SF Symbols for the Material icon names screens pass as `rightButton`. */
@@ -130,6 +131,11 @@ export const Header = ({
     const iosRight = rightButton
       ? IOS_RIGHT_BUTTON_SYMBOLS[rightButton.name as string]
       : undefined;
+    /**
+     * Mac's sidebars have no large title: the list's name sits inline in the
+     * bar row instead, right under the window's title bar row.
+     */
+    const isMac = isMacCatalyst();
     return (
       <View style={{ backgroundColor: visual.screenBackground }}>
         <IosNavBar
@@ -140,6 +146,8 @@ export const Header = ({
           title={
             selectionMode
               ? strings.selectedCode(selectedItemsList.length)
+              : isMac
+              ? title
               : undefined
           }
           trailing={
@@ -184,7 +192,7 @@ export const Header = ({
         />
         {selectionMode ? null : (
           <>
-            {title ? (
+            {title && !isMac ? (
               <IosLargeTitle title={title} testID="header-large-title" />
             ) : null}
             {hasSearch ? (

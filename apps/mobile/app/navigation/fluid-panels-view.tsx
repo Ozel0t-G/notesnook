@@ -97,6 +97,15 @@ export const FluidPanelsView = React.memo(
     const setDeviceModeState = useSettingStore((state) => state.setDeviceMode);
     const dimensions = useSettingStore((state) => state.dimensions);
     const setDimensions = useSettingStore((state) => state.setDimensions);
+    /**
+     * The top-level section the app is showing. Mac's Tasks and Search are
+     * screens of their own that cover this one (see MAC_SECTION_SCREEN_OPTIONS
+     * in navigation-stack.tsx); the section is what tells this screen they are
+     * up. On iPhone/iPad the floating bar keeps the same value and nothing here
+     * reads it: those sections cover the panes the same way they always did.
+     */
+    const section = useAppleNavigationStore((state) => state.section);
+    const macSection = isMacCatalyst() && section !== "library";
     const insets = useGlobalSafeAreaInsets();
     const animatedOpacity = useSharedValue(0);
     const animatedTranslateY = useSharedValue(-9999);
@@ -485,6 +494,35 @@ export const FluidPanelsView = React.memo(
               {isLoading ? null : <EditorWrapper widths={PANE_WIDTHS} />}
             </ScopedThemeProvider>
           </FluidPanels>
+        ) : null}
+
+        {/*
+          Mac: while Tasks or Search owns the content area, nothing of the
+          Library's three columns may show through or poke out of an edge - the
+          section's screen is the only thing on that surface, and the strip
+          under the toolbar has to have the same background as the rest of it.
+          This covers the panes (whose own surfaces are painted on top of each
+          other: source list, note list, editor) with the screen background the
+          section screens use, so the Library layout cannot be part of the
+          section.
+
+          It is not touchable - the section's screen is above this one - and the
+          panes stay mounted underneath, so the editor keeps its state and the
+          three-column layout comes back exactly as it was when the Library
+          section returns.
+        */}
+        {macSection ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: visual.screenBackground
+            }}
+          />
         ) : null}
       </View>
     );

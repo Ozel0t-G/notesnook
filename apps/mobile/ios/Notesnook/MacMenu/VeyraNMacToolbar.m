@@ -189,6 +189,12 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
  * The three sections as one segmented control. `selectionMode` keeps exactly
  * one segment on, and the whole group reports through a single action that
  * reads the new `selectedIndex`.
+ *
+ * Each segment is named after the section it switches to: the label, palette
+ * label and tool tip of the segment's own toolbar item, plus the accessibility
+ * description of its image. An SF Symbol carries a description of the picture
+ * ("Books standing vertically on a shelf", "Checklist with checkmarks"), and
+ * that - not the icon's purpose - is what VoiceOver reads out otherwise.
  */
 - (NSToolbarItem *)makeSectionsItem {
   NSMutableArray<UIImage *> *images =
@@ -199,7 +205,11 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
     UIImage *image = [UIImage systemImageNamed:VeyraNSectionSymbols[index]];
     // A missing symbol would leave a blank (or crash on a nil array member):
     // circle is the oldest SF Symbol and always resolves.
-    [images addObject:image ?: [UIImage systemImageNamed:@"circle"]];
+    if (image == nil) {
+      image = [UIImage systemImageNamed:@"circle"];
+    }
+    image.accessibilityLabel = VeyraNSectionLabels[index];
+    [images addObject:image];
     [labels addObject:VeyraNSectionLabels[index]];
   }
 
@@ -212,6 +222,17 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
                        action:@selector(selectSectionFromToolbar:)];
   group.label = @"Sections";
   group.paletteLabel = @"Sections";
+  group.toolTip = @"Sections";
+  // The segments are toolbar items of their own (and the accessibility
+  // elements the group exposes): give each one its section's name.
+  NSArray<NSToolbarItem *> *segments = group.subitems;
+  for (NSUInteger index = 0;
+       index < VeyraNSectionCount && index < segments.count; index++) {
+    NSToolbarItem *segment = segments[index];
+    segment.label = VeyraNSectionLabels[index];
+    segment.paletteLabel = VeyraNSectionLabels[index];
+    segment.toolTip = VeyraNSectionLabels[index];
+  }
   NSUInteger selected = VeyraNSectionIndex(_selectedSection);
   group.selectedIndex = (NSInteger)(selected == NSNotFound ? 0 : selected);
 
@@ -222,10 +243,15 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
 - (NSToolbarItem *)makeNewNoteItem {
   NSToolbarItem *item =
       [[NSToolbarItem alloc] initWithItemIdentifier:VeyraNNewNoteIdentifier];
+  // Icon-only item: the label, palette label, tool tip and the image's
+  // accessibility description all have to name the action ("square.and.pencil"
+  // would otherwise be announced as the symbol's own description).
+  UIImage *image = [UIImage systemImageNamed:@"square.and.pencil"];
+  image.accessibilityLabel = @"New Note";
   item.label = @"New Note";
   item.paletteLabel = @"New Note";
   item.toolTip = @"New Note";
-  item.image = [UIImage systemImageNamed:@"square.and.pencil"];
+  item.image = image;
   item.target = self;
   item.action = @selector(newNoteFromToolbar:);
   return item;

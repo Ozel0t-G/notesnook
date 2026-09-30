@@ -18,7 +18,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { useThemeColors } from "@notesnook/theme";
 import { NavigationContainer } from "@react-navigation/native";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import {
+  createNativeStackNavigator,
+  type NativeStackNavigationOptions
+} from "@react-navigation/native-stack";
 import * as React from "react";
 import { Keyboard, Platform, View } from "react-native";
 import { hideAllTooltips } from "../hooks/use-tooltip";
@@ -163,6 +166,29 @@ const TASK_SHEET_OPTIONS = {
     ? "formSheet"
     : "modal") as "formSheet" | "modal"
 };
+
+/**
+ * How Mac presents the two section routes, Tasks and Search.
+ *
+ * They are sections, not steps of the Library stack: each one takes over the
+ * whole content area under the window's toolbar, and the three-column Library
+ * layout comes back when the Library section returns (see the section handler
+ * `selectAppleSection`).
+ *
+ * Mac pushes them without a transition. On Mac Catalyst the push animation left
+ * them mid-slide - the outgoing three-column screen stayed visible along the
+ * left edge, moved by its own sidebar width, with the section's content drawn
+ * offset to the right of it - and a section switch has nothing to animate
+ * anyway: the toolbar's segmented control already shows the state. Landing the
+ * screen on its final frame instead of animating it is what makes the section
+ * fill the content area (x 0...W), under the toolbar, with no leftover column
+ * and no seam between the two backgrounds. iPhone and iPad keep the animated
+ * push. `animation: "none"` is the app's existing idiom for this (see the
+ * Library stack below and the Settings stack).
+ */
+const MAC_SECTION_SCREEN_OPTIONS: NativeStackNavigationOptions =
+  isMacCatalyst() ? { animation: "none" } : {};
+
 const AppStack = createNativeStackNavigator();
 const DEFAULT_HOME: {
   name: string;
@@ -348,9 +374,20 @@ const AppNavigation = React.memo(
     React.useEffect(() => {
       if (!home) return;
       useNavigationStore.getState().update(home?.name as keyof RouteParams);
-      useNavigationStore
-        .getState()
-        .setFocusedRouteId(home?.params?.id || home?.name);
+      /**
+       * Mac's Library route is the note list column, and it opens on the All
+       * Notes collection (`MAC_DEFAULT_COLLECTION` in screens/library), whose
+       * `NoteCollection` reports "AllNotes" as the focused route. Effects run
+       * child-first, so this effect runs *after* the one in `NoteCollection`:
+       * seeding "Library" here would overwrite the id that marks the row the
+       * middle column is showing, and Mac's sidebar would have nothing
+       * highlighted until the user picked a row by hand.
+       */
+      const focusedRouteId =
+        isMacCatalyst() && home?.name === "Library"
+          ? "AllNotes"
+          : home?.params?.id || home?.name;
+      useNavigationStore.getState().setFocusedRouteId(focusedRouteId);
       if (LIBRARY_ROUTES.has(home.name))
         useAppleNavigationStore.getState().setSection("library");
     }, [home]);
@@ -766,6 +803,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="Tasks"
+            options={MAC_SECTION_SCREEN_OPTIONS}
             getComponent={() => {
               Tasks = Tasks || require("../screens/tasks").default;
               return Tasks;
@@ -774,6 +812,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="GlobalSearch"
+            options={MAC_SECTION_SCREEN_OPTIONS}
             getComponent={() => {
               GlobalSearch =
                 GlobalSearch || require("../screens/global-search").default;

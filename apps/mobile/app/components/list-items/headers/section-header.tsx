@@ -27,7 +27,7 @@ import {
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { View } from "react-native";
+import { Text, View } from "react-native";
 import { useIsCompactModeEnabled } from "../../../hooks/use-is-compact-mode-enabled";
 import { presentSheet } from "../../../services/event-manager";
 import SettingsService from "../../../services/settings";
@@ -35,6 +35,7 @@ import { RouteName } from "../../../stores/use-navigation-store";
 import { AppFontSize } from "../../../utils/size";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../../../utils/constants";
 import { isHomeNoteRoute } from "../../../utils/home-note-presentation";
 import Sort from "../../sheets/sort";
 import { IconButton } from "../../ui/icon-button";
@@ -76,6 +77,54 @@ export const SectionHeader = React.memo<
     const isCompactModeEnabled = useIsCompactModeEnabled(
       dataType as "note" | "notebook" | "searchResult"
     );
+
+    /**
+     * Mac: a plain source-list section header - an 11 pt semibold label in the
+     * secondary color, 8 pt above the group it starts, with no background. The
+     * iPhone/iPad header is a rounded bar (the "Today"/"Yesterday" pill) that
+     * would drown the 260-360 pt note list column.
+     */
+    if (isMacCatalyst()) {
+      return (
+        <View
+          style={{
+            width: "100%",
+            paddingHorizontal: visual.listInset,
+            paddingTop: 8
+          }}
+        >
+          <Pressable
+            onPress={() => {
+              onOpenJumpToDialog();
+            }}
+            hitSlop={{ top: 8, left: 10, right: 30, bottom: 8 }}
+            // The shared Pressable centers itself by default (it is a row
+            // between two spacers in the iPhone/iPad header); a source-list
+            // section header starts at the column's leading edge.
+            style={{
+              alignSelf: "flex-start",
+              flexDirection: "row",
+              width: "auto"
+            }}
+          >
+            <Text
+              numberOfLines={1}
+              style={{
+                color: visual.secondaryText,
+                fontSize: 11,
+                fontWeight: "600"
+              }}
+            >
+              {!item.title || item.title === ""
+                ? screen === "Search"
+                  ? strings.results(itemCount || 0)
+                  : strings.pinned()
+                : item.title}
+            </Text>
+          </Pressable>
+        </View>
+      );
+    }
 
     return (
       <View

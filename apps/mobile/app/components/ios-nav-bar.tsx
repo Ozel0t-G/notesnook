@@ -28,6 +28,7 @@ import {
   ViewStyle
 } from "react-native";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../utils/constants";
 import { MenuButton, NativeMenuItem } from "./native-menu";
 import { TaskSymbolView } from "./task-symbol-view";
 
@@ -270,6 +271,10 @@ export function IosSearchField({
 }) {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
+  // Mac's note list is only 260-360 pt wide: the field is the compact
+  // NSSearchField size (28 pt tall, 7 pt radius, 13 pt text) instead of the
+  // 36 pt bar that sits under an iPhone large title.
+  const isMac = isMacCatalyst();
   return (
     <Pressable
       testID={testID}
@@ -277,23 +282,28 @@ export function IosSearchField({
       accessibilityRole="search"
       accessibilityLabel={placeholder}
       style={{
-        marginHorizontal: 16,
-        marginBottom: 10,
-        minHeight: 36,
-        borderRadius: 10,
-        paddingHorizontal: 8,
+        marginHorizontal: isMac ? 12 : 16,
+        marginBottom: isMac ? 8 : 10,
+        minHeight: isMac ? 28 : 36,
+        borderRadius: isMac ? 7 : 10,
+        paddingHorizontal: isMac ? 6 : 8,
         flexDirection: "row",
         alignItems: "center",
-        gap: 6,
+        gap: isMac ? 4 : 6,
         backgroundColor: isDark ? "#1C1C1E" : "rgba(118,118,128,0.12)"
       }}
     >
       <TaskSymbolView
         name="magnifyingglass"
-        size={16}
+        size={isMac ? 13 : 16}
         color={visual.tertiaryText}
       />
-      <Text style={{ color: visual.tertiaryText, fontSize: 17 }}>
+      <Text
+        style={{
+          color: visual.tertiaryText,
+          fontSize: isMac ? 13 : 17
+        }}
+      >
         {placeholder}
       </Text>
     </Pressable>

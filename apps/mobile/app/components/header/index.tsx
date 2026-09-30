@@ -137,12 +137,26 @@ export const Header = ({
      */
     const isMac = isMacCatalyst();
     return (
-      <View style={{ backgroundColor: visual.screenBackground }}>
+      <View
+        style={{
+          // Mac's list column is the content surface; the iPhone/iPad bar
+          // matches the grouped background of the list behind it.
+          backgroundColor: isMac
+            ? visual.contentSurface
+            : visual.screenBackground
+        }}
+      >
         <IosNavBar
           backTitle={
-            selectionMode ? undefined : backTitle || strings.routes.Library()
+            isMac || selectionMode
+              ? undefined
+              : backTitle || strings.routes.Library()
           }
-          onBack={selectionMode ? undefined : canGoBack ? back : undefined}
+          // Mac's note list is the middle column's top screen (the sidebar owns
+          // list switching), so its bar never shows a "‹ Library" back button.
+          onBack={
+            selectionMode || isMac ? undefined : canGoBack ? back : undefined
+          }
           title={
             selectionMode
               ? strings.selectedCode(selectedItemsList.length)

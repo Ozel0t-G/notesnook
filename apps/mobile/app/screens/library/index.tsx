@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { EVENTS, Notebook, Tag } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
@@ -27,7 +26,6 @@ import { db } from "../../common/database";
 import Navigation, { NavigationProps } from "../../services/navigation";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { useNotes } from "../../stores/use-notes-store";
-import { useSettingStore } from "../../stores/use-setting-store";
 import { useInboxNotes } from "../../stores/use-inbox-store";
 import NoteCollection from "../notes/note-collection";
 import { openEditor, setOnFirstSaveUnassigned } from "../notes/common";
@@ -43,8 +41,7 @@ import {
 import { AddNotebookSheet } from "../../components/sheets/add-notebook";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isMacCatalyst } from "../../utils/constants";
-import { MAC_SOURCE_LIST_INSET } from "../../utils/mac-layout";
-import useNavigationStore from "../../stores/use-navigation-store";
+import { useLibrarySourceList } from "../../hooks/use-library-source-list";
 
 type LibraryDestination = {
   key: string;
@@ -58,31 +55,12 @@ type LibraryDestination = {
 type LibraryCollection = "all-notes" | "inbox";
 
 /**
- * Mac source list: the `focusedRouteId` that marks each Library destination as
- * the current one. Notebook and tag rows compare their own id instead, since
- * they go through the shared Notes screen and set the id they were opened with.
+ * Mac's Library route is the note list column: the source list that used to be
+ * rendered here now lives in the sidebar pane (components/mac-sidebar.tsx), and
+ * this screen shows the list the sidebar selected - All Notes by default - so
+ * the middle column never shows a source list or a "‹ Library" back button.
  */
-const MAC_SELECTED_ROUTE_ID: Record<string, string> = {
-  "all-notes": "AllNotes",
-  inbox: "Inbox",
-  favorites: "Favorites",
-  monographs: "monograph",
-  archive: "Archive",
-  trash: "Trash"
-};
-
-/**
- * Mac source list metrics (see `mac-layout.ts` for the window chrome and for
- * `MAC_SOURCE_LIST_INSET`, the 10 pt margin the rows sit in).
- */
-const MAC_ROW_HEIGHT = 28;
-const MAC_ROW_RADIUS = 6;
-const MAC_ROW_FONT_SIZE = 13;
-const MAC_ROW_ICON_SIZE = 16;
-/** Inner padding of a row: the icon/text inset inside the highlight. */
-const MAC_ROW_PADDING = 8;
-/** Text of a row/section header, measured from the column's edge. */
-const MAC_LIST_TEXT_LEFT = MAC_SOURCE_LIST_INSET + MAC_ROW_PADDING;
+const MAC_DEFAULT_COLLECTION: LibraryCollection = "all-notes";
 
 export default function Library({
   navigation,
@@ -91,85 +69,35 @@ export default function Library({
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const insets = useSafeAreaInsets();
-  const [notebooks, setNotebooks] = React.useState<Notebook[]>([]);
-  const [tags, setTags] = React.useState<Tag[]>([]);
-  const [counts, setCounts] = React.useState<{
-    allNotes?: number;
-    inbox?: number;
-  }>({});
   const [collection, setCollection] = React.useState<
     LibraryCollection | undefined
   >(route.params?.initialCollection);
-  const isAppLoading = useSettingStore((state) => state.isAppLoading);
   const [allNotes, allNotesLoading, refreshAllNotes] = useNotes();
   const [inboxNotes, inboxLoading, refreshInbox] = useInboxNotes();
-  // Mac renders this screen as a source list (see `isMac` branches below):
-  // rows are 28 pt tall, nothing is a card, and the open route is highlighted.
   const isMac = isMacCatalyst();
-  const focusedRouteId = useNavigationStore((state) => state.focusedRouteId);
-  const isCurrentDestination = React.useCallback(
-    (key: string) => {
-      if (!isMac) return false;
-      if (key.startsWith("notebook:"))
-        return focusedRouteId === key.slice("notebook:".length);
-      if (key.startsWith("tag:"))
-        return focusedRouteId === key.slice("tag:".length);
-      return focusedRouteId === MAC_SELECTED_ROUTE_ID[key];
-    },
-    [focusedRouteId, isMac]
+  const { notebooks, tags, counts } = useLibrarySourceList(navigation);
+
+  /**
+   * The sidebar selects a list by navigating here with `initialCollection`
+   * (`openMacList` in services/mac-list-navigation.ts), so follow the params
+   * instead of only reading them once. Mac always has a collection: All Notes is
+   * the middle column's default content.
+   */
+  React.useEffect(() => {
+    const next = route.params?.initialCollection;
+    if (next) setCollection(next);
+  }, [route.params?.initialCollection]);
+
+  const activeCollection = isMac
+    ? collection || MAC_DEFAULT_COLLECTION
+    : collection;
+
+  const goBackToLibrary = React.useCallback(
+    () => setCollection(isMac ? MAC_DEFAULT_COLLECTION : undefined),
+    [isMac]
   );
 
-  React.useEffect(() => {
-    let alive = true;
-    const load = async () => {
-      if (!db.isInitialized) return;
-      const [nextNotebooks, nextTags, allNotesCount, inboxCount] =
-        await Promise.all([
-          db.notebooks.all.limit(2000).items(),
-          db.tags.all.limit(2000).items(),
-          db.notes.all.count(),
-          db.notes.unassigned.count()
-        ]);
-      if (alive) {
-        setNotebooks(nextNotebooks);
-        setTags(nextTags);
-        setCounts({ allNotes: allNotesCount, inbox: inboxCount });
-      }
-    };
-    void load();
-
-    // The Library route has no entry in `Navigation.routeUpdateFunctions`, so
-    // follow the database directly to keep the counts honest after a note is
-    // created, deleted, archived, restored or (un)filed in a notebook.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const schedule = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => void load(), 300);
-    };
-    const subscriptions = [
-      db.eventManager.subscribe(EVENTS.databaseUpdated, (event) => {
-        if (
-          event?.collection === "notes" ||
-          event?.collection === "notebooks" ||
-          event?.collection === "relations" ||
-          event?.collection === "tags"
-        )
-          schedule();
-      }),
-      db.eventManager.subscribe(EVENTS.syncCompleted, schedule)
-    ];
-    const unsubscribe = navigation.addListener("focus", () => void load());
-    return () => {
-      alive = false;
-      clearTimeout(timer);
-      subscriptions.forEach((subscription) => subscription.unsubscribe());
-      unsubscribe();
-    };
-  }, [navigation, isAppLoading]);
-
-  const goBackToLibrary = React.useCallback(() => setCollection(undefined), []);
-
-  if (collection === "all-notes") {
+  if (activeCollection === "all-notes") {
     return (
       <NoteCollection
         id="AllNotes"
@@ -191,7 +119,7 @@ export default function Library({
     );
   }
 
-  if (collection === "inbox") {
+  if (activeCollection === "inbox") {
     return (
       <NoteCollection
         id="Inbox"
@@ -266,29 +194,29 @@ export default function Library({
   ];
 
   /**
-   * Section header ("Notebooks", "Tags"). On Mac it is a plain 11 pt label in
-   * the secondary color, like a source list's section header.
+   * Section header ("Notebooks", "Tags"). Mac's source list draws its own
+   * (components/mac-sidebar.tsx); this is the iPhone/iPad card list.
    */
   const sectionTitle = (title: string, onAdd?: () => void) => (
     <View
       style={{
         flexDirection: "row",
         alignItems: "center",
-        marginTop: isMac ? 14 : 22,
-        marginBottom: isMac ? 2 : 4,
+        marginTop: 22,
+        marginBottom: 4,
         // Section headers line up with the rows' content (and their trailing
         // "+" with the row counts), not with the column's edges.
-        marginLeft: isMac ? MAC_LIST_TEXT_LEFT : 20,
-        marginRight: isMac ? MAC_LIST_TEXT_LEFT : 8
+        marginLeft: 20,
+        marginRight: 8
       }}
     >
       <Text
         accessibilityRole="header"
         style={{
           flex: 1,
-          color: isMac ? visual.secondaryText : visual.primaryText,
-          fontSize: isMac ? 11 : 20,
-          fontWeight: isMac ? "600" : "700"
+          color: visual.primaryText,
+          fontSize: 20,
+          fontWeight: "700"
         }}
       >
         {title}
@@ -298,7 +226,6 @@ export default function Library({
           symbol="plus"
           accessibilityLabel={strings.newNotebookRow()}
           testID="library-new-notebook"
-          iconSize={isMac ? 16 : undefined}
           onPress={onAdd}
         />
       ) : null}
@@ -306,11 +233,8 @@ export default function Library({
   );
 
   /**
-   * One Library destination. Mac draws it as a source-list row: 28 pt tall,
-   * no card background, no separators, a 6 pt rounded accent highlight when
-   * the route it opens is the one on screen, and counts right-aligned in the
-   * secondary color. iPhone/iPad keep the inset-group card (radius, hairline
-   * separators, chevrons).
+   * One Library destination of the iPhone/iPad card list: the inset-group card
+   * (radius, hairline separators, chevrons).
    */
   const row = (
     item: LibraryDestination,
@@ -318,75 +242,37 @@ export default function Library({
     length: number,
     marginTop = 0
   ) => {
-    const selected = isCurrentDestination(item.key);
     return (
       <Pressable
         key={item.key}
         onPress={item.onPress}
         accessibilityRole="button"
-        accessibilityState={isMac ? { selected } : undefined}
         accessibilityLabel={
           item.count === undefined
             ? item.label
             : `${item.label}, ${strings.notes(item.count)}`
         }
-        style={
-          isMac
-            ? {
-                height: MAC_ROW_HEIGHT,
-                flexDirection: "row",
-                alignItems: "center",
-                // 10 pt of margin around the column so the rounded highlight
-                // sits inside it and the icons clear the window edge.
-                marginHorizontal: MAC_SOURCE_LIST_INSET,
-                // Only the first row of a group keeps a gap: source lists have
-                // no card, so the group break is the only separation left.
-                marginTop: index === 0 && marginTop ? 8 : 0,
-                paddingHorizontal: MAC_ROW_PADDING,
-                borderRadius: MAC_ROW_RADIUS,
-                borderWidth: 0,
-                backgroundColor: "transparent",
-                overflow: "hidden"
-              }
-            : {
-                minHeight: 54,
-                flexDirection: "row",
-                alignItems: "center",
-                marginHorizontal: 16,
-                marginTop: index === 0 ? marginTop : 0,
-                paddingHorizontal: 16,
-                borderTopLeftRadius: index === 0 ? visual.controlRadius : 0,
-                borderTopRightRadius: index === 0 ? visual.controlRadius : 0,
-                borderBottomLeftRadius:
-                  index === length - 1 ? visual.controlRadius : 0,
-                borderBottomRightRadius:
-                  index === length - 1 ? visual.controlRadius : 0,
-                borderBottomWidth: index === length - 1 ? 0 : 0.5,
-                borderBottomColor: visual.separator,
-                backgroundColor: visual.contentSurface
-              }
-        }
+        style={{
+          minHeight: 54,
+          flexDirection: "row",
+          alignItems: "center",
+          marginHorizontal: 16,
+          marginTop: index === 0 ? marginTop : 0,
+          paddingHorizontal: 16,
+          borderTopLeftRadius: index === 0 ? visual.controlRadius : 0,
+          borderTopRightRadius: index === 0 ? visual.controlRadius : 0,
+          borderBottomLeftRadius:
+            index === length - 1 ? visual.controlRadius : 0,
+          borderBottomRightRadius:
+            index === length - 1 ? visual.controlRadius : 0,
+          borderBottomWidth: index === length - 1 ? 0 : 0.5,
+          borderBottomColor: visual.separator,
+          backgroundColor: visual.contentSurface
+        }}
       >
-        {/* Accent at low opacity: a layer of its own so custom themes (and
-            their non-hex colors) keep working. */}
-        {selected ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: MAC_ROW_RADIUS,
-              backgroundColor: colors.primary.accent,
-              opacity: 0.2
-            }}
-          />
-        ) : null}
         <TaskSymbolView
           name={item.symbol}
-          size={isMac ? MAC_ROW_ICON_SIZE : 21}
+          size={21}
           color={colors.primary.accent}
         />
         <Text
@@ -394,8 +280,8 @@ export default function Library({
           style={{
             flex: 1,
             color: visual.primaryText,
-            fontSize: isMac ? MAC_ROW_FONT_SIZE : 16,
-            marginLeft: isMac ? 8 : 14
+            fontSize: 16,
+            marginLeft: 14
           }}
         >
           {item.label}
@@ -404,21 +290,19 @@ export default function Library({
           <Text
             style={{
               color: visual.secondaryText,
-              fontSize: isMac ? MAC_ROW_FONT_SIZE : 16,
+              fontSize: 16,
               marginLeft: 8,
-              marginRight: isMac ? 0 : 8
+              marginRight: 8
             }}
           >
             {item.count}
           </Text>
         )}
-        {isMac ? null : (
-          <TaskSymbolView
-            name="chevron.right"
-            size={14}
-            color={visual.tertiaryText}
-          />
-        )}
+        <TaskSymbolView
+          name="chevron.right"
+          size={14}
+          color={visual.tertiaryText}
+        />
       </Pressable>
     );
   };
@@ -447,75 +331,42 @@ export default function Library({
       <ScrollView
         testID="library-scroll"
         contentContainerStyle={{
-          // Mac's window chrome (the native toolbar) is above the content area,
-          // so the list starts 8 pt under the top of this scroll view. Only the
-          // iPhone bar floats over the bottom of this list; the iPad bar floats
-          // at the top and Mac shows no bar at all.
-          paddingTop: isMac ? 8 : 0,
+          paddingTop: 0,
           paddingBottom:
             32 + (hasBottomTabBar() ? APPLE_TAB_BAR_HEIGHT + insets.bottom : 0)
         }}
       >
         {/*
-          iPhone/iPad keep Settings and compose in the navigation bar, as in
-          Notes. Mac shows neither here: both live in the window's own chrome
-          (the toolbar's New Note and the app menu's Settings, Cmd-,).
+          Settings and compose live in the navigation bar, as in Notes; the
+          "Notebooks" section header's "+" (see `sectionTitle`) adds a notebook.
+          Mac renders neither this list nor this bar: its source list is the
+          sidebar pane and its chrome is the window's native toolbar.
         */}
         <IosNavBar
-          leading={
-            isMac ? (
-              // Mac sidebars have no large title: the screen name is a 13 pt
-              // secondary label on the bar row itself.
-              <Text
-                accessibilityRole="header"
-                testID="library-heading"
-                style={{
-                  color: visual.secondaryText,
-                  fontSize: 13,
-                  fontWeight: "600",
-                  paddingLeft: MAC_LIST_TEXT_LEFT
-                }}
-              >
-                {strings.routes.Library()}
-              </Text>
-            ) : undefined
-          }
           trailing={
-            /**
-             * Mac has both of these in the window's own chrome already: New
-             * Note is a toolbar button (and Cmd-N) and Settings is in the app
-             * menu (Cmd-,), so the bar shows neither. "New Notebook" stays - the
-             * "Notebooks" section header's "+" below (see `sectionTitle`).
-             */
-            isMac ? undefined : (
-              <>
-                <IosBarButton
-                  symbol="gearshape"
-                  accessibilityLabel={strings.routes.Settings()}
-                  testID="library-settings"
-                  iconSize={isMac ? MAC_ROW_ICON_SIZE : undefined}
-                  onPress={() => Navigation.push("Settings", {})}
-                />
-                <IosBarButton
-                  symbol="square.and.pencil"
-                  accessibilityLabel={strings.newNoteTab()}
-                  testID="library-compose"
-                  iconSize={isMac ? MAC_ROW_ICON_SIZE : undefined}
-                  onPress={() => {
-                    setOnFirstSaveUnassigned();
-                    openEditor();
-                  }}
-                />
-              </>
-            )
+            <>
+              <IosBarButton
+                symbol="gearshape"
+                accessibilityLabel={strings.routes.Settings()}
+                testID="library-settings"
+                onPress={() => Navigation.push("Settings", {})}
+              />
+              <IosBarButton
+                symbol="square.and.pencil"
+                accessibilityLabel={strings.newNoteTab()}
+                testID="library-compose"
+                onPress={() => {
+                  setOnFirstSaveUnassigned();
+                  openEditor();
+                }}
+              />
+            </>
           }
         />
-        {isMac ? null : (
-          <IosLargeTitle
-            title={strings.routes.Library()}
-            testID="library-heading"
-          />
-        )}
+        <IosLargeTitle
+          title={strings.routes.Library()}
+          testID="library-heading"
+        />
         {collections.map((item, index) => row(item, index, collections.length))}
         {destinations.map((item, index) =>
           row(item, index, destinations.length, visual.sectionSpacing)

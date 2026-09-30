@@ -42,6 +42,7 @@ import Animated, {
 import { notesnook } from "../../e2e/test.ids";
 import { db } from "../common/database";
 import { FluidPanels } from "../components/fluid-panels";
+import { MacSidebar } from "../components/mac-sidebar";
 import { useSideBarDraggingStore } from "../components/side-menu/dragging-store";
 import useGlobalSafeAreaInsets from "../hooks/use-global-safe-area-insets";
 import { hideAllTooltips } from "../hooks/use-tooltip";
@@ -72,6 +73,7 @@ import { isMacCatalyst } from "../utils/constants";
 import {
   macEditorWidth,
   macListWidth,
+  macSidebarWidth,
   macToolbarInset
 } from "../utils/mac-layout";
 
@@ -294,13 +296,14 @@ export const FluidPanelsView = React.memo(
 
       if (isMacCatalyst()) {
         /**
-         * Mac: the Library/list column starts at x 0 (no sidebar rail) and the
-         * editor takes exactly what is left of the window. The clamped iPad
-         * widths overflowed the window, which clipped the editor's right edge
-         * (the "Add tag" button and the header menu).
+         * Mac lays out like macOS Notes: a persistent source-list sidebar, the
+         * note list, and the editor taking exactly what is left of the window.
+         * The three widths add up to the window width (see mac-layout.ts), which
+         * is what keeps the editor's right edge - the "Add tag" button and the
+         * header menu - inside the window; the clamped iPad widths overflowed it.
          */
         const macPanes = {
-          sidebar: 0,
+          sidebar: macSidebarWidth(dimensions.width),
           list: macListWidth(dimensions.width),
           editor: macEditorWidth(dimensions.width)
         };
@@ -368,9 +371,30 @@ export const FluidPanelsView = React.memo(
               }
             }}
           >
-            {/* iPad sidebar pane. iPhone navigates with the bottom bar, so the
-                side menu is neither sized nor mounted there. */}
-            {drawerEnabled ? (
+            {/* Mac's sidebar pane: a persistent source list (Library) at the
+                left edge of the window, the leftmost of the three columns, with
+                a hairline between it and the note list. It is not the side menu
+                and has no drawer: selecting a row opens the note list in the
+                middle column. The pane paints its own background and clears the
+                native toolbar's inset (see components/mac-sidebar.tsx). */}
+            {isMacCatalyst() ? (
+              <View
+                key="1"
+                style={{
+                  height: "100%",
+                  width: fullscreen
+                    ? 0
+                    : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]
+                        ?.sidebar,
+                  borderRightWidth: 0.5,
+                  borderRightColor: visual.separator
+                }}
+              >
+                <ScopedThemeProvider value="list">
+                  <MacSidebar />
+                </ScopedThemeProvider>
+              </View>
+            ) : drawerEnabled ? (
               <View
                 key="1"
                 style={{
@@ -397,7 +421,11 @@ export const FluidPanelsView = React.memo(
                 width: fullscreen
                   ? 0
                   : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list,
-                backgroundColor: visual.screenBackground,
+                // Mac's note list column is the content surface, one shade off
+                // the sidebar's source list (macOS Notes' list vs. sidebar).
+                backgroundColor: isMacCatalyst()
+                  ? visual.contentSurface
+                  : visual.screenBackground,
                 borderRightWidth:
                   visual.ios && deviceMode === "tablet" ? 0.5 : 0,
                 borderRightColor: visual.separator

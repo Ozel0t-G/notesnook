@@ -20,21 +20,25 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /**
  * Mac Catalyst window metrics.
  *
- * The Mac window has no sidebar rail and no swipe pager: the Library/list
- * column owns the left edge of the window (x = 0) and the editor gets exactly
- * what the list column leaves. Both values are derived from the window width
- * the root view reports, so they follow every resize.
+ * The Mac window lays out like macOS Notes: a persistent source list (sidebar)
+ * on the left, the note list in the middle and the editor taking exactly what
+ * is left. All three values are derived from the window width the root view
+ * reports, so they follow every resize, and the widths always add up to the
+ * window width so the editor's right edge stays inside the window.
  *
  * The window's own chrome - title, toolbar (Library/Tasks/Search and New Note,
  * see ios/Notesnook/MacMenu/VeyraNMacToolbar.{h,m}) and traffic lights - is
  * native and lives above the window's content area, so React starts at the top
  * of that content and reserves no row of its own for it. The height of the
- * chrome is what `macToolbarInset` returns, and the list column and the editor
- * pane pad themselves with it.
+ * chrome is what `macToolbarInset` returns, and every pane pads itself with it.
  *
  * Nothing here is read on iPhone or iPad; those keep the iPad panes in
  * `navigation/fluid-panels-view.tsx`.
  */
+
+/** Window-width-driven width, clamped to the given bounds. */
+const clampWidth = (width: number, min: number, max: number) =>
+  width < min ? min : width > max ? max : width;
 
 /**
  * Height of the Mac window's unified toolbar, in points.
@@ -81,8 +85,25 @@ export const MAC_TITLEBAR_CONTROL_FONT_SIZE = 12;
  */
 export const MAC_SOURCE_LIST_INSET = 10;
 
-/** Width of the Library/list column: iPad's tablet-mode proportion. */
-export const macListWidth = (windowWidth: number) => windowWidth * 0.3;
+/**
+ * Width of the Mac source list (sidebar): 220 pt at a typical window width,
+ * clamped to 200-260 pt so it neither disappears in a narrow window nor eats
+ * the note list in a wide one.
+ *
+ * The Mac window cannot be narrower than 900 pt (SceneDelegate's
+ * `sizeRestrictions.minimumSize`), and at 900 pt the two clamps bottom out at
+ * 200 + 260, so the editor always keeps at least 440 pt.
+ */
+export const macSidebarWidth = (windowWidth: number) =>
+  clampWidth(windowWidth * 0.2, 200, 260);
+
+/**
+ * Width of the note list column (the middle one): 300 pt at a typical window
+ * width, clamped to 260-360 pt. Named `macListWidth` because the note list is
+ * the "list" pane of `FluidPanels`.
+ */
+export const macListWidth = (windowWidth: number) =>
+  clampWidth(windowWidth * 0.25, 260, 360);
 
 /**
  * Width of the Mac section control: the list column minus the traffic-light
@@ -98,9 +119,11 @@ export const macSectionControlWidth = (windowWidth: number) =>
   );
 
 /**
- * Everything the list column leaves goes to the editor. Deriving it from the
- * window (instead of a fraction of it) is what keeps the editor's right edge -
- * the "Add tag" button and the header menu - inside the window.
+ * Everything the sidebar and the note list leave goes to the editor. Deriving
+ * it from the window (instead of a fraction of it) is what keeps the editor's
+ * right edge - the "Add tag" button and the header menu - inside the window:
+ * `macSidebarWidth + macListWidth + macEditorWidth` is exactly the window
+ * width, so the editor pane fills the rest of the window after every resize.
  */
 export const macEditorWidth = (windowWidth: number) =>
-  windowWidth - macListWidth(windowWidth);
+  windowWidth - macSidebarWidth(windowWidth) - macListWidth(windowWidth);

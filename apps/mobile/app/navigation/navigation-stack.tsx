@@ -55,8 +55,32 @@ import {
 } from "../stores/use-apple-navigation-store";
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import { DDS } from "../services/device-detection";
+import { setMacListNavigation } from "../services/mac-list-navigation";
 
 const RootStack = createNativeStackNavigator();
+
+/**
+ * Mac's sidebar (components/mac-sidebar.tsx) is a pane next to, not inside, the
+ * note-list stack, so it cannot reach that stack's `navigation` object with
+ * `useNavigation()`. Every screen the stack can show publishes its own
+ * `navigation` object instead: any of them drives the same stack, so the
+ * sidebar keeps working no matter which list the middle column is rooted at
+ * (the default Library, a custom homepage or a deep link).
+ *
+ * On iPhone/iPad this is a no-op wrapper.
+ */
+function withMacListNavigation<P extends { navigation: any }>(
+  Screen: React.ComponentType<P>
+): React.ComponentType<P> {
+  function MacListNavigationBridge(props: P) {
+    React.useEffect(() => {
+      if (!isMacCatalyst()) return;
+      setMacListNavigation(props.navigation);
+    }, [props.navigation]);
+    return <Screen {...props} />;
+  }
+  return MacListNavigationBridge as React.ComponentType<P>;
+}
 
 /**
  * Where a compose action launched from Tasks or Search returns to once the
@@ -354,7 +378,9 @@ const AppNavigation = React.memo(
         <AppStack.Screen
           name="Library"
           getComponent={() => {
-            Library = Library || require("../screens/library").default;
+            Library =
+              Library ||
+              withMacListNavigation(require("../screens/library").default);
             return Library;
           }}
         />
@@ -362,7 +388,9 @@ const AppNavigation = React.memo(
         <AppStack.Screen
           name="Favorites"
           getComponent={() => {
-            Favorites = Favorites || require("../screens/favorites").default;
+            Favorites =
+              Favorites ||
+              withMacListNavigation(require("../screens/favorites").default);
             return Favorites;
           }}
         />
@@ -370,7 +398,9 @@ const AppNavigation = React.memo(
         <AppStack.Screen
           name="Trash"
           getComponent={() => {
-            Trash = Trash || require("../screens/trash").default;
+            Trash =
+              Trash ||
+              withMacListNavigation(require("../screens/trash").default);
             return Trash;
           }}
         />
@@ -379,7 +409,8 @@ const AppNavigation = React.memo(
           name="TaggedNotes"
           getComponent={() => {
             TaggedNotes =
-              TaggedNotes || require("../screens/notes/tagged").default;
+              TaggedNotes ||
+              withMacListNavigation(require("../screens/notes/tagged").default);
             return TaggedNotes;
           }}
           initialParams={
@@ -391,7 +422,10 @@ const AppNavigation = React.memo(
           name="ColoredNotes"
           getComponent={() => {
             ColoredNotes =
-              ColoredNotes || require("../screens/notes/colored").default;
+              ColoredNotes ||
+              withMacListNavigation(
+                require("../screens/notes/colored").default
+              );
             return ColoredNotes;
           }}
           initialParams={
@@ -402,7 +436,9 @@ const AppNavigation = React.memo(
         <AppStack.Screen
           name="Archive"
           getComponent={() => {
-            Archive = Archive || require("../screens/archive").default;
+            Archive =
+              Archive ||
+              withMacListNavigation(require("../screens/archive").default);
             return Archive;
           }}
         />
@@ -413,7 +449,10 @@ const AppNavigation = React.memo(
           name="Monographs"
           getComponent={() => {
             Monographs =
-              Monographs || require("../screens/notes/monographs").default;
+              Monographs ||
+              withMacListNavigation(
+                require("../screens/notes/monographs").default
+              );
             return Monographs;
           }}
         />
@@ -421,7 +460,9 @@ const AppNavigation = React.memo(
         <AppStack.Screen
           name="Notebook"
           getComponent={() => {
-            Notebook = Notebook || require("../screens/notebook").default;
+            Notebook =
+              Notebook ||
+              withMacListNavigation(require("../screens/notebook").default);
             return Notebook;
           }}
           initialParams={home?.name === "Notebook" ? home?.params : undefined}
@@ -430,7 +471,9 @@ const AppNavigation = React.memo(
         <AppStack.Screen
           name="Search"
           getComponent={() => {
-            Search = Search || require("../screens/search").default;
+            Search =
+              Search ||
+              withMacListNavigation(require("../screens/search").default);
             return Search;
           }}
         />

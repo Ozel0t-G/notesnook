@@ -84,6 +84,7 @@
 		D10000000000000000000051 /* TaskAlarmSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000050 /* TaskAlarmSurface.swift */; };
 		D10000000000000000000060 /* CatalystOpenPGPStubs.c in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000060 /* CatalystOpenPGPStubs.c */; };
 		D10000000000000000000061 /* CatalystOpenPGPStubs.c in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000060 /* CatalystOpenPGPStubs.c */; };
+		D10000000000000000000070 /* VeyraNMacMenu.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000070 /* VeyraNMacMenu.m */; };
 		E63910B563ED7C2EC6602FA0 /* HandwritingModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C2824E09020408C06D888A /* HandwritingModule.m */; };
 		E7F9D56665C2F19F4A97BF49 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B679E87FDFB1312CAD6CF45 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
@@ -228,6 +229,8 @@
 		D20000000000000000000041 /* NotificationSettingsModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = NotificationSettingsModule.m; sourceTree = "<group>"; };
 		D20000000000000000000050 /* TaskAlarmSurface.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = TaskAlarmSurface.swift; sourceTree = "<group>"; };
 		D20000000000000000000060 /* CatalystOpenPGPStubs.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = CatalystOpenPGPStubs.c; path = Notesnook/CatalystOpenPGPStubs.c; sourceTree = "<group>"; };
+		D20000000000000000000070 /* VeyraNMacMenu.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNMacMenu.m; sourceTree = "<group>"; };
+		D20000000000000000000071 /* VeyraNMacMenu.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = VeyraNMacMenu.h; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		ED2971642150620600B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS12.0.sdk/System/Library/Frameworks/JavaScriptCore.framework; sourceTree = DEVELOPER_DIR; };
 		EF88477758968C47002AB99A /* Pods-Notesnook-Add to Notes.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-Add to Notes.debug.xcconfig"; path = "Target Support Files/Pods-Notesnook-Add to Notes/Pods-Notesnook-Add to Notes.debug.xcconfig"; sourceTree = "<group>"; };
@@ -326,6 +329,7 @@
 				D30000000000000000000006 /* TaskAlarm */,
 				D30000000000000000000040 /* NotificationSettings */,
 				D30000000000000000000011 /* VeyraNTabBar */,
+				D30000000000000000000070 /* MacMenu */,
 				D30000000000000000000020 /* AppIntents */,
 				A482053C4A6E06443DC525BD /* SceneDelegate.h */,
 				8630765778FA70C8BA4CA7AD /* SceneDelegate.m */,
@@ -486,6 +490,16 @@
 			);
 			name = VeyraNTabBar;
 			path = Notesnook/VeyraNTabBar;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000070 /* MacMenu */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000070 /* VeyraNMacMenu.m */,
+				D20000000000000000000071 /* VeyraNMacMenu.h */,
+			);
+			name = MacMenu;
+			path = Notesnook/MacMenu;
 			sourceTree = "<group>";
 		};
 		D30000000000000000000020 /* AppIntents */ = {
@@ -1113,6 +1127,7 @@
 				68406CC26E6997EE57304950 /* VeyraNMenu.swift in Sources */,
 				A475C84EEA9FAEAE6B63CC4D /* VeyraNMenuManagers.m in Sources */,
 				D10000000000000000000060 /* CatalystOpenPGPStubs.c in Sources */,
+				D10000000000000000000070 /* VeyraNMacMenu.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1373,6 +1388,8 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				VEYRAN_BUNDLE_NAME = "$(PRODUCT_NAME)";
+				"VEYRAN_BUNDLE_NAME[sdk=macosx*]" = "$(APP_DISPLAY_NAME)";
 			};
 			name = Debug;
 		};
@@ -1490,6 +1507,8 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
+				VEYRAN_BUNDLE_NAME = "$(PRODUCT_NAME)";
+				"VEYRAN_BUNDLE_NAME[sdk=macosx*]" = "$(APP_DISPLAY_NAME)";
 			};
 			name = Release;
 		};

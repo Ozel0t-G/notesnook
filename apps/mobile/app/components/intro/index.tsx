@@ -22,6 +22,7 @@ import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import {
   Image,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -45,17 +46,23 @@ const Intro = () => {
   const contentWidth = Math.min(width - 48, 440);
   const accent = colors.primary.accent;
 
-  const features = [
+  const features: { symbol: string; title: string; body: string }[] = [
     {
       symbol: "note.text",
       title: strings.welcomeNotesTitle(),
       body: strings.welcomeNotesBody()
     },
-    {
-      symbol: "alarm",
-      title: strings.welcomeTasksTitle(),
-      body: strings.welcomeTasksBody()
-    },
+    // AlarmKit is unavailable on Mac Catalyst, so this page does not advertise
+    // task alarms there.
+    ...(Platform.OS === "ios" && Platform.isMacCatalyst
+      ? []
+      : [
+          {
+            symbol: "alarm",
+            title: strings.welcomeTasksTitle(),
+            body: strings.welcomeTasksBody()
+          }
+        ]),
     {
       symbol: "lock.shield",
       title: strings.welcomeEncryptedTitle(),

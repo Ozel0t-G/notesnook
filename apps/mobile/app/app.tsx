@@ -29,6 +29,7 @@ import { withErrorBoundry } from "./components/exception-handler";
 import GlobalSafeAreaProvider from "./components/globalsafearea";
 import { Toast } from "./components/toast";
 import { useAppEvents } from "./hooks/use-app-events";
+import { useMacMenuCommands } from "./hooks/use-mac-menu-commands";
 import { NotePreviewConfigure } from "./screens/note-preview-configure";
 import { RootNavigation } from "./navigation/navigation-stack";
 import Notifications from "./services/notifications";
@@ -56,6 +57,7 @@ if (appLockEnabled || appLockMode !== "none") {
 
 const App = (props: { configureMode: "note-preview" }) => {
   useAppEvents();
+  useMacMenuCommands();
   //@ts-ignore
   globalThis["IS_MAIN_APP_RUNNING"] = true;
   const introCompleted = useSettingStore(

@@ -15,6 +15,16 @@
   UIWindowScene *windowScene = (UIWindowScene *)scene;
   AppDelegate *appDelegate = (AppDelegate *)[UIApplication sharedApplication].delegate;
 
+#if TARGET_OS_MACCATALYST
+  // The macOS title bar is translucent and floats over the top ~30pt of the
+  // React content, which hides the editor's back/undo/menu buttons. Drop the
+  // title and the toolbar so the React view owns the whole content area, and
+  // give the window a sensible minimum size.
+  windowScene.titlebar.titleVisibility = UITitlebarTitleVisibilityHidden;
+  windowScene.titlebar.toolbar = nil;
+  windowScene.sizeRestrictions.minimumSize = CGSizeMake(900, 600);
+#endif
+
   self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
   // The floating tab bar leaves its safe-area inset translucent. Without an
   // explicit window colour that strip renders black in both appearances;

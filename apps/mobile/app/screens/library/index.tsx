@@ -447,16 +447,20 @@ export default function Library({
       <ScrollView
         testID="library-scroll"
         contentContainerStyle={{
-          // Mac's title bar row is a sibling above this scroll view, so the
-          // list starts 8 pt under it. Only the iPhone bar floats over the
-          // bottom of this list; the iPad bar floats at the top and Mac shows
-          // no bar at all.
+          // Mac's window chrome (the native toolbar) is above the content area,
+          // so the list starts 8 pt under the top of this scroll view. Only the
+          // iPhone bar floats over the bottom of this list; the iPad bar floats
+          // at the top and Mac shows no bar at all.
           paddingTop: isMac ? 8 : 0,
           paddingBottom:
             32 + (hasBottomTabBar() ? APPLE_TAB_BAR_HEIGHT + insets.bottom : 0)
         }}
       >
-        {/* Settings and compose live in the navigation bar, as in Notes. */}
+        {/*
+          iPhone/iPad keep Settings and compose in the navigation bar, as in
+          Notes. Mac shows neither here: both live in the window's own chrome
+          (the toolbar's New Note and the app menu's Settings, Cmd-,).
+        */}
         <IosNavBar
           leading={
             isMac ? (
@@ -477,25 +481,33 @@ export default function Library({
             ) : undefined
           }
           trailing={
-            <>
-              <IosBarButton
-                symbol="gearshape"
-                accessibilityLabel={strings.routes.Settings()}
-                testID="library-settings"
-                iconSize={isMac ? MAC_ROW_ICON_SIZE : undefined}
-                onPress={() => Navigation.push("Settings", {})}
-              />
-              <IosBarButton
-                symbol="square.and.pencil"
-                accessibilityLabel={strings.newNoteTab()}
-                testID="library-compose"
-                iconSize={isMac ? MAC_ROW_ICON_SIZE : undefined}
-                onPress={() => {
-                  setOnFirstSaveUnassigned();
-                  openEditor();
-                }}
-              />
-            </>
+            /**
+             * Mac has both of these in the window's own chrome already: New
+             * Note is a toolbar button (and Cmd-N) and Settings is in the app
+             * menu (Cmd-,), so the bar shows neither. "New Notebook" stays - the
+             * "Notebooks" section header's "+" below (see `sectionTitle`).
+             */
+            isMac ? undefined : (
+              <>
+                <IosBarButton
+                  symbol="gearshape"
+                  accessibilityLabel={strings.routes.Settings()}
+                  testID="library-settings"
+                  iconSize={isMac ? MAC_ROW_ICON_SIZE : undefined}
+                  onPress={() => Navigation.push("Settings", {})}
+                />
+                <IosBarButton
+                  symbol="square.and.pencil"
+                  accessibilityLabel={strings.newNoteTab()}
+                  testID="library-compose"
+                  iconSize={isMac ? MAC_ROW_ICON_SIZE : undefined}
+                  onPress={() => {
+                    setOnFirstSaveUnassigned();
+                    openEditor();
+                  }}
+                />
+              </>
+            )
           }
         />
         {isMac ? null : (

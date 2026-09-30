@@ -25,42 +25,51 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * what the list column leaves. Both values are derived from the window width
  * the root view reports, so they follow every resize.
  *
+ * The window's own chrome - title, toolbar (Library/Tasks/Search and New Note,
+ * see ios/Notesnook/MacMenu/VeyraNMacToolbar.{h,m}) and traffic lights - is
+ * native and lives above the window's content area, so React starts at the top
+ * of that content and reserves no row of its own for it. The height of the
+ * chrome is what `macToolbarInset` returns, and the list column and the editor
+ * pane pad themselves with it.
+ *
  * Nothing here is read on iPhone or iPad; those keep the iPad panes in
  * `navigation/fluid-panels-view.tsx`.
  */
 
 /**
- * Height of the Mac window's unified title bar row.
+ * Height of the Mac window's unified toolbar, in points.
  *
- * Mac Catalyst hides the window title and drops the toolbar, so React owns the
- * whole content area and its first row of pixels is the window's top edge. The
- * traffic lights keep floating there (x 8-70, y 8-24 in window points), so the
- * app draws a title bar row of its own: 52 pt tall, with the section control in
- * it at MAC_TITLEBAR_CONTROL_LEFT.
- *
- * On the list + editor split the row is painted over the list column only
- * (macListWidth wide, see navigation-stack.tsx) and the editor pane starts at
- * the window's top edge, painting its own 52 pt half of the same band
- * (`MAC_EDITOR_HEADER_HEIGHT` in packages/editor-mobile/src/utils/mac.ts). On
- * every other screen the row is a sibling of the navigator with an explicit
- * height - no padding in between - so nothing in the panes (or an ancestor's
- * insets) can shift it.
+ * Only a fallback: with the toolbar installed UIKit reports its height in the
+ * window's top safe-area inset, which is what `macToolbarInset` prefers. Some
+ * macCatalyst/AppKit versions report 0 there - the inset is recalculated only
+ * once the toolbar has been laid out - and on those the panes fall back to the
+ * 52 pt a unified toolbar measures on macOS.
  */
-export const MAC_TITLEBAR_HEIGHT = 52;
+export const MAC_TOOLBAR_HEIGHT = 52;
 
 /**
- * Where the section control starts inside the title bar row: right of the
- * traffic lights, which occupy x 12-72 in window points.
+ * The top inset the Mac panes - the list column and the editor pane - start
+ * below: the window's top safe-area inset (react-native-safe-area-context
+ * `insets.top`, which carries the native toolbar's height on Catalyst), or
+ * MAC_TOOLBAR_HEIGHT when UIKit reports 0.
+ *
+ * Keep the 52 pt in sync with `MAC_EDITOR_HEADER_HEIGHT` in
+ * packages/editor-mobile/src/utils/mac.ts, the height of the editor's own web
+ * header, which starts right under this inset on Mac.
+ */
+export const macToolbarInset = (insetTop: number) =>
+  insetTop > 0 ? insetTop : MAC_TOOLBAR_HEIGHT;
+
+/**
+ * Metrics of MacSectionControl, the React-drawn section control that used to
+ * live in a 52 pt title bar row of its own: where the control started (right of
+ * the traffic lights, which occupy x 12-72 in window points), the gap to the
+ * column's right edge, and the control's height/label size. The native toolbar
+ * replaced that row, so nothing mounts the component in the running app.
  */
 export const MAC_TITLEBAR_CONTROL_LEFT = 88;
-
-/** Gap between the section control and the column's right edge. */
 export const MAC_TITLEBAR_CONTROL_RIGHT = 12;
-
-/** Height of the section control (and of its segments). */
 export const MAC_TITLEBAR_CONTROL_HEIGHT = 24;
-
-/** Label and symbol size inside the section control. */
 export const MAC_TITLEBAR_CONTROL_FONT_SIZE = 12;
 
 /**
@@ -77,8 +86,8 @@ export const macListWidth = (windowWidth: number) => windowWidth * 0.3;
 
 /**
  * Width of the Mac section control: the list column minus the traffic-light
- * gutter and the trailing gap. Centered vertically in the 52 pt title bar, so
- * its own center lands on y 26.
+ * gutter and the trailing gap. Unused in the running app along with the control
+ * itself (see components/mac-section-control.tsx).
  */
 export const macSectionControlWidth = (windowWidth: number) =>
   Math.max(

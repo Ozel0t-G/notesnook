@@ -161,14 +161,15 @@ export const useEditor = (
   /**
    * The insets handed to the editor WebView.
    *
-   * On Mac Catalyst the window's title bar is hidden but still floats over the
-   * top ~30pt of the React content, which react-native-safe-area-context
-   * reports as `insets.top`. The editor pane owns that row itself with a fixed
-   * 52pt web header (`MAC_EDITOR_HEADER_HEIGHT` in
-   * @notesnook/editor-mobile/src/utils/mac.ts), so the WebView must not add the
-   * window's inset on top of it - the header would be pushed below the title
-   * bar row and the format bar below it would sit under the header. iPhone and
-   * iPad keep the inset.
+   * Mac Catalyst's window chrome (title, toolbar and traffic lights) sits above
+   * the window's content area, not inside it. The pane's RN wrapper - not the
+   * WebView - takes the padding that clears it (`macToolbarInset` in
+   * screens/editor/wrapper.tsx), so the WebView itself starts at inset 0 while
+   * the editor's fixed 52pt web header (`MAC_EDITOR_HEADER_HEIGHT` in
+   * @notesnook/editor-mobile/src/utils/mac.ts) is the pane's first row. Adding
+   * the window inset here as well would push the header down and leave the
+   * format bar below it sitting under the header. iPhone and iPad keep the
+   * inset.
    */
   const webviewInsets = useMemo(
     () => (isMacCatalyst() ? { ...insets, top: 0 } : insets),

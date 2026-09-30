@@ -35,6 +35,7 @@ import { editorRef } from "../../utils/global-refs";
 import { editorController, textInput } from "./tiptap/utils";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../utils/constants";
+import { macToolbarInset } from "../../utils/mac-layout";
 
 export type PaneWidths = {
   mobile: {
@@ -107,10 +108,10 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
           /**
            * The editor WebView is transparent and paints its own background, so
            * whatever shows through it (a rounding gap, the 0.5px hairline under
-           * the header, the row the window's title bar used to cover) has to be
-           * the editor's own background. `editorSurround` - the iPad choice - is
-           * a different (lighter) surface and showed up as a strip above the
-           * header on Mac, whose 52pt header starts at the window's top edge.
+           * the header, the rounding gap at the top of the pane) has to be the
+           * editor's own background. `editorSurround` - the iPad choice - is a
+           * different (lighter) surface and showed up as a strip above the
+           * header on Mac, whose 52pt header is the pane's first row.
            */
           backgroundColor: isMacCatalyst()
             ? visual.contentSurface
@@ -127,6 +128,18 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
               ? 0
               : dimensions.width * 0.15
             : insets.right,
+          /**
+           * Mac's window chrome (the native toolbar and the traffic lights) is
+           * drawn by the system above the window's content area, and UIKit
+           * reports its height as the window's top safe-area inset. This
+           * wrapper - not the WebView, which keeps top inset 0 (see
+           * tiptap/use-editor.ts) - takes the padding, so the pane's first row
+           * is the editor's own 52pt web header, right under the toolbar. The
+           * padding shows this view's backgroundColor, i.e. the editor's own
+           * surface, so the strip under the toolbar is not a gap of another
+           * color. iPhone and iPad keep their own layout (no top padding here).
+           */
+          paddingTop: isMacCatalyst() ? macToolbarInset(insets.top) : null,
           borderLeftWidth: DDS.isTab ? (visual.ios ? 0.5 : 1) : 0,
           borderLeftColor: DDS.isTab ? visual.separator : "transparent",
           paddingBottom: insets.bottom

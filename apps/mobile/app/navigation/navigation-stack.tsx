@@ -43,13 +43,8 @@ import {
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { AppleTabBar, isTopTabBar } from "../components/apple-tab-bar";
-import { MacSectionControl } from "../components/mac-section-control";
-import {
-  MAC_TITLEBAR_HEIGHT,
-  macSectionControlWidth
-} from "../utils/mac-layout";
-import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
+import { macToolbarInset } from "../utils/mac-layout";
 import {
   SafeAreaInsetsContext,
   useSafeAreaInsets
@@ -461,8 +456,7 @@ let Tasks: any = null;
 let TaskDetail: any = null;
 let GlobalSearch: any = null;
 export const RootNavigation = () => {
-  const { colors, isDark } = useThemeColors();
-  const visual = getAppleVisualTokens(colors, isDark);
+  const { colors } = useThemeColors();
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
   );
@@ -474,15 +468,7 @@ export const RootNavigation = () => {
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
   const safeAreaInsets = useSafeAreaInsets();
   const deviceMode = useSettingStore((state) => state.deviceMode);
-  // Width only: the Mac section control is sized from it and must follow
-  // window resizes without re-rendering the navigator on every height change.
-  const windowWidth = useSettingStore((state) => state.dimensions.width);
   const editorVisible = useAppleNavigationStore((state) => state.editorVisible);
-  /**
-   * A fullscreen editor covers the whole window, so its pane starts at x 0 and
-   * there is no list column left to carry the title bar row (see
-   * `macInlineTitleBar`).
-   */
   const fullscreen = useSettingStore((state) => state.fullscreen);
   const [rootRoute, setRootRoute] = React.useState<string>(
     introCompleted ? "FluidPanelsView" : "Welcome"
@@ -587,9 +573,9 @@ export const RootNavigation = () => {
   const initialRouteName = !introCompleted ? "Welcome" : "FluidPanelsView";
 
   /**
-   * The floating bar is an iPhone/iPad affordance. Mac renders the sections in
-   * the list column instead (see MacSectionControl), so no bar - and no bar
-   * strip above the panes - is mounted there.
+   * The floating bar is an iPhone/iPad affordance. Mac keeps the same three
+   * sections in the window's native toolbar (MacMenu/VeyraNMacToolbar.h), so no
+   * bar - and no bar strip above the panes - is mounted there.
    */
   const showTabBar =
     Platform.OS === "ios" &&
@@ -607,63 +593,34 @@ export const RootNavigation = () => {
     (deviceMode !== "mobile" || !editorVisible);
 
   const topTabBar = showTabBar && isTopTabBar();
-  /**
-   * Mac shows the three sections as a segmented control in the window's title
-   * bar row. It lives here, above the navigator, so it stays put while Tasks
-   * and Search take over the content below it.
-   */
-  const macSectionControl = isMacCatalyst() && introCompleted && !isAppLoading;
-  /**
-   * Mac's unified title bar. On the list + editor split the row belongs to the
-   * list column, which draws it itself (fluid-panels-view.tsx): that is what
-   * lets the editor pane next to it keep the full window height and paint its
-   * own 52 pt half of the same band. This copy is for the screens that cover
-   * the whole window - Tasks, Search and the pushed sheets - and for the
-   * fullscreen editor, where the list column has no width left to draw into.
-   * There the row stays in the flow above the navigator, exactly as before.
-   */
-  const macInlineTitleBar =
-    macSectionControl && (rootRoute !== "FluidPanelsView" || fullscreen);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.primary.background }}>
       {topTabBar && <AppleTabBar onSelect={selectAppleSection} />}
       {/*
-        The in-flow title bar row: the window has no title and no toolbar, so
-        its first row of pixels is y 0. The row is sized by height alone (no
-        padding in between) and everything left of the control stays empty, so
-        the traffic lights keep their corner.
+        The iPad bar strip (and only it) is drawn in the flow above the
+        navigator, so the inset it covers is dropped for the panes below.
+
+        Mac keeps the window's real top inset: it is the height of the native
+        toolbar, which the screens that cover the whole window clear through
+        their own SafeAreaView, and which the list column and the editor pane
+        pad themselves with (see `macToolbarInset`, which also stands in with a
+        constant on the systems where UIKit reports 0 there).
       */}
-      {macInlineTitleBar ? (
-        <View
-          pointerEvents="box-none"
-          style={{
-            width: "100%",
-            height: MAC_TITLEBAR_HEIGHT,
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: visual.screenBackground
-          }}
-        >
-          <MacSectionControl
-            width={macSectionControlWidth(windowWidth)}
-            onSelect={selectAppleSection}
-          />
-        </View>
-      ) : null}
       <SafeAreaInsetsContext.Provider
         value={
-          topTabBar || macSectionControl
+          topTabBar
             ? { ...safeAreaInsets, top: 0 }
+            : isMacCatalyst()
+            ? { ...safeAreaInsets, top: macToolbarInset(safeAreaInsets.top) }
             : safeAreaInsets
         }
       >
       {/*
-        The navigator is given flex: 1 so it takes exactly what the title bar
-        row (and the iPad bar strip) leaves, instead of the whole window: its
-        own view is sized with height 100%, which is 100% of *this* wrapper.
-        Without it the Mac panes would start at y 52 and run 52 pt past the
-        bottom of the window.
+        The navigator is given flex: 1 so it takes exactly what the iPad bar
+        strip leaves, instead of the whole window: its own view is sized with
+        height 100%, which is 100% of *this* wrapper. Without it the Mac panes
+        would run past the bottom of the window.
       */}
       <View style={{ flex: 1 }}>
       <NavigationContainer

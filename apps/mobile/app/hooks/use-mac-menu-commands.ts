@@ -23,7 +23,13 @@ import { hideDialog } from "../components/dialog/functions";
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import { hideSheet } from "../services/event-manager";
 import Navigation from "../services/navigation";
+import { useSettingStore } from "../stores/use-setting-store";
+import {
+  AppleSection,
+  useAppleNavigationStore
+} from "../stores/use-apple-navigation-store";
 import { rootNavigatorRef } from "../utils/global-refs";
+import { selectAppleSection } from "../navigation/navigation-stack";
 
 /**
  * Root stack routes that iOS presents as sheets (see SETTINGS_SHEET_OPTIONS and
@@ -31,6 +37,12 @@ import { rootNavigatorRef } from "../utils/global-refs";
  * of these; the base screens inside FluidPanelsView have nothing to dismiss.
  */
 const DISMISSABLE_ROUTES = new Set(["Settings", "TaskDetail", "AddReminder"]);
+
+/**
+ * Prefix of the commands the window toolbar's segmented control sends: the
+ * section it switched to follows it ("section:library").
+ */
+const SECTION_COMMAND_PREFIX = "section:";
 
 /**
  * Mirrors pressing Escape on iOS: close the topmost sheet or modal. Sheets and
@@ -51,8 +63,14 @@ function closeTopmostSheetOrModal() {
 }
 
 /**
- * Handles the commands sent by the Mac Catalyst menu bar (Cmd+N, Cmd+, and
- * Escape) through the VeyraNMacMenu native module. Inert on iPhone and iPad.
+ * Handles the commands sent by the Mac Catalyst window chrome through the
+ * VeyraNMacMenu native module: the menu bar (Cmd+N, Cmd+, and Escape) and the
+ * window toolbar (the Library/Tasks/Search segmented control and New Note).
+ * Inert on iPhone and iPad.
+ *
+ * The reverse direction is handled here too: the toolbar only knows about the
+ * sections it switched to itself, so every change to the section store is
+ * pushed back to it.
  */
 export const useMacMenuCommands = () => {
   useEffect(() => {
@@ -63,11 +81,41 @@ export const useMacMenuCommands = () => {
     )
       return;
 
+    const setToolbarSection = (section: AppleSection) =>
+      NativeModules.VeyraNMacMenu.setSelectedSection(section);
+
+    // The store may already have moved on (a deep link, the last session's
+    // section) before this hook mounted.
+    setToolbarSection(useAppleNavigationStore.getState().section);
+    const sectionSubscription = useAppleNavigationStore.subscribe(
+      (state, prevState) => {
+        if (state.section !== prevState.section) {
+          setToolbarSection(state.section);
+        }
+      }
+    );
+
     const emitter = new NativeEventEmitter(NativeModules.VeyraNMacMenu);
     const subscription = emitter.addListener(
       "VeyraNMacMenuCommand",
       (body: { command?: string }) => {
-        switch (body?.command) {
+        const command = body?.command;
+        if (command?.startsWith(SECTION_COMMAND_PREFIX)) {
+          if (!useSettingStore.getState().settings.introCompleted) {
+            // There is no section to switch to before onboarding is done (the
+            // iPhone/iPad bar is hidden for the same reason). Snap the segment
+            // back to the section the app is actually on.
+            setToolbarSection(useAppleNavigationStore.getState().section);
+            return;
+          }
+          // Same handler the iPad tab bar uses, so switching sections behaves
+          // identically (including the FluidPanels page it lands on).
+          selectAppleSection(
+            command.slice(SECTION_COMMAND_PREFIX.length) as AppleSection
+          );
+          return;
+        }
+        switch (command) {
           case "newNote":
             // Same action as the compose button in the Library nav bar.
             setOnFirstSaveUnassigned();
@@ -86,6 +134,9 @@ export const useMacMenuCommands = () => {
       }
     );
 
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      sectionSubscription();
+    };
   }, []);
 };

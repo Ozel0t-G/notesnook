@@ -41,6 +41,7 @@ import { useEditor } from "./tiptap/use-editor";
 import { editorState } from "./tiptap/utils";
 import { strings } from "@notesnook/intl";
 import { DefaultAppStyles } from "../../utils/styles";
+import { isMacCatalyst } from "../../utils/constants";
 
 const EditorOverlay = ({
   editorId = "",
@@ -154,7 +155,12 @@ const EditorOverlay = ({
           borderRadius: defaultBorderRadius,
           height: "100%",
           alignItems: "flex-start",
-          paddingTop: insets.top
+          // This overlay lives inside the editor pane, which on Mac is already
+          // padded down below the window's native toolbar by its RN wrapper
+          // (`macToolbarInset` in screens/editor/wrapper.tsx): padding by the
+          // window inset again here would push the overlay's header down a
+          // second time.
+          paddingTop: isMacCatalyst() ? 0 : insets.top
         }}
       >
         {isDefaultEditor ? (

@@ -20,9 +20,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #import <React/RCTEventEmitter.h>
 
 /**
- * Forwards Mac Catalyst menu bar commands ("newNote", "openSettings" and
- * "escape") from AppDelegate's UIMenuBuilder to JavaScript as the
- * "VeyraNMacMenuCommand" event.
+ * Forwards Mac Catalyst commands to JavaScript as the "VeyraNMacMenuCommand"
+ * event. The sources are AppDelegate's UIMenuBuilder ("newNote",
+ * "openSettings" and "escape") and the window toolbar
+ * (MacMenu/VeyraNMacToolbar.{h,m}, "newNote" and "section:library",
+ * "section:tasks", "section:search").
+ *
+ * Also carries the reverse direction: `setSelectedSection`, which JS calls
+ * when the app changes sections on its own so the toolbar's segmented control
+ * follows.
  *
  * Only fed on Mac Catalyst, but the module compiles (and stays inert) on iOS
  * as well, so the JS side can look it up unconditionally.

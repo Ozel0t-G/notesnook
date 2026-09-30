@@ -19,6 +19,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #import "VeyraNMacMenu.h"
 
+#if TARGET_OS_MACCATALYST
+#import "VeyraNMacToolbar.h"
+#endif
+
 @implementation VeyraNMacMenu {
   BOOL _hasListeners;
 }
@@ -63,6 +67,17 @@ static __weak VeyraNMacMenu *currentInstance = nil;
     return;
   }
   [instance sendEventWithName:@"VeyraNMacMenuCommand" body:@{@"command" : command}];
+}
+
+/**
+ * Keeps the toolbar's segmented control in sync with the app's own section
+ * state: everything that switches sections (deep links, the section store)
+ * changes the store, not the toolbar, so JS pushes the new value back here.
+ */
+RCT_EXPORT_METHOD(setSelectedSection:(NSString *)section) {
+#if TARGET_OS_MACCATALYST
+  [VeyraNMacToolbar setSelectedSection:section];
+#endif
 }
 
 @end

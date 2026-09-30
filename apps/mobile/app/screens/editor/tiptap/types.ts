@@ -47,8 +47,8 @@ export type Settings = {
   deviceMode: string;
   /**
    * True in the Mac Catalyst build. The editor WebView moves its toolbar to
-   * the top of the pane under a 52 pt header, so it sits in the window's title
-   * bar band next to the section control. False on iPhone and iPad.
+   * the top of the pane under a 52 pt header, which is the pane's first row,
+   * right below the window's native toolbar. False on iPhone and iPad.
    */
   isMacCatalyst: boolean;
   premium: boolean;

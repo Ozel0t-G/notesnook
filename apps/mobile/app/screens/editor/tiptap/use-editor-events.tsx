@@ -216,9 +216,10 @@ export const useEditorEvents = (
 
     editor.commands.setSettings({
       deviceMode: deviceMode || "mobile",
-      // Mac Catalyst gets its own editor chrome: a 52 pt web header in the
-      // window's title bar band and the formatting toolbar at the top of the
-      // pane. iPhone and iPad keep the keyboard-toolbar layout.
+      // Mac Catalyst gets its own editor chrome: a 52 pt web header as the
+      // pane's first row, right under the window's native toolbar, and the
+      // formatting toolbar at the top of the pane. iPhone and iPad keep the
+      // keyboard-toolbar layout.
       isMacCatalyst: isMacCatalyst(),
       fullscreen: fullscreen || false,
       premium: false,

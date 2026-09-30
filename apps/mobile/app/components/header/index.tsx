@@ -133,7 +133,7 @@ export const Header = ({
       : undefined;
     /**
      * Mac's sidebars have no large title: the list's name sits inline in the
-     * bar row instead, right under the window's title bar row.
+     * bar row instead, right under the window's native toolbar.
      */
     const isMac = isMacCatalyst();
     return (
@@ -178,7 +178,9 @@ export const Header = ({
                     testID="header-more-menu"
                   />
                 ) : null}
-                {onCompose ? (
+                {/* Mac's own New Note is the window toolbar's button (and
+                    Cmd-N), so the list bar shows no compose button there. */}
+                {onCompose && !isMac ? (
                   <IosBarButton
                     symbol="square.and.pencil"
                     accessibilityLabel={strings.newNoteTab()}

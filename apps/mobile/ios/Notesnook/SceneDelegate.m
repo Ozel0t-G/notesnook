@@ -3,6 +3,18 @@
 #import <React/RCTLinkingManager.h>
 #import "RNShortcuts.h"
 
+#if TARGET_OS_MACCATALYST
+#import "MacMenu/VeyraNMacToolbar.h"
+
+@interface SceneDelegate ()
+
+/// The window's native toolbar. NSToolbar holds its delegate weakly, so the
+/// object itself has to stay alive for as long as the window shows it.
+@property (nonatomic, strong) VeyraNMacToolbar *macToolbar;
+
+@end
+#endif
+
 @implementation SceneDelegate
 
 - (void)scene:(UIScene *)scene
@@ -16,20 +28,16 @@
   AppDelegate *appDelegate = (AppDelegate *)[UIApplication sharedApplication].delegate;
 
 #if TARGET_OS_MACCATALYST
-  // The macOS title bar is translucent and floats over the top ~30pt of the
-  // React content, which hides the editor's back/undo/menu buttons. Drop the
-  // title and the toolbar so the React view owns the whole content area, and
-  // give the window a sensible minimum size.
+  // The window is a document-less Mac window: no title, no separator, and a
+  // toolbar that carries the app's own controls (Library/Tasks/Search and New
+  // Note). Setting a toolbar also gives the content area a real top edge -
+  // Catalyst lays the window's content out *below* the toolbar - so the title
+  // bar material no longer floats over (and dims) the app's headers.
   windowScene.titlebar.titleVisibility = UITitlebarTitleVisibilityHidden;
-  windowScene.titlebar.toolbar = nil;
-  // The title bar also draws a lighter, translucent band across the top ~30pt
-  // of the React content and ends it with a hairline separator. The editor pane
-  // paints its own 52pt header in that row (see MAC_TITLEBAR_HEIGHT), so the
-  // band is removed: no separator and no title bar background, which lets the
-  // header be the window's first row.
   if (@available(macCatalyst 14.0, *)) {
     windowScene.titlebar.separatorStyle = UITitlebarSeparatorStyleNone;
   }
+  self.macToolbar = [[VeyraNMacToolbar alloc] initWithWindowScene:windowScene];
   windowScene.sizeRestrictions.minimumSize = CGSizeMake(900, 600);
 #endif
 

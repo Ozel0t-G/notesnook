@@ -61,15 +61,19 @@ const SECTIONS: {
 ];
 
 /**
- * Mac Catalyst's replacement for the floating iPad tab bar: the three
- * top-level sections as a segmented control inside the window's title bar row.
- * It reports through the same selection handler the native bar uses, so
- * Library/Tasks/Search switching is identical on both.
+ * Unmounted: Mac's three top-level sections live in the window's native
+ * toolbar now (ios/Notesnook/MacMenu/VeyraNMacToolbar.{h,m}), so nothing
+ * renders this control. The MAC_TITLEBAR_CONTROL_* metrics in
+ * utils/mac-layout.ts exist for it alone.
+ *
+ * It used to be Mac Catalyst's replacement for the floating iPad tab bar: the
+ * three top-level sections as a segmented control inside the window's title bar
+ * row, reporting through the same selection handler the native bar uses.
  *
  * `width` is the control's own width (see `macSectionControlWidth`). The
  * control is laid out at `MAC_TITLEBAR_CONTROL_LEFT` so it clears the window's
  * traffic lights, and it is vertically centered by the 52 pt title bar row it
- * is mounted in.
+ * was mounted in.
  */
 export function MacSectionControl({
   width,

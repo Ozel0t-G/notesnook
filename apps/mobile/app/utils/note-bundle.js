@@ -22,7 +22,7 @@ import { isImage } from "@notesnook/core";
 import { Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import { DatabaseLogger, db } from "../common/database";
-import { IOS_APPGROUPID } from "./constants";
+import { getAppGroupIdForNative } from "./constants";
 import { compressToFile } from "../common/filesystem/compress";
 
 const santizeUri = (uri) => {
@@ -119,7 +119,9 @@ async function createNotes(bundle) {
     const attached = await attachFile(uri, hash, file.type, file.name, {
       type: "cache",
       id: id,
-      appGroupId: IOS_APPGROUPID
+      // Undefined on Mac Catalyst, where the shared container is not available;
+      // sodium then writes into the app's own cache directory.
+      appGroupId: getAppGroupIdForNative()
     });
     let content = ``;
 

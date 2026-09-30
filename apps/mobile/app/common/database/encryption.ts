@@ -24,6 +24,7 @@ import "react-native-get-random-values";
 import * as Keychain from "react-native-keychain";
 import { MMKVLoader, ProcessingModes } from "react-native-mmkv-storage";
 import { generateSecureRandom } from "react-native-securerandom";
+import { getKeychainAccessGroup } from "../../utils/constants";
 import { DatabaseLogger } from ".";
 import { MMKV } from "./mmkv";
 
@@ -40,7 +41,6 @@ export const CipherStorage = new MMKVLoader()
   .disableIndexing()
   .initialize();
 
-const IOS_KEYCHAIN_ACCESS_GROUP = "group.com.ozel0t.note.notesnookpencil";
 const IOS_KEYCHAIN_SERVICE_NAME = "com.ozel0t.note.notesnookpencil";
 const KEYCHAIN_SERVER_DBKEY = "notesnook:db";
 
@@ -54,7 +54,11 @@ const APPLOCK_CIPHER = "applockCipher";
 const KEYSTORE_CONFIG = Platform.select({
   ios: {
     accessible: Keychain.ACCESSIBLE.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    accessGroup: IOS_KEYCHAIN_ACCESS_GROUP,
+    // The App Group doubles as the Keychain access group. Mac Catalyst has no
+    // App Group in its Mac App ID's profile, so it uses the team-prefixed form
+    // of the same group, which is the only one the Keychain accepts there (see
+    // getKeychainAccessGroup). iPhone/iPad keep the unprefixed group.
+    accessGroup: getKeychainAccessGroup(),
     service: IOS_KEYCHAIN_SERVICE_NAME
   },
   android: {}

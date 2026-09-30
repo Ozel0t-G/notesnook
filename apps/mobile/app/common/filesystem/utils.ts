@@ -21,6 +21,10 @@ import { hosts, RequestOptions } from "@notesnook/core";
 import { Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import * as ScopedStorage from "react-native-scoped-storage";
+import {
+  IOS_APPGROUPID,
+  hasAppGroupContainer
+} from "../../utils/constants";
 import { DatabaseLogger, db } from "../database";
 import { headFileSizeRequest } from "./file-requests";
 
@@ -31,6 +35,26 @@ export const cacheDir =
   Platform.OS == "ios"
     ? RNFetchBlob.fs.dirs.LibraryDir + "/.cache"
     : RNFetchBlob.fs.dirs.DocumentDir + "/.cache";
+
+/**
+ * Path of the App Group container, or `null` when this process has no access to
+ * one. Mac Catalyst has no App Group in its Mac App ID's provisioning profile
+ * and `pathForAppGroup` rejects there, so callers fall back to the app's own
+ * sandbox instead of failing. On iPhone/iPad this resolves the same path as
+ * before; only a failure (which previously propagated) now yields `null`.
+ */
+export async function getAppGroupPath(): Promise<string | null> {
+  if (!hasAppGroupContainer()) return null;
+  try {
+    const path = await (RNFetchBlob.fs as any).pathForAppGroup(IOS_APPGROUPID);
+    return path && path.length > 0 ? (path as string) : null;
+  } catch (e) {
+    DatabaseLogger.log(
+      `App Group container is unavailable, using the app container instead: ${e}`
+    );
+    return null;
+  }
+}
 
 export function getRandomId(prefix: string) {
   return Math.random()

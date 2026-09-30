@@ -27,13 +27,14 @@ import { PermissionsAndroid, Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import { ToastManager } from "../../services/event-manager";
 import { useAttachmentStore } from "../../stores/use-attachment-store";
-import { IOS_APPGROUPID } from "../../utils/constants";
+import { getUploaderAppGroup } from "../../utils/constants";
 import { DatabaseLogger, db } from "../database";
 import { createCacheDir } from "./io";
 import {
   cacheDir,
   checkUpload,
   FileSizeResult,
+  getAppGroupPath,
   getUploadedFileSize
 } from "./utils";
 import Upload from "@ammarahmed/react-native-upload";
@@ -189,15 +190,16 @@ export async function uploadFile(
   try {
     let filePath = `${cacheDir}/${filename}`;
     let exists = await RNFetchBlob.fs.exists(filePath);
-    // Check for file in appGroupPath if it doesn't exist in cacheDir
+    // Check for file in appGroupPath if it doesn't exist in cacheDir. Skipped
+    // when this process has no App Group container (Mac Catalyst), where the
+    // file can only be in the app's own cache directory.
     if (!exists && Platform.OS === "ios") {
-      const iosAppGroup =
-        Platform.OS === "ios"
-          ? await (RNFetchBlob.fs as any).pathForAppGroup(IOS_APPGROUPID)
-          : null;
-      const appGroupPath = `${iosAppGroup}/${filename}`;
-      filePath = appGroupPath;
-      exists = await RNFetchBlob.fs.exists(filePath);
+      const iosAppGroup = await getAppGroupPath();
+      if (iosAppGroup) {
+        const appGroupPath = `${iosAppGroup}/${filename}`;
+        filePath = appGroupPath;
+        exists = await RNFetchBlob.fs.exists(filePath);
+      }
     }
 
     if (!exists) {
@@ -298,7 +300,10 @@ export async function uploadFile(
           ...headers,
           "content-type": "application/octet-stream"
         },
-        appGroup: IOS_APPGROUPID,
+        // Empty on Mac Catalyst: the uploader only sets
+        // sharedContainerIdentifier for a non-empty string, and the app has no
+        // App Group container there.
+        appGroup: getUploaderAppGroup(),
         notification: {
           filename:
             attachmentInfo && isImage(attachmentInfo?.mimeType)

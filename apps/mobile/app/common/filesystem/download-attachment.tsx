@@ -28,7 +28,7 @@ import filesystem from ".";
 import { ShareComponent } from "../../components/sheets/export-notes/share";
 import { presentSheet, ToastManager } from "../../services/event-manager";
 import { useAttachmentStore } from "../../stores/use-attachment-store";
-import { IOS_APPGROUPID } from "../../utils/constants";
+import { getAppGroupIdForNative } from "../../utils/constants";
 import { DatabaseLogger, db } from "../database";
 import { createCacheDir, exists } from "./io";
 import { cacheDir, copyFileAsync, releasePermissions } from "./utils";
@@ -293,7 +293,9 @@ export default async function downloadAttachment(
       fileName: options?.cache ? undefined : filename,
       uri: options?.cache ? undefined : folder?.uri,
       chunkSize: attachment.chunkSize,
-      appGroupId: IOS_APPGROUPID
+      // Undefined on Mac Catalyst, where sodium falls back to the app's own
+      // cache directory instead of an App Group container it cannot open.
+      appGroupId: getAppGroupIdForNative()
     };
     let fileUri = await Sodium.decryptFile(
       key,

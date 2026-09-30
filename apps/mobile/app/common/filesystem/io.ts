@@ -29,12 +29,13 @@ import { DataFormat, SerializedKey } from "@notesnook/crypto";
 import { Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import { eSendEvent } from "../../services/event-manager";
-import { IOS_APPGROUPID } from "../../utils/constants";
+import { getAppGroupIdForNative } from "../../utils/constants";
 import { DatabaseLogger, db } from "../database";
 import {
   ABYTES,
   cacheDir,
   cacheDirOld,
+  getAppGroupPath,
   getRandomId,
   isSuccessStatusCode,
   parseS3Error
@@ -59,7 +60,7 @@ export async function readEncrypted<TOutputFormat extends DataFormat>(
       {
         ...cipherData,
         hash: filename,
-        appGroupId: IOS_APPGROUPID
+        appGroupId: getAppGroupIdForNative()
       },
       cipherData.outputType === "base64" ? "base64" : "text"
     );
@@ -135,16 +136,15 @@ async function deleteLocalFile(filename: string) {
     const path = cacheDir + `/${filename}`;
     const exists = await RNFetchBlob.fs.exists(path);
     if (Platform.OS === "ios" && !exists) {
-      const iosAppGroup =
-        Platform.OS === "ios"
-          ? await (RNFetchBlob.fs as any).pathForAppGroup(IOS_APPGROUPID)
-          : null;
-      const appGroupPath = `${iosAppGroup}/${filename}`;
-      if (await RNFetchBlob.fs.exists(appGroupPath)) {
-        RNFetchBlob.fs.unlink(appGroupPath).catch(() => {
-          /* empty */
-        });
-        return;
+      const iosAppGroup = await getAppGroupPath();
+      if (iosAppGroup) {
+        const appGroupPath = `${iosAppGroup}/${filename}`;
+        if (await RNFetchBlob.fs.exists(appGroupPath)) {
+          RNFetchBlob.fs.unlink(appGroupPath).catch(() => {
+            /* empty */
+          });
+          return;
+        }
       }
     }
     if (exists) {
@@ -303,14 +303,12 @@ export async function deleteCacheFileByPath(path: string) {
 }
 
 export async function deleteCacheFileByName(name: string) {
-  const iosAppGroup =
-    Platform.OS === "ios"
-      ? await (RNFetchBlob.fs as any).pathForAppGroup(IOS_APPGROUPID)
-      : null;
-  const appGroupPath = `${iosAppGroup}/${name}`;
-  await RNFetchBlob.fs.unlink(appGroupPath).catch(() => {
-    /* empty */
-  });
+  const iosAppGroup = await getAppGroupPath();
+  if (iosAppGroup) {
+    await RNFetchBlob.fs.unlink(`${iosAppGroup}/${name}`).catch(() => {
+      /* empty */
+    });
+  }
   await RNFetchBlob.fs.unlink(`${cacheDir}/${name}`).catch(() => {
     /* empty */
   });
@@ -339,37 +337,34 @@ export async function deleteDCacheFiles() {
 export async function getCachePathForFile(filename: string) {
   const path = `${cacheDir}/${filename}`;
 
-  const iosAppGroup =
-    Platform.OS === "ios"
-      ? await (RNFetchBlob.fs as any).pathForAppGroup(IOS_APPGROUPID)
-      : null;
-  const appGroupPath = `${iosAppGroup}/${filename}`;
+  const iosAppGroup = await getAppGroupPath();
 
   const exists = await RNFetchBlob.fs.exists(path);
 
-  // Check if file is present in app group path.
+  // Check if file is present in app group path. Skipped when this process has
+  // no App Group container (Mac Catalyst), where the file can only be local.
   let existsInAppGroup = false;
-  if (!exists && Platform.OS === "ios") {
-    existsInAppGroup = await RNFetchBlob.fs.exists(appGroupPath);
+  if (!exists && iosAppGroup) {
+    existsInAppGroup = await RNFetchBlob.fs.exists(
+      `${iosAppGroup}/${filename}`
+    );
   }
 
-  return existsInAppGroup ? appGroupPath : path;
+  return existsInAppGroup && iosAppGroup ? `${iosAppGroup}/${filename}` : path;
 }
 
 export async function exists(filename: string) {
   const path = `${cacheDir}/${filename}`;
 
-  const iosAppGroup =
-    Platform.OS === "ios"
-      ? await (RNFetchBlob.fs as any).pathForAppGroup(IOS_APPGROUPID)
-      : null;
-  const appGroupPath = `${iosAppGroup}/${filename}`;
+  const iosAppGroup = await getAppGroupPath();
+  const appGroupPath = iosAppGroup ? `${iosAppGroup}/${filename}` : undefined;
 
   let exists = await RNFetchBlob.fs.exists(path);
 
-  // Check if file is present in app group path.
+  // Check if file is present in app group path. Skipped when this process has
+  // no App Group container (Mac Catalyst), where the file can only be local.
   let existsInAppGroup = false;
-  if (!exists && Platform.OS === "ios") {
+  if (!exists && appGroupPath) {
     existsInAppGroup = await RNFetchBlob.fs.exists(appGroupPath);
   }
 
@@ -380,19 +375,16 @@ export async function exists(filename: string) {
     const totalAbytes = totalChunks * ABYTES;
     const expectedFileSize = attachment.size + totalAbytes;
 
-    const stat = await RNFetchBlob.fs.stat(
-      existsInAppGroup ? appGroupPath : path
-    );
+    const filePath = existsInAppGroup && appGroupPath ? appGroupPath : path;
+    const stat = await RNFetchBlob.fs.stat(filePath);
 
     if (stat.size !== expectedFileSize) {
       DatabaseLogger.log(
         `File size mismatch: ${filename}, expected: ${expectedFileSize}, actual: ${stat.size}`
       );
-      RNFetchBlob.fs
-        .unlink(existsInAppGroup ? appGroupPath : path)
-        .catch(() => {
-          /* empty */
-        });
+      RNFetchBlob.fs.unlink(filePath).catch(() => {
+        /* empty */
+      });
       return false;
     }
 
@@ -408,14 +400,13 @@ export async function bulkExists(files: string[]) {
     let missingFiles = files.filter((file) => !cacheFiles.includes(file));
 
     if (Platform.OS === "ios") {
-      const iosAppGroup =
-        Platform.OS === "ios"
-          ? await (RNFetchBlob.fs as any).pathForAppGroup(IOS_APPGROUPID)
-          : null;
-      const appGroupFiles = await RNFetchBlob.fs.ls(iosAppGroup);
-      missingFiles = missingFiles.filter(
-        (file) => !appGroupFiles.includes(file)
-      );
+      const iosAppGroup = await getAppGroupPath();
+      if (iosAppGroup) {
+        const appGroupFiles = await RNFetchBlob.fs.ls(iosAppGroup);
+        missingFiles = missingFiles.filter(
+          (file) => !appGroupFiles.includes(file)
+        );
+      }
     }
     return missingFiles;
   } catch (e) {

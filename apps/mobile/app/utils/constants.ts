@@ -26,6 +26,73 @@ export const IOS_APPGROUPID = "group.com.ozel0t.note.notesnookpencil";
 export const FILE_SIZE_LIMIT = 500 * 1024 * 1024;
 export const IMAGE_SIZE_LIMIT = 50 * 1024 * 1024;
 
+/**
+ * The only place the Apple team id is written down. It is needed to build the
+ * team-prefixed keychain access group Mac Catalyst requires; nothing else
+ * should hardcode it.
+ */
+const APPLE_TEAM_ID = "QXCNJY73A8";
+
+/** Mac Catalyst is an iOS build whose Mac App ID has no App Group in its
+ * provisioning profile, so the shared container and the unprefixed keychain
+ * access group behave differently there. iPhone/iPad must not be affected. */
+function isMacCatalyst() {
+  return Platform.OS === "ios" && Platform.isMacCatalyst;
+}
+
+/**
+ * Access group passed to react-native-keychain.
+ *
+ * iOS: the App Group doubles as the Keychain access group and is declared with
+ * the `$(AppIdentifierPrefix)` prefix in the entitlements, so every existing
+ * install reads and writes it through the unprefixed name. Do not change this.
+ *
+ * Mac Catalyst: the Mac App ID's profile grants no App Group, and the Keychain
+ * only accepts an access group the profile allows. Passing the unprefixed group
+ * fails with errSecMissingEntitlement (-34018), which is why the database key
+ * could never be stored and the database never opened on Mac. The profile does
+ * grant `<team id>.*`, so the team-prefixed form of the same group is used
+ * instead. Note that `getInternetCredentials`/`hasInternetCredentials` in
+ * react-native-keychain 4.0.5 query without an access group at all and therefore
+ * still find the item, because the prefixed group is the app's default (its only
+ * `keychain-access-groups` entry).
+ */
+export function getKeychainAccessGroup(): string {
+  return isMacCatalyst() ? `${APPLE_TEAM_ID}.${IOS_APPGROUPID}` : IOS_APPGROUPID;
+}
+
+/**
+ * Whether this process can use the App Group container.
+ *
+ * False on Mac Catalyst: the Mac App ID is provisioned without an App Group, so
+ * code that touches the shared container must fall back to the app's own
+ * sandbox there instead of throwing (see getAppGroupPath).
+ */
+export function hasAppGroupContainer(): boolean {
+  return !isMacCatalyst();
+}
+
+/**
+ * App group id for react-native-sodium (`appGroupId` on encryptFile/decryptFile).
+ * `undefined` makes it use the app's own cache directory, which is what Mac
+ * Catalyst has to fall back to; sodium treats a missing value as "no shared
+ * container" and explicitly tolerates the NSNull it arrives as.
+ */
+export function getAppGroupIdForNative(): string | undefined {
+  return hasAppGroupContainer() ? IOS_APPGROUPID : undefined;
+}
+
+/**
+ * `appGroup` value for the background uploader (react-native-upload). It has to
+ * stay a string: its native code only skips the shared container for an *empty*
+ * string, while a null value arrives there as NSNull, which it would send a
+ * string selector to and crash on. So Mac Catalyst passes an empty string
+ * instead of `undefined`.
+ */
+export function getUploaderAppGroup(): string {
+  return hasAppGroupContainer() ? IOS_APPGROUPID : "";
+}
+
 export const BETA = getVersion().includes("beta");
 
 // No VeyraN store listing is configured. Old Notesnook listing URLs must

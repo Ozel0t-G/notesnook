@@ -9,10 +9,12 @@ import SwiftUI
 import UIKit
 import WidgetKit
 import AppIntents
-#if canImport(ActivityKit)
+// ActivityKit and AlarmKit import on Mac Catalyst but their types are
+// unavailable there, so the Live Activity surfaces are compiled out on Mac.
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 import ActivityKit
 #endif
-#if canImport(AlarmKit)
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
 import AlarmKit
 #endif
 
@@ -776,8 +778,12 @@ private extension Color {
 // AlarmKit hands the widget extension the same `AlarmAttributes` the app
 // scheduled the alarm with, so the widget can only render what it is given; Task
 // titles never reach it except through the attributes the app chose to send.
+//
+// The alarm and overdue surfaces are iOS-only: on Mac Catalyst the shared types
+// they are built from do not exist (see TaskAlarmSurface.swift), and Mac has no
+// Live Activities to render them in.
 
-#if canImport(AlarmKit)
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
 @available(iOSApplicationExtension 26.0, *)
 private struct TaskAlarmLiveActivity: Widget {
   var body: some WidgetConfiguration {
@@ -923,6 +929,7 @@ private struct TaskAlarmLiveActivity: Widget {
 }
 #endif
 
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 @available(iOSApplicationExtension 16.2, *)
 private struct OverdueTaskLiveActivity: Widget {
   var body: some WidgetConfiguration {
@@ -995,7 +1002,12 @@ private struct OverdueTaskLiveActivity: Widget {
     .widgetURL(WidgetURLs.reminder(id: context.attributes.taskId))
   }
 }
+#endif
 
+/// The bundle the system reads. The home screen widgets (Quick Note, Tasks) and
+/// the Control Center controls are the same on iOS and Mac Catalyst; the Live
+/// Activity surfaces are iOS-only, because Mac has no Live Activities and the
+/// shared ActivityKit/AlarmKit types they are built from are unavailable there.
 @main
 struct NotesWidgetBundle: WidgetBundle {
   var body: some Widget {
@@ -1003,10 +1015,12 @@ struct NotesWidgetBundle: WidgetBundle {
     if #available(iOSApplicationExtension 17.0, *) {
       ReminderWidget()
     }
+#if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
     if #available(iOSApplicationExtension 16.2, *) {
       OverdueTaskLiveActivity()
     }
-#if canImport(AlarmKit)
+#endif
+#if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
     if #available(iOSApplicationExtension 26.0, *) {
       TaskAlarmLiveActivity()
     }

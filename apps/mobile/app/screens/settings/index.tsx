@@ -22,6 +22,7 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
 import { Platform, View } from "react-native";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../../utils/constants";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import useNavigationStore from "../../stores/use-navigation-store";
 import Group from "./group";
@@ -39,7 +40,10 @@ export const Settings = () => {
         flex: 1,
         backgroundColor: visual.screenBackground,
         // iOS presents Settings as a sheet, which is not under the status bar.
-        paddingTop: Platform.OS === "ios" ? 0 : insets.top,
+        // Mac Catalyst presents it as a full view inside the window, under the
+        // native toolbar, so it uses the padded top inset the root publishes
+        // (like the Tasks and Search sections do through their SafeAreaView).
+        paddingTop: Platform.OS === "ios" && !isMacCatalyst() ? 0 : insets.top,
         paddingBottom: insets.bottom,
         paddingLeft: insets.left,
         paddingRight: insets.right

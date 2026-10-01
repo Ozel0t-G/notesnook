@@ -36,9 +36,12 @@ import { rootNavigatorRef } from "../utils/global-refs";
 import { selectAppleSection } from "../navigation/navigation-stack";
 
 /**
- * Root stack routes that iOS presents as sheets (see SETTINGS_SHEET_OPTIONS and
- * TASK_SHEET_OPTIONS in navigation-stack.tsx). Escape dismisses the topmost one
- * of these; the base screens inside FluidPanelsView have nothing to dismiss.
+ * Root stack routes Escape can dismiss. TaskDetail/AddReminder are always
+ * sheets; Settings is a sheet on iPhone/iPad but a full view inside the main
+ * window on Mac Catalyst (see SETTINGS_SHEET_OPTIONS in navigation-stack.tsx).
+ * Escape pops the topmost one of these with `Navigation.goBack()`, landing back
+ * on whatever was underneath (normally the Library section); the base screens
+ * inside FluidPanelsView have nothing to dismiss.
  */
 const DISMISSABLE_ROUTES = new Set(["Settings", "TaskDetail", "AddReminder"]);
 
@@ -188,10 +191,17 @@ export const useMacMenuCommands = () => {
             // handling included).
             runMacNoteAction("trash");
             break;
-          case "openSettings":
-            // Same action as the Settings button in the Library nav bar.
-            Navigation.push("Settings", {});
+          case "openSettings": {
+            // Same action as the Settings button in the Library nav bar, but
+            // idempotent: Settings is a full view inside the window on Mac, so
+            // a second Cmd-, while it is already on top must not stack another
+            // copy (Escape would then peel them off one at a time).
+            const routes = rootNavigatorRef.current?.getState()?.routes;
+            if (routes?.[routes.length - 1]?.name !== "Settings") {
+              Navigation.push("Settings", {});
+            }
             break;
+          }
           case "toggleSidebar":
             // View > Toggle Sidebar (Ctrl-Cmd-S): the Library source list pane
             // collapses to zero width (see navigation/fluid-panels-view.tsx).

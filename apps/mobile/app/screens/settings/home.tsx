@@ -30,6 +30,7 @@ import { RouteParams, SettingSection } from "./types";
 import { LegendList } from "@legendapp/list";
 import { useThemeColors } from "@notesnook/theme";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
+import { isMacCatalyst } from "../../utils/constants";
 import Navigation from "../../services/navigation";
 
 const keyExtractor = (item: SettingSection) => item.id;
@@ -51,16 +52,21 @@ const Home = ({
     <SectionGroup item={item} />
   );
 
+  // On Mac Catalyst Settings is not a sheet: leaving it happens through the
+  // sidebar rows, so the header shows neither a "Done" button nor a back
+  // button - just the title. iPhone/iPad keep the sheet's "Done".
+  const isMac = isMacCatalyst();
+
   return (
     <>
       <Header
         renderedInRoute="Settings"
         title={strings.routes.Settings()}
-        canGoBack={!visual.ios}
+        canGoBack={!visual.ios && !isMac}
         hasSearch={false}
         id="Settings"
         rightButton={
-          visual.ios
+          visual.ios && !isMac
             ? {
                 name: "done",
                 accessibilityLabel: strings.done(),

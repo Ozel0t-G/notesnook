@@ -148,12 +148,20 @@ export const selectAppleSection = (selection: AppleTabBarSelection) => {
  * Cancel / Done in the sheet header, swipe-down blocked while there are
  * unsaved changes (the screen toggles `gestureEnabled`).
  */
-/** Settings is a sheet with "Done" (iOS Settings-in-app pattern). */
-const SETTINGS_SHEET_OPTIONS = {
-  presentation: (Platform.OS === "ios" ? "modal" : "card") as
-    | "modal"
-    | "card"
-};
+/**
+ * Settings is a sheet with "Done" (iOS Settings-in-app pattern) on iPhone and
+ * iPad. Mac Catalyst does not dim the window with a sheet: Settings is a full
+ * view inside the main window next to the source list (wrapped in
+ * `withMacSidebar` below), so it uses the section idiom - card presentation and
+ * no transition (see `MAC_SECTION_SCREEN_OPTIONS`).
+ */
+const SETTINGS_SHEET_OPTIONS: NativeStackNavigationOptions = isMacCatalyst()
+  ? { presentation: "card", animation: "none" }
+  : {
+      presentation: (Platform.OS === "ios" ? "modal" : "card") as
+        | "modal"
+        | "card"
+    };
 
 /**
  * Task detail is a centered form sheet on the wide-screen layouts (iPad and
@@ -776,7 +784,15 @@ export const RootNavigation = () => {
             options={SETTINGS_SHEET_OPTIONS}
             getComponent={() => {
               Settings = Settings || require("../screens/settings").default;
-              return Settings;
+              // Mac: Settings is a full view, so it brings the same
+              // source-list pane as the Library section. No-op elsewhere.
+              // Required lazily (like the screens themselves) so this module
+              // does not import the sidebar - which imports back into this one -
+              // at startup.
+              const { withMacSidebar } = require(
+                "../components/mac-section-layout"
+              );
+              return withMacSidebar(Settings);
             }}
           />
 

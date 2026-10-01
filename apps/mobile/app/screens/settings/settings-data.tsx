@@ -54,7 +54,7 @@ import { refreshAllStores } from "../../stores/create-db-collection-store";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { useThemeStore } from "../../stores/use-theme-store";
 import { useUserStore } from "../../stores/use-user-store";
-import { EDITOR_LINE_HEIGHT } from "../../utils/constants";
+import { EDITOR_LINE_HEIGHT, isMacCatalyst } from "../../utils/constants";
 import {
   eAfterSync,
   eCloseSheet,
@@ -1268,7 +1268,11 @@ export const settingsGroups: SettingSection[] = [
         name: strings.notificationsAndAlarms(),
         value: (current) => (current as string) || "",
         icon: "format-list-checks",
-        description: strings.notificationsAndAlarmsDesc(),
+        // Mac Catalyst opens System Settings > Notifications, not the iOS
+        // Settings app the shared @notesnook/intl string names.
+        description: isMacCatalyst()
+          ? "Opens System Settings › Notifications"
+          : strings.notificationsAndAlarmsDesc(),
         useHook: useNotificationAlarmStatus,
         hidden: () => Platform.OS !== "ios",
         showActionProgress: true,

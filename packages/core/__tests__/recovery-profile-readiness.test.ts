@@ -52,12 +52,52 @@ describe("recovery on an initialized empty profile", () => {
       .values({
         id: "saved-setting",
         type: "settingitem",
-        key: "timeFormat",
-        value: "24-hour"
+        key: "defaultNotebook",
+        value: "some-notebook"
       })
       .execute();
     expect(await affinity.hasLocalAccountData()).toBe(true);
     expect((await affinity.check()).status).toBe("unknown");
+  });
+
+  /**
+   * The app writes these rows itself on every fresh profile. Counting them as
+   * account data blocked sign-in after every fresh install or local-data wipe.
+   */
+  test("settings the app writes by default are not account data", async () => {
+    const { db, affinity } = await profile();
+    await db
+      .sql()
+      .insertInto("settings")
+      .values({
+        id: "default-date-format",
+        type: "settingitem",
+        key: "dateFormat",
+        value: "MM/DD/YYYY"
+      })
+      .execute();
+    await db
+      .sql()
+      .insertInto("settings")
+      .values({
+        id: "default-time-format",
+        type: "settingitem",
+        key: "timeFormat",
+        value: "12-hour"
+      })
+      .execute();
+    await db
+      .sql()
+      .insertInto("settings")
+      .values({
+        id: "default-title-format",
+        type: "settingitem",
+        key: "titleFormat",
+        value: "$headline$"
+      })
+      .execute();
+    expect(await affinity.hasLocalAccountData()).toBe(false);
+    expect((await affinity.check()).status).toBe("no-user");
   });
 
   test("legacy storage settings remain protected", async () => {

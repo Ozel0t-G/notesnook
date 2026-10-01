@@ -1036,6 +1036,7 @@
 			inputFileListPaths = (
 			);
 			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
 			);
 			name = "Prune App Group Info.plist keys (Mac Catalyst)";
 			outputFileListPaths = (

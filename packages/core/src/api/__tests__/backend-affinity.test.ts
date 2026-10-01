@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { test, describe, expect, beforeEach, afterEach } from "vitest";
 import hosts, { setPersistedHostOverrides } from "../../utils/constants.js";
 import {
+  APP_DEFAULT_SETTING_KEYS,
   BackendAffinity,
   BackendMismatchError,
   normalizeEndpoint,
@@ -53,6 +54,9 @@ function fakeDb(options: {
   affinity?: StoredAffinity | string;
   recoveryRequired?: boolean;
   localRow?: string;
+  /** Keys present in the `settings` table. Defaults to the app's own startup
+   * defaults, which a fresh profile always has. */
+  settingsKeys?: string[];
   legacySettings?: boolean;
 }) {
   const kv = new Map<string, unknown>();
@@ -75,14 +79,26 @@ function fakeDb(options: {
         snapshotCryptoKeyState: async () => undefined
       }),
       sql: () => ({
-        selectFrom: (table: string) => ({
-          select: () => ({
-            limit: () => ({
-              executeTakeFirst: async () =>
-                options.localRow === table ? { id: "local" } : undefined
-            })
-          })
-        })
+        selectFrom: (table: string) => {
+          let excludedKeys: readonly string[] = [];
+          const query: any = {
+            select: () => query,
+            where: (_column: string, _op: string, value: readonly string[]) => {
+              excludedKeys = value || [];
+              return query;
+            },
+            limit: () => query,
+            executeTakeFirst: async () => {
+              if (table !== "settings")
+                return options.localRow === table ? { id: "local" } : undefined;
+              const keys =
+                options.settingsKeys ?? [...APP_DEFAULT_SETTING_KEYS];
+              const key = keys.find((k) => !excludedKeys.includes(k));
+              return key ? { id: "local", key } : undefined;
+            }
+          };
+          return query;
+        }
       }),
       legacyNotes: { count: () => 0 },
       legacyTags: { count: () => 0 },
@@ -215,16 +231,40 @@ describe("check", () => {
     expect((await new BackendAffinity(db).check()).status).toBe("no-user");
   });
 
-  test.each(["notes", "settings"])(
-    "unattributed local %s rows block direct affinity recording",
-    async (table) => {
-      const { db, kv } = fakeDb({ localRow: table });
-      const boundary = new BackendAffinity(db);
-      expect((await boundary.check()).status).toBe("unknown");
-      expect((await boundary.record()).ok).toBe(false);
-      expect(kv.get("backendAffinity")).toBeUndefined();
-    }
-  );
+  test("unattributed local notes rows block direct affinity recording", async () => {
+    const { db, kv } = fakeDb({ localRow: "notes" });
+    const boundary = new BackendAffinity(db);
+    expect((await boundary.check()).status).toBe("unknown");
+    expect((await boundary.record()).ok).toBe(false);
+    expect(kv.get("backendAffinity")).toBeUndefined();
+  });
+
+  /**
+   * Regression: the app writes its own settings rows (device date/time format
+   * adoption and the title-format migration) on every fresh profile. Those
+   * rows must not make a brand-new profile look like an orphaned account, or
+   * signing in can never succeed after a fresh install or a wipe.
+   */
+  test("app-default settings rows do not block a fresh profile", async () => {
+    const { db, kv } = fakeDb({ settingsKeys: [...APP_DEFAULT_SETTING_KEYS] });
+    const boundary = new BackendAffinity(db);
+    expect((await boundary.check()).status).toBe("no-user");
+    const outcome = await boundary.record();
+    expect(outcome.ok).toBe(true);
+    expect(kv.get("backendAffinity")).toMatchObject({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth
+    });
+  });
+
+  test("a user-authored settings row still blocks direct affinity recording", async () => {
+    const { db, kv } = fakeDb({ settingsKeys: ["defaultNotebook"] });
+    const boundary = new BackendAffinity(db);
+    expect((await boundary.check()).status).toBe("unknown");
+    expect((await boundary.record()).ok).toBe(false);
+    expect(kv.get("backendAffinity")).toBeUndefined();
+  });
 
   test("legacy settings without a user block direct affinity recording", async () => {
     const { db, kv } = fakeDb({ legacySettings: true });
@@ -258,6 +298,15 @@ describe("check", () => {
     expect((await new BackendAffinity(db).check()).status).toBe("unknown");
   });
 
+  test.each(["lastSynced", "deviceId"])(
+    "a persisted %s sync marker without a user still fails closed",
+    async (marker) => {
+      const { db, kv } = fakeDb({});
+      kv.set(marker, marker === "lastSynced" ? 1 : "device");
+      expect((await new BackendAffinity(db).check()).status).toBe("unknown");
+    }
+  );
+
   test("matching host affinity cannot claim orphaned local notes", async () => {
     const { db, kv } = fakeDb({
       affinity: record(VEYRAN.api, VEYRAN.auth),
@@ -271,7 +320,7 @@ describe("check", () => {
 
   test("matching saved server configuration cannot claim orphaned settings", async () => {
     setPersistedHostOverrides({ API_HOST: VEYRAN.api, AUTH_HOST: VEYRAN.auth });
-    const { db, kv } = fakeDb({ localRow: "settings" });
+    const { db, kv } = fakeDb({ settingsKeys: ["defaultNotebook"] });
     const boundary = new BackendAffinity(db);
     expect((await boundary.check()).status).toBe("unknown");
     expect((await boundary.record()).ok).toBe(false);

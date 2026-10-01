@@ -218,6 +218,20 @@ export class BackendMismatchError extends Error {
   }
 }
 
+/**
+ * Settings rows the application writes for itself while starting up, on every
+ * profile that has never signed in: device date/time format adoption and the
+ * generated-title format migration. Their presence therefore cannot
+ * distinguish an orphaned account's data from a genuinely fresh profile, so
+ * they must not be treated as account data. Any other settings key (including
+ * a task tombstone) is still account data.
+ */
+export const APP_DEFAULT_SETTING_KEYS = [
+  "dateFormat",
+  "timeFormat",
+  "titleFormat"
+] as const;
+
 export class BackendAffinity {
   private logger = logger.scope("BackendAffinity");
   private quarantined = false;
@@ -338,8 +352,7 @@ export class BackendAffinity {
       "notehistory",
       "sessioncontent",
       "monographs",
-      "inboxitemshistory",
-      "settings"
+      "inboxitemshistory"
     ] as const;
     for (const table of tables)
       if (
@@ -351,6 +364,21 @@ export class BackendAffinity {
           .executeTakeFirst()
       )
         return true;
+    // The settings table cannot be checked with the same "any row" rule: the
+    // app creates its own default settings rows on first launch (see
+    // APP_DEFAULT_SETTING_KEYS), which would otherwise make every fresh profile
+    // indistinguishable from an orphaned one. Only a settings row the app does
+    // not write by itself counts as account data.
+    if (
+      await this.db
+        .sql()
+        .selectFrom("settings")
+        .select("key")
+        .where("key", "not in", [...APP_DEFAULT_SETTING_KEYS])
+        .limit(1)
+        .executeTakeFirst()
+    )
+      return true;
     return (
       this.db.legacyNotes.count() > 0 ||
       this.db.legacyTags.count() > 0 ||

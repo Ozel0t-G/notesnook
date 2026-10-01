@@ -174,6 +174,10 @@ export const useLogin = (
     setLoading(false);
     if (e.message === "Password is incorrect.") {
       formRef.current.setError("password", strings.emailOrPasswordIncorrect());
+    } else if (e.name === "BackendMismatchError") {
+      // The backend-affinity guard blocked the attempt before any request was
+      // sent. Its message says why, so show it instead of blaming the network.
+      setError(e);
     } else {
       setError(
         new Error(

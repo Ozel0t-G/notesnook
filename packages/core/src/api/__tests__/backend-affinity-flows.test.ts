@@ -188,16 +188,17 @@ function harness(options: {
   } as unknown as Database;
 
   (db as any).sql = () => ({
-    selectFrom: (table: string) => ({
-      select: () => ({
-        limit: () => ({
-          executeTakeFirst: async () =>
-            options.localContent && table === "notes"
-              ? { id: "local" }
-              : undefined
-        })
-      })
-    })
+    selectFrom: (table: string) => {
+      const query: any = {};
+      query.select = () => query;
+      query.where = () => query;
+      query.limit = () => query;
+      query.executeTakeFirst = async () =>
+        options.localContent && table === "notes"
+          ? { id: "local" }
+          : undefined;
+      return query;
+    }
   });
   (db as any).legacyNotes = { count: () => 0 };
   (db as any).legacyTags = { count: () => 0 };

@@ -192,6 +192,55 @@ static UIMenuIdentifier const VeyraNNoteMenuIdentifier = @"veyran.note";
 }
 
 /**
+ * Format menu (K2/E3): each of these forwards one "format:<name>" command to
+ * JS, which runs the editor command the matching toolbar button runs (see
+ * app/hooks/use-mac-menu-commands.ts and app/screens/editor/tiptap/commands.ts).
+ * The ones with a standard key equivalent are key commands on this delegate;
+ * forwarding them explicitly is what keeps Cmd-B/I/U working inside the
+ * editor's WKWebView even though the menu consumes the keystroke.
+ */
+- (void)veyranFormatBold:(id)sender {
+  [VeyraNMacMenu sendCommand:@"format:bold"];
+}
+
+- (void)veyranFormatItalic:(id)sender {
+  [VeyraNMacMenu sendCommand:@"format:italic"];
+}
+
+- (void)veyranFormatUnderline:(id)sender {
+  [VeyraNMacMenu sendCommand:@"format:underline"];
+}
+
+- (void)veyranFormatStrikethrough:(id)sender {
+  [VeyraNMacMenu sendCommand:@"format:strikethrough"];
+}
+
+- (void)veyranFormatLink:(id)sender {
+  [VeyraNMacMenu sendCommand:@"format:link"];
+}
+
+/**
+ * Edit > Find (K3/E4): the editor's own search-and-replace popup. "find"
+ * opens it, "findAndReplace" with the replace field, the other two move
+ * between the matches (see app/screens/editor/tiptap/commands.ts).
+ */
+- (void)veyranFind:(id)sender {
+  [VeyraNMacMenu sendCommand:@"find"];
+}
+
+- (void)veyranFindAndReplace:(id)sender {
+  [VeyraNMacMenu sendCommand:@"findAndReplace"];
+}
+
+- (void)veyranFindNext:(id)sender {
+  [VeyraNMacMenu sendCommand:@"findNext"];
+}
+
+- (void)veyranFindPrevious:(id)sender {
+  [VeyraNMacMenu sendCommand:@"findPrevious"];
+}
+
+/**
  * The first visible WKWebView below `view`, which on the editor screen is the
  * note's editor WebView (the app has no other visible one; sheets that carry a
  * WebView are presented over the window, not inside it). Answers nil when there
@@ -334,8 +383,13 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
  *    document browser;
  *  - adds File > New Note (Cmd-N), New Notebook (Shift-Cmd-N), Import...,
  *    Export... and Print... (Cmd-P);
- *  - adds Edit > Find in Notes (Cmd-Shift-F), which switches the app to its
- *    Search section;
+ *  - replaces the system's Edit > Find with the app's own Find submenu
+ *    (Cmd-F / Opt-Cmd-F / Cmd-G / Shift-Cmd-G), which drives the open note's
+ *    search-and-replace popup, and keeps Edit > Find in Notes (Cmd-Shift-F),
+ *    which switches the app to its Search section;
+ *  - fills the system's "Format" menu (UIMenuFormat) with the editor's
+ *    paragraph styles, lists and inline marks (K2/E3), which forward
+ *    "format:<name>" commands to JS;
  *  - adds a "Note" menu (UIMenuEdit's sibling, right after Edit) with the
  *    actions on the note open in the editor: Pin Note (Shift-Cmd-P), Add to
  *    Favorites, Lock Note and Move to Trash (Cmd-Delete);
@@ -436,9 +490,44 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
     [builder insertChildMenu:newMenu atStartOfMenuForIdentifier:UIMenuFile];
   }
 
-  // Edit > Find in Notes (Cmd-Shift-F): the app's Search section, the Mac
-  // counterpart of "Find in Note".
+  // Edit > Find (K3/E4): Catalyst's own Find submenu (UIMenuFind) drives UIKit
+  // text views through UIResponder actions, which the note's WKWebView is not,
+  // and its items carry no key equivalent here; it is removed and replaced with
+  // the app's own Find submenu, which forwards Cmd-F, Opt-Cmd-F, Cmd-G and
+  // Shift-Cmd-G to the editor's search-and-replace popup. "Find in Notes"
+  // (Cmd-Shift-F, the app's Search section) stays: it is appended after Find,
+  // so the two inserts' order is the order in the menu (see below).
   if ([builder menuForIdentifier:UIMenuEdit]) {
+    if ([builder menuForIdentifier:UIMenuFind]) {
+      [builder removeMenuForIdentifier:UIMenuFind];
+    }
+    UIKeyCommand *findInNote =
+        VeyraNMenuCommand(@"Find…", @"f", UIKeyModifierCommand,
+                          @selector(veyranFind:));
+    findInNote.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIKeyCommand *findAndReplace =
+        VeyraNMenuCommand(@"Find & Replace…", @"f",
+                          UIKeyModifierCommand | UIKeyModifierAlternate,
+                          @selector(veyranFindAndReplace:));
+    findAndReplace.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIKeyCommand *findNext =
+        VeyraNMenuCommand(@"Find Next", @"g", UIKeyModifierCommand,
+                          @selector(veyranFindNext:));
+    findNext.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIKeyCommand *findPrevious =
+        VeyraNMenuCommand(@"Find Previous", @"g",
+                          UIKeyModifierCommand | UIKeyModifierShift,
+                          @selector(veyranFindPrevious:));
+    findPrevious.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIMenu *findMenu = [UIMenu menuWithTitle:@"Find"
+                                       image:nil
+                                  identifier:nil
+                                     options:0
+                                    children:@[
+                                      findInNote, findAndReplace, findNext,
+                                      findPrevious
+                                    ]];
+
     UIKeyCommand *findInNotes =
         VeyraNMenuCommand(@"Find in Notes", @"f",
                           UIKeyModifierCommand | UIKeyModifierShift,
@@ -448,6 +537,7 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
                                          identifier:nil
                                             options:UIMenuOptionsDisplayInline
                                            children:@[ findInNotes ]];
+    [builder insertChildMenu:findMenu atEndOfMenuForIdentifier:UIMenuEdit];
     [builder insertChildMenu:findInNotesMenu
        atEndOfMenuForIdentifier:UIMenuEdit];
   }
@@ -479,6 +569,97 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
                                   ]];
   if ([builder menuForIdentifier:UIMenuEdit]) {
     [builder insertSiblingMenu:noteMenu afterMenuForIdentifier:UIMenuEdit];
+  }
+
+  // Format (K2/E3): Catalyst ships its own "Format" top-level menu
+  // (UIMenuFormat, with the Font and Text submenus), which drives UIKit text
+  // views through UIResponder actions and therefore does nothing to the note's
+  // WKWebView. Instead of adding a second top-level "Format" (which would
+  // duplicate that menu's title), the editor's styles, lists and inline marks
+  // are inserted at the start of the system menu; the system's Font/Text groups
+  // stay at its end. Every item forwards "format:<name>" to JS, which runs the
+  // command the matching editor toolbar button runs - including Cmd-B/I/U and
+  // Cmd-K, whose key commands would otherwise be swallowed by the menu.
+  // Everything is greyed out while no note is open (K4).
+  if ([builder menuForIdentifier:UIMenuFormat]) {
+    UIAction *styleTitle = VeyraNMenuAction(@"Title", @"format:title", hasNote);
+    UIAction *styleHeading =
+        VeyraNMenuAction(@"Heading", @"format:heading", hasNote);
+    UIAction *styleSubheading =
+        VeyraNMenuAction(@"Subheading", @"format:subheading", hasNote);
+    UIAction *styleBody = VeyraNMenuAction(@"Body", @"format:body", hasNote);
+    UIMenu *styleMenu =
+        [UIMenu menuWithTitle:@""
+                        image:nil
+                   identifier:nil
+                      options:UIMenuOptionsDisplayInline
+                     children:@[
+                       styleTitle, styleHeading, styleSubheading, styleBody
+                     ]];
+
+    UIAction *bulletedList =
+        VeyraNMenuAction(@"Bulleted List", @"format:bulletedList", hasNote);
+    UIAction *numberedList =
+        VeyraNMenuAction(@"Numbered List", @"format:numberedList", hasNote);
+    UIAction *checklist =
+        VeyraNMenuAction(@"Checklist", @"format:checklist", hasNote);
+    UIAction *blockquote =
+        VeyraNMenuAction(@"Block Quote", @"format:blockquote", hasNote);
+    UIAction *codeBlock =
+        VeyraNMenuAction(@"Code Block", @"format:codeBlock", hasNote);
+    UIMenu *blocksMenu =
+        [UIMenu menuWithTitle:@""
+                        image:nil
+                   identifier:nil
+                      options:UIMenuOptionsDisplayInline
+                     children:@[
+                       bulletedList, numberedList, checklist, blockquote,
+                       codeBlock
+                     ]];
+
+    UIKeyCommand *bold = VeyraNMenuCommand(@"Bold", @"b", UIKeyModifierCommand,
+                                           @selector(veyranFormatBold:));
+    bold.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIKeyCommand *italic =
+        VeyraNMenuCommand(@"Italic", @"i", UIKeyModifierCommand,
+                          @selector(veyranFormatItalic:));
+    italic.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIKeyCommand *underline =
+        VeyraNMenuCommand(@"Underline", @"u", UIKeyModifierCommand,
+                          @selector(veyranFormatUnderline:));
+    underline.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIKeyCommand *strikethrough =
+        VeyraNMenuCommand(@"Strikethrough", @"x",
+                          UIKeyModifierCommand | UIKeyModifierShift,
+                          @selector(veyranFormatStrikethrough:));
+    strikethrough.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIKeyCommand *link = VeyraNMenuCommand(@"Link…", @"k", UIKeyModifierCommand,
+                                           @selector(veyranFormatLink:));
+    link.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIMenu *marksMenu =
+        [UIMenu menuWithTitle:@""
+                        image:nil
+                   identifier:nil
+                      options:UIMenuOptionsDisplayInline
+                     children:@[ bold, italic, underline, strikethrough, link ]];
+
+    UIAction *clearFormatting = VeyraNMenuAction(
+        @"Clear Formatting", @"format:clearFormatting", hasNote);
+    UIMenu *clearFormattingMenu =
+        [UIMenu menuWithTitle:@""
+                        image:nil
+                   identifier:nil
+                      options:UIMenuOptionsDisplayInline
+                     children:@[ clearFormatting ]];
+
+    // Inserted back to front, so the final order is styles, blocks, marks,
+    // Clear Formatting, then the system's own Font and Text submenus.
+    [builder insertChildMenu:clearFormattingMenu
+     atStartOfMenuForIdentifier:UIMenuFormat];
+    [builder insertChildMenu:marksMenu atStartOfMenuForIdentifier:UIMenuFormat];
+    [builder insertChildMenu:blocksMenu
+     atStartOfMenuForIdentifier:UIMenuFormat];
+    [builder insertChildMenu:styleMenu atStartOfMenuForIdentifier:UIMenuFormat];
   }
 
   // View > Library / Tasks / Search (Cmd-1/2/3): the sections the window
@@ -592,23 +773,42 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
 }
 
 /**
+ * The key commands that act on the note open in the editor (K4): the Note
+ * menu's, the ones that print or export it and the editor's Format and Find
+ * items (K2/E3/E4). Block-based UIActions carry no selector and are not
+ * validated, so only these are listed here.
+ */
+static BOOL VeyraNCommandNeedsOpenNote(SEL action) {
+  return action == @selector(veyranPinNote:) ||
+         action == @selector(veyranMoveToTrash:) ||
+         action == @selector(veyranExport:) ||
+         action == @selector(veyranPrint:) ||
+         action == @selector(veyranFormatBold:) ||
+         action == @selector(veyranFormatItalic:) ||
+         action == @selector(veyranFormatUnderline:) ||
+         action == @selector(veyranFormatStrikethrough:) ||
+         action == @selector(veyranFormatLink:) ||
+         action == @selector(veyranFind:) ||
+         action == @selector(veyranFindAndReplace:) ||
+         action == @selector(veyranFindNext:) ||
+         action == @selector(veyranFindPrevious:);
+}
+
+/**
  * Keeps the note commands that carry a key equivalent disabled while no note is
  * open (K4). The disabled attribute is already set when the menu is built (see
  * -buildMenuWithBuilder:), but UIKit validates UIKeyCommands against the
  * responder chain before showing the menu and would re-enable a command whose
  * selector this delegate implements; block-based UIActions carry no selector
- * and are not validated, so only the four key commands are handled here.
+ * and are not validated, so only the key commands listed in
+ * VeyraNCommandNeedsOpenNote are handled here.
  */
 - (void)validateCommand:(UICommand *)command {
   [super validateCommand:command];
   if ([VeyraNMacMenu menuContextHasNote]) {
     return;
   }
-  SEL action = command.action;
-  if (action == @selector(veyranPinNote:) ||
-      action == @selector(veyranMoveToTrash:) ||
-      action == @selector(veyranExport:) ||
-      action == @selector(veyranPrint:)) {
+  if (VeyraNCommandNeedsOpenNote(command.action)) {
     command.attributes |= UIMenuElementAttributesDisabled;
   }
 }

@@ -38,11 +38,8 @@ import AppIcon from "../components/ui/AppIcon";
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import type { SettingSection } from "../screens/settings/types";
 import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
-import {
-  eSendEvent,
-  hideSheet,
-  presentSheet
-} from "../services/event-manager";
+import { editorController } from "../screens/editor/tiptap/utils";
+import { eSendEvent, hideSheet, presentSheet } from "../services/event-manager";
 import Navigation from "../services/navigation";
 import { useSettingStore } from "../stores/use-setting-store";
 import {
@@ -73,6 +70,13 @@ const DISMISSABLE_ROUTES = new Set(["Settings", "TaskDetail", "AddReminder"]);
  * commands keep working for the menu bar / shortcuts.
  */
 const SECTION_COMMAND_PREFIX = "section:";
+
+/**
+ * Prefix of the Format menu commands (K2/E3): the editor command follows it
+ * ("format:bold"). The native menu item's own title maps to the suffix, and
+ * the editor bridge runs the command the matching toolbar button runs.
+ */
+const FORMAT_COMMAND_PREFIX = "format:";
 
 /**
  * The window toolbar's search field, with the text it holds in the event body:
@@ -286,8 +290,10 @@ export function showListOptions() {
 /**
  * Handles the commands sent by the Mac Catalyst window chrome through the
  * VeyraNMacMenu native module: the menu bar (File > New Note / New Notebook /
- * Import… / Export…, Edit > Find in Notes, the Note menu, the View sections,
- * Sort By / Group By and Toggle Sidebar, the Help link, Settings…, Escape) and
+ * Import… / Export…, Edit > Find in Notes plus the editor's own Find submenu
+ * and Format menu - "format:<name>" runs the matching editor toolbar command -
+ * the Note menu, the View sections, Sort By / Group By and Toggle Sidebar, the
+ * Help link, Settings…, Escape) and
  * the window toolbar (New Note / New Task, the search field - "search" while
  * it is typed in, "searchSubmit" on Return, both with the field's text in the
  * event body - and the note/list commands the toolbar's labels have no room
@@ -393,6 +399,17 @@ export const useMacMenuCommands = () => {
           );
           return;
         }
+        if (command?.startsWith(FORMAT_COMMAND_PREFIX)) {
+          // Format menu (K2/E3): every item sends "format:<name>" and the
+          // editor's own bridge runs the command the matching toolbar button
+          // runs (see screens/editor/tiptap/commands.ts), so the menu and the
+          // toolbar behave identically. The items are greyed out without an
+          // open note; the bridge is a no-op then.
+          void editorController.current?.commands?.format(
+            command.slice(FORMAT_COMMAND_PREFIX.length)
+          );
+          return;
+        }
         if (command?.startsWith("sort:") || command?.startsWith("group:")) {
           // View > Sort By / Group By (R19): the ids are the focused list's own
           // menu ids (components/list-view-menu.ts), so the selection is handed
@@ -449,6 +466,24 @@ export const useMacMenuCommands = () => {
           case "findInNotes":
             // Edit > Find in Notes (Cmd-Shift-F): the Search section.
             selectAppleSection("search");
+            break;
+          case "find":
+          case "findAndReplace":
+          case "findNext":
+          case "findPrevious":
+            // Edit > Find (K3/E4): the editor's own search-and-replace popup,
+            // the same one the header's magnifier opens. "find" opens it,
+            // "findAndReplace" opens it with the replace field, the other two
+            // step through the matches; with no match yet they are a no-op.
+            void editorController.current?.commands?.find(
+              command === "find"
+                ? "find"
+                : command === "findAndReplace"
+                ? "replace"
+                : command === "findNext"
+                ? "next"
+                : "previous"
+            );
             break;
           case "shareNote":
             // The open note's own Share action (mac-note-commands.tsx); a

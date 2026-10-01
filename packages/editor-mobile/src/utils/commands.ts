@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { Attachment, ImageAttributes, LinkAttributes } from "@notesnook/editor";
+import { showLinkPopup } from "@notesnook/editor/toolbar/popups/link-popup.js";
 import { Settings } from ".";
 
 globalThis.commands = {
@@ -216,5 +217,106 @@ globalThis.commands = {
   scrollToSearchResult: (index: number, tabId: string) => {
     editorControllers[tabId]?.getContentDiv()?.classList.add("searching");
     editorControllers[tabId]?.scrollToSearchResult(index);
+  },
+
+  /**
+   * Mac menu > Format (K2/E3), forwarded by the native menu bar through
+   * apps/mobile/app/hooks/use-mac-menu-commands.ts. `name` is the suffix of
+   * the menu command ("format:bold" -> "bold") and every case runs the very
+   * command the editor toolbar's own button runs, so the result is identical
+   * (including the paragraph styles, which clear a font size set through the
+   * toolbar first, see toolbar/tools/headings.tsx).
+   *
+   * A no-op (false) when the tab has no editor, which is the case for a locked
+   * note; the native items are greyed out without an open note anyway.
+   */
+  format: (name: string, tabId: string) => {
+    const editor = editors[tabId];
+    if (!editor) return false;
+    try {
+      const chain = editor.chain().focus();
+      switch (name) {
+        case "title":
+          return chain
+            .updateAttributes("textStyle", { fontSize: null, fontStyle: null })
+            .setHeading({ level: 1 })
+            .run();
+        case "heading":
+          return chain
+            .updateAttributes("textStyle", { fontSize: null, fontStyle: null })
+            .setHeading({ level: 2 })
+            .run();
+        case "subheading":
+          return chain
+            .updateAttributes("textStyle", { fontSize: null, fontStyle: null })
+            .setHeading({ level: 3 })
+            .run();
+        case "body":
+          return chain.setParagraph().run();
+        case "bulletedList":
+          return chain.toggleBulletList().run();
+        case "numberedList":
+          return chain.toggleOrderedList().run();
+        case "checklist":
+          return chain.toggleCheckList().run();
+        case "blockquote":
+          return chain.toggleBlockquote().run();
+        case "codeBlock":
+          return chain.toggleCodeBlock().run();
+        case "bold":
+          return chain.toggleBold().run();
+        case "italic":
+          return chain.toggleItalic().run();
+        case "underline":
+          return chain.toggleUnderline().run();
+        case "strikethrough":
+          return chain.toggleStrike().run();
+        case "link":
+          // Link has no plain command: the editor's Mod-k key binding opens
+          // this popup (extensions/key-map/key-map.ts), so the menu runs the
+          // same function.
+          void showLinkPopup(editor).catch((error) =>
+            logger("error", "format:link", error)
+          );
+          return true;
+        case "clearFormatting":
+          // Same as toolbar/tools/inline.tsx' ClearFormatting.
+          return chain.unsetAllMarks().unsetMark("link").run();
+        default:
+          return false;
+      }
+    } catch (error) {
+      logger("error", "format", name, error);
+      return false;
+    }
+  },
+
+  /**
+   * Mac menu > Edit > Find (K3/E4), forwarded by
+   * apps/mobile/app/hooks/use-mac-menu-commands.ts. "find" and "replace" open
+   * the editor's own search-and-replace popup (the same `startSearch` the
+   * header's magnifier and Mod-f call), "next"/"previous" move between the
+   * matches. False without an editor (locked note) or before a search ran.
+   */
+  find: (mode: string, tabId: string) => {
+    const editor = editors[tabId];
+    if (!editor) return false;
+    try {
+      switch (mode) {
+        case "find":
+          return editor.commands.startSearch();
+        case "replace":
+          return editor.commands.startSearch(true);
+        case "next":
+          return editor.commands.moveToNextResult();
+        case "previous":
+          return editor.commands.moveToPreviousResult();
+        default:
+          return false;
+      }
+    } catch (error) {
+      logger("error", "find", mode, error);
+      return false;
+    }
   }
 };

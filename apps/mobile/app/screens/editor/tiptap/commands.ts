@@ -252,6 +252,33 @@ class Commands {
     const tabId = useTabStore.getState().currentTab;
     return this.sendCommand("scrollToSearchResult", index, tabId);
   };
+
+  /**
+   * Mac menu > Format (K2/E3): runs one of the editor's formatting commands
+   * through the WebView bridge (`globalThis.commands.format` in
+   * @notesnook/editor-mobile), the same commands the editor's own toolbar
+   * buttons run. `name` is the suffix of the menu command
+   * ("format:bold" -> "bold"); the tab of the open note is the one the editor
+   * is currently on, like the other commands here. A no-op when there is no
+   * tab (no note open, where the menu items are greyed out anyway).
+   */
+  format = async (name: string) => {
+    const tabId = useTabStore.getState().currentTab;
+    if (!tabId) return;
+    return this.sendCommand("format", name, tabId);
+  };
+
+  /**
+   * Mac menu > Edit > Find (K3/E4): drives the editor's own search-and-replace
+   * popup through the same bridge ("find" opens it, "replace" opens it with
+   * the replace field, "next"/"previous" move between the matches). A no-op
+   * with no tab, like `format` above.
+   */
+  find = async (mode: "find" | "replace" | "next" | "previous") => {
+    const tabId = useTabStore.getState().currentTab;
+    if (!tabId) return;
+    return this.sendCommand("find", mode, tabId);
+  };
 }
 
 export default Commands;

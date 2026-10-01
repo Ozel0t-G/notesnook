@@ -1,6 +1,6 @@
 # WP08 · Editor wie Notes: Textspalte, Aa-Format, Suchen
 
-**Status:** Teil A (Textspalte) umgesetzt, Teil B offen · **Befunde:** 10 (P1×5 · P2×4 · P3×1) · **Abhängig von:** WP02, WP10
+**Status:** Teil A (Textspalte) und B1 (Format-/Find-Menü) umgesetzt; B2 (Aa-Popover, Drag & Drop) offen · **Befunde:** 10 (P1×5 · P2×4 · P3×1) · **Abhängig von:** WP02, WP10
 
 ## Ziel
 
@@ -134,3 +134,6 @@ Teil A (zentrierte Textspalte, Mac-Titeltypografie, Kopfzeile an der Spalte) ist
 - Alle Änderungen hängen an `settings.isMacCatalyst` bzw. `globalThis.isMacCatalyst` (WebView-Injection, siehe `apps/mobile/app/screens/editor/index.tsx:181`); ohne das Flag ist der Pfad unverändert.
 - **Prüfung:** `prettier --check` sauber; ESLint mit der Repo-Config: 0 Fehler, nur die zwei vorbestehenden Warnungen (`insets`, `e` in `editor.tsx`); `tsc` konnte in diesem isolierten Checkout nicht laufen (keine `node_modules`).
 - **Offen (Teil B):** „Aa“-Toolbar-Popover statt Web-Formatleiste (E3/K2/R6), ⌘F/⌥⌘F (E4/K3), Drag & Drop von Dateien (E7), Wortzahl/Tags ins Info-Popover bzw. unter den Text.
+
+### Ergebnis (Teil B1, Laufzeit)
+Edit > Find (⌘F, ⌥⌘F, ⌘G, ⇧⌘G) und Format-Menü (Title, Heading, Subheading, Body, Listen, Checkliste, Block Quote, Code Block, Clear Formatting) sind gebaut und laufen (Menüleiste per Bedienungshilfen geprüft, nur ohne offene Notiz ausgegraut). Die Fett/Kursiv/Unterstrichen/Link-Einträge (⌘B/I/U/K) fehlen im Menü, vermutlich weil sie mit den System-Kürzeln des Font-Untermenüs kollidieren; ob ⌘B im Editor weiter wirkt, ist nicht per Tastatur geprüft. Format-Befehle selbst nicht ausgelöst.

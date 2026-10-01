@@ -28,7 +28,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * event, with the body { command, text }. The sources are AppDelegate's
  * UIMenuBuilder ("newNote", "findInNotes", "pinNote", "toggleFavorite",
  * "moveToTrash", "section:library", "section:tasks", "section:search",
- * "openSettings" and "escape") and the window toolbar
+ * "openSettings", "escape", the editor's Find commands "find",
+ * "findAndReplace", "findNext", "findPrevious" and the Format menu's
+ * "format:<name>" commands - K2/E3/E4) and the window toolbar
  * (MacMenu/VeyraNMacToolbar.{h,m}: "listOptions", "newNote", "newTask",
  * "shareNote", "noteInfo", "noteMore", and the toolbar search field's
  * "search"/"searchSubmit" commands, whose payload is the field's text).

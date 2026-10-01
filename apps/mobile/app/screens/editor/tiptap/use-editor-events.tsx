@@ -80,6 +80,7 @@ import AddReminder from "../../add-reminder";
 import ManageTags from "../../manage-tags";
 import RelationsList from "../../relations-list";
 import { useDragState } from "../../settings/editor/state";
+import type { DroppedFile } from "./picker";
 import { EditorMessage, EditorProps, useEditorType } from "./types";
 import { useTabStore } from "./use-tab-store";
 import { editorState, openInternalLink } from "./utils";
@@ -523,6 +524,19 @@ export const useEditorEvents = (
             editorState().isAwaitingResult = false;
           }, 1000);
           break;
+        case EditorEvents.dropFiles: {
+          // Mac Catalyst: files dropped from Finder onto the editor WebView.
+          // They go through the same flow as the picker's files/images.
+          const { dropFiles } =
+            require("./picker") as typeof import("./picker");
+          dropFiles(editorMessage.value as DroppedFile[], {
+            type: "file",
+            noteId: noteId,
+            tabId: editorMessage.tabId,
+            reupload: false
+          });
+          break;
+        }
         case EditorEvents.hasHandwritingSource: {
           const image = editorMessage.value as Attachment;
           const available = await require("../../../services/handwriting")

@@ -26,6 +26,7 @@ export const EditorEvents = {
   newtag: "editor-event:newtag",
   tag: "editor-event:tag",
   filepicker: "editor-event:picker",
+  dropFiles: "editor-event:drop-files",
   download: "editor-event:download-attachment",
   editHandwriting: "editor-event:edit-handwriting",
   hasHandwritingSource: "editor-events:has-handwriting-source",

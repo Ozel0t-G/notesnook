@@ -33,7 +33,12 @@ import { Image, openCamera, openPicker } from "react-native-image-crop-picker";
 import { DatabaseLogger, db } from "../../../common/database";
 import filesystem from "../../../common/filesystem";
 import { compressToFile } from "../../../common/filesystem/compress";
-import { santizeUri } from "../../../common/filesystem/utils";
+import { createCacheDir } from "../../../common/filesystem/io";
+import {
+  cacheDir,
+  getRandomId,
+  santizeUri
+} from "../../../common/filesystem/utils";
 import AttachImage from "../../../components/dialogs/attach-image-dialog";
 import { ToastManager } from "../../../services/event-manager";
 import PremiumService from "../../../services/premium";
@@ -411,6 +416,132 @@ export async function attachFile(
     return false;
   }
 }
+
+/**
+ * Size cap of the WebView drop handler (`utils/mac-drop.ts`). The WebView does
+ * not read bigger files and sends the metadata only; the toast is shown here.
+ */
+const MAX_DROP_FILE_SIZE_MB = 50;
+
+/** One file dropped onto the editor WebView (Mac Catalyst, WP08 E7). */
+export type DroppedFile = {
+  name: string;
+  type: string;
+  size: number;
+  /** base64 payload without the `data:` prefix; missing if the WebView skipped the file. */
+  data?: string;
+};
+
+/**
+ * Attaches files dropped from Finder (Mac Catalyst) into the note. They go
+ * through exactly the same steps as the picker's files/images: written to a
+ * temp file in the app's cache, hashed, encrypted and inserted as an image or
+ * file attachment node. `options.noteId`/`options.tabId` come from the editor
+ * message, like `pick`/`file` do.
+ */
+export const dropFiles = async (
+  files: DroppedFile[],
+  options: PickerOptions
+) => {
+  if (!files?.length) return;
+  try {
+    await db.attachments.generateKey();
+  } catch (e) {
+    DatabaseLogger.error(e, "Error generating attachment key");
+    return;
+  }
+
+  for (const file of files) {
+    const filename = file.name || "attachment_" + Date.now();
+    try {
+      if (!file.data) {
+        // The WebView skips files above its size cap and sends the metadata
+        // only, so the user still gets a toast instead of a silent no-op.
+        ToastManager.show({
+          heading: strings.fileTooLarge(),
+          message: `${filename}: ${strings.fileTooLargeDesc(
+            `${MAX_DROP_FILE_SIZE_MB}MB`
+          )}`,
+          type: "error",
+          context: "global"
+        });
+        continue;
+      }
+
+      const featureResult = await isFeatureAvailable(
+        "fileSize",
+        file.size || 0
+      );
+      if (!featureResult.isAllowed) {
+        ToastManager.show({
+          heading: strings.fileTooLarge(),
+          message: featureResult.error,
+          type: "error"
+        });
+        continue;
+      }
+
+      const mime = file.type || "application/octet-stream";
+      await createCacheDir();
+      const path = `${cacheDir}/${getRandomId("drop_")}`;
+      await RNFetchBlob.fs.writeFile(path, file.data, "base64");
+      const uri = santizeUri(path);
+      const hash = await Sodium.hashFile({
+        uri: uri,
+        type: "url"
+      });
+
+      if (!(await attachFile(uri, hash, mime, filename, options))) {
+        throw new Error("Failed to attach file");
+      }
+
+      RNFetchBlob.fs.unlink(path).catch(() => {
+        /* empty */
+      });
+
+      const isNewNote = options.noteId === undefined;
+      const currentNoteId =
+        options.tabId !== undefined
+          ? useTabStore.getState().getNoteIdForTab(options.tabId)
+          : undefined;
+      const isSameNote = currentNoteId === options.noteId;
+
+      if (options.tabId !== undefined && (isSameNote || isNewNote)) {
+        if (mime.startsWith("image/")) {
+          editorController.current?.commands.insertImage(
+            {
+              hash: hash,
+              mime: mime,
+              type: "image",
+              dataurl: `data:${mime};base64,${file.data}`,
+              size: file.size || 0,
+              filename: filename
+            },
+            options.tabId
+          );
+        } else {
+          editorController.current?.commands.insertAttachment(
+            {
+              hash: hash,
+              filename: filename,
+              mime: mime,
+              size: file.size || 0,
+              type: "file"
+            },
+            options.tabId
+          );
+        }
+      }
+    } catch (e) {
+      DatabaseLogger.error(e, `Error adding dropped file ${filename}`);
+      ToastManager.show({
+        heading: (e as Error).message,
+        type: "error",
+        context: "global"
+      });
+    }
+  }
+};
 
 export default {
   file,

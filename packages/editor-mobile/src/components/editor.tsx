@@ -53,6 +53,7 @@ import {
   MAC_TEXT_COLUMN_PADDING,
   MAC_TOOLBAR_HEIGHT
 } from "../utils/mac";
+import { setupMacFileDrop } from "../utils/mac-drop";
 
 globalThis.toBlobURL = toBlobURL as typeof globalThis.toBlobURL;
 
@@ -399,6 +400,23 @@ const Tiptap = ({
       unsub();
     };
   }, [getContentDiv, restoreNoteSelection]);
+
+  /**
+   * E7: Finder drops of images/files into the Mac editor. The WebView reads the
+   * dropped `File`s and sends them over the RN message channel; the native side
+   * (`use-editor-events.tsx`) runs them through the same attachment flow as the
+   * file/image picker. iPhone, iPad and Android keep their picker-only flow.
+   */
+  useEffect(() => {
+    if (!settings.isMacCatalyst) return;
+    setupMacFileDrop(() => {
+      const state = useTabStore.getState();
+      return {
+        tabId: state.currentTab,
+        noteId: state.getCurrentNoteId()
+      };
+    });
+  }, [settings.isMacCatalyst]);
 
   const onClickEmptyArea: React.MouseEventHandler<HTMLDivElement> = useCallback(
     (event) => {

@@ -86,7 +86,7 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 - **Befund:** Kein Drag&Drop von Dateien/Bildern in den Editor: kein `onDrop`/`dragOver` (Grep: 0).
 - **So macht es macOS:** Bilder/Dateien ziehen, Vorschau, Drop-Ziel.
 - **Fix:** DnD-Handler im WebView + `EditorEvents.attachment`.
-- [ ] erledigt
+- [~] erledigt (Code vorhanden, Drop nicht getestet)
 
 #### R6 — Formatleiste im Web-Stil
 
@@ -151,3 +151,6 @@ Edit > Find (⌘F, ⌥⌘F, ⌘G, ⇧⌘G) und Format-Menü (Title, Heading, Sub
 
 ### Korrektur nach Laufzeittest
 Der erste B1-Stand lud den Editor nicht mehr (leere Fläche): ein Deep-Import von `link-popup.js` in `editor-mobile/src/utils/commands.ts` brach das Bundle. Link wird jetzt über ein synthetisches ⌘K-Tastaturereignis ausgelöst. B2a (Aa-Toolbar statt Absatz-/Schrift-Dropdowns und px-Stepper) läuft: `screenshots/WP08-after-toolbar.png`.
+
+### Ergebnis (Teil B2b, E7)
+Drop von Dateien aus dem Finder in den Editor: `packages/editor-mobile/src/utils/mac-drop.ts` (dragover/drop, FileReader → base64, max. 50 MB), neues Editor-Event `dropFiles`, RN-Seite `picker.ts` `dropFiles()` schreibt die Datei in den Cache und nutzt `attachFile` wie der Datei-/Bild-Picker (Bild → `insertImage`, sonst `insertAttachment`). tsc sauber, Editor lädt nach dem Build. Das Ziehen selbst konnte ohne Maus nicht ausgelöst werden. DeepSeek-Job hing nach der Umsetzung und wurde abgebrochen; die fertigen Dateien wurden aus seinem Checkout übernommen. Offen: R7 (Wortzahl/Tags ins Info-Popover), E9, Test von Format-Menü, ⌘F und Drop.

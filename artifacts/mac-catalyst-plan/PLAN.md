@@ -14,6 +14,7 @@ Reihenfolge = empfohlene Abarbeitung. Ein Paket pro Session. Pakete ohne gegense
 | 8 | [WP08 · Editor wie Notes: Textspalte, Aa-Format, Suchen](packages/WP08-editor.md) | 10 (P1×5 · P2×4 · P3×1) | M–L | WP02, WP10 | offen |
 | 9 | [WP09 · Aufgaben im Mac-Layout](packages/WP09-tasks-mac-layout.md) | 3 (P1×2 · P2×1) | M | WP02, WP03 | erledigt |
 | 10 | [WP10 · Menüleiste vervollständigen und validieren](packages/WP10-menu-bar.md) | 11 (P1×1 · P2×5 · P3×4 · —×1) | M | — | offen |
+| 10.1 | [WP10.1 · Sidebar-Fuß mit Konto, Sync-Status und Einstellungen](packages/WP10.1-sidebar-account-footer.md) | 1 (Nutzerwunsch) | S–M | WP05, WP03 | umgesetzt, eingeloggter Zustand ungeprüft |
 | 11 | [WP11 · Fenster-Grundlagen und Mac-Controls](packages/WP11-window-controls.md) | 11 (P2×8 · P3×2 · —×1) | M | WP02 | offen |
 | 12 | [WP12 · Mehrfenster, Systemintegration, Onboarding](packages/WP12-multiwindow-system.md) | 14 (P1×1 · P2×7 · P3×6) | L | WP05, WP11 | offen |
 
@@ -31,6 +32,8 @@ graph LR
   WP02 --> WP09
   WP03 --> WP09
   WP02 --> WP11
+  WP05 --> WP10_1[WP10.1]
+  WP03 --> WP10_1
   WP05 --> WP12
   WP11 --> WP12
 ```
@@ -137,5 +140,6 @@ graph LR
 | W6 | P2 | L | WP03 | Kein Tracking-Separator und keine Sidebar-Vibrancy |
 | W7 | P2 | L | WP11 | Feste Spaltenbreiten, nicht ziehbar |
 | W8 | P3 | S | WP02 | Toolbar-Höhe als 52-pt-Konstante hart verdrahtet |
+| U1 | P2 | M | WP10.1 | Nutzerwunsch: Sidebar-Fuß mit Login-E-Mail, „Eingeloggt“, Sync-Indikator (grün/rot) und Zahnrad zu den Einstellungen |
 
-Präfixe: **R** = Laufzeitbefund (Screenshot, Bedienungshilfen, Menü) · **W** Fenster · **S** Sidebar · **N** Notizliste · **E** Editor · **K** Menüs/Tastatur · **D** Sheets/Dialoge · **C** Controls/Typo · **F** Farben/Material · **I** Systemintegration · **O** Onboarding.
+Präfixe: **R** = Laufzeitbefund (Screenshot, Bedienungshilfen, Menü) · **U** Nutzerwunsch · **W** Fenster · **S** Sidebar · **N** Notizliste · **E** Editor · **K** Menüs/Tastatur · **D** Sheets/Dialoge · **C** Controls/Typo · **F** Farben/Material · **I** Systemintegration · **O** Onboarding.

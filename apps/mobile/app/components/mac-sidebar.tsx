@@ -20,13 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import {
-  NativeModules,
-  Pressable,
-  ScrollView,
-  Text,
-  View
-} from "react-native";
+import { NativeModules, Pressable, ScrollView, Text, View } from "react-native";
 import { Item } from "@notesnook/core";
 import { TaskSymbolView } from "./task-symbol-view";
 import { IosBarButton } from "./ios-nav-bar";
@@ -46,6 +40,8 @@ import { MAC_SOURCE_LIST_INSET, macToolbarInset } from "../utils/mac-layout";
 import { ItemContextMenu } from "./item-actions-menu";
 import { MacHoverHighlight, useMacHover } from "./mac-hover";
 import { selectAppleSection } from "../navigation/navigation-stack";
+import { MacSidebarAccountFooter } from "./mac-sidebar-account-footer";
+import { isMacCatalyst } from "../utils/constants";
 
 type LibraryDestination = {
   key: string;
@@ -290,7 +286,11 @@ export function MacSidebar() {
     >
       <ScrollView
         testID="library-scroll"
-        contentContainerStyle={{ paddingTop: 8, paddingBottom: 32 }}
+        // flex: 1 so the account footer below can stay pinned to the bottom
+        // while the list scrolls; its own paddingBottom only needs the small
+        // gap under the last row now that the footer owns the bottom edge.
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
       >
         {/* Mac sidebars have no large title, and no 44 pt bar either: the pane's
             name is just a 13 pt secondary label above the rows. */}
@@ -365,6 +365,8 @@ export function MacSidebar() {
           />
         ))}
       </ScrollView>
+      {/* Pinned account row, outside the ScrollView so it never scrolls away. */}
+      {isMacCatalyst() ? <MacSidebarAccountFooter /> : null}
     </View>
   );
 }

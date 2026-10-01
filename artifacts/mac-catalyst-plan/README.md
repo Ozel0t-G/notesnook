@@ -2,7 +2,7 @@
 
 Ziel: Die Mac-Catalyst-Version der iOS-App (`apps/mobile`, Produktname **VeyraN**) wird zu einer vollwertigen, Apple-typischen macOS-App wie Notes, Mail oder Erinnerungen auf macOS 26/27.
 
-Grundlage ist das Design-Assessment vom 1. Okt. 2026 (Build `Release-maccatalyst`, Commit `446a38391`, Reifegrad **4/10**): 98 Befunde, davon 20 aus der laufenden App und 78 aus einem Code-Audit. Sie sind auf 12 Arbeitspakete verteilt.
+Grundlage ist das Design-Assessment vom 1. Okt. 2026 (Build `Release-maccatalyst`, Commit `446a38391`, Reifegrad **4/10**): 98 Befunde, davon 20 aus der laufenden App und 78 aus einem Code-Audit. Sie sind auf 12 Arbeitspakete verteilt, dazu WP10.1 (Nutzerwunsch: Sidebar-Fuß mit Konto, Sync-Status und Einstellungen).
 
 ## So arbeitest du damit (für Claude)
 

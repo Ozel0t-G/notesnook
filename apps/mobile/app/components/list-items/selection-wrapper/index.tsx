@@ -277,7 +277,9 @@ const SelectionWrapper = ({
       {row}
     </ItemContextMenu>
   );
-  if (item.type !== "note") return menu;
+  // N1: Mac has no swipe actions (they live in the context menu/menu bar),
+  // so the note row is not wrapped in a SwipeRow. iPhone/iPad keep swiping.
+  if (item.type !== "note" || isMacCatalyst()) return menu;
   const note = item as Note;
   return (
     <SwipeRow

@@ -34,7 +34,12 @@ import { useTrash, useTrashStore } from "../../stores/use-trash-store";
 import SelectionHeader from "../../components/selection-header";
 import { strings } from "@notesnook/intl";
 
-const onPressFloatingButton = () => {
+/**
+ * The Trash screen's own "empty trash" confirmation (the floating button and,
+ * on Mac Catalyst, the Trash row's context menu in components/mac-sidebar.tsx
+ * both run it).
+ */
+export const confirmEmptyTrash = () => {
   presentDialog({
     title: strings.clearTrash(),
     paragraph: strings.clearTrashDesc(),
@@ -114,7 +119,7 @@ export const Trash = ({ navigation, route }: NavigationProps<"Trash">) => {
 
         {trash && trash?.placeholders?.length !== 0 ? (
           <FloatingButton
-            onPress={onPressFloatingButton}
+            onPress={confirmEmptyTrash}
             testID="trash-clear"
             alwaysVisible={true}
           />

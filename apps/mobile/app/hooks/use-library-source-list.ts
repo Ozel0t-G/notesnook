@@ -29,12 +29,15 @@ export type LibrarySourceListData = {
   counts: {
     allNotes?: number;
     inbox?: number;
+    favorites?: number;
+    archived?: number;
+    trash?: number;
   };
 };
 
 /**
  * The data behind the Library's source list - the notebooks, the tags and the
- * All Notes / Inbox counts.
+ * All Notes / Inbox / Favorites / Archive / Trash counts.
  *
  * Shared by the Library screen (iPhone/iPad, where the source list is the
  * screen itself) and Mac's source list pane (components/mac-sidebar.tsx), so
@@ -50,6 +53,9 @@ export function useLibrarySourceList(
   const [counts, setCounts] = React.useState<{
     allNotes?: number;
     inbox?: number;
+    favorites?: number;
+    archived?: number;
+    trash?: number;
   }>({});
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
 
@@ -57,17 +63,33 @@ export function useLibrarySourceList(
     let alive = true;
     const load = async () => {
       if (!db.isInitialized) return;
-      const [nextNotebooks, nextTags, allNotesCount, inboxCount] =
-        await Promise.all([
-          db.notebooks.all.limit(2000).items(),
-          db.tags.all.limit(2000).items(),
-          db.notes.all.count(),
-          db.notes.unassigned.count()
-        ]);
+      const [
+        nextNotebooks,
+        nextTags,
+        allNotesCount,
+        inboxCount,
+        favoritesCount,
+        archivedCount
+      ] = await Promise.all([
+        db.notebooks.all.limit(2000).items(),
+        db.tags.all.limit(2000).items(),
+        db.notes.all.count(),
+        db.notes.unassigned.count(),
+        db.notes.favorites.count(),
+        db.notes.archived.count()
+      ]);
+      // The Trash cache is kept in memory, so its count needs no query.
+      const trashCount = db.trash.count();
       if (alive) {
         setNotebooks(nextNotebooks);
         setTags(nextTags);
-        setCounts({ allNotes: allNotesCount, inbox: inboxCount });
+        setCounts({
+          allNotes: allNotesCount,
+          inbox: inboxCount,
+          favorites: favoritesCount,
+          archived: archivedCount,
+          trash: trashCount
+        });
       }
     };
     void load();

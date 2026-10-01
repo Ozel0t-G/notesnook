@@ -23,6 +23,7 @@ import {
   Item,
   VirtualizedGrouping
 } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import { LegendList, LegendListRenderItemProps } from "@legendapp/list";
 import React, { useEffect, useRef } from "react";
@@ -33,15 +34,22 @@ import {
   View
 } from "react-native";
 import { notesnook } from "../../../e2e/test.ids";
+import { showListOptions } from "../../hooks/use-mac-menu-commands";
 import { useGroupOptions } from "../../hooks/use-group-options";
+import {
+  openEditor,
+  setOnFirstSaveUnassigned
+} from "../../screens/notes/common";
 import { eSendEvent } from "../../services/event-manager";
 import Sync from "../../services/sync";
 import { RouteName } from "../../stores/use-navigation-store";
 import { useSettingStore } from "../../stores/use-setting-store";
+import { isMacCatalyst } from "../../utils/constants";
 import { eScrollEvent } from "../../utils/events";
 import { fluidTabsRef } from "../../utils/global-refs";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { Header } from "../list-items/headers/header";
+import { ContextMenu, NativeMenuItem } from "../native-menu";
 import { Empty, PlaceholderData } from "./empty";
 import { ListItemWrapper } from "./list-item.wrapper";
 import { ScrollView } from "react-native-actions-sheet";
@@ -152,6 +160,53 @@ export default function List(props: ListProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * C9: on Mac Catalyst the note list's empty area carries a right-click menu
+   * with "New Note" (the compose / Cmd-N action) and "Sort By…" (the list's own
+   * options, published by its header - hooks/use-mac-menu-commands.ts
+   * showListOptions). Sheets keep their iOS behavior.
+   */
+  const macEmptyMenuItems: NativeMenuItem[] = [
+    {
+      id: "new-note",
+      title: strings.newNoteTab(),
+      symbol: "square.and.pencil"
+    },
+    {
+      id: "list-options",
+      title: strings.listSortBy(),
+      symbol: "arrow.up.arrow.down"
+    }
+  ];
+  const onMacEmptyMenuSelect = (id: string) => {
+    if (id === "new-note") {
+      setOnFirstSaveUnassigned();
+      openEditor();
+    } else if (id === "list-options") {
+      showListOptions();
+    }
+  };
+  const showMacEmptyMenu =
+    isMacCatalyst() &&
+    !props.isRenderedInActionSheet &&
+    props.dataType === "note";
+  const emptyComponent = (
+    <View
+      style={{
+        flex: 1
+      }}
+    >
+      <Empty
+        loading={props.loading}
+        title={props.headerTitle}
+        dataType={props.dataType}
+        color={props.customAccentColor}
+        placeholder={props.placeholder}
+        screen={props.renderedInRoute}
+      />
+    </View>
+  );
+
   return (
     <>
       <View
@@ -188,20 +243,17 @@ export default function List(props: ListProps) {
           keyboardShouldPersistTaps="always"
           keyboardDismissMode="interactive"
           ListEmptyComponent={
-            <View
-              style={{
-                flex: 1
-              }}
-            >
-              <Empty
-                loading={props.loading}
-                title={props.headerTitle}
-                dataType={props.dataType}
-                color={props.customAccentColor}
-                placeholder={props.placeholder}
-                screen={props.renderedInRoute}
-              />
-            </View>
+            showMacEmptyMenu ? (
+              <ContextMenu
+                items={macEmptyMenuItems}
+                onSelect={onMacEmptyMenuSelect}
+                style={{ flex: 1 }}
+              >
+                {emptyComponent}
+              </ContextMenu>
+            ) : (
+              emptyComponent
+            )
           }
           ListFooterComponent={
             <View

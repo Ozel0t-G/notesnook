@@ -38,10 +38,13 @@ import { AddNotebookSheet } from "./sheets/add-notebook";
 import useGlobalSafeAreaInsets from "../hooks/use-global-safe-area-insets";
 import { MAC_SOURCE_LIST_INSET, macToolbarInset } from "../utils/mac-layout";
 import { ItemContextMenu } from "./item-actions-menu";
+import { ContextMenu, NativeMenuItem } from "./native-menu";
 import { MacHoverHighlight, useMacHover } from "./mac-hover";
 import { selectAppleSection } from "../navigation/navigation-stack";
 import { MacSidebarAccountFooter } from "./mac-sidebar-account-footer";
 import { isMacCatalyst } from "../utils/constants";
+import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
+import { confirmEmptyTrash } from "../screens/trash";
 
 type LibraryDestination = {
   key: string;
@@ -56,6 +59,19 @@ type LibraryDestination = {
    * Notes, Inbox, Favorites, ...) have no item to act on.
    */
   item?: Item;
+  /**
+   * C9: right-click menu of a plain Library destination. All Notes / Inbox
+   * offer "New Note" (the compose / Cmd-N action), Trash "Empty Trash" (the
+   * screen's own confirmation flow). Destinations without actions stay plain.
+   */
+  menuItems?: NativeMenuItem[];
+  onMenuSelect?: (id: string) => void;
+};
+
+/** Compose / Cmd-N: a new note in the Inbox, not in the default notebook. */
+const startNewNote = () => {
+  setOnFirstSaveUnassigned();
+  openEditor();
 };
 
 /**
@@ -158,12 +174,27 @@ export function MacSidebar() {
     [focusedRouteId, section]
   );
 
+  /** C9: the destinations' own right-click actions (see `menuItems` above). */
+  const onDestinationMenu = (id: string) => {
+    if (id === "new-note") startNewNote();
+    else if (id === "empty-trash") confirmEmptyTrash();
+  };
+  const newNoteMenuItems: NativeMenuItem[] = [
+    {
+      id: "new-note",
+      title: strings.newNoteTab(),
+      symbol: "square.and.pencil"
+    }
+  ];
+
   const collections: LibraryDestination[] = [
     {
       key: "all-notes",
       label: strings.routes.AllNotes(),
       symbol: "note.text",
       count: counts.allNotes,
+      menuItems: newNoteMenuItems,
+      onMenuSelect: onDestinationMenu,
       onPress: () =>
         openMacList("Library", { initialCollection: "all-notes" }, "AllNotes")
     },
@@ -172,6 +203,8 @@ export function MacSidebar() {
       label: strings.routes.Inbox(),
       symbol: "tray",
       count: counts.inbox,
+      menuItems: newNoteMenuItems,
+      onMenuSelect: onDestinationMenu,
       onPress: () =>
         openMacList("Library", { initialCollection: "inbox" }, "Inbox")
     }
@@ -182,6 +215,7 @@ export function MacSidebar() {
       key: "favorites",
       label: strings.routes.Favorites(),
       symbol: "star",
+      count: counts.favorites,
       onPress: () => openMacList("Favorites", {}, "Favorites")
     },
     {
@@ -199,12 +233,23 @@ export function MacSidebar() {
       key: "archive",
       label: strings.routes.Archive(),
       symbol: "archivebox",
+      count: counts.archived,
       onPress: () => openMacList("Archive", {}, "Archive")
     },
     {
       key: "trash",
       label: strings.routes.Trash(),
       symbol: "trash",
+      count: counts.trash,
+      menuItems: [
+        {
+          id: "empty-trash",
+          title: strings.clearTrash(),
+          symbol: "trash",
+          destructive: true
+        }
+      ],
+      onMenuSelect: onDestinationMenu,
       onPress: () => openMacList("Trash", {}, "Trash")
     }
   ];
@@ -489,12 +534,26 @@ function MacRow({
     </Pressable>
   );
 
-  if (!item.item) return row;
-  return (
-    <ItemContextMenu item={item.item} previewCornerRadius={MAC_ROW_RADIUS}>
-      {row}
-    </ItemContextMenu>
-  );
+  if (item.item)
+    return (
+      <ItemContextMenu item={item.item} previewCornerRadius={MAC_ROW_RADIUS}>
+        {row}
+      </ItemContextMenu>
+    );
+  // C9: plain Library destinations carry their own small menu, e.g. "New Note"
+  // on All Notes / Inbox and "Empty Trash" on Trash.
+  const { menuItems, onMenuSelect } = item;
+  if (menuItems && menuItems.length > 0 && onMenuSelect)
+    return (
+      <ContextMenu
+        items={menuItems}
+        onSelect={onMenuSelect}
+        previewCornerRadius={MAC_ROW_RADIUS}
+      >
+        {row}
+      </ContextMenu>
+    );
+  return row;
 }
 
 export default MacSidebar;

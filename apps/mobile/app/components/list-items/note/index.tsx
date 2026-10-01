@@ -49,6 +49,7 @@ import { useSelectionStore } from "../../../stores/use-selection-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../../utils/constants";
+import { formatMacNoteDate } from "../../../utils/mac-note-date";
 import { systemColor } from "../../../utils/ios-system-colors";
 import { Properties } from "../../properties";
 import AppIcon from "../../ui/AppIcon";
@@ -112,6 +113,8 @@ const NoteItem = ({
   const displayHeadline = item.headline
     ? decode(item.headline, { level: EntityLevel.HTML })
     : "";
+  // R5: the Mac row's second line is one line of "date · first text line".
+  const macPreview = isMac ? displayHeadline.replace(/\s+/g, " ").trim() : "";
   const homeSnippet = isHomeIOS ? homeNoteDisplaySnippet(item as Note) : "";
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
@@ -169,12 +172,11 @@ const NoteItem = ({
           </Heading>
         )}
 
-        {item.headline && !compactMode && !isHomeIOS ? (
+        {item.headline && !compactMode && !isHomeIOS && !isMac ? (
           <Paragraph
             style={{
               flexWrap: "wrap",
               color: visual.secondaryText,
-              fontSize: isMac ? MAC_NOTE_PREVIEW_SIZE : undefined,
               marginTop: visual.ios ? 4 : 0
             }}
             color={visual.secondaryText}
@@ -186,7 +188,7 @@ const NoteItem = ({
 
         {compactMode || !visual.ios ? null : (
           <Paragraph
-            numberOfLines={isHomeIOS ? 1 : undefined}
+            numberOfLines={isMac || isHomeIOS ? 1 : undefined}
             style={{
               fontSize: isMac
                 ? MAC_NOTE_PREVIEW_SIZE
@@ -200,13 +202,23 @@ const NoteItem = ({
               marginTop: isHomeIOS ? 5 : 7
             }}
           >
-            {getFormattedDate(
-              date,
-              dayjs(date).isBefore(dayjs().subtract(1, "day").hour(23))
-                ? "date"
-                : "time"
+            {isMac ? (
+              /* R5: localized, relative date plus the first text line. */
+              <>
+                {formatMacNoteDate(date)}
+                {macPreview ? ` · ${macPreview}` : null}
+              </>
+            ) : (
+              <>
+                {getFormattedDate(
+                  date,
+                  dayjs(date).isBefore(dayjs().subtract(1, "day").hour(23))
+                    ? "date"
+                    : "time"
+                )}
+                {isHomeIOS && homeSnippet ? `  ·  ${homeSnippet}` : null}
+              </>
             )}
-            {isHomeIOS && homeSnippet ? `  ·  ${homeSnippet}` : null}
           </Paragraph>
         )}
 
@@ -462,7 +474,9 @@ const NoteItem = ({
         ) : null}
 
         {selectionMode === "note" || selectionMode === "trash" ? (
-          <>
+          /* N8: on Mac the selection shows as a row highlight, not a 35x35
+             touch checkbox; the selection paths themselves are unchanged. */
+          isMac ? null : (
             <View
               style={{
                 height: 35,
@@ -477,7 +491,7 @@ const NoteItem = ({
                 size={AppFontSize.lg}
               />
             </View>
-          </>
+          )
         ) : visual.ios && !isTrash ? null : (
           <IconButton
             testID={notesnook.listitem.menu}

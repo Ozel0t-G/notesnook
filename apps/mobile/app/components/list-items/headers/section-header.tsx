@@ -79,10 +79,80 @@ export const SectionHeader = React.memo<
     );
 
     /**
+     * The list's sort sheet + compact/view toggle, exactly the IconButtons the
+     * iPhone/iPad header shows. Mac Catalyst shows them in the first group
+     * header too (N7/C10); the handlers are the shared ones (presentSheet's
+     * Sort sheet and SettingsService), so no Mac-only menu is duplicated.
+     */
+    const sortAndViewButtons = (
+      <>
+        <IconButton
+          name={
+            groupOptions.sortDirection === "asc"
+              ? "sort-ascending"
+              : "sort-descending"
+          }
+          color={colors.secondary.icon}
+          testID="icon-sort"
+          onPress={() => {
+            if (!screen) return;
+            presentSheet({
+              component: (
+                <Sort
+                  screen={screen}
+                  dataType={dataType}
+                  type={type}
+                  group={group}
+                  groupId={groupId}
+                  hideGroupOptions={
+                    screen === "Reminders" || screen === "Search"
+                  }
+                />
+              )
+            });
+          }}
+          style={{
+            width: 25,
+            height: 25
+          }}
+          size={AppFontSize.lg - 2}
+        />
+        <IconButton
+          hidden={
+            dataType !== "note" &&
+            dataType !== "notebook" &&
+            screen !== "Notes" &&
+            screen !== "Search"
+          }
+          style={{
+            width: 25,
+            height: 25
+          }}
+          testID="icon-compact-mode"
+          color={colors.secondary.icon}
+          name={isCompactModeEnabled ? "view-list" : "view-list-outline"}
+          onPress={() => {
+            SettingsService.set({
+              [dataType === "notebook"
+                ? "notebooksListMode"
+                : dataType === "searchResult"
+                ? "searchListMode"
+                : "notesListMode"]: !isCompactModeEnabled
+                ? "compact"
+                : "normal"
+            });
+          }}
+          size={AppFontSize.lg - 2}
+        />
+      </>
+    );
+
+    /**
      * Mac: a plain source-list section header - an 11 pt semibold label in the
      * secondary color, 8 pt above the group it starts, with no background. The
      * iPhone/iPad header is a rounded bar (the "Today"/"Yesterday" pill) that
-     * would drown the 260-360 pt note list column.
+     * would drown the 260-360 pt note list column. The first header also shows
+     * the sort/view buttons (N7/C10), right-aligned like in the toolbar.
      */
     if (isMacCatalyst()) {
       return (
@@ -93,35 +163,53 @@ export const SectionHeader = React.memo<
             paddingTop: 8
           }}
         >
-          <Pressable
-            onPress={() => {
-              onOpenJumpToDialog();
-            }}
-            hitSlop={{ top: 8, left: 10, right: 30, bottom: 8 }}
-            // The shared Pressable centers itself by default (it is a row
-            // between two spacers in the iPhone/iPad header); a source-list
-            // section header starts at the column's leading edge.
+          <View
             style={{
-              alignSelf: "flex-start",
               flexDirection: "row",
-              width: "auto"
+              alignItems: "center",
+              justifyContent: "space-between"
             }}
           >
-            <Text
-              numberOfLines={1}
+            <Pressable
+              onPress={() => {
+                onOpenJumpToDialog();
+              }}
+              hitSlop={{ top: 8, left: 10, right: 30, bottom: 8 }}
+              // The shared Pressable centers itself by default (it is a row
+              // between two spacers in the iPhone/iPad header); a source-list
+              // section header starts at the column's leading edge.
               style={{
-                color: visual.secondaryText,
-                fontSize: 11,
-                fontWeight: "600"
+                flexDirection: "row",
+                width: "auto"
               }}
             >
-              {!item.title || item.title === ""
-                ? screen === "Search"
-                  ? strings.results(itemCount || 0)
-                  : strings.pinned()
-                : item.title}
-            </Text>
-          </Pressable>
+              <Text
+                numberOfLines={1}
+                style={{
+                  color: visual.secondaryText,
+                  fontSize: 11,
+                  fontWeight: "600"
+                }}
+              >
+                {!item.title || item.title === ""
+                  ? screen === "Search"
+                    ? strings.results(itemCount || 0)
+                    : strings.pinned()
+                  : item.title}
+              </Text>
+            </Pressable>
+            {index === 0 ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: DefaultAppStyles.GAP_SMALL
+                }}
+              >
+                {sortAndViewButtons}
+              </View>
+            ) : null}
+          </View>
         </View>
       );
     }
@@ -201,70 +289,9 @@ export const SectionHeader = React.memo<
               gap: DefaultAppStyles.GAP_SMALL
             }}
           >
-            {index === 0 && !(visual.ios && isHomeNoteRoute(screen)) ? (
-              <>
-                <IconButton
-                  name={
-                    groupOptions.sortDirection === "asc"
-                      ? "sort-ascending"
-                      : "sort-descending"
-                  }
-                  color={colors.secondary.icon}
-                  testID="icon-sort"
-                  onPress={() => {
-                    if (!screen) return;
-                    presentSheet({
-                      component: (
-                        <Sort
-                          screen={screen}
-                          dataType={dataType}
-                          type={type}
-                          group={group}
-                          groupId={groupId}
-                          hideGroupOptions={
-                            screen === "Reminders" || screen === "Search"
-                          }
-                        />
-                      )
-                    });
-                  }}
-                  style={{
-                    width: 25,
-                    height: 25
-                  }}
-                  size={AppFontSize.lg - 2}
-                />
-                <IconButton
-                  hidden={
-                    dataType !== "note" &&
-                    dataType !== "notebook" &&
-                    screen !== "Notes" &&
-                    screen !== "Search"
-                  }
-                  style={{
-                    width: 25,
-                    height: 25
-                  }}
-                  testID="icon-compact-mode"
-                  color={colors.secondary.icon}
-                  name={
-                    isCompactModeEnabled ? "view-list" : "view-list-outline"
-                  }
-                  onPress={() => {
-                    SettingsService.set({
-                      [dataType === "notebook"
-                        ? "notebooksListMode"
-                        : dataType === "searchResult"
-                        ? "searchListMode"
-                        : "notesListMode"]: !isCompactModeEnabled
-                        ? "compact"
-                        : "normal"
-                    });
-                  }}
-                  size={AppFontSize.lg - 2}
-                />
-              </>
-            ) : null}
+            {index === 0 && !(visual.ios && isHomeNoteRoute(screen))
+              ? sortAndViewButtons
+              : null}
 
             {/* <IconButton
               style={{

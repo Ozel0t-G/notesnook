@@ -271,7 +271,7 @@ function MacListOptionsSheet({
  * selection is handed to the header's own onSelect. No list on screen (or no
  * header menu) means nothing to open.
  */
-function showListOptions() {
+export function showListOptions() {
   const listMenu = useMacWindowStore.getState().listMenu;
   if (!listMenu?.items?.length) return;
   presentSheet({

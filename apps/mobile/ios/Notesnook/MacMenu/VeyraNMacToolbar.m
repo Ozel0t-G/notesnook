@@ -21,29 +21,48 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #if TARGET_OS_MACCATALYST
 
-#import <AppKit/NSToolbarItemGroup.h>
+#import <AppKit/NSToolbarItem.h>
 
 #import "VeyraNMacMenu.h"
 
 /// Toolbar item identifiers, all namespaced to the app's own items.
-static NSToolbarItemIdentifier const VeyraNSectionsIdentifier =
-    @"veyran.sections";
 static NSToolbarItemIdentifier const VeyraNSearchIdentifier = @"veyran.search";
 static NSToolbarItemIdentifier const VeyraNNewItemIdentifier = @"veyran.newItem";
 static NSToolbarIdentifier const VeyraNToolbarIdentifier = @"veyran.main";
 
 /**
- * The sections, in segmented-control order. The index doubles as the
- * `selectedIndex` of the group and as the suffix of the "section:" command JS
- * receives.
+ * The toolbar's icon-only actions, in the order they appear: the list's
+ * "Sort & View" menu first (it leads, next to the New item), then the three
+ * editor actions after the flexible space. The index into these four arrays is
+ * the item's `tag`, which is how -actionFromToolbar: reads the command back
+ * (an NSToolbarItem carries no command string of its own).
+ *
+ * The symbols are the ones Apple's Mac apps use for the same actions. A symbol
+ * that does not resolve falls back to `circle` rather than leaving a blank item
+ * (see -makeActionItem:).
+ */
+static NSToolbarItemIdentifier const VeyraNActionIdentifiers[] = {
+  @"veyran.listOptions", @"veyran.shareNote", @"veyran.noteInfo",
+  @"veyran.noteMore"
+};
+static NSString *const VeyraNActionSymbols[] = {
+  @"arrow.up.arrow.down", @"square.and.arrow.up", @"info.circle",
+  @"ellipsis.circle"
+};
+static NSString *const VeyraNActionLabels[] = { @"Sort & View", @"Share",
+                                                @"Note Info", @"More" };
+static NSString *const VeyraNActionCommands[] = { @"listOptions", @"shareNote",
+                                                  @"noteInfo", @"noteMore" };
+static const NSUInteger VeyraNActionCount = 4;
+
+/**
+ * The top-level sections, in the order the app and JavaScript use them. The
+ * toolbar no longer carries them (they are sidebar sections now), but it still
+ * has to recognise them: the Tasks section turns the leading item into "New
+ * Task" and Search focuses the search field (see -selectSection:).
  */
 static NSString *const VeyraNSectionNames[] = { @"library", @"tasks",
                                                 @"search" };
-static NSString *const VeyraNSectionLabels[] = { @"Library", @"Tasks",
-                                                 @"Search" };
-static NSString *const VeyraNSectionSymbols[] = { @"books.vertical",
-                                                  @"checklist",
-                                                  @"magnifyingglass" };
 static const NSUInteger VeyraNSectionCount = 3;
 
 /**
@@ -78,6 +97,18 @@ static NSUInteger VeyraNSectionIndex(NSString *section) {
 }
 
 /**
+ * Index of `identifier` in the action arrays above, or NSNotFound.
+ */
+static NSUInteger VeyraNActionIndex(NSString *identifier) {
+  for (NSUInteger index = 0; index < VeyraNActionCount; index++) {
+    if ([VeyraNActionIdentifiers[index] isEqualToString:identifier]) {
+      return index;
+    }
+  }
+  return NSNotFound;
+}
+
+/**
  * Search field metrics. The field is a view the toolbar is handed, not a
  * system search item, so it has to size itself: a standard search field width
  * (the one Finder and Mail give theirs) and the height of a small control. The
@@ -98,11 +129,8 @@ static const CGFloat VeyraNSearchFieldHeight = 28;
 
 @implementation VeyraNMacToolbar {
   NSToolbar *_toolbar;
-  /// The newest segmented control. Recreated whenever the toolbar asks for the
-  /// item again, so it is only a shortcut for the live one (see -sectionsItem).
-  NSToolbarItemGroup *_sectionsItem;
   /// The newest search field (see -makeSearchItem), the one the toolbar is
-  /// showing and the one the section click focuses.
+  /// showing and the one a Search section change focuses.
   UISearchTextField *_searchField;
   /// What is currently typed in the search field. Held here because the field
   /// is rebuilt whenever the toolbar asks for the item again, and because the
@@ -115,8 +143,8 @@ static const CGFloat VeyraNSearchFieldHeight = 28;
   /// Whether that item is the Tasks one (icon, title and command all follow
   /// this; see -applyNewItemForSection:).
   BOOL _newItemIsTask;
-  /// The section the control should show, kept here so a selection that
-  /// arrives before the toolbar is built is not lost.
+  /// The section the app is on, kept here so a section that arrives before the
+  /// toolbar is built is not lost.
   NSString *_selectedSection;
 }
 
@@ -133,8 +161,60 @@ static __weak VeyraNMacToolbar *currentInstance = nil;
  */
 static BOOL currentSearchAvailable = NO;
 
+/**
+ * The window toolbar's measured height in points. Written on the main queue by
+ * +measureToolbarHeight and read from the React queue by +toolbarHeight (JS
+ * gets it as the module's `toolbarHeight` constant and can ask for a fresh
+ * measurement through `getToolbarHeight`). 0 means "not measurable yet".
+ */
+static CGFloat currentToolbarHeight = 0;
+
 + (BOOL)toolbarSearchAvailable {
   return currentSearchAvailable;
+}
+
++ (CGFloat)toolbarHeight {
+  return currentToolbarHeight;
+}
+
++ (CGFloat)measureToolbarHeight {
+  CGFloat height = 0;
+  for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+    if (![scene isKindOfClass:[UIWindowScene class]]) {
+      continue;
+    }
+    // With a unified toolbar the window's top safe area is exactly the band the
+    // toolbar (and the title shown in it) occupies, so the height does not have
+    // to be guessed.
+    UIWindow *window = ((UIWindowScene *)scene).windows.firstObject;
+    height = MAX(height, window.safeAreaInsets.top);
+  }
+  // A window that is not laid out yet (or no window at all) answers 0: the last
+  // real measurement is kept instead of being replaced by it, so the constant
+  // and the promise do not flip back to 0 after a resize.
+  if (height > 0) {
+    currentToolbarHeight = height;
+  }
+  return currentToolbarHeight;
+}
+
++ (void)setWindowTitle:(NSString *)title subtitle:(NSString *)subtitle {
+  // Called from the React module's queue: scene title and subtitle are UI
+  // state.
+  dispatch_async(dispatch_get_main_queue(), ^{
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+      if (![scene isKindOfClass:[UIWindowScene class]]) {
+        continue;
+      }
+      UIWindowScene *windowScene = (UIWindowScene *)scene;
+      // A nil title is documented as "the system will not display a title".
+      windowScene.title = title;
+      if (@available(macCatalyst 15.0, *)) {
+        // The subtitle is non-null: an empty string is what hides it.
+        windowScene.subtitle = subtitle ?: @"";
+      }
+    }
+  });
 }
 
 - (instancetype)initWithWindowScene:(UIWindowScene *)windowScene {
@@ -171,12 +251,40 @@ static BOOL currentSearchAvailable = NO;
     // which is what keeps the title bar material off the React content.
     windowScene.titlebar.toolbar = toolbar;
     if (@available(macCatalyst 14.0, *)) {
-      // Title and toolbar share one row (the sections sit where the window
-      // title used to be).
+      // Title and toolbar share one row, the way the title sits next to the
+      // toolbar items in a Notes window.
       windowScene.titlebar.toolbarStyle = UITitlebarToolbarStyleUnified;
     }
+
+    // The window the scene will show does not exist yet (SceneDelegate builds
+    // the toolbar first and the window right after), and its safe area only
+    // settles once it is on screen: the toolbar height is measured when the
+    // window becomes key (see -windowDidBecomeKey:).
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(windowDidBecomeKey:)
+               name:UIWindowDidBecomeKeyNotification
+             object:nil];
   }
   return self;
+}
+
+- (void)dealloc {
+  // The notification centre does not retain its observers; leaving the
+  // registration behind would be a dangling one.
+  [NSNotificationCenter.defaultCenter removeObserver:self];
+}
+
+/**
+ * First moment the toolbar height is real: the window the scene shows has been
+ * laid out and put on screen. The measurement is deferred one runloop turn
+ * because becoming key still runs inside the layout pass that sets the safe
+ * area.
+ */
+- (void)windowDidBecomeKey:(NSNotification *)notification {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [VeyraNMacToolbar measureToolbarHeight];
+  });
 }
 
 #pragma mark - Sections
@@ -192,34 +300,27 @@ static BOOL currentSearchAvailable = NO;
   });
 }
 
+/**
+ * The toolbar has no segmented control since the sections moved into the
+ * sidebar: only the leading item follows the section, and picking Search puts
+ * the cursor in the toolbar's own field, the way Ctrl-Cmd-F does in Mail and
+ * Finder and the way selecting the Search segment used to. Other section
+ * changes never touch the field, and JavaScript pushing a section back (a deep
+ * link, the section store) does not either - there is nothing on the toolbar to
+ * mirror back.
+ */
 - (void)selectSection:(NSString *)section {
   NSUInteger index = VeyraNSectionIndex(section);
   if (index == NSNotFound) {
     return;
   }
   _selectedSection = section;
-  // Both items only exist once the toolbar has been laid out; until then
-  // _selectedSection is applied when they are built.
+  // Only exists once the toolbar has been laid out; until then _selectedSection
+  // is applied when the item is built.
   [self applyNewItemForSection:section];
-  NSToolbarItemGroup *group = [self sectionsItem];
-  if (group == nil) {
-    return;
+  if ([section isEqualToString:VeyraNSectionNames[2]]) {
+    [self focusSearchField];
   }
-  group.selectedIndex = (NSInteger)index;
-}
-
-/**
- * The segmented control currently on the toolbar, or nil before the toolbar
- * asked for it.
- */
-- (NSToolbarItemGroup *)sectionsItem {
-  for (NSToolbarItem *item in _toolbar.items) {
-    if ([item.itemIdentifier isEqualToString:VeyraNSectionsIdentifier] &&
-        [item isKindOfClass:[NSToolbarItemGroup class]]) {
-      return (NSToolbarItemGroup *)item;
-    }
-  }
-  return _sectionsItem;
 }
 
 /**
@@ -233,38 +334,6 @@ static BOOL currentSearchAvailable = NO;
     }
   }
   return _newItem;
-}
-
-- (void)selectSectionFromToolbar:(id)sender {
-  NSToolbarItemGroup *group = [self sectionsItem];
-  // Each segment is a toolbar item of its own and reports itself through its
-  // tag; when the segmented control reports for the whole group (the group is
-  // its view's target), the selection is read off the group instead.
-  NSInteger index = -1;
-  if ([sender isKindOfClass:[NSToolbarItemGroup class]]) {
-    index = ((NSToolbarItemGroup *)sender).selectedIndex;
-  } else if ([sender isKindOfClass:[NSToolbarItem class]]) {
-    index = ((NSToolbarItem *)sender).tag;
-  } else {
-    index = group.selectedIndex;
-  }
-  if (index < 0 || (NSUInteger)index >= VeyraNSectionCount) {
-    return;
-  }
-  NSString *section = VeyraNSectionNames[index];
-  _selectedSection = section;
-  // The segments are items of the group, so the group does not move its own
-  // selection: the click has to.
-  [self selectIndex:(NSUInteger)index onGroup:group];
-  [self applyNewItemForSection:section];
-  // Picking Search puts the cursor in the toolbar's own field, the way
-  // Ctrl-Cmd-F does in Mail and Finder. Other section changes never touch the
-  // field, and JavaScript pushing a section back (a deep link, the section
-  // store, the tab bar) does not either - only the user's click does.
-  if ([section isEqualToString:VeyraNSectionNames[2]]) {
-    [self focusSearchField];
-  }
-  [VeyraNMacMenu sendCommand:[@"section:" stringByAppendingString:section]];
 }
 
 /**
@@ -290,55 +359,47 @@ static BOOL currentSearchAvailable = NO;
   }
 }
 
-/**
- * Marks `index` as the group's selected segment and clears the other ones.
- * NSNotFound (a section before the first -setSelectedSection:) falls back to
- * the first segment, which is the section the toolbar starts on.
- */
-- (void)selectIndex:(NSUInteger)index onGroup:(NSToolbarItemGroup *)group {
-  if (group == nil) {
-    return;
-  }
-  if (index == NSNotFound || index >= VeyraNSectionCount) {
-    index = 0;
-  }
-  for (NSUInteger segment = 0; segment < VeyraNSectionCount; segment++) {
-    [group setSelected:segment == index atIndex:(NSInteger)segment];
-  }
-  group.selectedIndex = (NSInteger)index;
-}
-
 #pragma mark - Items
 
 - (NSToolbarItem *)toolbar:(NSToolbar *)toolbar
      itemForItemIdentifier:(NSToolbarItemIdentifier)itemIdentifier
  willBeInsertedIntoToolbar:(BOOL)flag {
-  if ([itemIdentifier isEqualToString:VeyraNSectionsIdentifier]) {
-    return [self makeSectionsItem];
-  }
   if ([itemIdentifier isEqualToString:VeyraNSearchIdentifier]) {
     return [self makeSearchItem];
   }
   if ([itemIdentifier isEqualToString:VeyraNNewItemIdentifier]) {
     return [self makeNewItem];
   }
+  NSUInteger action = VeyraNActionIndex(itemIdentifier);
+  if (action != NSNotFound) {
+    return [self makeActionItem:action];
+  }
   return nil;
 }
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:
     (NSToolbar *)toolbar {
-  // Sections on the left, the search field and the compose action on the
-  // right (the flexible space pulls everything after it over).
+  // One band, like Apple Notes: the list's own menu and the New item lead, the
+  // editor actions and the search field trail (the flexible space pulls
+  // everything after it over), and the field sits at the far right.
+  //
+  // The columns cannot be tied to the toolbar with separators: Catalyst has no
+  // NSTrackingSeparatorToolbarItem. AppKit's header marks it
+  // API_UNAVAILABLE(ios) and the Mac Catalyst SDK refuses it ("not available on
+  // macCatalyst"), so the items are only ordered, not aligned with the sidebar
+  // or list dividers. The order above still reads left (list) to right
+  // (editor), which is what it would convey.
   NSMutableArray<NSToolbarItemIdentifier> *identifiers = [NSMutableArray
-      arrayWithObjects:VeyraNSectionsIdentifier,
-                       NSToolbarFlexibleSpaceItemIdentifier, nil];
+      arrayWithObjects:VeyraNActionIdentifiers[0], VeyraNNewItemIdentifier,
+                       NSToolbarFlexibleSpaceItemIdentifier,
+                       VeyraNActionIdentifiers[1], VeyraNActionIdentifiers[2],
+                       VeyraNActionIdentifiers[3], nil];
   // The field only exists where it can be built; on Mac Catalyst 15 the
   // identifier is left out rather than returned as a nil item (AppKit raises
   // on a missing item).
   if (_searchAvailable) {
     [identifiers addObject:VeyraNSearchIdentifier];
   }
-  [identifiers addObject:VeyraNNewItemIdentifier];
   return identifiers;
 }
 
@@ -350,78 +411,56 @@ static BOOL currentSearchAvailable = NO;
 }
 
 /**
- * The three sections as one segmented control.
+ * One of the icon-only actions (see the arrays at the top): the list's
+ * "Sort & View" menu or the editor's Share / Note Info / More.
  *
- * Its segments are built here as individual NSToolbarItems rather than by the
- * `groupWithItemIdentifier:images:selectionMode:labels:` convenience
- * constructor, so each segment keeps its own tag along with the group's action
- * (see -selectSectionFromToolbar:).
- *
- * Known limitation: VoiceOver still names each segment after the SF Symbol's
- * own description ("Books standing vertically on a shelf", "Checklist with
- * checkmarks"). AppKit takes an image segment's name from its NSImage's
- * `accessibilityDescription` (see -[NSSegmentedControl
- * segmentedControlWithImages:...]), but on Catalyst NSToolbarItem.image is a
- * UIImage: UIKit exposes no accessibility description for an image and no
- * public UIImage/NSImage conversion, so neither `image.accessibilityLabel` nor
- * the segment's label/paletteLabel/toolTip replaces it. The three labels are
- * still set (they are the item's label in text mode and its tooltip); nothing
- * more can be done from public API today.
- *
- * Because the group does not own the click (each segment carries the group's
- * action, and the group's action is what its segmented control forwards to),
- * the selection is moved by -selectIndex:onGroup: on every click and on every
- * section change; `selectionMode` and `selectedIndex` stay in sync with it.
+ * The label, palette label, tool tip and the image's accessibility description
+ * all name the action, because an icon-only item would otherwise be announced
+ * and tooltipped with the SF Symbol's own description ("Arrow up, arrow down").
+ * The command is kept in the item's `tag` and read back in -actionFromToolbar:
+ * (an NSToolbarItem has no other place for it).
  */
-- (NSToolbarItem *)makeSectionsItem {
-  NSMutableArray<NSToolbarItem *> *segments =
-      [NSMutableArray arrayWithCapacity:VeyraNSectionCount];
-  for (NSUInteger index = 0; index < VeyraNSectionCount; index++) {
-    NSToolbarItem *segment = [[NSToolbarItem alloc]
-        initWithItemIdentifier:[NSString
-                                   stringWithFormat:@"%@.%lu",
-                                                    VeyraNSectionsIdentifier,
-                                                    (unsigned long)index]];
-    UIImage *image = [UIImage systemImageNamed:VeyraNSectionSymbols[index]];
-    // A missing symbol would leave a blank (or crash on a nil array member):
-    // circle is the oldest SF Symbol and always resolves.
-    if (image == nil) {
-      image = [UIImage systemImageNamed:@"circle"];
-    }
-    image.accessibilityLabel = VeyraNSectionLabels[index];
-    segment.image = image;
-    // The item's label in text mode and its tooltip. (Neither these nor the
-    // image's accessibility label rename the segment for VoiceOver; see the
-    // note on -makeSectionsItem.)
-    segment.label = VeyraNSectionLabels[index];
-    segment.paletteLabel = VeyraNSectionLabels[index];
-    segment.toolTip = VeyraNSectionLabels[index];
-    // The section this segment switches to, read back off the sender.
-    segment.tag = (NSInteger)index;
-    segment.target = self;
-    segment.action = @selector(selectSectionFromToolbar:);
-    [segments addObject:segment];
+- (NSToolbarItem *)makeActionItem:(NSUInteger)index {
+  NSToolbarItem *item = [[NSToolbarItem alloc]
+      initWithItemIdentifier:VeyraNActionIdentifiers[index]];
+  NSString *label = VeyraNActionLabels[index];
+  UIImage *image = [UIImage systemImageNamed:VeyraNActionSymbols[index]];
+  // A missing symbol would leave a blank item: circle is the oldest SF Symbol
+  // and always resolves.
+  if (image == nil) {
+    image = [UIImage systemImageNamed:@"circle"];
   }
+  image.accessibilityLabel = label;
+  item.image = image;
+  item.label = label;
+  item.paletteLabel = label;
+  item.toolTip = label;
+  // The action this item sends, read back off the sender.
+  item.tag = (NSInteger)index;
+  item.target = self;
+  item.action = @selector(actionFromToolbar:);
+  // The leading menu item is the last to be pushed into the overflow menu (with
+  // the New item, see -makeNewItem); the editor actions go first. The search
+  // field yields before all of them (see -makeSearchItem), so at 900 pt the
+  // window keeps the items that are still useful without the field.
+  NSToolbarItemVisibilityPriority priority =
+      index == 0 ? NSToolbarItemVisibilityPriorityHigh
+                 : NSToolbarItemVisibilityPriorityStandard;
+  item.visibilityPriority = priority;
+  return item;
+}
 
-  NSToolbarItemGroup *group =
-      [[NSToolbarItemGroup alloc] initWithItemIdentifier:VeyraNSectionsIdentifier];
-  group.subitems = segments;
-  group.selectionMode = NSToolbarItemGroupSelectionModeSelectOne;
-  group.label = @"Sections";
-  group.paletteLabel = @"Sections";
-  group.toolTip = @"Sections";
-  // Clicks a segmented control reports for the group itself arrive here too.
-  group.target = self;
-  group.action = @selector(selectSectionFromToolbar:);
-  [self selectIndex:VeyraNSectionIndex(_selectedSection) onGroup:group];
-
-  _sectionsItem = group;
-  return group;
+- (void)actionFromToolbar:(NSToolbarItem *)item {
+  NSInteger index = item.tag;
+  if (index < 0 || (NSUInteger)index >= VeyraNActionCount) {
+    return;
+  }
+  [VeyraNMacMenu sendCommand:VeyraNActionCommands[index]];
 }
 
 /**
- * The search field, at the trailing side of the toolbar and before the New
- * button, the way Finder, Mail and Notes carry theirs.
+ * The search field, at the trailing side of the toolbar and after the editor
+ * actions, the way Finder, Mail and Notes carry theirs.
  *
  * `NSSearchToolbarItem` is AppKit's search item, but AppKit marks it
  * unavailable on Mac Catalyst and its Catalyst implementation is the AppKit
@@ -452,6 +491,9 @@ static BOOL currentSearchAvailable = NO;
     item.label = @"Search";
     item.paletteLabel = @"Search";
     item.toolTip = @"Search";
+    // The field is the widest item and the one the app can live without
+    // longest: it is pushed into the overflow menu before the buttons.
+    item.visibilityPriority = NSToolbarItemVisibilityPriorityLow;
     return item;
   }
   return nil;
@@ -541,6 +583,9 @@ static BOOL currentSearchAvailable = NO;
       [[NSToolbarItem alloc] initWithItemIdentifier:VeyraNNewItemIdentifier];
   item.target = self;
   item.action = @selector(newItemFromToolbar:);
+  // The most important item in the band: it is the last one to be dropped into
+  // the overflow menu.
+  item.visibilityPriority = NSToolbarItemVisibilityPriorityHigh;
   _newItem = item;
   [self applyNewItemForSection:_selectedSection];
   return item;

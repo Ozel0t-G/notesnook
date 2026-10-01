@@ -26,13 +26,16 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  StyleProp,
   Switch,
   Text,
   TextInput,
-  View
+  View,
+  ViewStyle
 } from "react-native";
 import { TaskSymbolView } from "../../components/task-symbol-view";
 import { SymbolTile } from "../../components/ui/symbol-tile";
+import { isMacCatalyst } from "../../utils/constants";
 import { systemColor } from "../../utils/ios-system-colors";
 import { iosSettingSymbol, useSettingsFooter } from "./ios-appearance";
 import { FeatureResult, useIsFeatureAvailable } from "@notesnook/common";
@@ -54,6 +57,65 @@ import { DefaultAppStyles } from "../../utils/styles";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { components } from "./components";
 import { RouteParams, SettingSection } from "./types";
+
+/**
+ * Purely decorative children of a row (the SF Symbol tile, the chevron) must
+ * not become accessibility elements of their own: VoiceOver used to announce an
+ * Appearance row as "format, Appearance, Forward" (the symbol's name first).
+ */
+function Decorative({
+  children,
+  style
+}: {
+  children: React.ReactNode;
+  style?: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View
+      style={style}
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      accessibilityElementsHidden
+    >
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Mac Catalyst draws React Native's `Switch` as a checkbox whose empty state
+ * has no visible frame in the light theme (UIKit paints it from the window
+ * background). Drawing it from the visual tokens keeps the frame visible in
+ * both themes; the row itself carries the switch semantics, so the box is
+ * decorative and inherits the row's vertical centering.
+ */
+function MacCheckbox({ value }: { value: boolean }) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  return (
+    <View
+      style={{
+        width: 18,
+        height: 18,
+        marginLeft: 8,
+        borderRadius: 4,
+        borderWidth: 1.5,
+        borderColor: value ? colors.primary.accent : visual.tertiaryText,
+        backgroundColor: value ? colors.primary.accent : "transparent",
+        alignItems: "center",
+        justifyContent: "center"
+      }}
+    >
+      {value ? (
+        <TaskSymbolView
+          name="checkmark"
+          size={11}
+          color={colors.static.white}
+        />
+      ) : null}
+    </View>
+  );
+}
 
 const _SectionItem = ({
   item,
@@ -119,6 +181,25 @@ const _SectionItem = ({
         }
       : {};
   const [iosSymbol, iosTint] = iosSettingSymbol(item.id);
+  const isMac = isMacCatalyst();
+  /** The row's name, resolved once for both the label and the row text. */
+  const itemName =
+    typeof item.name === "function" ? item.name(current) : item.name;
+  const switchValue = !!(item.getter
+    ? item.getter(item.property || current)
+    : settings[item?.property as never]);
+  /**
+   * Only real actions become buttons: an input, picker or component row keeps
+   * its own controls and must not be swallowed by a button role.
+   */
+  const accessibilityRole =
+    item.type === "switch"
+      ? ("switch" as const)
+      : item.type === "screen" ||
+        item.type === "danger" ||
+        (!item.type && !!item.modifer)
+      ? ("button" as const)
+      : undefined;
 
   const updateInput = (value: any) => {
     inputRef?.current?.setNativeProps({
@@ -189,6 +270,15 @@ const _SectionItem = ({
     <Pressable
       testID={item.id}
       disabled={item.type === "component"}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityRole ? itemName : undefined}
+      accessibilityState={
+        item.type === "switch"
+          ? { checked: switchValue, disabled: !!isDisabled }
+          : isDisabled
+          ? { disabled: true }
+          : undefined
+      }
       style={{
         width: "100%",
         alignItems: "center",
@@ -269,37 +359,40 @@ const _SectionItem = ({
         }}
       >
         {visual.ios ? (
-          <View style={{ marginRight: 14, justifyContent: "center" }}>
-            <SymbolTile symbol={iosSymbol} color={systemColor(iosTint, isDark)} />
-          </View>
-        ) : (
-        <View
-          style={{
-            width: 40,
-            height: 40,
-            justifyContent: "center",
-            alignItems: "center",
-            marginRight: 12,
-            backgroundColor:
-              item.component === "colorpicker"
-                ? colors.primary.accent
-                : undefined,
-            borderRadius: 100
-          }}
-        >
-          {!!item.icon && (
-            <AppIcon
-              color={
-                item.type === "danger"
-                  ? colors.error.icon
-                  : colors.secondary.icon
-              }
-              iconFamily={item.iconFamily}
-              name={item.icon}
-              size={item.iconSize || 30}
+          <Decorative style={{ marginRight: 14, justifyContent: "center" }}>
+            <SymbolTile
+              symbol={iosSymbol}
+              color={systemColor(iosTint, isDark)}
             />
-          )}
-        </View>
+          </Decorative>
+        ) : (
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              justifyContent: "center",
+              alignItems: "center",
+              marginRight: 12,
+              backgroundColor:
+                item.component === "colorpicker"
+                  ? colors.primary.accent
+                  : undefined,
+              borderRadius: 100
+            }}
+          >
+            {!!item.icon && (
+              <AppIcon
+                color={
+                  item.type === "danger"
+                    ? colors.error.icon
+                    : colors.secondary.icon
+                }
+                iconFamily={item.iconFamily}
+                name={item.icon}
+                size={item.iconSize || 30}
+              />
+            )}
+          </View>
         )}
 
         <View
@@ -319,7 +412,7 @@ const _SectionItem = ({
                     : colors.primary.heading
               }}
             >
-              {typeof item.name === "function" ? item.name(current) : item.name}
+              {itemName}
             </Text>
           ) : item.name ? (
             <Heading
@@ -330,7 +423,7 @@ const _SectionItem = ({
               }
               size={AppFontSize.sm}
             >
-              {typeof item.name === "function" ? item.name(current) : item.name}
+              {itemName}
             </Heading>
           ) : null}
 
@@ -491,27 +584,30 @@ const _SectionItem = ({
       ) : null}
 
       {visual.ios && item.type === "screen" ? (
-        <TaskSymbolView
-          name="chevron.right"
-          size={13}
-          color={visual.tertiaryText}
-        />
+        <Decorative>
+          <TaskSymbolView
+            name="chevron.right"
+            size={13}
+            color={visual.tertiaryText}
+          />
+        </Decorative>
       ) : null}
 
       {item.type === "switch" && !loading && visual.ios ? (
-        <Switch
-          value={
-            !!(item.getter
-              ? item.getter(item.property || current)
-              : settings[item?.property as never])
-          }
-          onValueChange={onChangeSettings}
-          disabled={!!isDisabled}
-          trackColor={{ true: colors.primary.accent }}
-          accessibilityLabel={
-            typeof item.name === "function" ? item.name(current) : item.name
-          }
-        />
+        isMac ? (
+          <MacCheckbox value={switchValue} />
+        ) : (
+          // The row itself is the switch element (see accessibilityRole
+          // above), so the control's own element is hidden.
+          <Switch
+            value={switchValue}
+            onValueChange={onChangeSettings}
+            disabled={!!isDisabled}
+            trackColor={{ true: colors.primary.accent }}
+            accessible={false}
+            importantForAccessibility="no"
+          />
+        )
       ) : null}
 
       {item.type === "switch" && !loading && !visual.ios && (

@@ -17,8 +17,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { NativeModules } from "react-native";
 import type { NavigationProps } from "./navigation";
 import useNavigationStore, { RouteName } from "../stores/use-navigation-store";
+import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
 
 /**
  * Bridge between Mac's sidebar and the note-list stack in the middle column.
@@ -60,8 +62,31 @@ export function openMacList(
   if (focusedRouteId) {
     useNavigationStore.getState().setFocusedRouteId(focusedRouteId);
   }
+  switchToLibrarySection();
   const navigation = macListNavigation;
   if (!navigation) return;
   navigation.popToTop();
   (navigation as any).navigate(screen, params);
+}
+
+/**
+ * The sidebar stays mounted next to the Tasks and Search sections, but the
+ * lists its Library rows open live in the Library section. Selecting such a row
+ * from Tasks or Search therefore has to bring the Library section forward first
+ * - with the same handler the sidebar's own section rows use - or the user
+ * would drive a list that is not on screen. Already on Library: nothing to do.
+ *
+ * `selectAppleSection` lives in navigation-stack.tsx, which imports this module
+ * (to publish the note-list stack's navigation object) and is imported by it
+ * back, so it is required lazily to keep the module graph acyclic.
+ */
+function switchToLibrarySection() {
+  if (useAppleNavigationStore.getState().section === "library") return;
+  const { selectAppleSection } = require("../navigation/navigation-stack") as {
+    selectAppleSection: (section: "library") => void;
+  };
+  // Mirror the section rows' own switch: the native toolbar tracks the section
+  // separately and would otherwise keep showing Tasks/Search as selected.
+  NativeModules?.VeyraNMacMenu?.setSelectedSection?.("library");
+  selectAppleSection("library");
 }

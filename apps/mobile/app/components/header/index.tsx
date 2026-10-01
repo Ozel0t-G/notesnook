@@ -17,9 +17,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { NavigationContext } from "@react-navigation/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import {
@@ -48,6 +49,9 @@ import {
 } from "../ios-nav-bar";
 import { ListViewMenuConfig, useListViewMenu } from "../list-view-menu";
 import { isMacCatalyst } from "../../utils/constants";
+import { useMacListTitleStore } from "../../utils/mac-window-title";
+import { useMacWindowStore } from "../../stores/use-mac-window-store";
+import { useAppleNavigationStore } from "../../stores/use-apple-navigation-store";
 import Navigation from "../../services/navigation";
 
 /** SF Symbols for the Material icon names screens pass as `rightButton`. */
@@ -123,6 +127,112 @@ export const Header = ({
   const listMenu = useListViewMenu(menu);
   const clearSelection = useSelectionStore((state) => state.clearSelection);
 
+  /**
+   * Mac's window toolbar owns the list column's chrome: the list's name (the
+   * window title) and the list's ⋮ menu, which it opens through its
+   * `listOptions` command (hooks/use-mac-menu-commands.ts). The list header is
+   * the only place that builds that menu (useListViewMenu), so it publishes it
+   * here - together with the list's title - while it is the list on screen; the
+   * effects below are inert on iPhone/iPad.
+   */
+  const isMac = isMacCatalyst();
+  const hasListMenu = !!listMenu;
+  const listMenuSignature = listMenu
+    ? listMenu.items
+        .map((item) => `${item.id ?? item.title}:${item.checked ? 1 : 0}`)
+        .join("|")
+    : "";
+  // `items`/`onSelect` are rebuilt on every render, so the effect keys off the
+  // signature above and reads the current menu through this ref.
+  const listMenuRef = useRef(listMenu);
+  listMenuRef.current = listMenu;
+  /**
+   * The navigation object of the screen this header belongs to. A list header
+   * stays mounted while the next list is pushed over it (and while the Tasks and
+   * Search sections take the window over), so the publication has to follow
+   * navigation focus, not mounts: only the focused header may own the toolbar's
+   * menu / the window's title. Headers outside any navigator (the note-preview
+   * configure screen) treat themselves as focused.
+   */
+  const navigationContext = React.useContext(NavigationContext);
+  // Identity of what this header last published, so its cleanup never clears
+  // another (focused) header's publication.
+  const publishedMenuRef = useRef<((id: string) => void) | undefined>(undefined);
+  const publishedTitleRef = useRef<string | undefined>(undefined);
+
+  const publishMacListChrome = useCallback(() => {
+    const currentMenu = listMenuRef.current;
+    if (currentMenu) {
+      publishedMenuRef.current = currentMenu.onSelect;
+      useMacWindowStore.getState().setListMenu({
+        items: currentMenu.items,
+        onSelect: currentMenu.onSelect
+      });
+    }
+    if (title) {
+      publishedTitleRef.current = title;
+      useMacListTitleStore.getState().setListTitle(title);
+    }
+  }, [title]);
+
+  const clearMacListChrome = useCallback(() => {
+    const currentMenu = useMacWindowStore.getState().listMenu;
+    if (currentMenu && currentMenu.onSelect === publishedMenuRef.current) {
+      useMacWindowStore.getState().setListMenu(undefined);
+    }
+    publishedMenuRef.current = undefined;
+    if (
+      publishedTitleRef.current !== undefined &&
+      useMacListTitleStore.getState().listTitle === publishedTitleRef.current
+    ) {
+      useMacListTitleStore.getState().setListTitle(undefined);
+    }
+    publishedTitleRef.current = undefined;
+  }, []);
+
+  /**
+   * Publish while this header is *the* list on screen - its screen focused, the
+   * Library section on top and no selection in progress - and clear what this
+   * header published otherwise. Runs on navigation focus/blur and on every
+   * section change, so a switch to Tasks/Search (whose toolbar has no list menu)
+   * can never leave a stale menu behind.
+   */
+  const syncMacListChrome = useCallback(() => {
+    const onLibrary = useAppleNavigationStore.getState().section === "library";
+    const focused = !navigationContext || navigationContext.isFocused();
+    if (!selectionMode && onLibrary && focused) publishMacListChrome();
+    else clearMacListChrome();
+  }, [
+    navigationContext,
+    publishMacListChrome,
+    clearMacListChrome,
+    selectionMode
+  ]);
+
+  useEffect(() => {
+    if (!isMac || !hasListMenu) return;
+    syncMacListChrome();
+    const unsubscribeSection =
+      useAppleNavigationStore.subscribe(syncMacListChrome);
+    const unsubscribeFocus = navigationContext?.addListener(
+      "focus",
+      syncMacListChrome
+    );
+    const unsubscribeBlur = navigationContext?.addListener(
+      "blur",
+      syncMacListChrome
+    );
+    return () => {
+      unsubscribeSection();
+      unsubscribeFocus?.();
+      unsubscribeBlur?.();
+      clearMacListChrome();
+    };
+    // `listMenuSignature` stands in for the rebuilt `items` array; the refs
+    // above carry the fresh values into the listeners.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMac, hasListMenu, listMenuSignature, syncMacListChrome]);
+
   if (visual.ios) {
     const back = () => {
       if (onLeftMenuButtonPress) return onLeftMenuButtonPress();
@@ -131,11 +241,26 @@ export const Header = ({
     const iosRight = rightButton
       ? IOS_RIGHT_BUTTON_SYMBOLS[rightButton.name as string]
       : undefined;
+    // Mac's list column is the middle column's top screen (the sidebar owns
+    // list switching), so its bar shows no "‹ Library" button. A Settings
+    // sub-page is a real push under the Settings sheet, though, and needs a way
+    // back that is not only Esc.
+    const showBack =
+      !selectionMode &&
+      canGoBack === true &&
+      (!isMac || renderedInRoute === "Settings");
     /**
-     * Mac's sidebars have no large title: the list's name sits inline in the
-     * bar row instead, right under the window's native toolbar.
+     * Mac's window toolbar is the list column's single chrome band - list name,
+     * sort/view menu and the only search field - so the column's own header
+     * (the one that builds that menu, `hasListMenu`) draws no 44 pt IosNavBar
+     * and no second IosSearchField under it. Selection mode ("N selected" +
+     * Done) keeps its compact bar, and every header without a list menu keeps
+     * its bar as today: sheets and pushed screens (Settings, Add Reminder,
+     * Move Notes, ...) carry their back / cancel / save buttons there, and the
+     * toolbar does not.
      */
-    const isMac = isMacCatalyst();
+    const showHeaderBar = !isMac || selectionMode || !hasListMenu;
+    if (!showHeaderBar) return null;
     return (
       <View
         style={{
@@ -148,15 +273,9 @@ export const Header = ({
       >
         <IosNavBar
           backTitle={
-            isMac || selectionMode
-              ? undefined
-              : backTitle || strings.routes.Library()
+            showBack ? backTitle || strings.routes.Library() : undefined
           }
-          // Mac's note list is the middle column's top screen (the sidebar owns
-          // list switching), so its bar never shows a "‹ Library" back button.
-          onBack={
-            selectionMode || isMac ? undefined : canGoBack ? back : undefined
-          }
+          onBack={showBack ? back : undefined}
           title={
             selectionMode
               ? strings.selectedCode(selectedItemsList.length)

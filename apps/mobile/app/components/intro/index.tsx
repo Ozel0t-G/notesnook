@@ -45,6 +45,9 @@ const Intro = () => {
   const { width } = useWindowDimensions();
   const contentWidth = Math.min(width - 48, 440);
   const accent = colors.primary.accent;
+  // F6: the Continue label uses the theme's own accent foreground on the Mac
+  // instead of a hardcoded white; iPhone/iPad keep the white they always had.
+  const isMac = Platform.OS === "ios" && Platform.isMacCatalyst;
 
   const features: { symbol: string; title: string; body: string }[] = [
     {
@@ -163,7 +166,13 @@ const Intro = () => {
             opacity: pressed ? 0.8 : 1
           })}
         >
-          <Text style={{ color: "#FFFFFF", fontSize: 17, fontWeight: "600" }}>
+          <Text
+            style={{
+              color: isMac ? colors.primary.accentForeground : "#FFFFFF",
+              fontSize: 17,
+              fontWeight: "600"
+            }}
+          >
             {strings.welcomeContinue()}
           </Text>
         </Pressable>

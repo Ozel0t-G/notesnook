@@ -112,8 +112,20 @@ export default function NoteCollection({
     ];
     // Sorting/grouping is stored in settings, not in the notes table.
     eSubscribeEvent(eGroupOptionsUpdated, schedule);
-    refreshRef.current();
+    // The Mac layout can mount this list before db.init() has finished (the
+    // collection getters throw "Database not initialized" until then), so the
+    // first load waits for the database.
+    let initTimer: ReturnType<typeof setTimeout> | undefined;
+    const loadWhenReady = () => {
+      if (db.isInitialized) {
+        refreshRef.current();
+        return;
+      }
+      initTimer = setTimeout(loadWhenReady, 200);
+    };
+    loadWhenReady();
     return () => {
+      clearTimeout(initTimer);
       clearTimeout(timer);
       subscriptions.forEach((subscription) => subscription.unsubscribe());
       eUnSubscribeEvent(eGroupOptionsUpdated, schedule);

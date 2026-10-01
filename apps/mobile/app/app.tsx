@@ -31,6 +31,8 @@ import GlobalSafeAreaProvider from "./components/globalsafearea";
 import { Toast } from "./components/toast";
 import { useAppEvents } from "./hooks/use-app-events";
 import { useMacMenuCommands } from "./hooks/use-mac-menu-commands";
+import { useMacSystemState } from "./hooks/use-mac-system-state";
+import { useMacWindowTitle } from "./hooks/use-mac-window-title";
 import { NotePreviewConfigure } from "./screens/note-preview-configure";
 import { RootNavigation } from "./navigation/navigation-stack";
 import Notifications from "./services/notifications";
@@ -38,6 +40,7 @@ import SettingsService from "./services/settings";
 import { TipManager } from "./services/tip-manager";
 import { changeSystemBarColors, useThemeStore } from "./stores/use-theme-store";
 import { useUserStore } from "./stores/use-user-store";
+import { syncMacWindowAppearance } from "./utils/mac-window-appearance";
 import RNBootSplash from "react-native-bootsplash";
 import AppLocked from "./components/app-lock";
 import { useSettingStore } from "./stores/use-setting-store";
@@ -59,6 +62,12 @@ if (appLockEnabled || appLockMode !== "none") {
 const App = (props: { configureMode: "note-preview" }) => {
   useAppEvents();
   useMacMenuCommands();
+  // W4: the window's title/subtitle (section, focused list, open note) follows
+  // the same chrome the menu commands drive. Inert off Mac Catalyst.
+  useMacWindowTitle();
+  // F1/N4/S1: the system accent and key-window state the Mac selection
+  // highlights follow. Inert off Mac Catalyst.
+  useMacSystemState();
   //@ts-ignore
   globalThis["IS_MAIN_APP_RUNNING"] = true;
   const introCompleted = useSettingStore(
@@ -131,6 +140,9 @@ export const withTheme = (
       state.darkTheme,
       state.lightTheme
     ]);
+    const useSystemTheme = useSettingStore(
+      (state) => state.settings.useSystemTheme
+    );
 
     useEffect(() => {
       const listener = Appearance.addChangeListener(({ colorScheme }) => {
@@ -148,6 +160,11 @@ export const withTheme = (
     }, []);
 
     useEffect(() => {
+      // The Mac window chrome (toolbar, search field, traffic lights) has to
+      // follow the *app's* theme, not the system's, so it is synced here
+      // whenever the app theme or the "use system theme" mode changes.
+      // Everything but Mac Catalyst treats it as a no-op.
+      syncMacWindowAppearance(!!useSystemTheme, colorScheme);
       const nextTheme = colorScheme === "dark" ? darkTheme : lightTheme;
       if (JSON.stringify(nextTheme) !== JSON.stringify(currTheme)) {
         useThemeEngineStore
@@ -155,7 +172,7 @@ export const withTheme = (
           .setTheme(colorScheme === "dark" ? darkTheme : lightTheme);
         currTheme = nextTheme;
       }
-    }, [colorScheme, darkTheme, lightTheme]);
+    }, [colorScheme, darkTheme, lightTheme, useSystemTheme]);
 
     return (
       <I18nProvider i18n={i18n}>

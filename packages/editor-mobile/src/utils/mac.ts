@@ -20,22 +20,22 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 /**
  * Mac Catalyst editor chrome metrics.
  *
- * On Mac the editor pane starts at the window's top edge (y 0) and the list
- * column draws the window's title bar row, so the editor's own header has to
- * be exactly as tall as that row for both to look like one title bar. The
- * formatting toolbar then sits at the top of the pane, directly under the
- * header, the way Pages and Notes put their format bar.
+ * Mac has no editor header of its own: the window's native NSToolbar carries
+ * the editor actions (share, note info, ⋮) and the editor pane starts at the
+ * window's top edge (y 0), so the formatting toolbar sits directly at the top
+ * of the pane, the way Pages and Notes put their format bar.
  *
  * Nothing here is read on iPhone or iPad: they keep the 50 pt header (plus the
  * safe-area inset) and the keyboard toolbar at the bottom of the pane.
  */
 
 /**
- * Height of the editor header on Mac. Keep in sync with
- * `MAC_TITLEBAR_HEIGHT` in `apps/mobile/app/utils/mac-layout.ts`, which sizes
- * the list column's half of the same band.
+ * Height of the editor header on Mac. There is no editor header on Mac (the
+ * actions live in the native window toolbar), so the formatting toolbar and
+ * the note content start at the very top of the pane. Kept as a named
+ * constant so the position offsets in `tiptap.tsx` stay readable.
  */
-export const MAC_EDITOR_HEADER_HEIGHT = 52;
+export const MAC_EDITOR_HEADER_HEIGHT = 0;
 
 /** Height of a toolbar button (and of the row's buttons). */
 export const MAC_TOOLBAR_BUTTON_SIZE = 28;

@@ -38,7 +38,6 @@ import { useSafeArea } from "../hooks/useSafeArea";
 import { useTabContext, useTabStore } from "../hooks/useTabStore";
 import { Settings } from "../utils";
 import { EditorEvents } from "../utils/editor-events";
-import { MAC_EDITOR_HEADER_HEIGHT } from "../utils/mac";
 import styles from "./styles.module.css";
 import { strings } from "@notesnook/intl";
 
@@ -138,22 +137,12 @@ function Header({
   settings: Settings;
   hasUndo: boolean;
   hasRedo: boolean;
-}): JSX.Element {
+}): JSX.Element | null {
   const tab = useTabContext();
   const editor = editors[tab.id];
   const tableOfContents = editorControllers[tab.id]?.getTableOfContents?.();
   const insets = useSafeArea();
   const { colors } = useThemeColors("editor");
-  /**
-   * Mac Catalyst: the editor pane owns the full window height and its header
-   * is the continuation of the window's title bar row. A fixed 52 pt puts the
-   * header icons in the same band as the traffic lights and the section
-   * control that the list column draws, and Mac windows have no home indicator
-   * to inset for.
-   */
-  const isMac = settings.isMacCatalyst;
-  const topInset = isMac ? 0 : insets.top;
-  const headerHeight = isMac ? MAC_EDITOR_HEADER_HEIGHT : 50;
   const openedTabsCount = useTabStore((state) => state.tabs.length);
   const [isOpen, setOpen] = useState(false);
   const btnRef = useRef(null);
@@ -161,6 +150,18 @@ function Header({
     state.canGoBack,
     state.canGoForward
   ]);
+
+  /**
+   * Mac Catalyst: the editor has no header of its own. The window's native
+   * NSToolbar carries the editor actions (share, note info, ⋮), so rendering
+   * nothing here removes both the row and every bit of layout space it used to
+   * reserve: the formatting toolbar and the note content start at the very top
+   * of the pane (see `utils/mac.ts` and `tiptap.tsx`).
+   */
+  if (settings.isMacCatalyst) return null;
+
+  const topInset = insets.top;
+  const headerHeight = 50;
 
   console.log(tableOfContents?.length);
 
@@ -182,14 +183,7 @@ function Header({
         position: "sticky",
         width: "100vw",
         zIndex: 999,
-        borderBottom: `0.5px solid ${colors.primary.border}`,
-        /**
-         * Mac's format bar is positioned at exactly this row's height (see
-         * `tiptap.tsx`), so the header must not be shrunk by the pane's flex
-         * layout: it is a 52pt flex item next to a 100% tall scroller, which is
-         * a shrinking flex container.
-         */
-        ...(isMac ? { flexShrink: 0 } : {})
+        borderBottom: `0.5px solid ${colors.primary.border}`
       }}
     >
       {noHeader ? null : (

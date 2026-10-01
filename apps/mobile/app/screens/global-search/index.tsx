@@ -150,6 +150,96 @@ function NoteResult({
   );
 }
 
+/**
+ * The Mac Search section's start screen: the window toolbar's search field is
+ * the input on Mac, so the screen has nothing of its own to show while the
+ * query is empty. Rendered as the FlatList's empty component; on iPhone/iPad
+ * it renders nothing, where the screen's own field sits above the list.
+ */
+function SearchEmptyState({
+  mac,
+  recents,
+  onSelectRecent
+}: {
+  mac: boolean;
+  recents: string[];
+  onSelectRecent: (term: string) => void;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  if (!mac) return null;
+  return (
+    <View
+      style={{ alignItems: "center", paddingTop: 64, paddingHorizontal: 24 }}
+    >
+      <TaskSymbolView
+        name="magnifyingglass"
+        size={36}
+        color={visual.tertiaryText}
+      />
+      <Text
+        style={{
+          color: visual.primaryText,
+          fontSize: 17,
+          fontWeight: "600",
+          marginTop: 12
+        }}
+      >
+        {strings.search()}
+      </Text>
+      <Text
+        style={{
+          color: visual.tertiaryText,
+          fontSize: 13,
+          marginTop: 6,
+          textAlign: "center"
+        }}
+      >
+        {/* Mac only: there is no field on this screen to point at. */}
+        {"Type in the search field in the toolbar"}
+      </Text>
+      {recents.length ? (
+        <View style={{ alignSelf: "stretch", marginTop: 28 }}>
+          <Text
+            style={{
+              color: visual.secondaryText,
+              fontSize: 12,
+              fontWeight: "600",
+              textTransform: "uppercase",
+              textAlign: "center",
+              marginBottom: 6
+            }}
+          >
+            {strings.recents()}
+          </Text>
+          {recents.map((term) => (
+            <Pressable
+              key={term}
+              onPress={() => onSelectRecent(term)}
+              accessibilityRole="button"
+              accessibilityLabel={term}
+              style={{
+                minHeight: 34,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 6,
+                paddingHorizontal: 10
+              }}
+            >
+              <Text
+                numberOfLines={1}
+                style={{ color: colors.primary.accent, fontSize: 15 }}
+              >
+                {term}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function GlobalSearch() {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
@@ -158,6 +248,7 @@ export default function GlobalSearch() {
   const query = useGlobalSearchStore((state) => state.query);
   const setQuery = useGlobalSearchStore((state) => state.setQuery);
   const submitToken = useGlobalSearchStore((state) => state.submitToken);
+  const recentQueries = useGlobalSearchStore((state) => state.recentQueries);
   const [results, setResults] =
     React.useState<VirtualizedGrouping<HighlightedResult>>();
   const [tasks, setTasks] = React.useState<Task[]>([]);
@@ -195,12 +286,16 @@ export default function GlobalSearch() {
         ]);
         if (current !== generation.current) return;
         const normalized = term.toLocaleLowerCase();
-        setResults(notes);
-        setTasks(
-          allTasks.filter((task) =>
-            task.title.toLocaleLowerCase().includes(normalized)
-          )
+        const matches = allTasks.filter((task) =>
+          task.title.toLocaleLowerCase().includes(normalized)
         );
+        setResults(notes);
+        setTasks(matches);
+        // Only Return (the explicit "run it now") records a term: the typing
+        // debounce would otherwise file every prefix ("e", "ei", "ein") too.
+        if (mac && submitted) {
+          useGlobalSearchStore.getState().addRecentQuery(term);
+        }
       } catch {
         if (current === generation.current) {
           setResults(undefined);
@@ -324,7 +419,7 @@ export default function GlobalSearch() {
           paddingBottom: 20
         }}
         ListEmptyComponent={
-          !loading && !!query.trim() ? (
+          loading ? null : query.trim() ? (
             <Text
               style={{
                 color: visual.secondaryText,
@@ -334,7 +429,13 @@ export default function GlobalSearch() {
             >
               {strings.noResultsFound()}
             </Text>
-          ) : null
+          ) : (
+            <SearchEmptyState
+              mac={mac}
+              recents={recentQueries}
+              onSelectRecent={setQuery}
+            />
+          )
         }
         renderItem={({ item, index }) => (
           <>

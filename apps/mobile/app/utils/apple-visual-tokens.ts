@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { VariantsWithStaticColors } from "@notesnook/theme";
 import { Platform } from "react-native";
+import { isMacCatalyst } from "./constants";
 
 /*
  * Presentation-only tokens for the iOS/iPadOS visual layer.
@@ -34,11 +35,44 @@ export const IOS_DARK = {
   separator: "#38383A"
 } as const;
 
+/**
+ * macOS semantic window colors for the dark appearance (F2, R8). Unlike UIKit's
+ * grouped colors these are *not* black: the window and the content are the same
+ * near-black, the source list sits slightly lighter and distinct, and cards are
+ * one step up again. No value here may repeat an IOS_DARK value.
+ */
+export const MAC_DARK = {
+  /** NSColor.windowBackgroundColor (dark). */
+  window: "#1E1E1E",
+  /** Source-list colour: lighter and distinct from the window, not #000. */
+  sidebar: "#252527",
+  content: "#1E1E1E",
+  secondarySurface: "#2A2A2C",
+  separator: "rgba(255,255,255,0.1)",
+  /** NSColor.selectedContentBackgroundColor (dark). */
+  selected: "#3A3A3D"
+} as const;
+
+/** macOS semantic window colors for the light appearance (F2, R8). */
+export const MAC_LIGHT = {
+  window: "#FFFFFF",
+  /** The source-list grey macOS uses for sidebars. */
+  sidebar: "#EFEFF1",
+  content: "#FFFFFF",
+  secondarySurface: "#F5F5F7",
+  separator: "#D8D8DA",
+  selected: "#DCDCE0"
+} as const;
+
 export const getAppleVisualTokens = (
   colors: VariantsWithStaticColors<true>,
   isDark = false
 ) => {
   const ios = Platform.OS === "ios";
+  // Catalyst is an iOS build, so `ios` stays true there: the layout branches
+  // that key off it (card radii, insets, the three-column reach) must not
+  // change. Only the *colors* get a Mac branch below.
+  const mac = isMacCatalyst();
   // iOS dark mode layers get *lighter* towards the front: black grouped
   // background, cards one step up (secondarySystemGroupedBackground). The
   // theme's dark colors are the other way round and made cards look like holes.
@@ -109,6 +143,7 @@ export const getAppleVisualTokens = (
       shadowRadius: 14
     }
   };
+  if (mac) return withMacSemanticColors(base, isDark);
   if (!iosDark) return base;
   return {
     ...base,
@@ -126,3 +161,27 @@ export const getAppleVisualTokens = (
     selectionBackground: IOS_DARK.selected
   };
 };
+
+/**
+ * The Mac Catalyst overrides (F2, R8): macOS semantic window colors replace the
+ * UIKit grouped ones, so no IOS_DARK value is ever returned on the Mac. The
+ * text/hover/radius/spacing tokens stay theme-driven and are left untouched.
+ */
+function withMacSemanticColors<T extends object>(base: T, isDark: boolean) {
+  const tokens = isDark ? MAC_DARK : MAC_LIGHT;
+  return {
+    ...base,
+    screenBackground: tokens.window,
+    sidebarBackground: tokens.sidebar,
+    contentSurface: tokens.content,
+    secondarySurface: tokens.secondarySurface,
+    elevatedSurface: tokens.content,
+    toolbarSurface: tokens.window,
+    navigationSurface: tokens.window,
+    editorSurround: tokens.window,
+    surface: tokens.content,
+    separator: tokens.separator,
+    selectedSurface: tokens.selected,
+    selectionBackground: tokens.selected
+  };
+}

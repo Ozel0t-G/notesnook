@@ -1,0 +1,155 @@
+# Menu bar of the Mac Catalyst build, read via Accessibility on 2026-10-01 (app not frontmost, so window items show false).
+# Format: Item [key mod=N] enabled. mod: 0=Cmd, 1=Shift+Cmd, 2=Opt+Cmd, 4=Ctrl+Cmd, 8=no Cmd, 24=Ctrl+Cmd+Fn
+## VeyraN
+  About VeyraN  [missing value mod=8] true
+  ---
+  Settings…  [, mod=0] true
+  ---
+  ---
+  Services  [missing value mod=0] true
+      > (system services, omitted)
+  ---
+  Hide VeyraN  [H mod=0] true
+  Hide Others  [H mod=2] true
+  Show All  [missing value mod=8] false
+  ---
+  Quit VeyraN  [Q mod=0] true
+  Quit and Keep Windows  [Q mod=2] true
+## File
+  New Note  [N mod=0] true
+  ---
+  ---
+  Close  [W mod=0] false
+  Close All  [W mod=2] true
+  ---
+## Edit
+  Undo  [Z mod=0] false
+  Redo  [Z mod=1] false
+  ---
+  Cut  [X mod=0] false
+  Copy  [C mod=0] false
+  Paste  [V mod=0] false
+  Paste and Match Style  [V mod=3] false
+  Delete  [missing value mod=8] false
+  Select All  [A mod=0] false
+  ---
+  Find  [missing value mod=0] true
+      > Find…
+      > Find & Replace
+      > Find Next
+      > Find Previous
+      > missing value
+      > Use Selection for Find
+  ---
+  Spelling and Grammar  [missing value mod=0] true
+      > Show Spelling and Grammar
+      > Check Document Now
+      > missing value
+      > Check Spelling While Typing
+      > Check Grammar With Spelling
+      > Correct Spelling Automatically
+  Substitutions  [missing value mod=0] true
+      > Smart Substitutions
+      > missing value
+      > Smart Copy/Paste
+      > Smart Quotes
+      > Smart Dashes
+      > Smart Links
+      > Text Replacement
+  Transformations  [missing value mod=0] true
+      > Make Upper Case
+      > Make Lower Case
+      > Capitalize
+  Speech  [missing value mod=0] true
+      > Start Speaking
+      > Stop Speaking
+  ---
+  Find in Notes  [F mod=1] true
+  ---
+  AutoFill  [missing value mod=0] true
+      > Contact…
+      > Passwords…
+      > Credit Card…
+  Start Dictation…  [🎤 mod=8] true
+  Emoji & Symbols  [E mod=24] true
+## Note
+  Pin Note  [missing value mod=8] true
+  Add to Favorites  [missing value mod=8] true
+  Move to Trash  [ mod=0] true
+## Format
+  Font  [missing value mod=0] true
+      > Show Fonts
+      > Bold
+      > Italic
+      > Underline
+      > missing value
+      > Bigger
+      > Smaller
+      > missing value
+      > Show Colors
+      > missing value
+      > Copy Style
+      > Paste Style
+  Text  [missing value mod=0] true
+      > Align Left
+      > Center
+      > Justify
+      > Align Right
+      > missing value
+      > Writing Direction
+## View
+  Library  [1 mod=0] true
+  Tasks  [2 mod=0] true
+  Search  [3 mod=0] true
+  ---
+  Show Toolbar  [missing value mod=8] false
+  Customize Toolbar…  [missing value mod=8] false
+  ---
+  Enter Full Screen  [F mod=24] false
+  ---
+  Toggle Sidebar  [S mod=4] true
+## Window
+  Minimize  [M mod=0] false
+  Minimize All  [M mod=2] true
+  Zoom  [missing value mod=8] false
+  Zoom All  [missing value mod=10] true
+  Fill  [F mod=28] false
+  Center  [C mod=28] false
+  ---
+  Move & Resize  [missing value mod=0] true
+      > Halves
+      > Left
+      > Right
+      > Top
+      > Bottom
+      > missing value
+      > Quarters
+      > Top Left
+      > Top Right
+      > Bottom Left
+      > Bottom Right
+      > missing value
+      > Arrange
+      > Left & Right
+      > Left & Quarters
+      > Right & Left
+      > Right & Quarters
+      > Top & Bottom
+      > Top & Quarters
+      > Bottom & Top
+      > Bottom & Quarters
+      > Quarters
+      > missing value
+      > Return to Previous Size
+  Full Screen Tile  [missing value mod=0] false
+  ---
+  Bring All to Front  [missing value mod=8] true
+  Arrange in Front  [missing value mod=10] true
+  Remove Window from Set  [missing value mod=0] false
+  ---
+  VeyraN  [missing value mod=0] true
+## Help
+  Send VeyraN Feedback to Apple  [missing value mod=0] true
+  ---
+  VeyraN Help  [? mod=0] true
+

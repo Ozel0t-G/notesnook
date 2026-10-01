@@ -452,6 +452,8 @@ export const FluidPanelsView = React.memo(
                   : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list,
                 // Mac's note list column is the content surface, one shade off
                 // the sidebar's source list (macOS Notes' list vs. sidebar).
+                // Opaque on purpose (F5): the native source-list material is a
+                // follow-up, so this must not be made transparent yet.
                 backgroundColor: isMacCatalyst()
                   ? visual.contentSurface
                   : visual.screenBackground,

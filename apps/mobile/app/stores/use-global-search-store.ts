@@ -18,6 +18,24 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { create } from "zustand";
+import { MMKV } from "../common/database/mmkv";
+import {
+  addRecentSearch,
+  sanitizeRecentSearches
+} from "../screens/global-search/search-recents";
+
+/** MMKV key the Search section's recent terms are persisted under. */
+const RECENT_SEARCHES_KEY = "globalSearchRecents";
+
+function loadRecentSearches(): string[] {
+  try {
+    return sanitizeRecentSearches(MMKV.getArray<string>(RECENT_SEARCHES_KEY));
+  } catch {
+    // Recents are a convenience: a missing or unreadable entry must not keep
+    // the Search section from rendering.
+    return [];
+  }
+}
 
 export type GlobalSearchState = {
   /**
@@ -38,13 +56,34 @@ export type GlobalSearchState = {
    * typing debounce.
    */
   submitToken: number;
+  /**
+   * The Mac Search section's recent terms, newest first (max
+   * MAX_RECENT_SEARCHES). Only the Mac empty state shows them; they are
+   * recorded by the screen when a search runs.
+   */
+  recentQueries: string[];
   setQuery: (query: string) => void;
   submitQuery: () => void;
+  addRecentQuery: (query: string) => void;
 };
 
 export const useGlobalSearchStore = create<GlobalSearchState>((set) => ({
   query: "",
   submitToken: 0,
+  recentQueries: loadRecentSearches(),
   setQuery: (query) => set({ query }),
-  submitQuery: () => set((state) => ({ submitToken: state.submitToken + 1 }))
+  submitQuery: () => set((state) => ({ submitToken: state.submitToken + 1 })),
+  addRecentQuery: (query) =>
+    set((state) => {
+      const recentQueries = addRecentSearch(state.recentQueries, query);
+      // An empty query does not change the list (same reference): skip both
+      // the state update and the write.
+      if (recentQueries === state.recentQueries) return state;
+      try {
+        MMKV.setArray(RECENT_SEARCHES_KEY, recentQueries);
+      } catch {
+        // Failing to persist a convenience list is not fatal.
+      }
+      return { recentQueries };
+    })
 }));

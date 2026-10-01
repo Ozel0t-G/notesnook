@@ -1,0 +1,107 @@
+/*
+This file is part of the Notesnook project (https://notesnook.com/)
+
+Copyright (C) 2023 Streetwriters (Private) Limited
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+import { strings } from "@notesnook/intl";
+import { useEffect } from "react";
+import { NativeModules } from "react-native";
+import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
+import {
+  AppleSection,
+  useAppleNavigationStore
+} from "../stores/use-apple-navigation-store";
+import { useMacWindowStore } from "../stores/use-mac-window-store";
+import { isMacCatalyst } from "../utils/constants";
+import {
+  applyMacWindowTitle,
+  useMacListTitleStore
+} from "../utils/mac-window-title";
+import { useDBItem } from "./use-db-item";
+
+/**
+ * Human name of each top-level section, for the window title (W4): the Library
+ * and Search sections name themselves, the Task section is the fallback title
+ * while no task list is selected (a selected list is the title itself, see
+ * resolveMacWindowTitle). The names match the iPad tab bar and the Mac sidebar.
+ */
+const SECTION_TITLES: Record<AppleSection, () => string> = {
+  library: () => strings.routes.Library(),
+  tasks: () => strings.tasksTitle(),
+  search: () => strings.routes.Search()
+};
+
+/**
+ * Resolves the title from the parts several, otherwise unrelated panes own -
+ * the section (useAppleNavigationStore), the focused list's name (published by
+ * the list header through useMacListTitleStore) and the open note
+ * (useMacWindowStore.noteTitle) - and pushes it to the native window. Reads the
+ * stores outside React so it can double as a zustand subscriber.
+ */
+function refreshMacWindowTitle() {
+  const section = useAppleNavigationStore.getState().section;
+  applyMacWindowTitle({
+    section,
+    sectionTitle: SECTION_TITLES[section](),
+    listTitle: useMacListTitleStore.getState().listTitle,
+    noteTitle: useMacWindowStore.getState().noteTitle
+  });
+}
+
+/**
+ * Keeps the Mac Catalyst window's title/subtitle in sync with what the window
+ * shows (W4). Mounted once from app.tsx, next to useMacMenuCommands, and inert
+ * on iPhone/iPad.
+ *
+ * The open note's title is resolved the same way the menu bar's note commands
+ * resolve their note (explorer tab store -> db), because the editor's own,
+ * unsaved title lives inside the WebView and is not reachable from here cheaply.
+ * It is published into useMacWindowStore.noteTitle - the store's documented
+ * contract - so any other Mac chrome can read it too; a save (eDBItemUpdate)
+ * refreshes it, unsaved keystrokes do not.
+ */
+export const useMacWindowTitle = () => {
+  const enabled = isMacCatalyst();
+  const noteId = useTabStore((state) =>
+    enabled ? state.getTab(state.currentTab)?.session?.noteId : undefined
+  );
+  const [note] = useDBItem(noteId, "note");
+  const noteTitle = note?.title;
+
+  useEffect(() => {
+    if (!enabled || !NativeModules?.VeyraNMacMenu) return;
+    // The stores may already hold state by the time this mounts (a restored
+    // session, a deep link): publish the title once up front, then follow every
+    // change of its three inputs.
+    refreshMacWindowTitle();
+    const unsubscribers = [
+      useAppleNavigationStore.subscribe(refreshMacWindowTitle),
+      useMacListTitleStore.subscribe(refreshMacWindowTitle),
+      useMacWindowStore.subscribe(refreshMacWindowTitle)
+    ];
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    useMacWindowStore.getState().setNoteTitle(noteTitle);
+  }, [enabled, noteTitle]);
+};
+
+export default useMacWindowTitle;

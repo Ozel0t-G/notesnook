@@ -20,20 +20,32 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import {
+  NativeModules,
+  Pressable,
+  ScrollView,
+  Text,
+  View
+} from "react-native";
 import { Item } from "@notesnook/core";
 import { TaskSymbolView } from "./task-symbol-view";
-import { IosBarButton, IosNavBar } from "./ios-nav-bar";
+import { IosBarButton } from "./ios-nav-bar";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { useLibrarySourceList } from "../hooks/use-library-source-list";
 import { openMacList } from "../services/mac-list-navigation";
 import useNavigationStore from "../stores/use-navigation-store";
-import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
+import { useMacSystemStore } from "../stores/use-mac-system-store";
+import {
+  AppleSection,
+  useAppleNavigationStore
+} from "../stores/use-apple-navigation-store";
+import { macAccent, macSelectionFill } from "../utils/mac-system-state";
 import { AddNotebookSheet } from "./sheets/add-notebook";
 import useGlobalSafeAreaInsets from "../hooks/use-global-safe-area-insets";
 import { MAC_SOURCE_LIST_INSET, macToolbarInset } from "../utils/mac-layout";
 import { ItemContextMenu } from "./item-actions-menu";
 import { MacHoverHighlight, useMacHover } from "./mac-hover";
+import { selectAppleSection } from "../navigation/navigation-stack";
 
 type LibraryDestination = {
   key: string;
@@ -69,6 +81,8 @@ const MAC_SELECTED_ROUTE_ID: Record<string, string> = {
  * `MAC_SOURCE_LIST_INSET`, the 10 pt margin the rows sit in).
  */
 const MAC_ROW_HEIGHT = 28;
+/** Style of the pane's own heading row (was IosNavBar's 13 pt leading label). */
+const MAC_HEADING_FONT_SIZE = 13;
 const MAC_ROW_RADIUS = 6;
 const MAC_ROW_FONT_SIZE = 13;
 const MAC_ROW_ICON_SIZE = 16;
@@ -99,6 +113,40 @@ export function MacSidebar() {
   const { notebooks, tags, counts } = useLibrarySourceList();
   const focusedRouteId = useNavigationStore((state) => state.focusedRouteId);
   const section = useAppleNavigationStore((state) => state.section);
+
+  /**
+   * The window toolbar has no segmented control any more, so the three sections
+   * it used to switch are rows at the top of the source list now. Switching
+   * goes through the same handler the iPad tab bar and the toolbar's
+   * `section:<name>` commands use, and the selected section is also pushed to
+   * the native toolbar, which still tracks it for its own state.
+   */
+  const selectSection = (next: AppleSection) => {
+    NativeModules.VeyraNMacMenu?.setSelectedSection(next);
+    selectAppleSection(next);
+  };
+
+  const sectionRows: LibraryDestination[] = [
+    {
+      key: "section:library",
+      label: strings.routes.Library(),
+      symbol: "books.vertical",
+      onPress: () => selectSection("library")
+    },
+    {
+      key: "section:tasks",
+      // Same label as the iPad tab bar's Tasks item.
+      label: strings.tasksTitle(),
+      symbol: "checklist",
+      onPress: () => selectSection("tasks")
+    },
+    {
+      key: "section:search",
+      label: strings.routes.Search(),
+      symbol: "magnifyingglass",
+      onPress: () => selectSection("search")
+    }
+  ];
 
   // Tasks and Search are sections of their own (the native toolbar switches to
   // them): the sidebar stays mounted, but no Library row is the current one.
@@ -233,6 +281,10 @@ export function MacSidebar() {
         // padding puts the source list below it, and this pane's own background
         // is what shows through that strip (see `macToolbarInset`).
         paddingTop: macToolbarInset(insets.top),
+        // Opaque macOS source-list colour for now (F5/R8): the pane stays a
+        // real, distinct surface instead of UIKit's grouped black. Letting the
+        // native sidebar material (NSVisualEffectView) show through is a
+        // follow-up, so this must not be made transparent yet.
         backgroundColor: visual.sidebarBackground
       }}
     >
@@ -240,24 +292,29 @@ export function MacSidebar() {
         testID="library-scroll"
         contentContainerStyle={{ paddingTop: 8, paddingBottom: 32 }}
       >
-        <IosNavBar
-          leading={
-            // Mac sidebars have no large title: the screen name is a 13 pt
-            // secondary label on the bar row itself.
-            <Text
-              accessibilityRole="header"
-              testID="library-heading"
-              style={{
-                color: visual.secondaryText,
-                fontSize: 13,
-                fontWeight: "600",
-                paddingLeft: MAC_LIST_TEXT_LEFT
-              }}
-            >
-              {strings.routes.Library()}
-            </Text>
-          }
-        />
+        {/* Mac sidebars have no large title, and no 44 pt bar either: the pane's
+            name is just a 13 pt secondary label above the rows. */}
+        <View style={{ paddingLeft: MAC_LIST_TEXT_LEFT, paddingBottom: 4 }}>
+          <Text
+            accessibilityRole="header"
+            testID="library-heading"
+            style={{
+              color: visual.secondaryText,
+              fontSize: MAC_HEADING_FONT_SIZE,
+              fontWeight: "600"
+            }}
+          >
+            {strings.routes.Library()}
+          </Text>
+        </View>
+        {sectionRows.map((item, index) => (
+          <MacRow
+            key={item.key}
+            item={item}
+            index={index}
+            selected={section === item.key.slice("section:".length)}
+          />
+        ))}
         {collections.map((item, index) => (
           <MacRow
             key={item.key}
@@ -337,6 +394,16 @@ function MacRow({
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const { hovered, hoverProps } = useMacHover();
+  const systemAccent = useMacSystemStore((state) => state.accent);
+  const windowActive = useMacSystemStore((state) => state.active);
+  // S1: the selected source-list row follows the macOS system accent, and goes
+  // neutral grey while the window is not key. The theme accent is only the
+  // fallback when the bridge has no system accent to offer.
+  const selection = macSelectionFill(
+    macAccent(colors.primary.accent, systemAccent),
+    windowActive,
+    isDark
+  );
 
   const row = (
     <Pressable
@@ -371,8 +438,8 @@ function MacRow({
         visible={hovered && !selected}
         radius={MAC_ROW_RADIUS}
       />
-      {/* Accent at low opacity: a layer of its own so custom themes (and
-          their non-hex colors) keep working. */}
+      {/* Accent at low opacity (grey while the window is not key): a layer of
+          its own so custom themes (and their non-hex colors) keep working. */}
       {selected ? (
         <View
           pointerEvents="none"
@@ -383,15 +450,17 @@ function MacRow({
             right: 0,
             bottom: 0,
             borderRadius: MAC_ROW_RADIUS,
-            backgroundColor: colors.primary.accent,
-            opacity: 0.2
+            backgroundColor: selection.color,
+            opacity: selection.opacity
           }}
         />
       ) : null}
       <TaskSymbolView
         name={item.symbol}
         size={MAC_ROW_ICON_SIZE}
-        color={colors.primary.accent}
+        // The selected row's icon keeps the accent while the window is active
+        // and follows the selection grey while it is not.
+        color={selected ? selection.color : colors.primary.accent}
       />
       <Text
         numberOfLines={1}

@@ -29,9 +29,7 @@ import notifee, { AuthorizationStatus } from "@notifee/react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import React from "react";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
-  Alert,
   AppState,
   findNodeHandle,
   Keyboard,
@@ -48,6 +46,7 @@ import {
 import { db } from "../../common/database";
 import { ToastManager } from "../../services/event-manager";
 import { isMacCatalyst } from "../../utils/constants";
+import { confirmAction, showAlert } from "../../utils/mac-alert";
 import { NavigationProps } from "../../services/navigation";
 import { openAppNotificationSettings } from "../../services/notification-settings";
 import { TaskNotifications } from "../../services/task-notifications";
@@ -348,7 +347,7 @@ export default function TaskDetail({
         }
       } catch {
         if (active)
-          Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+          showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
       } finally {
         if (active) setLoading(false);
       }
@@ -389,38 +388,16 @@ export default function TaskDetail({
   }, [navigation]);
 
   const confirmDiscard = React.useCallback(
-    (onDiscard: () => void) => {
-      if (Platform.OS === "ios") {
-        ActionSheetIOS.showActionSheetWithOptions(
-          {
-            title: strings.tasksDiscardChangesTitle(),
-            options: [strings.tasksDiscardChanges(), strings.tasksKeepEditing()],
-            destructiveButtonIndex: 0,
-            cancelButtonIndex: 1,
-            // An action sheet is a popover on the wide layouts, which UIKit
-            // anchors to a source view. Mac Catalyst needs that anchor too now
-            // that it draws with the Mac interface (`Platform.isPad` is false
-            // there); without it the popover has nothing to point at.
-            ...(Platform.isPad || isMacCatalyst()
-              ? { anchor: findNodeHandle(cancelButton.current) || undefined }
-              : {}),
-            userInterfaceStyle: isDark ? "dark" : "light"
-          },
-          (index) => {
-            if (index === 0) onDiscard();
-          }
-        );
-        return;
-      }
-      Alert.alert(strings.tasksDiscardChangesTitle(), undefined, [
-        { text: strings.tasksKeepEditing(), style: "cancel" },
-        {
-          text: strings.tasksDiscardChanges(),
-          style: "destructive",
-          onPress: onDiscard
-        }
-      ]);
-    },
+    (onDiscard: () => void) =>
+      confirmAction({
+        title: strings.tasksDiscardChangesTitle(),
+        confirmText: strings.tasksDiscardChanges(),
+        cancelText: strings.tasksKeepEditing(),
+        destructive: true,
+        anchor: findNodeHandle(cancelButton.current) || undefined,
+        isDark,
+        onConfirm: onDiscard
+      }),
     [isDark]
   );
 
@@ -449,11 +426,11 @@ export default function TaskDetail({
   const save = async () => {
     if (!title.trim() || saving || notFound) return;
     if (rule.trim() && !reminderDate) {
-      Alert.alert(strings.tasksTitle(), strings.tasksRepeatNeedsDueDate());
+      showAlert(strings.tasksTitle(), strings.tasksRepeatNeedsDueDate());
       return;
     }
     if (urgent && !reminderTime) {
-      Alert.alert(strings.tasksTitle(), strings.tasksUrgentNeedsTime());
+      showAlert(strings.tasksTitle(), strings.tasksUrgentNeedsTime());
       return;
     }
     if (task && !dirty) {
@@ -479,7 +456,7 @@ export default function TaskDetail({
       else await db.tasks.create(input);
       leave();
     } catch {
-      Alert.alert(
+      showAlert(
         strings.tasksTitle(),
         rule ? strings.tasksInvalidRecurrence() : strings.tasksCouldNotSave()
       );
@@ -496,7 +473,7 @@ export default function TaskDetail({
         : await db.tasks.complete(task.id);
       setTask(updated as ScheduledTask);
     } catch {
-      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
     }
   };
 
@@ -507,32 +484,19 @@ export default function TaskDetail({
         await db.tasks.remove(task.id);
         leave();
       } catch {
-        Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+        showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
       }
     };
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          title: strings.tasksDeleteConfirm(),
-          options: [strings.tasksDelete(), strings.cancel()],
-          destructiveButtonIndex: 0,
-          cancelButtonIndex: 1,
-          // See the discard sheet above: iPad and Mac present popovers.
-          ...(Platform.isPad || isMacCatalyst()
-            ? { anchor: findNodeHandle(deleteButton.current) || undefined }
-            : {}),
-          userInterfaceStyle: isDark ? "dark" : "light"
-        },
-        (index) => {
-          if (index === 0) void run();
-        }
-      );
-      return;
-    }
-    Alert.alert(strings.tasksDelete(), strings.tasksDeleteConfirm(), [
-      { text: strings.cancel(), style: "cancel" },
-      { text: strings.delete(), style: "destructive", onPress: run }
-    ]);
+    confirmAction({
+      title: strings.tasksDelete(),
+      message: strings.tasksDeleteConfirm(),
+      confirmText: strings.delete(),
+      cancelText: strings.cancel(),
+      destructive: true,
+      anchor: findNodeHandle(deleteButton.current) || undefined,
+      isDark,
+      onConfirm: run
+    });
   };
 
   const setDateEnabled = (enabled: boolean) => {
@@ -566,7 +530,7 @@ export default function TaskDetail({
       return;
     }
     if (!reminderTime) {
-      Alert.alert(strings.tasksTitle(), strings.tasksUrgentChooseTime());
+      showAlert(strings.tasksTitle(), strings.tasksUrgentChooseTime());
       return;
     }
     try {
@@ -578,14 +542,14 @@ export default function TaskDetail({
       setUrgentStatus(status);
       if (status === "authorized") setUrgent(true);
       else if (status === "unsupported")
-        Alert.alert(strings.tasksUrgent(), strings.tasksUrgentUnavailable());
+        showAlert(strings.tasksUrgent(), strings.tasksUrgentUnavailable());
       else
-        Alert.alert(strings.tasksUrgent(), strings.tasksUrgentAlarmDenied(), [
+        showAlert(strings.tasksUrgent(), strings.tasksUrgentAlarmDenied(), [
           { text: strings.cancel(), style: "cancel" },
           { text: strings.tasksAllowAlarms(), onPress: openAlarmSettings }
         ]);
     } catch {
-      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
     }
   };
 
@@ -1452,8 +1416,8 @@ export default function TaskDetail({
 
       <Modal
         visible={showLists}
-        animationType="slide"
-        presentationStyle="pageSheet"
+        animationType={isMacCatalyst() ? "fade" : "slide"}
+        presentationStyle={isMacCatalyst() ? "formSheet" : "pageSheet"}
         onRequestClose={() => setShowLists(false)}
       >
         <View style={{ flex: 1, backgroundColor: visual.screenBackground }}>

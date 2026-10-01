@@ -187,12 +187,18 @@ const TASK_SHEET_OPTIONS = {
  * them mid-slide - the outgoing three-column screen stayed visible along the
  * left edge, moved by its own sidebar width, with the section's content drawn
  * offset to the right of it - and a section switch has nothing to animate
- * anyway: the toolbar's segmented control already shows the state. Landing the
- * screen on its final frame instead of animating it is what makes the section
- * fill the content area (x 0...W), under the toolbar, with no leftover column
- * and no seam between the two backgrounds. iPhone and iPad keep the animated
- * push. `animation: "none"` is the app's existing idiom for this (see the
- * Library stack below and the Settings stack).
+ * anyway: the source list's section rows (Library/Tasks/Search, at the top of
+ * `MacSidebar`) already show the state. Landing the screen on its final frame
+ * instead of animating it is what makes the section fill the content area next
+ * to the source list (x sidebar...W), under the toolbar, with no leftover
+ * column and no seam between the two backgrounds. iPhone and iPad keep the
+ * animated push. `animation: "none"` is the app's existing idiom for this (see
+ * the Library stack below and the Settings stack).
+ *
+ * Both sections are wrapped in `withMacSidebar` (components/mac-section-layout.tsx)
+ * so they carry the same source-list pane as the Library section - otherwise the
+ * sidebar's rows, the only way to switch sections on Mac, would not be reachable
+ * from Tasks or Search. On iPhone/iPad that wrapper is the identity.
  */
 const MAC_SECTION_SCREEN_OPTIONS: NativeStackNavigationOptions =
   isMacCatalyst() ? { animation: "none" } : {};
@@ -661,9 +667,10 @@ export const RootNavigation = () => {
   const initialRouteName = !introCompleted ? "Welcome" : "FluidPanelsView";
 
   /**
-   * The floating bar is an iPhone/iPad affordance. Mac keeps the same three
-   * sections in the window's native toolbar (MacMenu/VeyraNMacToolbar.h), so no
-   * bar - and no bar strip above the panes - is mounted there.
+   * The floating bar is an iPhone/iPad affordance. Mac switches between the
+   * same three sections with the rows at the top of the source list
+   * (components/mac-sidebar.tsx), which stays mounted next to every section, so
+   * no bar - and no bar strip above the panes - is mounted there.
    */
   const showTabBar =
     Platform.OS === "ios" &&
@@ -822,7 +829,15 @@ export const RootNavigation = () => {
             options={MAC_SECTION_SCREEN_OPTIONS}
             getComponent={() => {
               Tasks = Tasks || require("../screens/tasks").default;
-              return Tasks;
+              // Mac: Tasks is a section of its own, so it brings the same
+              // source-list pane as the Library section. No-op elsewhere.
+              // Required lazily (like the screens themselves) so this module
+              // does not import the sidebar - which imports back into this one -
+              // at startup.
+              const { withMacSidebar } = require(
+                "../components/mac-section-layout"
+              );
+              return withMacSidebar(Tasks);
             }}
           />
 
@@ -832,7 +847,12 @@ export const RootNavigation = () => {
             getComponent={() => {
               GlobalSearch =
                 GlobalSearch || require("../screens/global-search").default;
-              return GlobalSearch;
+              // Mac: Search is a section of its own, so it brings the same
+              // source-list pane as the Library section. No-op elsewhere.
+              const { withMacSidebar } = require(
+                "../components/mac-section-layout"
+              );
+              return withMacSidebar(GlobalSearch);
             }}
           />
 

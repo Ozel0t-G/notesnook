@@ -83,6 +83,25 @@ final class VeyraNMenuButtonView: UIView {
     button.translatesAutoresizingMaskIntoConstraints = false
     button.showsMenuAsPrimaryAction = true
     button.backgroundColor = .clear
+#if targetEnvironment(macCatalyst)
+    // Catalyst draws the Mac ('mac' behavioural style) button chrome for this
+    // control: a menu indicator glyph on top of the content and a grey fill on
+    // hover/dark mode, both of which land on the React-drawn icon underneath.
+    // The pad style keeps the plain (iPad) button, which has none of that
+    // chrome; `showsMenuAsPrimaryAction` still opens the same UIMenu and the
+    // tap still reaches this button. Clearing the title/image is what makes it
+    // an overlay again, and the pointer interaction is only a hover pill, so
+    // switching it off removes the last UIKit-drawn surface without costing the
+    // click. (tintColor is left alone: with no title or image there is nothing
+    // for it to colour, and clearing it could wash out the menu's own
+    // highlight.)
+    if #available(macCatalyst 15.0, *) {
+      button.preferredBehavioralStyle = .pad
+    }
+    button.setTitle(nil, for: .normal)
+    button.setImage(nil, for: .normal)
+    button.isPointerInteractionEnabled = false
+#endif
     addSubview(button)
     NSLayoutConstraint.activate([
       button.leadingAnchor.constraint(equalTo: leadingAnchor),

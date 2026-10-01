@@ -25,8 +25,10 @@ import useIsSelected from "../../../hooks/use-selected";
 import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
 import { useSelectionStore } from "../../../stores/use-selection-store";
 import { useSettingStore } from "../../../stores/use-setting-store";
+import { useMacSystemStore } from "../../../stores/use-mac-system-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
+import { macAccent, macSelectionFill } from "../../../utils/mac-system-state";
 import { Pressable } from "../../ui/pressable";
 import { Platform, StyleSheet, View } from "react-native";
 import { Note } from "@notesnook/core";
@@ -117,10 +119,20 @@ const SelectionWrapper = ({
   /**
    * Mac's note list rows are source-list rows: no card background, 10 pt of
    * vertical padding, a hairline separator between rows, and the open note
-   * marked with the accent at 20% instead of the iPad's 5 pt side bar.
+   * marked with the system accent at low opacity (grey while the window is not
+   * key) instead of the iPad's 5 pt side bar.
    */
   const macRow = isMacCatalyst() && isNoteItem && !isSheet;
   const macHighlighted = macRow && (showEditing || isSelected);
+  const systemAccent = useMacSystemStore((state) => state.accent);
+  const windowActive = useMacSystemStore((state) => state.active);
+  // N4: the row highlight follows the macOS system accent while the window is
+  // key, and goes neutral grey while it is not.
+  const macSelection = macSelectionFill(
+    macAccent(colors.primary.accent, systemAccent),
+    windowActive,
+    isDark
+  );
   // Pointer feedback for the Mac rows only: iPhone/iPad rows have no pointer
   // to hover with, and a sheet's rows keep the iOS look.
   const { hovered, hoverProps } = useMacHover(macRow);
@@ -222,8 +234,8 @@ const SelectionWrapper = ({
         radius={MAC_NOTE_ROW_RADIUS}
       />
       {macHighlighted ? (
-        /* Accent at low opacity: a layer of its own so custom themes (and
-           their non-hex colors) keep working. */
+        /* Accent at low opacity (grey while the window is not key): a layer of
+           its own so custom themes (and their non-hex colors) keep working. */
         <View
           pointerEvents="none"
           style={{
@@ -233,8 +245,8 @@ const SelectionWrapper = ({
             right: 0,
             bottom: 0,
             borderRadius: MAC_NOTE_ROW_RADIUS,
-            backgroundColor: colors.primary.accent,
-            opacity: 0.2
+            backgroundColor: macSelection.color,
+            opacity: macSelection.opacity
           }}
         />
       ) : null}

@@ -36,6 +36,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * `navigation/fluid-panels-view.tsx`.
  */
 
+import { NativeModules } from "react-native";
+
 /** Window-width-driven width, clamped to the given bounds. */
 const clampWidth = (width: number, min: number, max: number) =>
   width < min ? min : width > max ? max : width;
@@ -43,26 +45,52 @@ const clampWidth = (width: number, min: number, max: number) =>
 /**
  * Height of the Mac window's unified toolbar, in points.
  *
- * Only a fallback: with the toolbar installed UIKit reports its height in the
- * window's top safe-area inset, which is what `macToolbarInset` prefers. Some
- * macCatalyst/AppKit versions report 0 there - the inset is recalculated only
- * once the toolbar has been laid out - and on those the panes fall back to the
- * 52 pt a unified toolbar measures on macOS.
+ * Only a fallback for the short window at startup before UIKit has laid the
+ * toolbar out: `macToolbarInset` prefers the native measurement (the
+ * `toolbarHeight` constant the VeyraNMacMenu bridge publishes, or the window's
+ * top safe-area inset) and only uses this constant while neither is known yet.
+ * The old 52 pt "keep in sync with the editor header" note is obsolete:
+ * `MAC_EDITOR_HEADER_HEIGHT` in packages/editor-mobile/src/utils/mac.ts is 0
+ * now (the editor has no header on Mac), so the editor starts at the very top
+ * of the pane and does not depend on this value.
  */
 export const MAC_TOOLBAR_HEIGHT = 52;
 
 /**
- * The top inset the Mac panes - the list column and the editor pane - start
- * below: the window's top safe-area inset (react-native-safe-area-context
- * `insets.top`, which carries the native toolbar's height on Catalyst), or
- * MAC_TOOLBAR_HEIGHT when UIKit reports 0.
- *
- * Keep the 52 pt in sync with `MAC_EDITOR_HEADER_HEIGHT` in
- * packages/editor-mobile/src/utils/mac.ts, the height of the editor's own web
- * header, which starts right under this inset on Mac.
+ * The last real (non-zero) toolbar inset seen. The window's safe-area inset
+ * settles only after the toolbar has been laid out, so a caller that runs
+ * during the first frames sees 0 and would otherwise fall back to
+ * MAC_TOOLBAR_HEIGHT, then jump to the real inset once UIKit reports it (the
+ * ~20 pt list jump in R20). Caching the first real value makes the inset
+ * stable from then on.
  */
-export const macToolbarInset = (insetTop: number) =>
-  insetTop > 0 ? insetTop : MAC_TOOLBAR_HEIGHT;
+let cachedToolbarInset = 0;
+
+/**
+ * The native toolbar height, if the bridge has measured it. 0 means "not
+ * measurable yet" (see +[VeyraNMacToolbar toolbarHeight]).
+ */
+function measuredToolbarHeight() {
+  const height = NativeModules?.VeyraNMacMenu?.toolbarHeight;
+  return typeof height === "number" && height > 0 ? height : 0;
+}
+
+/**
+ * The top inset the Mac panes - the list column and the editor pane - start
+ * below. Prefers the native measurement (the `toolbarHeight` constant, then
+ * the fallback safe-area inset `insetTop`) and caches the first non-zero value
+ * so it cannot flip back and forth between the fallback and the real height as
+ * the window lays out (R20). MAC_TOOLBAR_HEIGHT is returned only while no real
+ * measurement exists yet.
+ */
+export const macToolbarInset = (insetTop: number) => {
+  if (cachedToolbarInset === 0) {
+    const value =
+      measuredToolbarHeight() || (insetTop > 0 ? insetTop : 0);
+    if (value > 0) cachedToolbarInset = value;
+  }
+  return cachedToolbarInset > 0 ? cachedToolbarInset : MAC_TOOLBAR_HEIGHT;
+};
 
 /**
  * Metrics of MacSectionControl, the React-drawn section control that used to

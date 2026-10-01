@@ -21,10 +21,7 @@ import { useEffect } from "react";
 import { useTabContext } from "../hooks/useTabStore";
 import { EmotionEditorToolbarTheme } from "../theme-factory";
 import { Settings } from "../utils";
-import {
-  MAC_EDITOR_HEADER_HEIGHT,
-  MAC_TOOLBAR_HEIGHT
-} from "../utils/mac";
+import { MAC_EDITOR_HEADER_HEIGHT, MAC_TOOLBAR_HEIGHT } from "../utils/mac";
 export default function TiptapEditorWrapper(props: {
   options: Partial<TiptapOptions>;
   onEditorUpdate: (editor: Editor) => void;
@@ -35,11 +32,12 @@ export default function TiptapEditorWrapper(props: {
   globalThis.editors[tab.id] = editor;
   const isMac = props.settings.isMacCatalyst;
   /**
-   * Top of the Mac format bar: directly under the editor header, which fills
-   * the window's title bar row (`header.tsx`) - or nothing when the header is
-   * hidden, in which case the bar starts at the top of the pane itself.
+   * Top of the Mac format bar: the Mac editor has no header of its own (the
+   * actions live in the native window toolbar), so the bar starts at the very
+   * top of the pane. Kept via the (now zero) header constant so the offset
+   * stays in one place.
    */
-  const macToolbarTop = props.settings.noHeader ? 0 : MAC_EDITOR_HEADER_HEIGHT;
+  const macToolbarTop = MAC_EDITOR_HEADER_HEIGHT;
 
   useEffect(() => {
     props.onEditorUpdate(editor);
@@ -60,10 +58,9 @@ export default function TiptapEditorWrapper(props: {
                 ? {
                     /**
                      * The Mac format bar is pinned to the top of the editor,
-                     * right under the 52 pt header, the way Pages and Notes
-                     * put it. It does not scroll: the editor's content is
-                     * padded down by its height (see `editor.tsx`) and then
-                     * scrolls underneath it.
+                     * the way Pages and Notes put it. It does not scroll: the
+                     * editor's content is padded down by its height (see
+                     * `editor.tsx`) and then scrolls underneath it.
                      */
                     position: "absolute",
                     top: macToolbarTop,

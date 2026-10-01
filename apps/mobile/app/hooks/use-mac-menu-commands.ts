@@ -17,12 +17,29 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { useEffect } from "react";
-import { NativeEventEmitter, NativeModules, Platform } from "react-native";
+import { useThemeColors } from "@notesnook/theme";
+import React, { useEffect } from "react";
+import {
+  NativeEventEmitter,
+  NativeModules,
+  Platform,
+  Pressable,
+  Text,
+  View
+} from "react-native";
+import { db } from "../common/database";
 import { hideDialog } from "../components/dialog/functions";
 import { runMacNoteAction } from "../components/mac-note-commands";
+import { NativeMenuItem } from "../components/native-menu";
+import { Properties } from "../components/properties";
+import AppIcon from "../components/ui/AppIcon";
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
-import { eSendEvent, hideSheet } from "../services/event-manager";
+import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
+import {
+  eSendEvent,
+  hideSheet,
+  presentSheet
+} from "../services/event-manager";
 import Navigation from "../services/navigation";
 import { useSettingStore } from "../stores/use-setting-store";
 import {
@@ -31,6 +48,7 @@ import {
 } from "../stores/use-apple-navigation-store";
 import { useGlobalSearchStore } from "../stores/use-global-search-store";
 import { useMacSidebarStore } from "../stores/use-mac-sidebar-store";
+import { useMacWindowStore } from "../stores/use-mac-window-store";
 import { eCreateTaskRequest } from "../utils/events";
 import { rootNavigatorRef } from "../utils/global-refs";
 import { selectAppleSection } from "../navigation/navigation-stack";
@@ -46,8 +64,10 @@ import { selectAppleSection } from "../navigation/navigation-stack";
 const DISMISSABLE_ROUTES = new Set(["Settings", "TaskDetail", "AddReminder"]);
 
 /**
- * Prefix of the commands the window toolbar's segmented control sends: the
- * section it switched to follows it ("section:library").
+ * Prefix of the section-switch commands: the section follows it
+ * ("section:library"). The window toolbar's segmented control that used to send
+ * them is gone; the sidebar's section rows still use the same handler, and the
+ * commands keep working for the menu bar / shortcuts.
  */
 const SECTION_COMMAND_PREFIX = "section:";
 
@@ -79,12 +99,160 @@ function closeTopmostSheetOrModal() {
 }
 
 /**
+ * `noteInfo` / `noteMore`: the Properties sheet of the note that is open in the
+ * editor, i.e. the very sheet the editor's ⋮ > Properties opens (see
+ * screens/editor/tiptap/use-editor-events.tsx). The current note is read the
+ * same way it is there, straight from the tab store, because this handler runs
+ * outside React. With no note open it is a no-op.
+ */
+async function showCurrentNoteProperties() {
+  const noteId = useTabStore
+    .getState()
+    .getNoteIdForTab(useTabStore.getState().currentTab);
+  if (!noteId) return;
+  const note = await db.notes?.note(noteId);
+  if (!note) return;
+  Properties.present(note, false);
+}
+
+type SheetColors = ReturnType<typeof useThemeColors>["colors"];
+
+/**
+ * Rows of the list menu, flattened for the action sheet: groups and submenus
+ * become headings (only when they carry a title), their selectable leaves
+ * become rows indented one level per nesting depth. `checked` / `disabled` /
+ * `destructive` keep the meaning they have in a native UIMenu.
+ */
+function listMenuRows(
+  items: NativeMenuItem[],
+  onSelect: (id: string) => void,
+  colors: SheetColors,
+  depth = 0
+): React.ReactNode[] {
+  return items.flatMap((item, index) => {
+    const key = `${depth}.${index}.${item.id ?? item.title}`;
+    if (item.children?.length) {
+      return [
+        item.title
+          ? React.createElement(
+              Text,
+              {
+                key: `${key}-heading`,
+                accessibilityRole: "header",
+                style: {
+                  color: colors.secondary.paragraph,
+                  fontSize: 13,
+                  fontWeight: "600",
+                  paddingHorizontal: 16,
+                  paddingTop: 12,
+                  paddingBottom: 4,
+                  marginLeft: depth * 12
+                }
+              },
+              item.title
+            )
+          : null,
+        ...listMenuRows(item.children, onSelect, colors, depth + 1)
+      ];
+    }
+    if (!item.id) return [];
+    return [
+      React.createElement(
+        Pressable,
+        {
+          key,
+          accessibilityRole: "button",
+          accessibilityState: {
+            disabled: !!item.disabled,
+            selected: !!item.checked
+          },
+          disabled: !!item.disabled,
+          onPress: () => {
+            hideSheet();
+            onSelect(item.id as string);
+          },
+          style: {
+            flexDirection: "row",
+            alignItems: "center",
+            paddingVertical: 11,
+            paddingHorizontal: 16 + depth * 12,
+            opacity: item.disabled ? 0.5 : 1
+          }
+        },
+        React.createElement(
+          Text,
+          {
+            style: {
+              flex: 1,
+              fontSize: 15,
+              color: item.destructive
+                ? colors.error.paragraph
+                : colors.primary.paragraph
+            }
+          },
+          item.title
+        ),
+        item.checked
+          ? React.createElement(AppIcon, {
+              key: "check",
+              name: "check",
+              size: 18,
+              color: colors.primary.accent
+            })
+          : null
+      )
+    ];
+  });
+}
+
+/** The list menu rendered as the app's standard list of options. */
+function MacListOptionsSheet({
+  items,
+  onSelect
+}: {
+  items: NativeMenuItem[];
+  onSelect: (id: string) => void;
+}) {
+  const { colors } = useThemeColors();
+  return React.createElement(
+    View,
+    { style: { paddingVertical: 8 } },
+    ...listMenuRows(items, onSelect, colors)
+  );
+}
+
+/**
+ * `listOptions`: opens the focused list's menu, which the list header publishes
+ * into useMacWindowStore (see components/list-view-menu.ts, which also builds
+ * the "…" menu itself). There is no way to pop a UIMenu from JS on demand -
+ * VeyraNMenu opens its menu when its own overlay is tapped
+ * (components/native-menu.tsx), and the Mac menu module exposes no present
+ * method - so the menu is shown through the app's existing list-of-options
+ * presentation, the action sheet (services/event-manager presentSheet), and a
+ * selection is handed to the header's own onSelect. No list on screen (or no
+ * header menu) means nothing to open.
+ */
+function showListOptions() {
+  const listMenu = useMacWindowStore.getState().listMenu;
+  if (!listMenu?.items?.length) return;
+  presentSheet({
+    context: "mac-list-options",
+    component: React.createElement(MacListOptionsSheet, {
+      items: listMenu.items,
+      onSelect: listMenu.onSelect
+    })
+  });
+}
+
+/**
  * Handles the commands sent by the Mac Catalyst window chrome through the
  * VeyraNMacMenu native module: the menu bar (File > New Note, Edit > Find in
  * Notes, the Note menu, the View sections and Toggle Sidebar, Settings…,
- * Escape) and the window toolbar (the Library/Tasks/Search segmented control,
- * New Note / New Task, and the search field - "search" while it is typed in,
- * "searchSubmit" on Return, both with the field's text in the event body).
+ * Escape) and the window toolbar (New Note / New Task, the search field -
+ * "search" while it is typed in, "searchSubmit" on Return, both with the
+ * field's text in the event body - and the note/list commands the toolbar's
+ * labels have no room for: "shareNote", "noteInfo" / "noteMore" for the open
+ * note's Properties, and "listOptions" for the focused list's own menu).
  * Inert on iPhone and iPad.
  *
  * Everything that acts on a note (Pin, Add to Favorites, Move to Trash) goes
@@ -177,6 +345,22 @@ export const useMacMenuCommands = () => {
           case "findInNotes":
             // Edit > Find in Notes (Cmd-Shift-F): the Search section.
             selectAppleSection("search");
+            break;
+          case "shareNote":
+            // The open note's own Share action (mac-note-commands.tsx); a
+            // no-op with no note open, like the other note commands.
+            runMacNoteAction("share");
+            break;
+          case "noteInfo":
+          case "noteMore":
+            // Both open the open note's Properties sheet; with no note open
+            // there is nothing to show.
+            void showCurrentNoteProperties();
+            break;
+          case "listOptions":
+            // The focused list's own "Sort & View" menu, published by the
+            // list header (see showListOptions).
+            showListOptions();
             break;
           case "pinNote":
             // The open note's own Pin/Unpin action.

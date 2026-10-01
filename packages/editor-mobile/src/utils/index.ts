@@ -42,10 +42,11 @@ export type Settings = {
   deviceMode: "mobile" | "smallTablet" | "tablet";
   /**
    * True in the Mac Catalyst app (see `apps/mobile/app/utils/constants.ts`).
-   * Mac gets a desktop editor chrome: a fixed 52 pt header that lines up with
-   * the window's traffic lights/section control, and the formatting toolbar as
-   * a single row at the top of the pane instead of the iOS keyboard toolbar.
-   * Absent (falsy) on iPhone and iPad, which keep the existing layout.
+   * Mac gets desktop editor chrome: no editor header of its own (the editor
+   * actions live in the window's native NSToolbar) and the formatting toolbar
+   * as a single row at the top of the pane instead of the iOS keyboard
+   * toolbar. Absent (falsy) on iPhone and iPad, which keep the existing
+   * layout.
    */
   isMacCatalyst: boolean;
   premium: boolean;

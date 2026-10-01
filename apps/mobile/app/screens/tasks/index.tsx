@@ -31,7 +31,6 @@ import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import {
   ActivityIndicator,
-  Alert,
   AppState,
   FlatList,
   Keyboard,
@@ -57,7 +56,11 @@ import {
   IosMoreMenu,
   IosNavBar
 } from "../../components/ios-nav-bar";
-import { ContextMenu, NativeMenuItem } from "../../components/native-menu";
+import {
+  compactMenu,
+  ContextMenu,
+  NativeMenuItem
+} from "../../components/native-menu";
 import { SwipeRow } from "../../components/swipe-row";
 import { TaskSymbolView } from "../../components/task-symbol-view";
 import { MacHoverHighlight, useMacHover } from "../../components/mac-hover";
@@ -69,6 +72,12 @@ import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../utils/constants";
 import { eCreateTaskRequest } from "../../utils/events";
 import { SystemColorName, systemColor } from "../../utils/ios-system-colors";
+import { showAlert } from "../../utils/mac-alert";
+import { macAccent, macSelectionFill } from "../../utils/mac-system-state";
+import { useMacListTitleStore } from "../../utils/mac-window-title";
+import { useAppleNavigationStore } from "../../stores/use-apple-navigation-store";
+import { useMacSystemStore } from "../../stores/use-mac-system-store";
+import { useMacWindowStore } from "../../stores/use-mac-window-store";
 import { FavoritesEditor } from "./favorites-editor";
 import {
   ListCustomization,
@@ -133,6 +142,17 @@ const TILE_SMART_LISTS = new Set<SmartList>([
 /** Undo window for deletions and the time a checked-off Task stays visible. */
 const UNDO_DELETE_MS = 4000;
 const COMPLETE_LINGER_MS = 1500;
+
+/**
+ * Mac overview metrics. Catalyst has no Large Title, "Edit" button or 26 pt
+ * tiles: the favourites overview is a compact source list (see
+ * components/mac-sidebar.tsx for the same 6 pt row radius and 10 pt inset).
+ */
+const MAC_TILE_RADIUS = 10;
+const MAC_TILE_ICON_SIZE = 24;
+const MAC_ROW_RADIUS = 6;
+const MAC_ROW_INSET = 10;
+const MAC_ROW_PADDING = 8;
 
 function dateLabel(value: string) {
   const [year, month, day] = value.split("-").map(Number);
@@ -233,6 +253,10 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const { width, fontScale } = useWindowDimensions();
   const safeAreaInsets = useSafeAreaInsets();
   const isTablet = width >= 700;
+  // Catalyst is a split view: `isTablet` is true at the 900 pt minimum window
+  // width, so the iPad selection highlighting stays on there too (the Mac tile
+  // and row branches below only change *how* it is drawn).
+  const isMac = isMacCatalyst() === true;
   // Accessibility text sizes (AX1 and up) get a single-column overview so
   // titles never break mid-word and counts never overflow their tile.
   const accessibilityLayout = fontScale >= 1.4;
@@ -526,6 +550,34 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     [lists]
   );
 
+  /**
+   * Mac's window toolbar carries the list column's name, so the selected Task
+   * list ("Today", a List's name) is published as the window's list title.
+   * Guarded like the Library header's publication (components/header/index.tsx):
+   * the cleanup only clears the title this screen put there, so a list title
+   * the Library header published - or one it publishes right after this screen
+   * unmounts - is never swallowed. Inert on iPhone/iPad, which never read it.
+   */
+  const publishedTaskTitleRef = React.useRef<string | undefined>(undefined);
+  React.useEffect(() => {
+    if (!isMac) return;
+    const title = selectedLabel || undefined;
+    publishedTaskTitleRef.current = title;
+    if (title) useMacListTitleStore.getState().setListTitle(title);
+  }, [isMac, selectedLabel]);
+  React.useEffect(() => {
+    if (!isMac) return;
+    return () => {
+      const published = publishedTaskTitleRef.current;
+      if (
+        published !== undefined &&
+        useMacListTitleStore.getState().listTitle === published
+      ) {
+        useMacListTitleStore.getState().setListTitle(undefined);
+      }
+    };
+  }, [isMac]);
+
   const openDetail = (
     task?: Task,
     draft?: { title?: string; date?: string; time?: string }
@@ -546,7 +598,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const createList = () => setEditingList(null);
 
   const deleteList = (list: TaskList) => {
-    Alert.alert(strings.tasksDeleteList(), strings.tasksDeleteListConfirm(), [
+    showAlert(strings.tasksDeleteList(), strings.tasksDeleteListConfirm(), [
       { text: strings.cancel(), style: "cancel" },
       {
         text: strings.delete(),
@@ -562,7 +614,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
             setShowListOnPhone(false);
             await refresh();
           } catch {
-            Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+            showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
           }
         }
       }
@@ -570,6 +622,126 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   };
 
   const editList = (list: TaskList) => setEditingList(list);
+
+  /**
+   * The list column's "Sort & View" menu (Show/Hide Completed, Edit List,
+   * Delete List) as plain items/onSelect data, so it can serve two masters: the
+   * column's own "…" button on iPhone/iPad, and - on Mac - the window toolbar's
+   * Sort & View button, which opens whatever the focused screen publishes into
+   * useMacWindowStore (components/header/index.tsx uses the same pattern). The
+   * window toolbar's own `listOptions` command is what consumes it.
+   */
+  const taskListMenuItems = compactMenu([
+    {
+      title: "",
+      inline: true,
+      children: [
+        {
+          id: "toggle-completed",
+          title: includeCompleted
+            ? strings.tasksHideCompleted()
+            : strings.tasksShowCompleted(),
+          symbol: includeCompleted ? "eye.slash" : "eye",
+          disabled: selection.kind === "smart" && selection.id === "completed"
+        }
+      ]
+    },
+    selectedList
+      ? {
+          title: "",
+          inline: true,
+          children: compactMenu([
+            {
+              id: "edit-list",
+              title: strings.tasksEditList(),
+              symbol: "info.circle"
+            },
+            selectedList.id !== defaultListId
+              ? {
+                  id: "delete-list",
+                  title: strings.tasksDeleteList(),
+                  symbol: "trash",
+                  destructive: true
+                }
+              : undefined
+          ])
+        }
+      : undefined
+  ]);
+
+  const onTaskListMenuSelect = (id: string) => {
+    if (id === "toggle-completed") {
+      setLoading(true);
+      setIncludeCompleted((value) => !value);
+    } else if (id === "edit-list" && selectedList) editList(selectedList);
+    else if (id === "delete-list" && selectedList) deleteList(selectedList);
+  };
+
+  /**
+   * `items` and `onSelect` are rebuilt on every render, but the published
+   * `onSelect` must stay stable: it delegates to the latest render's handler, so
+   * switching between two Lists (whose menu items are identical) cannot leave
+   * the toolbar's Sort & View editing the List that was selected when the menu
+   * was published. The effect below only has to re-publish when the items
+   * themselves change (a List's Edit/Delete group appearing, Show/Hide
+   * Completed flipping).
+   */
+  const taskListMenuSelectRef = React.useRef(onTaskListMenuSelect);
+  taskListMenuSelectRef.current = onTaskListMenuSelect;
+  const publishedTaskListMenuSelect = React.useCallback(
+    (id: string) => taskListMenuSelectRef.current(id),
+    []
+  );
+  const taskListMenuSignature = taskListMenuItems
+    .map((item) => `${item.id ?? item.title}:${item.checked ? 1 : 0}`)
+    .join("|");
+  const taskListMenuItemsRef = React.useRef(taskListMenuItems);
+  taskListMenuItemsRef.current = taskListMenuItems;
+  /**
+   * Publish while this screen is the Tasks section on top, clear otherwise -
+   * and follow section changes, because Tasks is not always unmounted when it
+   * stops being the visible section (the Search section is pushed over the same
+   * route). Otherwise Search's toolbar would keep opening the Tasks menu. The
+   * cleanup only clears what this screen published, so the Library header's own
+   * menu is never swallowed.
+   */
+  React.useEffect(() => {
+    if (!isMac) return;
+    const clear = () => {
+      const current = useMacWindowStore.getState().listMenu;
+      if (current && current.onSelect === publishedTaskListMenuSelect) {
+        useMacWindowStore.getState().setListMenu(undefined);
+      }
+    };
+    const sync = () => {
+      if (useAppleNavigationStore.getState().section !== "tasks") {
+        clear();
+        return;
+      }
+      useMacWindowStore.getState().setListMenu({
+        items: taskListMenuItemsRef.current,
+        onSelect: publishedTaskListMenuSelect
+      });
+    };
+    sync();
+    const unsubscribe = useAppleNavigationStore.subscribe(sync);
+    return () => {
+      unsubscribe();
+      clear();
+    };
+    // The signature re-publishes changed items; the ref carries the fresh
+    // items into `sync`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMac, taskListMenuSignature, publishedTaskListMenuSelect]);
+
+  const listMenu = () => (
+    <IosMoreMenu
+      accessibilityLabel={strings.more()}
+      testID="task-list-more"
+      items={taskListMenuItems}
+      onSelect={onTaskListMenuSelect}
+    />
+  );
 
   const createTask = async (draft: string) => {
     const parsed = parseQuickAdd(draft);
@@ -595,7 +767,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       await refresh();
       return true;
     } catch {
-      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
       return false;
     }
   };
@@ -616,12 +788,12 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
             await db.tasks.uncomplete(task.id);
             await refresh();
           } catch {
-            Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+            showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
           }
         }
       });
     } catch {
-      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
     } finally {
       setPendingComplete((current) => {
         const next = new Set(current);
@@ -649,7 +821,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         await db.tasks.uncomplete(task.id);
         await refresh();
       } catch {
-        Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+        showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
       }
       return;
     }
@@ -670,7 +842,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       await db.tasks.update(task.id, { flagged: !task.flagged });
       await refresh();
     } catch {
-      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
     }
   };
 
@@ -679,7 +851,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
       await db.tasks.update(task.id, patch);
       await refresh();
     } catch {
-      Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+      showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
     }
   };
 
@@ -704,7 +876,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
           await db.tasks.remove(task.id);
           await refresh();
         } catch {
-          Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+          showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
         } finally {
           setPendingDelete((current) => {
             const next = new Set(current);
@@ -906,95 +1078,151 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     </Pressable>
   );
 
+  /**
+   * The favourites overview. iPhone/iPad keep the 26 pt Reminders cards (and
+   * the "Edit" bar button above); Mac draws compact source-list tiles instead,
+   * and the removed Edit button becomes the tiles area's context menu
+   * ("Edit Favorites").
+   */
+  const overviewTiles = (
+    <View
+      style={{
+        flexDirection: "row",
+        flexWrap: "wrap",
+        ...(isMac
+          ? { gap: 8, paddingHorizontal: 12, paddingTop: 8 }
+          : {
+              justifyContent: "space-between",
+              rowGap: 12,
+              paddingHorizontal: 16,
+              paddingTop: 6
+            })
+      }}
+    >
+      {favorites.flatMap((ref) => {
+        const smart = ref.startsWith("smart:")
+          ? SMART_LISTS.find((item) => item.id === ref.slice(6))
+          : undefined;
+        if (smart && !TILE_SMART_LISTS.has(smart.id)) return [];
+        const taskList = ref.startsWith("list:")
+          ? lists.find((item) => item.id === ref.slice(5))
+          : undefined;
+        if (!smart && !taskList) return [];
+        const next: Selection = smart
+          ? { kind: "smart", id: smart.id }
+          : { kind: "list", id: taskList!.id };
+        // The current selection is only shown where the list sits next to the
+        // overview: iPad and Mac (whose split view keeps `isTablet` true). On
+        // iPhone nothing stays highlighted.
+        const active =
+          isTablet && selection.kind === next.kind && selection.id === next.id;
+        const count = smart
+          ? counts[smart.id]
+          : allTasks.filter(
+              (task) => task.listId === taskList!.id && !task.completed
+            ).length;
+        const testID = smart
+          ? `task-smart-${smart.id}`
+          : `task-favorite-list-${taskList!.id}`;
+        const label = smart ? smart.label() : taskList!.name;
+        const symbol = smart
+          ? smart.symbol
+          : taskListSymbol(taskList!.symbol);
+        const color = smart
+          ? systemColor(smart.color, isDark)
+          : taskListColor(taskList!.color);
+        return [
+          isMac ? (
+            <MacOverviewTile
+              key={ref}
+              testID={testID}
+              label={label}
+              count={count}
+              symbol={symbol}
+              color={color}
+              active={active}
+              accessibilityLayout={accessibilityLayout}
+              onPress={() => select(next)}
+            />
+          ) : (
+            tile({
+              key: ref,
+              testID,
+              label,
+              count,
+              symbol,
+              color,
+              active,
+              onPress: () => select(next)
+            })
+          )
+        ];
+      })}
+    </View>
+  );
+
   const nav = (
     <ScrollView
       style={{ flex: 1 }}
       keyboardShouldPersistTaps="handled"
       contentContainerStyle={{ paddingBottom: bottomInset }}
     >
-      <IosNavBar
-        trailing={
-          <IosBarButton
-            label={strings.edit()}
-            accessibilityLabel={strings.tasksEditFavorites()}
-            onPress={() => setFavoritesEditorOpen(true)}
+      {!isMac ? (
+        <>
+          <IosNavBar
+            trailing={
+              <IosBarButton
+                label={strings.edit()}
+                accessibilityLabel={strings.tasksEditFavorites()}
+                onPress={() => setFavoritesEditorOpen(true)}
+              />
+            }
           />
-        }
-      />
-      <IosLargeTitle title={strings.tasksTitle()} />
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          justifyContent: "space-between",
-          rowGap: 12,
-          paddingHorizontal: 16,
-          paddingTop: 6
-        }}
-      >
-        {favorites.flatMap((ref) => {
-          const smart = ref.startsWith("smart:")
-            ? SMART_LISTS.find((item) => item.id === ref.slice(6))
-            : undefined;
-          if (smart && !TILE_SMART_LISTS.has(smart.id)) return [];
-          const taskList = ref.startsWith("list:")
-            ? lists.find((item) => item.id === ref.slice(5))
-            : undefined;
-          if (!smart && !taskList) return [];
-          const next: Selection = smart
-            ? { kind: "smart", id: smart.id }
-            : { kind: "list", id: taskList!.id };
-          // The current selection is only shown on iPad, where the list sits
-          // next to the overview. On iPhone nothing stays highlighted.
-          const active =
-            isTablet &&
-            selection.kind === next.kind &&
-            selection.id === next.id;
-          const count = smart
-            ? counts[smart.id]
-            : allTasks.filter(
-                (task) => task.listId === taskList!.id && !task.completed
-              ).length;
-          return [
-            tile({
-              key: ref,
-              testID: smart
-                ? `task-smart-${smart.id}`
-                : `task-favorite-list-${taskList!.id}`,
-              label: smart ? smart.label() : taskList!.name,
-              count,
-              symbol: smart ? smart.symbol : taskListSymbol(taskList!.symbol),
-              color: smart
-                ? systemColor(smart.color, isDark)
-                : taskListColor(taskList!.color),
-              active,
-              onPress: () => select(next)
-            })
-          ];
-        })}
-      </View>
+          <IosLargeTitle title={strings.tasksTitle()} />
+        </>
+      ) : null}
+      {isMac ? (
+        <ContextMenu
+          title={strings.tasksTitle()}
+          items={[
+            {
+              id: "edit-favorites",
+              title: strings.tasksEditFavorites(),
+              symbol: "pencil"
+            }
+          ]}
+          onSelect={(id) => {
+            if (id === "edit-favorites") setFavoritesEditorOpen(true);
+          }}
+        >
+          {overviewTiles}
+        </ContextMenu>
+      ) : (
+        overviewTiles
+      )}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: 20,
-          paddingTop: 22,
-          paddingBottom: 10
+          paddingHorizontal: isMac ? 12 : 20,
+          paddingTop: isMac ? 16 : 22,
+          paddingBottom: isMac ? 4 : 10
         }}
       >
         <Text
           accessibilityRole="header"
           style={{
             flex: 1,
-            color: visual.primaryText,
-            fontSize: 21,
-            fontWeight: "700"
+            color: isMac ? visual.secondaryText : visual.primaryText,
+            fontSize: isMac ? 13 : 21,
+            fontWeight: isMac ? "600" : "700"
           }}
         >
           {strings.tasksLists()}
         </Text>
         <IosBarButton
           symbol="plus"
+          iconSize={isMac ? 16 : 23}
           accessibilityLabel={strings.tasksNewList()}
           onPress={createList}
         />
@@ -1021,48 +1249,63 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
               if (id === "edit") editList(item);
               else if (id === "delete") deleteList(item);
             }}
-            style={{ marginHorizontal: 20 }}
+            style={{ marginHorizontal: isMac ? 0 : 20 }}
           >
-            <Pressable
-              onPress={() => select({ kind: "list", id: item.id })}
-              accessibilityRole="button"
-              accessibilityLabel={item.name}
-              style={{
-                minHeight: 52,
-                flexDirection: "row",
-                alignItems: "center",
-                paddingHorizontal: 12,
-                borderRadius: visual.controlRadius,
-                backgroundColor:
-                  isTablet &&
-                  selection.kind === "list" &&
-                  selection.id === item.id
-                    ? visual.selectedSurface
-                    : "transparent"
-              }}
-            >
-              <TaskSymbolView
-                name={taskListSymbol(item.symbol)}
-                size={21}
+            {isMac ? (
+              <MacTaskListRow
+                name={item.name}
+                symbol={taskListSymbol(item.symbol)}
                 color={taskListColor(item.color)}
+                count={
+                  allTasks.filter(
+                    (task) => task.listId === item.id && !task.completed
+                  ).length
+                }
+                selected={selection.kind === "list" && selection.id === item.id}
+                onPress={() => select({ kind: "list", id: item.id })}
               />
-              <Text
-                numberOfLines={1}
+            ) : (
+              <Pressable
+                onPress={() => select({ kind: "list", id: item.id })}
+                accessibilityRole="button"
+                accessibilityLabel={item.name}
                 style={{
-                  flex: 1,
-                  color: visual.primaryText,
-                  fontSize: 16,
-                  marginLeft: 12
+                  minHeight: 52,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  paddingHorizontal: 12,
+                  borderRadius: visual.controlRadius,
+                  backgroundColor:
+                    isTablet &&
+                    selection.kind === "list" &&
+                    selection.id === item.id
+                      ? visual.selectedSurface
+                      : "transparent"
                 }}
               >
-                {item.name}
-              </Text>
-              <TaskSymbolView
-                name="chevron.right"
-                size={13}
-                color={visual.tertiaryText}
-              />
-            </Pressable>
+                <TaskSymbolView
+                  name={taskListSymbol(item.symbol)}
+                  size={21}
+                  color={taskListColor(item.color)}
+                />
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    flex: 1,
+                    color: visual.primaryText,
+                    fontSize: 16,
+                    marginLeft: 12
+                  }}
+                >
+                  {item.name}
+                </Text>
+                <TaskSymbolView
+                  name="chevron.right"
+                  size={13}
+                  color={visual.tertiaryText}
+                />
+              </Pressable>
+            )}
           </ContextMenu>
         ))}
       </View>
@@ -1369,25 +1612,51 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
 
   const list = (
     <View style={{ flex: 1 }}>
-      {!isTablet ? (
-        <IosNavBar
-          backTitle={strings.tasksTitle()}
-          onBack={() => {
-            Keyboard.dismiss();
-            setShowListOnPhone(false);
-          }}
-          trailing={listMenu()}
-        />
+      {isMac ? (
+        /**
+         * Mac's window toolbar is this column's chrome: it shows the selected
+         * list's name (published through useMacListTitleStore above) and opens
+         * the list menu published through useMacWindowStore, so the column
+         * itself draws neither a nav bar nor a large title. Only the summary
+         * line a List shows stays, as the compact 12 pt secondary row macOS
+         * uses for such metadata.
+         */
+        selection.kind === "list" && !loading ? (
+          <Text
+            style={{
+              color: visual.secondaryText,
+              fontSize: 12,
+              paddingHorizontal: 16,
+              paddingTop: 8,
+              paddingBottom: 2
+            }}
+          >
+            {listSummary}
+          </Text>
+        ) : null
       ) : (
-        <IosNavBar trailing={listMenu()} />
+        <>
+          {!isTablet ? (
+            <IosNavBar
+              backTitle={strings.tasksTitle()}
+              onBack={() => {
+                Keyboard.dismiss();
+                setShowListOnPhone(false);
+              }}
+              trailing={listMenu()}
+            />
+          ) : (
+            <IosNavBar trailing={listMenu()} />
+          )}
+          <IosLargeTitle
+            title={selectedLabel}
+            color={accent}
+            subtitle={
+              selection.kind === "list" && !loading ? listSummary : undefined
+            }
+          />
+        </>
       )}
-      <IosLargeTitle
-        title={selectedLabel}
-        color={accent}
-        subtitle={
-          selection.kind === "list" && !loading ? listSummary : undefined
-        }
-      />
       {loading ? (
         <ActivityIndicator
           style={{ marginTop: 40 }}
@@ -1467,57 +1736,6 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     </View>
   );
 
-  function listMenu() {
-    return (
-      <IosMoreMenu
-        accessibilityLabel={strings.more()}
-        testID="task-list-more"
-        items={[
-          {
-            title: "",
-            inline: true,
-            children: [
-              {
-                id: "toggle-completed",
-                title: includeCompleted
-                  ? strings.tasksHideCompleted()
-                  : strings.tasksShowCompleted(),
-                symbol: includeCompleted ? "eye.slash" : "eye",
-                disabled:
-                  selection.kind === "smart" && selection.id === "completed"
-              }
-            ]
-          },
-          selectedList && {
-            title: "",
-            inline: true,
-            children: [
-              {
-                id: "edit-list",
-                title: strings.tasksEditList(),
-                symbol: "info.circle"
-              },
-              selectedList.id !== defaultListId && {
-                id: "delete-list",
-                title: strings.tasksDeleteList(),
-                symbol: "trash",
-                destructive: true
-              }
-            ].filter(Boolean) as NativeMenuItem[]
-          }
-        ]}
-        onSelect={(id) => {
-          if (id === "toggle-completed") {
-            setLoading(true);
-            setIncludeCompleted((value) => !value);
-          } else if (id === "edit-list" && selectedList) editList(selectedList);
-          else if (id === "delete-list" && selectedList)
-            deleteList(selectedList);
-        }}
-      />
-    );
-  }
-
   return (
     <SafeAreaView
       edges={["top", "left", "right"]}
@@ -1565,6 +1783,193 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         }}
       />
     </SafeAreaView>
+  );
+}
+
+/**
+ * One favourites tile on Mac: a compact two-column card instead of the 82 pt
+ * Reminders tile - 24 pt symbol circle, 13 pt semibold secondary label, 20 pt
+ * bold right-aligned count - with macOS' own selection fill rather than the
+ * theme's `selectedSurface` (see macSelectionFill / mac-system-state.ts). The
+ * two columns come from the wrapping row's 8 pt gap and this card's 48% width
+ * (a lone last tile keeps that width, as in a source list); the accessibility
+ * text sizes fall back to one column.
+ */
+function MacOverviewTile({
+  testID,
+  label,
+  count,
+  symbol,
+  color,
+  active,
+  accessibilityLayout,
+  onPress
+}: {
+  testID: string;
+  label: string;
+  count: number;
+  symbol: string;
+  color: string;
+  active: boolean;
+  accessibilityLayout: boolean;
+  onPress: () => void;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const systemAccent = useMacSystemStore((state) => state.accent);
+  const windowActive = useMacSystemStore((state) => state.active);
+  const selection = macSelectionFill(
+    macAccent(colors.primary.accent, systemAccent),
+    windowActive,
+    isDark
+  );
+  const { hovered, hoverProps } = useMacHover();
+  return (
+    <Pressable
+      {...hoverProps}
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}, ${count}`}
+      accessibilityState={{ selected: active }}
+      style={{
+        width: accessibilityLayout ? "100%" : "48%",
+        minHeight: 56,
+        paddingHorizontal: 12,
+        paddingVertical: 10,
+        borderRadius: MAC_TILE_RADIUS,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        overflow: "hidden"
+      }}
+    >
+      <MacHoverHighlight visible={hovered && !active} radius={MAC_TILE_RADIUS} />
+      {active ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: MAC_TILE_RADIUS,
+            backgroundColor: selection.color,
+            opacity: selection.opacity
+          }}
+        />
+      ) : null}
+      <SymbolTile
+        symbol={symbol}
+        color={color}
+        shape="circle"
+        size={MAC_TILE_ICON_SIZE}
+      />
+      <Text
+        numberOfLines={1}
+        style={{
+          flex: 1,
+          color: visual.secondaryText,
+          fontSize: 13,
+          fontWeight: "600"
+        }}
+      >
+        {label}
+      </Text>
+      <Text
+        style={{ color: visual.primaryText, fontSize: 20, fontWeight: "700" }}
+      >
+        {count}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
+ * One List row of the Mac overview: a source-list row (6 pt rounded selection
+ * fill, 10 pt inset, 8 pt inner padding, no chevron) with the List's open-Task
+ * count right-aligned in the secondary color - the compact macOS counterpart of
+ * the 52 pt chevron row iPhone/iPad keep.
+ */
+function MacTaskListRow({
+  name,
+  symbol,
+  color,
+  count,
+  selected,
+  onPress
+}: {
+  name: string;
+  symbol: string;
+  color: string;
+  count: number;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const systemAccent = useMacSystemStore((state) => state.accent);
+  const windowActive = useMacSystemStore((state) => state.active);
+  const selection = macSelectionFill(
+    macAccent(colors.primary.accent, systemAccent),
+    windowActive,
+    isDark
+  );
+  const { hovered, hoverProps } = useMacHover();
+  return (
+    <Pressable
+      {...hoverProps}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={name}
+      accessibilityState={{ selected }}
+      style={{
+        minHeight: 30,
+        flexDirection: "row",
+        alignItems: "center",
+        marginHorizontal: MAC_ROW_INSET,
+        paddingHorizontal: MAC_ROW_PADDING,
+        borderRadius: MAC_ROW_RADIUS,
+        overflow: "hidden"
+      }}
+    >
+      <MacHoverHighlight visible={hovered && !selected} radius={MAC_ROW_RADIUS} />
+      {selected ? (
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: MAC_ROW_RADIUS,
+            backgroundColor: selection.color,
+            opacity: selection.opacity
+          }}
+        />
+      ) : null}
+      <TaskSymbolView
+        name={symbol}
+        size={20}
+        color={selected ? selection.color : color}
+      />
+      <Text
+        numberOfLines={1}
+        style={{
+          flex: 1,
+          color: visual.primaryText,
+          fontSize: 14,
+          marginLeft: 8
+        }}
+      >
+        {name}
+      </Text>
+      <Text style={{ color: visual.secondaryText, fontSize: 13, marginLeft: 8 }}>
+        {count}
+      </Text>
+    </Pressable>
   );
 }
 

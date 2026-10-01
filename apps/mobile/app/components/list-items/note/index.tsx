@@ -49,6 +49,7 @@ import { useSelectionStore } from "../../../stores/use-selection-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../../utils/constants";
+import { systemColor } from "../../../utils/ios-system-colors";
 import { Properties } from "../../properties";
 import AppIcon from "../../ui/AppIcon";
 import { IconButton } from "../../ui/icon-button";
@@ -295,7 +296,9 @@ const NoteItem = ({
                     testID="icon-star"
                     name="star-outline"
                     size={AppFontSize.sm}
-                    color="orange"
+                    // F6: macOS asks for the system orange; iOS keeps the
+                    // platform's generic "orange".
+                    color={isMac ? systemColor("orange", isDark) : "orange"}
                   />
                 ) : null}
 

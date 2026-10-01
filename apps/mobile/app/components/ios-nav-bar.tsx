@@ -296,7 +296,13 @@ export function IosSearchField({
         flexDirection: "row",
         alignItems: "center",
         gap: isMac ? 4 : 6,
-        backgroundColor: isDark ? "#1C1C1E" : "rgba(118,118,128,0.12)"
+        // F3: the Mac field is NSColor.controlBackgroundColor, taken from the
+        // Mac token branch; iPhone/iPad keep their hardcoded field fill.
+        backgroundColor: isMac
+          ? visual.secondarySurface
+          : isDark
+          ? "#1C1C1E"
+          : "rgba(118,118,128,0.12)"
       }}
     >
       <TaskSymbolView

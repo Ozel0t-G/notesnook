@@ -334,7 +334,44 @@ static WKWebView *VeyraNFirstVisibleWebView(UIView *view) {
   if (@available(iOS 15.0, *)) {
     escape.wantsPriorityOverSystemBehavior = YES;
   }
-  return @[ escape ];
+  // Note list navigation (WP07/N3). No priority over system behaviour: a text
+  // field or the editor's WKWebView is earlier in the responder chain and keeps
+  // its own arrow keys; these only fire when nothing in front handled the key,
+  // and -veyran_isTextInputFirstResponder is checked as well.
+  UIKeyCommand *listPrevious =
+      [UIKeyCommand keyCommandWithInput:UIKeyInputUpArrow
+                          modifierFlags:0
+                                 action:@selector(veyranListPrevious:)];
+  UIKeyCommand *listNext =
+      [UIKeyCommand keyCommandWithInput:UIKeyInputDownArrow
+                          modifierFlags:0
+                                 action:@selector(veyranListNext:)];
+  UIKeyCommand *listOpen =
+      [UIKeyCommand keyCommandWithInput:@"\r"
+                          modifierFlags:0
+                                 action:@selector(veyranListOpen:)];
+  return @[ escape, listPrevious, listNext, listOpen ];
+}
+
+- (void)veyranListPrevious:(id)sender {
+  if ([self veyran_isTextInputFirstResponder]) {
+    return;
+  }
+  [VeyraNMacMenu sendCommand:@"listPrevious"];
+}
+
+- (void)veyranListNext:(id)sender {
+  if ([self veyran_isTextInputFirstResponder]) {
+    return;
+  }
+  [VeyraNMacMenu sendCommand:@"listNext"];
+}
+
+- (void)veyranListOpen:(id)sender {
+  if ([self veyran_isTextInputFirstResponder]) {
+    return;
+  }
+  [VeyraNMacMenu sendCommand:@"listOpen"];
 }
 
 /**

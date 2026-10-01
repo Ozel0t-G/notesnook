@@ -1,6 +1,6 @@
 # WP07 · Tastatur, Fokus und Mehrfachauswahl
 
-**Status:** offen · **Befunde:** 3 (P1×2 · P2×1) · **Abhängig von:** WP06
+**Status:** N3 (Tastaturnavigation) im Code; N2, K7 offen · **Befunde:** 3 (P1×2 · P2×1) · **Abhängig von:** WP06
 
 ## Ziel
 
@@ -34,7 +34,7 @@ Die Liste ist komplett per Tastatur bedienbar: Pfeile, Enter, Type-Select, ⌘A.
 - **Befund:** Keine Tastaturnavigation/Type-Select: kein `onKeyDown`/Arrow-Handling (Grep: 0).
 - **So macht es macOS:** Pfeiltasten zum Wandern, Enter öffnet, Buchstabe springt.
 - **Fix:** `UIKeyCommand` auf der Szene → JS; Fokuszeile im Store.
-- [ ] erledigt
+- [~] erledigt (Code, Catalyst-Build und App-Start ok; Tasten ↑ ↓ ↩ konnten ohne Tastatursteuerung nicht ausgelöst werden)
 
 #### K7
 
@@ -54,4 +54,4 @@ Die Liste ist komplett per Tastatur bedienbar: Pfeile, Enter, Type-Select, ⌘A.
 
 ## Ergebnis
 
-_(nach Abschluss ausfüllen: was geändert wurde, Commits, offene Punkte)_
+N3: `AppDelegate.mm` hat Key-Commands für ↑ ↓ ↩ (ohne Priorität, nicht in Textfeldern/Editor), die als `listPrevious/listNext/listOpen` an JS gehen. `use-mac-list-focus-store.ts` hält die Datenliste jeder angezeigten Notizliste (veröffentlicht von `components/list/index.tsx`), `moveInNoteList` in `use-mac-menu-commands.ts` öffnet die vorherige/nächste Notiz (`nextListIndex` ohne Umbruch). Der DeepSeek-Worker hing, daher von mir selbst umgesetzt.

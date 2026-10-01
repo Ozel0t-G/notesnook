@@ -45,6 +45,7 @@ import Sync from "../../services/sync";
 import { RouteName } from "../../stores/use-navigation-store";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { isMacCatalyst } from "../../utils/constants";
+import { useMacListFocusStore } from "../../stores/use-mac-list-focus-store";
 import { eScrollEvent } from "../../utils/events";
 import { fluidTabsRef } from "../../utils/global-refs";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
@@ -150,6 +151,26 @@ export default function List(props: ListProps) {
     },
     [props.renderedInRoute, props.id]
   );
+
+  // Mac keyboard navigation (WP07/N3): the focused note list publishes its data
+  // so Up/Down/Return can move through it (hooks/use-mac-menu-commands.ts).
+  useEffect(() => {
+    if (
+      !isMacCatalyst() ||
+      props.dataType !== "note" ||
+      props.isRenderedInActionSheet ||
+      !props.renderedInRoute
+    )
+      return;
+    const route = String(props.renderedInRoute);
+    useMacListFocusStore.getState().setList(route, props.data);
+    return () => useMacListFocusStore.getState().setList(route, undefined);
+  }, [
+    props.data,
+    props.dataType,
+    props.isRenderedInActionSheet,
+    props.renderedInRoute
+  ]);
 
   useEffect(() => {
     eSendEvent(eScrollEvent, {

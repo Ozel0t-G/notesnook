@@ -47,7 +47,13 @@ import {
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
 import { useGlobalSearchStore } from "../stores/use-global-search-store";
+import useNavigationStore from "../stores/use-navigation-store";
 import { useMacSidebarStore } from "../stores/use-mac-sidebar-store";
+import {
+  nextListIndex,
+  useMacListFocusStore
+} from "../stores/use-mac-list-focus-store";
+import { openNote } from "../components/list-items/note/wrapper";
 import { useMacWindowStore } from "../stores/use-mac-window-store";
 import { eCreateTaskRequest } from "../utils/events";
 import { rootNavigatorRef } from "../utils/global-refs";
@@ -288,6 +294,26 @@ export function showListOptions() {
 }
 
 /**
+ * Up / Down / Return in the note list (WP07/N3): moves the open note to the
+ * previous / next row of the list on screen and opens it, like the arrow keys
+ * in Notes. `delta` 0 re-opens the current row (Return).
+ */
+async function moveInNoteList(delta: 1 | -1 | 0) {
+  const route = useNavigationStore.getState().focusedRouteId;
+  const list = route ? useMacListFocusStore.getState().lists[route] : undefined;
+  if (!list) return;
+  const ids = await list.ids();
+  const currentId = useTabStore.getState().getCurrentNoteId();
+  const current = currentId ? ids.indexOf(currentId) : -1;
+  const index =
+    delta === 0 ? current : nextListIndex(current, delta, ids.length);
+  if (index < 0 || (index === current && delta !== 0)) return;
+  const { item } = await list.item(index);
+  if (item && (item as { type?: string }).type === "note")
+    await openNote(item as never);
+}
+
+/**
  * Handles the commands sent by the Mac Catalyst window chrome through the
  * VeyraNMacMenu native module: the menu bar (File > New Note / New Notebook /
  * Import… / Export…, Edit > Find in Notes plus the editor's own Find submenu
@@ -479,10 +505,10 @@ export const useMacMenuCommands = () => {
               command === "find"
                 ? "find"
                 : command === "findAndReplace"
-                ? "replace"
-                : command === "findNext"
-                ? "next"
-                : "previous"
+                  ? "replace"
+                  : command === "findNext"
+                    ? "next"
+                    : "previous"
             );
             break;
           case "shareNote":
@@ -531,6 +557,15 @@ export const useMacMenuCommands = () => {
             useMacSidebarStore
               .getState()
               .toggle(useSettingStore.getState().dimensions.width);
+            break;
+          case "listPrevious":
+            void moveInNoteList(-1);
+            break;
+          case "listNext":
+            void moveInNoteList(1);
+            break;
+          case "listOpen":
+            void moveInNoteList(0);
             break;
           case "escape":
             closeTopmostSheetOrModal();

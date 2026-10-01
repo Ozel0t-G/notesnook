@@ -43,7 +43,9 @@ import { TaskSymbolView } from "../task-symbol-view";
 const Intro = () => {
   const { colors } = useThemeColors();
   const { width } = useWindowDimensions();
-  const contentWidth = Math.min(width - 48, 440);
+  const isMacLayout = Platform.OS === "ios" && Platform.isMacCatalyst;
+  // Mac: a narrower centered column with macOS push-button proportions.
+  const contentWidth = Math.min(width - 48, isMacLayout ? 420 : 440);
   const accent = colors.primary.accent;
   // F6: the Continue label uses the theme's own accent foreground on the Mac
   // instead of a hardcoded white; iPhone/iPad keep the white they always had.
@@ -87,14 +89,18 @@ const Intro = () => {
         contentContainerStyle={{
           flexGrow: 1,
           alignItems: "center",
-          paddingTop: 56,
+          paddingTop: isMacLayout ? 72 : 56,
           paddingBottom: 24
         }}
       >
         <Image
           source={require("../../assets/images/veyran-icon.png")}
           accessibilityIgnoresInvertColors
-          style={{ width: 88, height: 88, borderRadius: 20 }}
+          style={
+            isMacLayout
+              ? { width: 64, height: 64, borderRadius: 14 }
+              : { width: 88, height: 88, borderRadius: 20 }
+          }
         />
         <Text
           accessibilityRole="header"
@@ -103,7 +109,7 @@ const Intro = () => {
             marginTop: 24,
             textAlign: "center",
             color: colors.primary.heading,
-            fontSize: 34,
+            fontSize: isMacLayout ? 26 : 34,
             fontWeight: "700"
           }}
         >
@@ -118,7 +124,11 @@ const Intro = () => {
               style={{ flexDirection: "row", alignItems: "center", gap: 18 }}
             >
               <View style={{ width: 44, alignItems: "center" }}>
-                <TaskSymbolView name={feature.symbol} size={34} color={accent} />
+                <TaskSymbolView
+                  name={feature.symbol}
+                  size={34}
+                  color={accent}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
@@ -158,8 +168,8 @@ const Intro = () => {
           accessibilityRole="button"
           accessibilityLabel={strings.welcomeContinue()}
           style={({ pressed }) => ({
-            minHeight: 50,
-            borderRadius: 14,
+            minHeight: isMacLayout ? 36 : 50,
+            borderRadius: isMacLayout ? 8 : 14,
             alignItems: "center",
             justifyContent: "center",
             backgroundColor: accent,
@@ -169,7 +179,7 @@ const Intro = () => {
           <Text
             style={{
               color: isMac ? colors.primary.accentForeground : "#FFFFFF",
-              fontSize: 17,
+              fontSize: isMacLayout ? 14 : 17,
               fontWeight: "600"
             }}
           >
@@ -194,7 +204,7 @@ const Intro = () => {
             opacity: pressed ? 0.5 : 1
           })}
         >
-          <Text style={{ color: accent, fontSize: 17 }}>
+          <Text style={{ color: accent, fontSize: isMacLayout ? 13 : 17 }}>
             {strings.iAlreadyHaveAnAccount()}
           </Text>
         </Pressable>

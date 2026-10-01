@@ -508,6 +508,8 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
 
     UIAction *importNotes = VeyraNMenuAction(@"Import…", @"import", YES);
     UIAction *exportNote = VeyraNMenuAction(@"Export…", @"exportNote", hasNote);
+    // I2: File > Share… opens the same share sheet as the toolbar's Share button.
+    UIAction *shareNote = VeyraNMenuAction(@"Share…", @"shareNote", hasNote);
     UIKeyCommand *printNote =
         VeyraNMenuCommand(@"Print…", @"p", UIKeyModifierCommand,
                           @selector(veyranPrint:));
@@ -518,7 +520,7 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
                                       identifier:nil
                                          options:UIMenuOptionsDisplayInline
                                         children:@[
-                                          importNotes, exportNote, printNote
+                                          importNotes, exportNote, shareNote, printNote
                                         ]];
 
     // Inserted in reverse (the second insert lands before the first), so the

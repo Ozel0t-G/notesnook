@@ -128,6 +128,13 @@ export const selectAppleSection = (selection: AppleTabBarSelection) => {
   }
 
   useAppleNavigationStore.getState().setSection(selection);
+  if (isMacCatalyst()) {
+    // Settings is a full view on Mac: leaving it for another section closes it,
+    // so it does not stay mounted underneath Tasks or Search.
+    const routes = rootNavigatorRef.current?.getState()?.routes;
+    if (routes?.[routes.length - 1]?.name === "Settings")
+      rootNavigatorRef.current?.goBack();
+  }
   if (selection === "tasks") {
     rootNavigatorRef.current?.navigate("Tasks" as any);
   } else if (selection === "search") {

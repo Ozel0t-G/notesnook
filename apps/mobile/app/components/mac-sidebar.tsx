@@ -162,16 +162,20 @@ export function MacSidebar() {
 
   // Tasks and Search are sections of their own (the native toolbar switches to
   // them): the sidebar stays mounted, but no Library row is the current one.
+  // Settings is a full view next to the sidebar: no source-list row is current.
+  const settingsOpen = useNavigationStore(
+    (state) => state.currentRoute === "Settings"
+  );
   const isCurrentDestination = React.useCallback(
     (key: string) => {
-      if (section !== "library") return false;
+      if (section !== "library" || settingsOpen) return false;
       if (key.startsWith("notebook:"))
         return focusedRouteId === key.slice("notebook:".length);
       if (key.startsWith("tag:"))
         return focusedRouteId === key.slice("tag:".length);
       return focusedRouteId === MAC_SELECTED_ROUTE_ID[key];
     },
-    [focusedRouteId, section]
+    [focusedRouteId, section, settingsOpen]
   );
 
   /** C9: the destinations' own right-click actions (see `menuItems` above). */
@@ -357,7 +361,9 @@ export function MacSidebar() {
             key={item.key}
             item={item}
             index={index}
-            selected={section === item.key.slice("section:".length)}
+            selected={
+              !settingsOpen && section === item.key.slice("section:".length)
+            }
           />
         ))}
         {collections.map((item, index) => (

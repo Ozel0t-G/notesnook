@@ -10,13 +10,13 @@ Reihenfolge = empfohlene Abarbeitung. Ein Paket pro Session. Pakete ohne gegense
 | 4 | [WP04 · Bottom-Sheets und iOS-Alerts durch Mac-Präsentation ersetzen](packages/WP04-sheets-alerts.md) | 6 (P1×1 · P2×4 · P3×1) | L | WP03 | umgesetzt, Laufzeitprüfung teilweise |
 | 5 | [WP05 · Einstellungen als eigenes Mac-Fenster](packages/WP05-settings-window.md) | 4 (P1×3 · P2×1) | L | WP04 | Variante B umgesetzt (eigenes Fenster → WP12) |
 | 6 | [WP06 · Notizliste: Swipe aus, Kontextmenüs, Zeilenlayout](packages/WP06-note-list.md) | 8 (P1×1 · P2×3 · P3×3 · —×1) | S–M | WP03 | umgesetzt (Sichtprüfung ok, Kontextmenüs ungeprüft) |
-| 7 | [WP07 · Tastatur, Fokus und Mehrfachauswahl](packages/WP07-keyboard-selection.md) | 3 (P1×2 · P2×1) | L | WP06 | offen |
+| 7 | [WP07 · Tastatur, Fokus und Mehrfachauswahl](packages/WP07-keyboard-selection.md) | 3 (P1×2 · P2×1) | L | WP06 | N3 und N2 im Code (ungetestet), Fokusring offen |
 | 8 | [WP08 · Editor wie Notes: Textspalte, Aa-Format, Suchen](packages/WP08-editor.md) | 10 (P1×5 · P2×4 · P3×1) | M–L | WP02, WP10 | umgesetzt (Textspalte, Aa-Toolbar, Format/Find-Menü, Drop; vieles ungetestet) |
 | 9 | [WP09 · Aufgaben im Mac-Layout](packages/WP09-tasks-mac-layout.md) | 3 (P1×2 · P2×1) | M | WP02, WP03 | erledigt |
 | 10 | [WP10 · Menüleiste vervollständigen und validieren](packages/WP10-menu-bar.md) | 11 (P1×1 · P2×5 · P3×4 · —×1) | M | — | umgesetzt (Help, Dock, Animation offen) |
-| 10.1 | [WP10.1 · Sidebar-Fuß mit Konto, Sync-Status und Einstellungen](packages/WP10.1-sidebar-account-footer.md) | 1 (Nutzerwunsch) | S–M | WP05, WP03 | umgesetzt, eingeloggter Zustand ungeprüft |
-| 11 | [WP11 · Fenster-Grundlagen und Mac-Controls](packages/WP11-window-controls.md) | 11 (P2×8 · P3×2 · —×1) | M | WP02 | offen |
-| 12 | [WP12 · Mehrfenster, Systemintegration, Onboarding](packages/WP12-multiwindow-system.md) | 14 (P1×1 · P2×7 · P3×6) | L | WP05, WP11 | offen |
+| 10.1 | [WP10.1 · Sidebar-Fuß mit Konto, Sync-Status und Einstellungen](packages/WP10.1-sidebar-account-footer.md) | 1 (Nutzerwunsch) | S–M | WP05, WP03 | erledigt (eingeloggt, Punkt, E-Mail-Klick → Konto-Seite geprüft) |
+| 11 | [WP11 · Fenster-Grundlagen und Mac-Controls](packages/WP11-window-controls.md) | 11 (P2×8 · P3×2 · —×1) | M | WP02 | Teil A (Fensterrahmen, Sidebar-Einklappen) umgesetzt; Spaltentrenner, Tooltips, Sidebar-Baum offen |
+| 12 | [WP12 · Mehrfenster, Systemintegration, Onboarding](packages/WP12-multiwindow-system.md) | 14 (P1×1 · P2×7 · P3×6) | L | WP05, WP11 | teilweise (Intro, Share, Entitlement); Mehrfenster u. a. bewusst offen |
 
 ## Abhängigkeiten
 

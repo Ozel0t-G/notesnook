@@ -16,7 +16,13 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-import { Editor, TiptapOptions, Toolbar, useTiptap } from "@notesnook/editor";
+import {
+  Editor,
+  getMacToolbarGroups,
+  TiptapOptions,
+  Toolbar,
+  useTiptap
+} from "@notesnook/editor";
 import { useEffect } from "react";
 import { useTabContext } from "../hooks/useTabStore";
 import { EmotionEditorToolbarTheme } from "../theme-factory";
@@ -80,7 +86,15 @@ export default function TiptapEditorWrapper(props: {
             editor={editor}
             location={isMac ? "top" : "bottom"}
             tools={
-              Array.isArray(props.settings.tools)
+              /**
+               * On Mac the toolbar is the Notes-style simplified format bar
+               * (WP08 R6): one "Aa" popover plus list buttons instead of the
+               * mobile web toolbar. Every other platform keeps the toolbar
+               * from the app settings unchanged.
+               */
+              isMac
+                ? getMacToolbarGroups()
+                : Array.isArray(props.settings.tools)
                 ? [...props.settings.tools]
                 : []
             }

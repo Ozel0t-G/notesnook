@@ -18,7 +18,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { Attachment, ImageAttributes, LinkAttributes } from "@notesnook/editor";
-import { showLinkPopup } from "@notesnook/editor/toolbar/popups/link-popup.js";
 import { Settings } from ".";
 
 globalThis.commands = {
@@ -275,8 +274,14 @@ globalThis.commands = {
           // Link has no plain command: the editor's Mod-k key binding opens
           // this popup (extensions/key-map/key-map.ts), so the menu runs the
           // same function.
-          void showLinkPopup(editor).catch((error) =>
-            logger("error", "format:link", error)
+          editor.view.dom.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: "k",
+              code: "KeyK",
+              metaKey: true,
+              bubbles: true,
+              cancelable: true
+            })
           );
           return true;
         case "clearFormatting":

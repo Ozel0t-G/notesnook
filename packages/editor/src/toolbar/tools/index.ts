@@ -32,6 +32,7 @@ import {
   Math
 } from "./inline.js";
 import { InsertBlock } from "./block.js";
+import { MacFormat } from "./mac-format.js";
 import { FontSize, FontFamily } from "./font.js";
 import { Alignment } from "./alignment.js";
 import { Headings } from "./headings.js";
@@ -124,6 +125,7 @@ const tools = {
   linkSettings: LinkSettings,
   openLink: OpenLink,
   insertBlock: InsertBlock,
+  macFormat: MacFormat,
   numberedList: NumberedList,
   bulletList: BulletList,
   checkList: CheckList,

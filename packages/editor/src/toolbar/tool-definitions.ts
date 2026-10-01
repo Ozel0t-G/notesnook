@@ -125,6 +125,13 @@ const tools = (): Record<ToolId, ToolDefinition> => ({
     icon: "heading",
     title: strings.headings()
   },
+  macFormat: {
+    icon: "heading",
+    title: strings.formatting(),
+    // Mac-only tool: never offer it in the toolbar customizers of the other
+    // platforms (they skip conditional tools).
+    conditional: true
+  },
   alignment: {
     icon: "alignCenter",
     title: strings.alignment()
@@ -373,6 +380,33 @@ export function getAllTools() {
 
 export function getDefaultPresets() {
   return defaultPresets;
+}
+
+/**
+ * Mac Catalyst toolbar definition (WP08 R6).
+ *
+ * macOS Notes-style: a single "Aa" button that opens one popover with every
+ * paragraph style, inline style and list, plus quick checklist/bullet/numbered
+ * list buttons. The web-style font-size stepper and the paragraph/font-family
+ * dropdowns are deliberately absent; formats that do not belong in a note's
+ * body (alignment, text direction, highlight, text color, math) stay reachable
+ * through the native Format menu.
+ *
+ * The insert ("+") group is not listed here: the toolbar prepends
+ * `MOBILE_STATIC_TOOLBAR_GROUPS` for every editable mobile editor, and Mac
+ * keeps it exactly as it is.
+ */
+export const MAC_TOOLBAR_GROUPS: ToolbarDefinition = [
+  ["macFormat"],
+  ["checkList", "bulletList", "numberedList"]
+];
+
+/**
+ * Returns a fresh copy of the Mac toolbar groups so callers can pass it to
+ * `Toolbar`'s `tools` prop without sharing mutable state with other editors.
+ */
+export function getMacToolbarGroups(): ToolbarDefinition {
+  return MAC_TOOLBAR_GROUPS.map((group) => [...group]);
 }
 
 export const STATIC_TOOLBAR_GROUPS: ToolbarDefinition = [

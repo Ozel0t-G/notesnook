@@ -1,6 +1,6 @@
 # WP07 · Tastatur, Fokus und Mehrfachauswahl
 
-**Status:** N3 (Tastaturnavigation) im Code; N2, K7 offen · **Befunde:** 3 (P1×2 · P2×1) · **Abhängig von:** WP06
+**Status:** N3 (Pfeiltasten) und N2 (Cmd-/Shift-Klick) im Code, ungetestet; K7 (Fokusring) offen · **Befunde:** 3 (P1×2 · P2×1) · **Abhängig von:** WP06
 
 ## Ziel
 
@@ -26,7 +26,7 @@ Die Liste ist komplett per Tastatur bedienbar: Pfeile, Enter, Type-Select, ⌘A.
 - **Befund:** Keine ⌘-/⇧-Mehrfachauswahl: im gesamten App-Code kein `metaKey`/`shiftKey` (Grep: 0). Auswahlmodus nur über "…"-Menü > Select (`list-view-menu.ts:196-198`).
 - **So macht es macOS:** ⌘-Klick togglet, ⇧-Klick markiert Bereich, Ziehen markiert Rechteck.
 - **Fix:** Modifier aus Catalyst-Pointer-Events lesen (native Bridge) und `useSelectionStore` um Bereichsauswahl erweitern.
-- [ ] erledigt
+- [~] erledigt (Code, Build und normaler Klick geprüft; Cmd-/Shift-Klick nicht auslösbar ohne Maus)
 
 #### N3
 
@@ -55,3 +55,5 @@ Die Liste ist komplett per Tastatur bedienbar: Pfeile, Enter, Type-Select, ⌘A.
 ## Ergebnis
 
 N3: `AppDelegate.mm` hat Key-Commands für ↑ ↓ ↩ (ohne Priorität, nicht in Textfeldern/Editor), die als `listPrevious/listNext/listOpen` an JS gehen. `use-mac-list-focus-store.ts` hält die Datenliste jeder angezeigten Notizliste (veröffentlicht von `components/list/index.tsx`), `moveInNoteList` in `use-mac-menu-commands.ts` öffnet die vorherige/nächste Notiz (`nextListIndex` ohne Umbruch). Der DeepSeek-Worker hing, daher von mir selbst umgesetzt.
+
+N2: `VeyraNMacMenu.m` hängt einen nie erkennenden Gesture-Recognizer ans Fenster, der beim Drücken `UIEvent.modifierFlags` merkt; `getPointerModifiers` (synchron) gibt Cmd/Shift/Alt an JS. `utils/mac-multi-select.ts`: Cmd-Klick schaltet eine Notiz in der Auswahl um, Shift-Klick wählt den Bereich vom letzten ausgewählten (oder offenen) Eintrag bis zum angeklickten; `selection-wrapper` ruft das nur auf Mac-Notizzeilen. K7 (Fokusring/Tab-Reihenfolge) nicht umgesetzt.

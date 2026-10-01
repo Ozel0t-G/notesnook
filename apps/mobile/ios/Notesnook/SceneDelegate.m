@@ -113,6 +113,7 @@ static void VeyraNMacSaveWindowFrame(UIWindowScene *windowScene) {
   // created (and the first frames before React runs). Must come after the
   // window exists, since it is the window that carries the override.
   [VeyraNMacMenu applyWindowAppearanceToWindowScene:windowScene];
+  [VeyraNMacMenu installPointerModifierTrackingOnWindow:self.window];
 #endif
 
   // With scenes, the system delivers the launch URL / user activity / shortcut here

@@ -45,6 +45,28 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 @end
 #endif
 
+
+#if TARGET_OS_MACCATALYST
+/// The modifier flags of the last pointer press in the window (main thread
+/// writes, any thread reads; a plain word-sized value).
+static volatile UIKeyModifierFlags VeyraNLastPointerModifiers = 0;
+
+/**
+ * A gesture recognizer that never recognizes anything: it only reads
+ * `UIEvent.modifierFlags` when a press begins, and fails at once so it neither
+ * delays nor cancels the touches React Native's views receive.
+ */
+@interface VeyraNPointerModifierRecognizer : UIGestureRecognizer
+@end
+
+@implementation VeyraNPointerModifierRecognizer
+- (void)touchesBegan:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+  VeyraNLastPointerModifiers = event.modifierFlags;
+  self.state = UIGestureRecognizerStateFailed;
+}
+@end
+#endif
+
 @implementation VeyraNMacMenu {
   BOOL _hasListeners;
 #if TARGET_OS_MACCATALYST
@@ -552,6 +574,24 @@ RCT_EXPORT_METHOD(getToolbarHeight:(RCTPromiseResolveBlock)resolve
 }
 
 /**
+ * The modifier keys held at the last pointer press, for Cmd-click / Shift-click
+ * selection in the note list (WP07/N2). Synchronous, because the press handler
+ * needs the answer right away; inert (all NO) on iPhone and iPad.
+ */
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getPointerModifiers) {
+#if TARGET_OS_MACCATALYST
+  UIKeyModifierFlags flags = VeyraNLastPointerModifiers;
+  return @{
+    @"cmd" : @((flags & UIKeyModifierCommand) != 0),
+    @"shift" : @((flags & UIKeyModifierShift) != 0),
+    @"alt" : @((flags & UIKeyModifierAlternate) != 0)
+  };
+#else
+  return @{@"cmd" : @NO, @"shift" : @NO, @"alt" : @NO};
+#endif
+}
+
+/**
  * Resolves with the same { accent, active } the `systemAccent` and
  * `windowActive` constants carry and the VeyraNMacSystemState event repeats,
  * sampled now rather than at launch: JS calls this when it needs the state of
@@ -610,6 +650,17 @@ RCT_EXPORT_METHOD(setWindowAppearance:(NSString *)style) {
 }
 
 #if TARGET_OS_MACCATALYST
++ (void)installPointerModifierTrackingOnWindow:(UIWindow *)window {
+#if TARGET_OS_MACCATALYST
+  VeyraNPointerModifierRecognizer *recognizer =
+      [[VeyraNPointerModifierRecognizer alloc] init];
+  recognizer.cancelsTouchesInView = NO;
+  recognizer.delaysTouchesBegan = NO;
+  recognizer.delaysTouchesEnded = NO;
+  [window addGestureRecognizer:recognizer];
+#endif
+}
+
 + (void)applyWindowAppearanceToWindowScene:(UIWindowScene *)scene {
   UIUserInterfaceStyle appearance = currentWindowAppearanceStyle;
   for (UIWindow *window in scene.windows) {

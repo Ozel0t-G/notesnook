@@ -39,6 +39,10 @@ import { isMacCatalyst } from "../../../utils/constants";
 import { deleteItems } from "../../../utils/functions";
 import { systemColor } from "../../../utils/ios-system-colors";
 import { MAC_SOURCE_LIST_INSET } from "../../../utils/mac-layout";
+import {
+  handleMacModifierPress,
+  macPointerModifiers
+} from "../../../utils/mac-multi-select";
 import { ItemContextMenu } from "../../item-actions-menu";
 import { MacHoverHighlight, useMacHover } from "../../mac-hover";
 import { SwipeRow } from "../../swipe-row";
@@ -152,14 +156,25 @@ const SelectionWrapper = ({
         macRow
           ? "transparent"
           : showEditing || isSelected
-          ? visual.selectionBackground
-          : isSheet
-          ? colors.primary.hover
-          : visual.elevatedSurface
+            ? visual.selectionBackground
+            : isSheet
+              ? colors.primary.hover
+              : visual.elevatedSurface
       }
       testID={testID}
       onLongPress={nativeMenus && !selectionMode ? undefined : onLongPress}
-      onPress={onPress}
+      onPress={
+        macRow
+          ? () => {
+              // Cmd-click / Shift-click select instead of opening (WP07/N2).
+              const { cmd, shift } = macPointerModifiers();
+              if (!cmd && !shift) return onPress();
+              void handleMacModifierPress(item).then((handled) => {
+                if (!handled) onPress();
+              });
+            }
+          : onPress
+      }
       customSelectedColor={
         macRow ? visual.hoverSurface : visual.selectionBackground
       }
@@ -184,45 +199,45 @@ const SelectionWrapper = ({
         paddingVertical: macRow
           ? MAC_NOTE_ROW_PADDING_VERTICAL
           : compactMode
-          ? visual.ios
-            ? 8
-            : 6
-          : homeNote
-          ? 15
-          : visual.rowPadding,
+            ? visual.ios
+              ? 8
+              : 6
+            : homeNote
+              ? 15
+              : visual.rowPadding,
         borderRadius: macRow
           ? MAC_NOTE_ROW_RADIUS
           : visual.ios && isTabletPane && !isSheet
-          ? 0
-          : visual.ios && !isSheet
-          ? homeNote
-            ? 17
-            : 10
-          : visual.cardRadius,
+            ? 0
+            : visual.ios && !isSheet
+              ? homeNote
+                ? 17
+                : 10
+              : visual.cardRadius,
         // Mac rows sit in the source list's 10 pt margin: without it the row
         // runs edge to edge and its rounded highlight touches the window.
         marginHorizontal: isSheet
           ? 0
           : macRow
-          ? MAC_SOURCE_LIST_INSET
-          : visual.listInset,
+            ? MAC_SOURCE_LIST_INSET
+            : visual.listInset,
         marginBottom: macRow
           ? 0
           : isSheet
-          ? DefaultAppStyles.GAP_VERTICAL
-          : visual.ios
-          ? isTabletPane
-            ? 0
-            : homeNote
-            ? 7
-            : 2
-          : visual.rowSpacing,
+            ? DefaultAppStyles.GAP_VERTICAL
+            : visual.ios
+              ? isTabletPane
+                ? 0
+                : homeNote
+                  ? 7
+                  : 2
+              : visual.rowSpacing,
         borderWidth: macRow ? 0 : isSheet || visual.ios ? 0 : 0.5,
         borderBottomWidth: macRow
           ? StyleSheet.hairlineWidth
           : visual.ios && isTabletPane && !isSheet
-          ? 0.5
-          : 0,
+            ? 0.5
+            : 0,
         borderColor: visual.separator,
         ...(isSheet || visual.ios ? {} : visual.subtleShadow)
       }}

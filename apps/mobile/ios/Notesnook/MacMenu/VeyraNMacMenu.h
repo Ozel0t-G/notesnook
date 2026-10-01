@@ -100,6 +100,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 + (void)applyWindowAppearanceToWindowScene:(UIWindowScene *)scene;
 
 /**
+ * Starts remembering which modifier keys (Cmd, Shift) were held when the
+ * pointer last pressed anything in `window` (WP07/N2). React Native's press
+ * events carry no modifier flags, so JS reads them through `getPointerModifiers`
+ * when a row is pressed.
+ */
++ (void)installPointerModifierTrackingOnWindow:(UIWindow *)window;
+
+/**
  * Whether a note is open in the editor, as last published by JS with
  * `setContext`. Defaults to NO until JS has spoken, so the note commands start
  * out greyed instead of doing nothing. Read by the AppDelegate's

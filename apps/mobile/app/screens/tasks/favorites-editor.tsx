@@ -21,15 +21,17 @@ import type { TaskFavorite, TaskList, TaskSmartList } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Alert, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { DraxList, DraxProvider } from "react-native-drax";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { TaskSymbolView } from "../../components/task-symbol-view";
 import { SymbolTile } from "../../components/ui/symbol-tile";
+import { isMacCatalyst } from "../../utils/constants";
 import {
   SystemColorName,
   systemColor
 } from "../../utils/ios-system-colors";
+import { showAlert } from "../../utils/mac-alert";
 import { taskListColor, taskListSymbol } from "./list-customization";
 
 /** Completed is a filter of every list, not a favorite tile. */
@@ -115,8 +117,8 @@ export function FavoritesEditor({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
+      animationType={isMacCatalyst() ? "fade" : "slide"}
+      presentationStyle={isMacCatalyst() ? "formSheet" : "pageSheet"}
       onRequestClose={onClose}
     >
       <SafeAreaView
@@ -159,7 +161,7 @@ export function FavoritesEditor({
                 await onSave(draft);
                 onClose();
               } catch {
-                Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+                showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
               } finally {
                 setSaving(false);
               }

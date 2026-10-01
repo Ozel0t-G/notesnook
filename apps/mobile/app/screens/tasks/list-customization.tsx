@@ -22,7 +22,6 @@ import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import {
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -32,6 +31,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { TaskSymbolView } from "../../components/task-symbol-view";
+import { isMacCatalyst } from "../../utils/constants";
+import { showAlert } from "../../utils/mac-alert";
 
 import {
   TASK_LIST_COLORS as COLORS,
@@ -74,8 +75,8 @@ export function ListCustomization({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
+      animationType={isMacCatalyst() ? "fade" : "slide"}
+      presentationStyle={isMacCatalyst() ? "formSheet" : "pageSheet"}
       onRequestClose={onClose}
     >
       <SafeAreaView
@@ -118,7 +119,7 @@ export function ListCustomization({
                 await onSave({ name: name.trim(), symbol, color });
                 onClose();
               } catch {
-                Alert.alert(strings.tasksTitle(), strings.tasksCouldNotSave());
+                showAlert(strings.tasksTitle(), strings.tasksCouldNotSave());
               } finally {
                 setSaving(false);
               }

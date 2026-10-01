@@ -22,7 +22,7 @@ import { User } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import notifee from "@notifee/react-native";
 import React from "react";
-import { Alert, Appearance, Platform } from "react-native";
+import { Appearance, Platform } from "react-native";
 import { getVersion } from "react-native-device-info";
 import { DatabaseLogger, db } from "../../common/database";
 import { MMKV } from "../../common/database/mmkv";
@@ -60,6 +60,7 @@ import {
   eCloseSheet,
   eOpenRecoveryKeyDialog
 } from "../../utils/events";
+import { showAlert } from "../../utils/mac-alert";
 import { sleep } from "../../utils/time";
 import { resetTabStore } from "../editor/tiptap/use-tab-store";
 import { MFARecoveryCodes, MFASheet } from "./2fa";
@@ -1276,7 +1277,7 @@ export const settingsGroups: SettingSection[] = [
             await openAppNotificationSettings();
           } catch (e) {
             DatabaseLogger.error(e as Error, "openAppNotificationSettings");
-            Alert.alert(
+            showAlert(
               strings.notificationsAndAlarms(),
               strings.tasksNotificationsSettingsError()
             );

@@ -17,12 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { strings } from "@notesnook/intl";
-import {
-  Alert,
-  AlertButton,
-  AppState,
-  NativeEventSubscription
-} from "react-native";
+import { AlertButton, AppState, NativeEventSubscription } from "react-native";
 import { EVENTS, EventManagerSubscription } from "@notesnook/core";
 import { DatabaseLogger, db } from "../../common/database";
 import { AuthMode } from "../../components/auth/common";
@@ -35,6 +30,7 @@ import BackupService from "../../services/backup";
 import { ToastManager } from "../../services/event-manager";
 import Navigation from "../../services/navigation";
 import { useUserStore } from "../../stores/use-user-store";
+import { showAlert } from "../../utils/mac-alert";
 
 let logoutInProgress = false;
 
@@ -57,7 +53,7 @@ function confirmSignOut(
         style: "destructive",
         onPress: () => resolve(false)
       });
-    Alert.alert(
+    showAlert(
       strings.signOut(),
       [
         strings.signOutLocalDataWarning(),
@@ -85,7 +81,7 @@ function confirmSignOutAfterBackupFailure(
         style: "destructive",
         onPress: () => resolve(true)
       });
-    Alert.alert(
+    showAlert(
       strings.failedToTakeBackup(),
       backupRequired
         ? strings.signOutBackupRequired()

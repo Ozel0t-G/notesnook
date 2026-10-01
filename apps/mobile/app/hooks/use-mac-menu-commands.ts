@@ -528,7 +528,9 @@ export const useMacMenuCommands = () => {
           case "toggleSidebar":
             // View > Toggle Sidebar (Ctrl-Cmd-S): the Library source list pane
             // collapses to zero width (see navigation/fluid-panels-view.tsx).
-            useMacSidebarStore.getState().toggle();
+            useMacSidebarStore
+              .getState()
+              .toggle(useSettingStore.getState().dimensions.width);
             break;
           case "escape":
             closeTopmostSheetOrModal();

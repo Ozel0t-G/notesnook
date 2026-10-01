@@ -69,7 +69,7 @@ import type { PaneWidths } from "../screens/editor/wrapper";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { NavigationProps } from "../services/navigation";
 import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
-import { useMacSidebarStore } from "../stores/use-mac-sidebar-store";
+import { useMacSidebarVisible } from "../stores/use-mac-sidebar-store";
 import { isMacCatalyst } from "../utils/constants";
 import {
   macEditorWidth,
@@ -111,7 +111,7 @@ export const FluidPanelsView = React.memo(
      * View > Toggle Sidebar's flag. Mac only: it decides whether the source
      * list pane is part of the layout (see PANE_WIDTHS below).
      */
-    const macSidebarVisible = useMacSidebarStore((state) => state.visible);
+    const macSidebarVisible = useMacSidebarVisible(dimensions.width);
     const insets = useGlobalSafeAreaInsets();
     const animatedOpacity = useSharedValue(0);
     const animatedTranslateY = useSharedValue(-9999);

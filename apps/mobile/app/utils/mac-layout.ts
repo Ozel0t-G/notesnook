@@ -85,8 +85,7 @@ function measuredToolbarHeight() {
  */
 export const macToolbarInset = (insetTop: number) => {
   if (cachedToolbarInset === 0) {
-    const value =
-      measuredToolbarHeight() || (insetTop > 0 ? insetTop : 0);
+    const value = measuredToolbarHeight() || (insetTop > 0 ? insetTop : 0);
     if (value > 0) cachedToolbarInset = value;
   }
   return cachedToolbarInset > 0 ? cachedToolbarInset : MAC_TOOLBAR_HEIGHT;
@@ -112,6 +111,37 @@ export const MAC_TITLEBAR_CONTROL_FONT_SIZE = 12;
  * inside, with the rows' own 8 pt of inner padding on top of it.
  */
 export const MAC_SOURCE_LIST_INSET = 10;
+
+/**
+ * Below this window width the Mac sidebar collapses on its own (R10): at the
+ * 900 pt minimum the three panes would leave the editor only ~440 pt, so the
+ * source list gives way instead and the editor keeps >= ~560 pt.
+ */
+export const MAC_SIDEBAR_AUTO_COLLAPSE_WIDTH = 1000;
+
+/** True when the window is narrow enough that the sidebar collapses by itself. */
+export const macSidebarAutoCollapsed = (
+  windowWidth: number,
+  threshold = MAC_SIDEBAR_AUTO_COLLAPSE_WIDTH
+) => windowWidth < threshold;
+
+/**
+ * A manual View > Toggle Sidebar choice, remembered together with which side of
+ * the breakpoint (`narrow`) the window was on when it was made. It only holds
+ * while the window stays on that side: crossing the breakpoint hands control
+ * back to the automatic rule.
+ */
+export type MacSidebarOverride = { narrow: boolean; visible: boolean };
+
+/** Whether the sidebar is shown: the manual choice if still valid, else automatic. */
+export const macSidebarEffectiveVisible = (
+  windowWidth: number,
+  override?: MacSidebarOverride,
+  threshold = MAC_SIDEBAR_AUTO_COLLAPSE_WIDTH
+) => {
+  const narrow = macSidebarAutoCollapsed(windowWidth, threshold);
+  return override && override.narrow === narrow ? override.visible : !narrow;
+};
 
 /**
  * Width of the Mac source list (sidebar): 220 pt at a typical window width,

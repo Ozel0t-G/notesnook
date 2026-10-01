@@ -22,7 +22,7 @@ import React from "react";
 import { View } from "react-native";
 import { MacSidebar } from "./mac-sidebar";
 import { useSettingStore } from "../stores/use-setting-store";
-import { useMacSidebarStore } from "../stores/use-mac-sidebar-store";
+import { useMacSidebarVisible } from "../stores/use-mac-sidebar-store";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
 import { macSidebarWidth } from "../utils/mac-layout";
@@ -82,7 +82,7 @@ export function withMacSidebar<P extends object>(
     const { colors, isDark } = useThemeColors();
     const visual = getAppleVisualTokens(colors, isDark);
     const windowWidth = useSettingStore((state) => state.dimensions.width);
-    const sidebarVisible = useMacSidebarStore((state) => state.visible);
+    const sidebarVisible = useMacSidebarVisible(windowWidth);
 
     return (
       <View style={{ flex: 1, flexDirection: "row" }}>

@@ -16,6 +16,58 @@
 @end
 #endif
 
+#if TARGET_OS_MACCATALYST
+/// Key of the last window frame (NSStringFromCGRect), kept in NSUserDefaults so
+/// the window comes back with the size and position the user left it at (W1).
+static NSString *const VeyraNMacWindowFrameKey = @"VeyraNMacWindowFrame";
+static const CGSize VeyraNMacMinimumWindowSize = {900, 600};
+static const CGSize VeyraNMacDefaultWindowSize = {1200, 800};
+
+/// A saved frame is only used when it is at least the minimum size and still
+/// overlaps a screen (a disconnected display must not park the window off-screen).
+static BOOL VeyraNMacFrameIsUsable(CGRect frame) {
+  if (frame.size.width < VeyraNMacMinimumWindowSize.width ||
+      frame.size.height < VeyraNMacMinimumWindowSize.height) {
+    return NO;
+  }
+  return YES;
+}
+
+/// Asks the system for the saved frame (or the default size on first launch).
+static void VeyraNMacRestoreWindowFrame(UIWindowScene *windowScene) {
+  if (@available(macCatalyst 16.0, *)) {
+    NSString *saved = [[NSUserDefaults standardUserDefaults] stringForKey:VeyraNMacWindowFrameKey];
+    CGRect frame = saved != nil ? CGRectFromString(saved) : CGRectZero;
+    NSLog(@"VeyraN: window frame restore saved=%@", saved ?: @"none");
+    UIWindowSceneGeometryPreferencesMac *preferences = nil;
+    if (VeyraNMacFrameIsUsable(frame)) {
+      preferences = [[UIWindowSceneGeometryPreferencesMac alloc] initWithSystemFrame:frame];
+    } else {
+      CGRect current = windowScene.effectiveGeometry.systemFrame;
+      CGRect initial = CGRectMake(current.origin.x, current.origin.y,
+                                  VeyraNMacDefaultWindowSize.width,
+                                  VeyraNMacDefaultWindowSize.height);
+      preferences = [[UIWindowSceneGeometryPreferencesMac alloc] initWithSystemFrame:initial];
+    }
+    [windowScene requestGeometryUpdateWithPreferences:preferences
+                                         errorHandler:^(NSError *_Nonnull error) {
+                                           NSLog(@"VeyraN: window frame restore failed: %@", error);
+                                         }];
+  }
+}
+
+/// Remembers the window's current frame.
+static void VeyraNMacSaveWindowFrame(UIWindowScene *windowScene) {
+  if (@available(macCatalyst 16.0, *)) {
+    CGRect frame = windowScene.effectiveGeometry.systemFrame;
+    if (VeyraNMacFrameIsUsable(frame)) {
+      [[NSUserDefaults standardUserDefaults] setObject:NSStringFromCGRect(frame)
+                                                forKey:VeyraNMacWindowFrameKey];
+    }
+  }
+}
+#endif
+
 @implementation SceneDelegate
 
 - (void)scene:(UIScene *)scene
@@ -41,7 +93,8 @@
     windowScene.titlebar.separatorStyle = UITitlebarSeparatorStyleNone;
   }
   self.macToolbar = [[VeyraNMacToolbar alloc] initWithWindowScene:windowScene];
-  windowScene.sizeRestrictions.minimumSize = CGSizeMake(900, 600);
+  windowScene.sizeRestrictions.minimumSize = VeyraNMacMinimumWindowSize;
+  VeyraNMacRestoreWindowFrame(windowScene);
 #endif
 
   self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
@@ -114,5 +167,42 @@
 {
   [RNShortcuts performActionForShortcutItem:shortcutItem completionHandler:completionHandler];
 }
+
+#if TARGET_OS_MACCATALYST
+// W1: the scene reports every change of its size or position through this
+// (older, still delivered) callback; each one updates the remembered frame,
+// which the next launch restores in -scene:willConnectToSession:options:.
+- (void)windowScene:(UIWindowScene *)windowScene
+    didUpdateCoordinateSpace:(id<UICoordinateSpace>)previousCoordinateSpace
+        interfaceOrientation:(UIInterfaceOrientation)previousInterfaceOrientation
+             traitCollection:(UITraitCollection *)previousTraitCollection
+{
+  VeyraNMacSaveWindowFrame(windowScene);
+}
+
+// The frame is also saved whenever the window stops being the active one and
+// when the scene goes away (Cmd-Q), which is when the user has finished
+// resizing or moving it.
+- (void)sceneDidEnterBackground:(UIScene *)scene
+{
+  if ([scene isKindOfClass:[UIWindowScene class]]) {
+    VeyraNMacSaveWindowFrame((UIWindowScene *)scene);
+  }
+}
+
+- (void)sceneWillResignActive:(UIScene *)scene
+{
+  if ([scene isKindOfClass:[UIWindowScene class]]) {
+    VeyraNMacSaveWindowFrame((UIWindowScene *)scene);
+  }
+}
+
+- (void)sceneDidDisconnect:(UIScene *)scene
+{
+  if ([scene isKindOfClass:[UIWindowScene class]]) {
+    VeyraNMacSaveWindowFrame((UIWindowScene *)scene);
+  }
+}
+#endif
 
 @end

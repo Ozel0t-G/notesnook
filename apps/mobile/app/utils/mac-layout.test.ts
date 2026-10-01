@@ -28,9 +28,7 @@ const loadMacLayout = (toolbarHeight?: number): MacLayout => {
   jest.resetModules();
   jest.doMock("react-native", () => ({
     NativeModules:
-      toolbarHeight === undefined
-        ? {}
-        : { VeyraNMacMenu: { toolbarHeight } }
+      toolbarHeight === undefined ? {} : { VeyraNMacMenu: { toolbarHeight } }
   }));
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   return require("./mac-layout") as MacLayout;
@@ -83,5 +81,50 @@ describe("Mac toolbar inset", () => {
     expect(macToolbarInset(0)).toBe(MAC_TOOLBAR_HEIGHT);
     expect(macToolbarInset(28)).toBe(28);
     expect(macToolbarInset(0)).toBe(28);
+  });
+});
+
+describe("sidebar auto-collapse (R10)", () => {
+  const {
+    macSidebarAutoCollapsed,
+    macSidebarEffectiveVisible,
+    MAC_SIDEBAR_AUTO_COLLAPSE_WIDTH
+  } = loadMacLayout(undefined);
+
+  test("collapses below the breakpoint only", () => {
+    expect(macSidebarAutoCollapsed(900)).toBe(true);
+    expect(macSidebarAutoCollapsed(MAC_SIDEBAR_AUTO_COLLAPSE_WIDTH - 1)).toBe(
+      true
+    );
+    expect(macSidebarAutoCollapsed(MAC_SIDEBAR_AUTO_COLLAPSE_WIDTH)).toBe(
+      false
+    );
+    expect(macSidebarAutoCollapsed(1400)).toBe(false);
+  });
+
+  test("follows the window without a manual choice", () => {
+    expect(macSidebarEffectiveVisible(900)).toBe(false);
+    expect(macSidebarEffectiveVisible(1400)).toBe(true);
+  });
+
+  test("a manual choice holds on the side of the breakpoint it was made on", () => {
+    // Opened by hand in a narrow window.
+    const opened = { narrow: true, visible: true };
+    expect(macSidebarEffectiveVisible(900, opened)).toBe(true);
+    // Crossing the breakpoint hands control back to the automatic rule.
+    expect(macSidebarEffectiveVisible(1400, opened)).toBe(true);
+    // Hidden by hand in a wide window.
+    const closed = { narrow: false, visible: false };
+    expect(macSidebarEffectiveVisible(1400, closed)).toBe(false);
+    expect(macSidebarEffectiveVisible(900, closed)).toBe(false);
+  });
+
+  test("an override from the other side is ignored", () => {
+    expect(
+      macSidebarEffectiveVisible(1400, { narrow: true, visible: false })
+    ).toBe(true);
+    expect(
+      macSidebarEffectiveVisible(900, { narrow: false, visible: true })
+    ).toBe(false);
   });
 });

@@ -1,6 +1,6 @@
 # WP11 · Fenster-Grundlagen und Mac-Controls
 
-**Status:** offen · **Befunde:** 11 (P2×8 · P3×2 · —×1) · **Abhängig von:** WP02
+**Status:** Teil A (W1, R10) umgesetzt; Spaltentrenner, Tooltips, Cursor, Sidebar-Baum offen · **Befunde:** 11 (P2×8 · P3×2 · —×1) · **Abhängig von:** WP02
 
 ## Ziel
 
@@ -21,8 +21,8 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 
 ## Abnahmekriterien
 
-- [ ] App schließen und wieder öffnen → gleiche Fenstergröße und -position.
-- [ ] Bei 900 pt Breite ist die Sidebar eingeklappt und der Editor hat ≥ 560 pt.
+- [x] App schließen und wieder öffnen → gleiche Fenstergröße und -position.
+- [x] Bei 900 pt Breite ist die Sidebar eingeklappt und der Editor hat ≥ 560 pt.
 - [ ] Hover über einen Knopf zeigt nach ca. 1 s einen Tooltip.
 - [ ] Release-Build für Catalyst baut fehlerfrei, iOS-Build ebenso.
 
@@ -58,7 +58,7 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 - **Screenshot:** [09-min-size-900x600.png](../screenshots/09-min-size-900x600.png)
 - **Befund:** „Paragraph“ und „Sans-serif“ verschwinden kommentarlos. Die Sidebar klappt nicht automatisch ein.
 - **Fix:** Unter ca. 1000 pt die Sidebar automatisch einklappen (wie Notes). Überzählige Toolbar-Items wandern ins »-Überlaufmenü.
-- [ ] erledigt
+- [x] erledigt (unter 1000 pt klappt die Sidebar ein; Screenshot WP11-after-narrow.png)
 
 #### S3
 
@@ -82,7 +82,7 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 - **Befund:** Nur Mindestgröße, kein Standardmaß, keine Wiederherstellung: `SceneDelegate.m:41` setzt ausschließlich `minimumSize = 900x600`; nirgends `restorationIdentifier`/`stateRestoration` (Grep im iOS-Projekt: 0 Treffer).
 - **So macht es macOS:** Fenster öffnet mit sinnvoller Größe, merkt Größe/Position je Sitzung.
 - **Fix:** Im `scene:willConnect…` eine `UIWindowSceneGeometryPreferencesMac` mit Default-Größe setzen; State-Restoration über `UISceneDelegate` + `NSUserActivity` ergänzen.
-- [ ] erledigt
+- [x] erledigt (Fenstergröße/-position werden gemerkt, Standard 1200 × 800; nach ⌘Q gleiche Größe geprüft)
 
 #### W7
 
@@ -127,3 +127,6 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 ## Ergebnis
 
 _(nach Abschluss ausfüllen: was geändert wurde, Commits, offene Punkte)_
+
+### Ergebnis (Teil A)
+W1: `SceneDelegate.m` speichert den Fensterrahmen (`effectiveGeometry.systemFrame`) in NSUserDefaults (bei Geometrieänderung, Deaktivierung und Beenden) und stellt ihn beim Start per `UIWindowSceneGeometryPreferencesMac` wieder her (Standard 1200 × 800, Minimum 900 × 600). R10: `mac-layout.ts` (`macSidebarAutoCollapsed`, `macSidebarEffectiveVisible`, Tests), `use-mac-sidebar-store.ts` (`override`, `useMacSidebarVisible`); Toggle Sidebar überstimmt die Automatik, bis das Fenster den Schwellenwert (1000 pt) wieder kreuzt. W5/W7: nicht umgesetzt. Hinweis: DeepSeek-Worker hing in dieser Phase mehrfach ohne Ausgabe; W1 und R10 habe ich selbst umgesetzt.

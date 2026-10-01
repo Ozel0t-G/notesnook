@@ -17,11 +17,20 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { create } from "zustand";
+import {
+  MacSidebarOverride,
+  macSidebarAutoCollapsed,
+  macSidebarEffectiveVisible
+} from "../utils/mac-layout";
 
 type MacSidebarState = {
-  /** Whether the Mac source-list sidebar is part of the layout. */
-  visible: boolean;
-  toggle: () => void;
+  /**
+   * The user's manual Toggle Sidebar choice, valid only on the side of the
+   * auto-collapse breakpoint it was made on (see `macSidebarEffectiveVisible`).
+   */
+  override?: MacSidebarOverride;
+  /** Flips the effective visibility at the given window width. */
+  toggle: (windowWidth: number) => void;
 };
 
 /**
@@ -34,6 +43,22 @@ type MacSidebarState = {
  * it, so they keep the panes they always had.
  */
 export const useMacSidebarStore = create<MacSidebarState>((set) => ({
-  visible: true,
-  toggle: () => set((state) => ({ visible: !state.visible }))
+  override: undefined,
+  toggle: (windowWidth) =>
+    set((state) => ({
+      override: {
+        narrow: macSidebarAutoCollapsed(windowWidth),
+        visible: !macSidebarEffectiveVisible(windowWidth, state.override)
+      }
+    }))
 }));
+
+/**
+ * Whether the sidebar is shown at the given window width: collapsed below
+ * 1000 pt, open above, unless the user toggled it on this side of the
+ * breakpoint.
+ */
+export const useMacSidebarVisible = (windowWidth: number) =>
+  useMacSidebarStore((state) =>
+    macSidebarEffectiveVisible(windowWidth, state.override)
+  );

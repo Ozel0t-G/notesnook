@@ -103,6 +103,15 @@ static UIUserInterfaceStyle currentWindowAppearanceStyle =
     UIUserInterfaceStyleUnspecified;
 
 /**
+ * The menu build context last published by JS (WP10/K4), read by the
+ * AppDelegate's UIMenuBuilder. Both start NO so the commands that need a note
+ * or a focused list are greyed until JS says otherwise. Only written on the
+ * main queue (see -setContext:).
+ */
+static BOOL currentMenuContextHasNote = NO;
+static BOOL currentMenuContextHasList = NO;
+
+/**
  * Maps the JS string to UIKit's style. Unknown values fall back to the system
  * style instead of raising: a typo in JS must not take the window chrome down.
  */
@@ -491,6 +500,37 @@ RCT_EXPORT_METHOD(setWindowTitle:(NSString *)title
 }
 
 /**
+ * The menu build context, published by JS whenever it changes (WP10/K4):
+ * `noteOpen` says whether a note is open in the editor, `listOpen` whether a
+ * list has published its own menu (useMacWindowStore.listMenu, which View >
+ * Sort By / Group By forward to). JS's hook (use-mac-menu-commands.ts) calls
+ * this from the stores; a missing key counts as NO.
+ *
+ * The flags are only ever written on the main queue - they are read by
+ * -buildMenuWithBuilder: / -validateCommand: there - and the menu is only
+ * rebuilt when a value really changed, so this stays cheap while the stores
+ * change often. On iPhone and iPad the method is inert (the module is looked
+ * up unconditionally by JS).
+ */
+RCT_EXPORT_METHOD(setContext:(NSDictionary *)context) {
+#if TARGET_OS_MACCATALYST
+  BOOL hasNote = [context[@"noteOpen"] boolValue];
+  BOOL hasList = [context[@"listOpen"] boolValue];
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (hasNote == currentMenuContextHasNote &&
+        hasList == currentMenuContextHasList) {
+      return;
+    }
+    currentMenuContextHasNote = hasNote;
+    currentMenuContextHasList = hasList;
+    // setNeedsRebuild (not setNeedsRevalidate) because the disabled state is
+    // applied while the menus are built, not only validated.
+    [UIMenuSystem.mainSystem setNeedsRebuild];
+  });
+#endif
+}
+
+/**
  * Measures the window toolbar's height and resolves with it in points. JS reads
  * the `toolbarHeight` constant at startup, when the window is not laid out yet
  * and the constant is still 0; this asks for the measurement once there is a
@@ -575,6 +615,14 @@ RCT_EXPORT_METHOD(setWindowAppearance:(NSString *)style) {
   for (UIWindow *window in scene.windows) {
     window.overrideUserInterfaceStyle = appearance;
   }
+}
+
++ (BOOL)menuContextHasNote {
+  return currentMenuContextHasNote;
+}
+
++ (BOOL)menuContextHasList {
+  return currentMenuContextHasList;
 }
 #endif
 

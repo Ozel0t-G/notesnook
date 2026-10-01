@@ -7,6 +7,9 @@
 #import "RNFileUploader.h"
 #if TARGET_OS_MACCATALYST
 #import "MacMenu/VeyraNMacMenu.h"
+// File > Print prints the editor's WKWebView through its own print formatter
+// (see -veyranPrint:).
+#import <WebKit/WebKit.h>
 #endif
 
 @interface ReactNativeDelegate : RCTDefaultReactNativeFactoryDelegate
@@ -168,6 +171,96 @@ static UIMenuIdentifier const VeyraNNoteMenuIdentifier = @"veyran.note";
   [VeyraNMacMenu sendCommand:@"toggleSidebar"];
 }
 
+- (void)veyranNewNotebook:(id)sender {
+  [VeyraNMacMenu sendCommand:@"newNotebook"];
+}
+
+- (void)veyranImport:(id)sender {
+  [VeyraNMacMenu sendCommand:@"import"];
+}
+
+- (void)veyranExport:(id)sender {
+  [VeyraNMacMenu sendCommand:@"exportNote"];
+}
+
+- (void)veyranPinNote:(id)sender {
+  [VeyraNMacMenu sendCommand:@"pinNote"];
+}
+
+- (void)veyranOpenHelp:(id)sender {
+  [VeyraNMacMenu sendCommand:@"openHelp"];
+}
+
+/**
+ * The first visible WKWebView below `view`, which on the editor screen is the
+ * note's editor WebView (the app has no other visible one; sheets that carry a
+ * WebView are presented over the window, not inside it). Answers nil when there
+ * is none.
+ */
+static WKWebView *VeyraNFirstVisibleWebView(UIView *view) {
+  if (view.isHidden || view.alpha <= 0.01) {
+    return nil;
+  }
+  if ([view isKindOfClass:[WKWebView class]]) {
+    return (WKWebView *)view;
+  }
+  for (UIView *subview in view.subviews) {
+    WKWebView *found = VeyraNFirstVisibleWebView(subview);
+    if (found != nil) {
+      return found;
+    }
+  }
+  return nil;
+}
+
+/**
+ * File > Print (Cmd-P, E5). The note is rendered in a WKWebView, which carries
+ * no `window.print()` handler, so the native print path is used: the web
+ * view's own print formatter (`-viewPrintFormatter`, WKWebView paginates the
+ * loaded page for it) is handed to a UIPrintInteractionController, which shows
+ * the standard print panel as a sheet. The sandbox entitlement
+ * `com.apple.security.print` is required for this (Notesnook-macOS.entitlements).
+ *
+ * The menu item is disabled without an open note (see -validateCommand:), so
+ * reaching this without one is only possible if the note closed in between; the
+ * method then does nothing.
+ */
+- (void)veyranPrint:(id)sender {
+  UIWindow *window = nil;
+  for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+    if (![scene isKindOfClass:[UIWindowScene class]]) {
+      continue;
+    }
+    for (UIWindow *candidate in ((UIWindowScene *)scene).windows) {
+      if (candidate.isKeyWindow) {
+        window = candidate;
+        break;
+      }
+    }
+    if (window != nil) {
+      break;
+    }
+  }
+  if (window == nil) {
+    window = self.window;
+  }
+  WKWebView *webView = window ? VeyraNFirstVisibleWebView(window) : nil;
+  if (webView == nil || ![UIPrintInteractionController isPrintingAvailable]) {
+    return;
+  }
+  UIPrintInteractionController *controller =
+      [UIPrintInteractionController sharedPrintController];
+  if (controller == nil) {
+    return;
+  }
+  UIPrintInfo *printInfo = [UIPrintInfo printInfo];
+  printInfo.outputType = UIPrintInfoOutputGeneral;
+  printInfo.jobName = webView.title.length > 0 ? webView.title : @"Note";
+  controller.printInfo = printInfo;
+  controller.printFormatter = [webView viewPrintFormatter];
+  [controller presentAnimated:YES completionHandler:nil];
+}
+
 - (void)veyranEscape:(id)sender {
   // Never steal Escape from a real UIKit text field.
   if ([self veyran_isTextInputFirstResponder]) {
@@ -212,25 +305,55 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
 }
 
 /**
+ * Builds one block-based menu action that forwards `command` to JavaScript,
+ * greyed out when `enabled` is NO. Block-based actions carry no selector, so
+ * their disabled attribute survives menu validation and stays in effect until
+ * the next rebuild (see -setContext:); commands that need a key equivalent use
+ * VeyraNMenuCommand and are validated in -validateCommand: instead.
+ */
+static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
+                                  BOOL enabled) {
+  UIAction *action =
+      [UIAction actionWithTitle:title
+                          image:nil
+                     identifier:nil
+                        handler:^(__kindof UIAction *_Nonnull action) {
+                          [VeyraNMacMenu sendCommand:command];
+                        }];
+  if (!enabled) {
+    action.attributes = UIMenuElementAttributesDisabled;
+  }
+  return action;
+}
+
+/**
  * Rebuilds the Catalyst main menu:
  *  - removes the document commands that UISupportsDocumentBrowser /
  *    LSSupportsOpeningDocumentsInPlace add (Open..., Open Recent, Duplicate,
  *    Rename..., Move..., Export As...) since the app is a note library, not a
  *    document browser;
- *  - adds File > New Note (Cmd-N);
+ *  - adds File > New Note (Cmd-N), New Notebook (Shift-Cmd-N), Import...,
+ *    Export... and Print... (Cmd-P);
  *  - adds Edit > Find in Notes (Cmd-Shift-F), which switches the app to its
  *    Search section;
  *  - adds a "Note" menu (UIMenuEdit's sibling, right after Edit) with the
- *    actions on the note open in the editor: Pin Note, Add to Favorites and
- *    Move to Trash (Cmd-Delete). They stay enabled - JavaScript finds nothing
- *    to act on when no note is open and ignores them (see
- *    app/hooks/use-mac-menu-commands.ts);
+ *    actions on the note open in the editor: Pin Note (Shift-Cmd-P), Add to
+ *    Favorites, Lock Note and Move to Trash (Cmd-Delete);
  *  - adds View > Library / Tasks / Search (Cmd-1/2/3), the same three
- *    sections as the window toolbar's segmented control, and View > Toggle
+ *    sections as the window toolbar's segmented control, View > Sort By /
+ *    Group By (forwarded to the focused list's own menu) and View > Toggle
  *    Sidebar (Ctrl-Cmd-S);
  *  - removes Catalyst's own View > Show Sidebar (UIMenuSidebar), which drives
  *    a UISplitViewController the app does not have and therefore did nothing;
+ *  - replaces the Help menu with one "VeyraN Help" item that opens the project
+ *    documentation in the browser (there is no Help Book, K5/I11);
  *  - adds application menu > Settings... (Cmd-,) right after About.
+ *
+ * Commands without a target are greyed out (K4): the build state comes from
+ * VeyraNMacMenu's menu context, which JS publishes through `setContext` from
+ * app/hooks/use-mac-menu-commands.ts; block-based actions keep the disabled
+ * attribute set here, key commands are also re-checked in -validateCommand:.
+ * A change of the context triggers a rebuild (see -[VeyraNMacMenu setContext:]).
  *
  * Escape is not a menu item at all (see -keyCommands): a hidden UIKeyCommand is
  * still listed by Catalyst, so it is handled as a key command on this delegate.
@@ -244,6 +367,11 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
     return;
   }
 
+  // The context JS last published; NO until it has spoken, so the commands
+  // that need a note or list start out greyed (K4).
+  BOOL hasNote = [VeyraNMacMenu menuContextHasNote];
+  BOOL hasList = [VeyraNMacMenu menuContextHasList];
+
   // "Open..." lives in its own UIMenuOpen submenu on Catalyst.
   if ([builder menuForIdentifier:UIMenuOpen]) {
     [builder removeMenuForIdentifier:UIMenuOpen];
@@ -252,26 +380,60 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
     [builder removeMenuForIdentifier:UIMenuOpenRecent];
   }
   // UIMenuDocument (iOS 16+) owns the remaining document commands
-  // (Duplicate / Rename / Move / Export As). Note that we deliberately do NOT
-  // remove UIMenuNewScene: on the iOS 26 SDK that identifier is the deprecated
-  // name of UIMenuNewItem ("New Window"/New Scene group), not the Open command.
+  // (Duplicate / Rename / Move / Export As).
   if (@available(iOS 16.0, *)) {
     if ([builder menuForIdentifier:UIMenuDocument]) {
       [builder removeMenuForIdentifier:UIMenuDocument];
     }
   }
+  // W3: the app has no multi-window support, so the system's New Window group
+  // (UIMenuNewItem, the non-deprecated name of UIMenuNewScene) has no target
+  // and is removed. Runtime showed no "New Window" item at all, but the removal
+  // keeps a new SDK from reintroducing a dead entry.
+  if (@available(iOS 26.0, *)) {
+    if ([builder menuForIdentifier:UIMenuNewItem]) {
+      [builder removeMenuForIdentifier:UIMenuNewItem];
+    }
+  }
 
+  // File: New Note (Cmd-N) / New Notebook (Shift-Cmd-N) first, then the
+  // transfer group Import... / Export... / Print... (Cmd-P), both before the
+  // system's Close items. Export and Print need a note (K4/E5/E6).
   if ([builder menuForIdentifier:UIMenuFile]) {
-    UIKeyCommand *newNote = [UIKeyCommand keyCommandWithInput:@"n"
-                                                modifierFlags:UIKeyModifierCommand
-                                                       action:@selector(veyranNewNote:)];
+    UIKeyCommand *newNote =
+        [UIKeyCommand keyCommandWithInput:@"n"
+                            modifierFlags:UIKeyModifierCommand
+                                   action:@selector(veyranNewNote:)];
     newNote.title = @"New Note";
-    UIMenu *newNoteMenu = [UIMenu menuWithTitle:@""
-                                          image:nil
-                                     identifier:nil
-                                        options:UIMenuOptionsDisplayInline
-                                       children:@[ newNote ]];
-    [builder insertChildMenu:newNoteMenu atStartOfMenuForIdentifier:UIMenuFile];
+    UIKeyCommand *newNotebook =
+        VeyraNMenuCommand(@"New Notebook", @"n",
+                          UIKeyModifierCommand | UIKeyModifierShift,
+                          @selector(veyranNewNotebook:));
+    UIMenu *newMenu = [UIMenu menuWithTitle:@""
+                                      image:nil
+                                 identifier:nil
+                                    options:UIMenuOptionsDisplayInline
+                                   children:@[ newNote, newNotebook ]];
+
+    UIAction *importNotes = VeyraNMenuAction(@"Import…", @"import", YES);
+    UIAction *exportNote = VeyraNMenuAction(@"Export…", @"exportNote", hasNote);
+    UIKeyCommand *printNote =
+        VeyraNMenuCommand(@"Print…", @"p", UIKeyModifierCommand,
+                          @selector(veyranPrint:));
+    printNote.attributes =
+        hasNote ? 0 : UIMenuElementAttributesDisabled;
+    UIMenu *transferMenu = [UIMenu menuWithTitle:@""
+                                           image:nil
+                                      identifier:nil
+                                         options:UIMenuOptionsDisplayInline
+                                        children:@[
+                                          importNotes, exportNote, printNote
+                                        ]];
+
+    // Inserted in reverse (the second insert lands before the first), so the
+    // final order is New group, transfer group, then the system's File items.
+    [builder insertChildMenu:transferMenu atStartOfMenuForIdentifier:UIMenuFile];
+    [builder insertChildMenu:newMenu atStartOfMenuForIdentifier:UIMenuFile];
   }
 
   // Edit > Find in Notes (Cmd-Shift-F): the app's Search section, the Mac
@@ -291,31 +453,29 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
   }
 
   // The "Note" menu, right after Edit: the actions on the note open in the
-  // editor. Pin/Favorite are UIActions because they have no key equivalent of
-  // their own; Move to Trash is Cmd-Delete, like in Notes.
-  UIAction *pinNote =
-      [UIAction actionWithTitle:@"Pin Note"
-                          image:nil
-                     identifier:nil
-                        handler:^(__kindof UIAction *_Nonnull action) {
-                          [VeyraNMacMenu sendCommand:@"pinNote"];
-                        }];
+  // editor. Pin is Shift-Cmd-P and Move to Trash is Cmd-Delete, like in Notes;
+  // Favorite (no free shortcut: Shift-Cmd-F is Edit > Find in Notes) and Lock
+  // Note are block-based actions. Everything is greyed out without an open note
+  // (K4).
+  UIKeyCommand *pinNote =
+      VeyraNMenuCommand(@"Pin Note", @"p",
+                        UIKeyModifierCommand | UIKeyModifierShift,
+                        @selector(veyranPinNote:));
+  pinNote.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
   UIAction *toggleFavorite =
-      [UIAction actionWithTitle:@"Add to Favorites"
-                          image:nil
-                     identifier:nil
-                        handler:^(__kindof UIAction *_Nonnull action) {
-                          [VeyraNMacMenu sendCommand:@"toggleFavorite"];
-                        }];
+      VeyraNMenuAction(@"Add to Favorites", @"toggleFavorite", hasNote);
+  UIAction *lockNote = VeyraNMenuAction(@"Lock Note", @"lockNote", hasNote);
   UIKeyCommand *moveToTrash =
       VeyraNMenuCommand(@"Move to Trash", UIKeyInputDelete,
                         UIKeyModifierCommand, @selector(veyranMoveToTrash:));
+  moveToTrash.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
   UIMenu *noteMenu = [UIMenu menuWithTitle:@"Note"
                                      image:nil
                                 identifier:VeyraNNoteMenuIdentifier
                                    options:0
                                   children:@[
-                                    pinNote, toggleFavorite, moveToTrash
+                                    pinNote, toggleFavorite, lockNote,
+                                    moveToTrash
                                   ]];
   if ([builder menuForIdentifier:UIMenuEdit]) {
     [builder insertSiblingMenu:noteMenu afterMenuForIdentifier:UIMenuEdit];
@@ -340,7 +500,53 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
                                         librarySection, tasksSection,
                                         searchSection
                                       ]];
+
+  // View > Sort By / Group By: the commands the focused list's own "…" menu
+  // runs (components/list-view-menu.ts, published into useMacWindowStore by the
+  // list header). The command ids are that menu's own ids, so JS only has to
+  // forward them; they are greyed out while no list is on screen (K4/R19).
+  UIAction *sortByEdited =
+      VeyraNMenuAction(@"Date edited", @"sort:dateEdited", hasList);
+  UIAction *sortByCreated =
+      VeyraNMenuAction(@"Date created", @"sort:dateCreated", hasList);
+  UIAction *sortByTitle =
+      VeyraNMenuAction(@"Title", @"sort:title", hasList);
+  UIMenu *sortByMenu = [UIMenu menuWithTitle:@"Sort By"
+                                       image:nil
+                                  identifier:nil
+                                     options:0
+                                    children:@[
+                                      sortByEdited, sortByCreated, sortByTitle
+                                    ]];
+  UIAction *groupByDefault =
+      VeyraNMenuAction(@"Default", @"group:default", hasList);
+  UIAction *groupByNone =
+      VeyraNMenuAction(@"None", @"group:none", hasList);
+  UIAction *groupByAbc = VeyraNMenuAction(@"Abc", @"group:abc", hasList);
+  UIAction *groupByYear = VeyraNMenuAction(@"Year", @"group:year", hasList);
+  UIAction *groupByWeek = VeyraNMenuAction(@"Week", @"group:week", hasList);
+  UIAction *groupByMonth = VeyraNMenuAction(@"Month", @"group:month", hasList);
+  UIMenu *groupByMenu = [UIMenu menuWithTitle:@"Group By"
+                                        image:nil
+                                   identifier:nil
+                                      options:0
+                                     children:@[
+                                       groupByDefault, groupByNone, groupByAbc,
+                                       groupByYear, groupByWeek, groupByMonth
+                                     ]];
+  UIMenu *sortAndGroupMenu =
+      [UIMenu menuWithTitle:@""
+                      image:nil
+                 identifier:nil
+                    options:UIMenuOptionsDisplayInline
+                   children:@[ sortByMenu, groupByMenu ]];
+
   if ([builder menuForIdentifier:UIMenuView]) {
+    // Inserted back to front: Sort & Group sits after the section commands,
+    // which sit first; the system's View items follow and Toggle Sidebar is
+    // appended at the end further down.
+    [builder insertChildMenu:sortAndGroupMenu
+     atStartOfMenuForIdentifier:UIMenuView];
     [builder insertChildMenu:sectionsMenu
      atStartOfMenuForIdentifier:UIMenuView];
   }
@@ -382,6 +588,28 @@ static UIKeyCommand *VeyraNMenuCommand(NSString *title, NSString *input,
                      children:@[ toggleSidebar ]];
     [builder insertChildMenu:toggleSidebarMenu
        atEndOfMenuForIdentifier:UIMenuView];
+  }
+}
+
+/**
+ * Keeps the note commands that carry a key equivalent disabled while no note is
+ * open (K4). The disabled attribute is already set when the menu is built (see
+ * -buildMenuWithBuilder:), but UIKit validates UIKeyCommands against the
+ * responder chain before showing the menu and would re-enable a command whose
+ * selector this delegate implements; block-based UIActions carry no selector
+ * and are not validated, so only the four key commands are handled here.
+ */
+- (void)validateCommand:(UICommand *)command {
+  [super validateCommand:command];
+  if ([VeyraNMacMenu menuContextHasNote]) {
+    return;
+  }
+  SEL action = command.action;
+  if (action == @selector(veyranPinNote:) ||
+      action == @selector(veyranMoveToTrash:) ||
+      action == @selector(veyranExport:) ||
+      action == @selector(veyranPrint:)) {
+    command.attributes |= UIMenuElementAttributesDisabled;
   }
 }
 #endif

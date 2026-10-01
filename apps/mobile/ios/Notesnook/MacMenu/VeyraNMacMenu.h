@@ -61,6 +61,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * (read once during launch, when there may not be a window yet) and can be
  * asked for on demand with `getSystemState`, which always samples the window
  * that is on screen now.
+ *
+ * The third reverse direction is the menu build context JS publishes with
+ * `setContext` (see WP10/K4): whether a note is open and whether a list has
+ * published its own menu. The AppDelegate's UIMenuBuilder reads the two flags
+ * back (see +menuContextHasNote / +menuContextHasList) and greys out the
+ * commands that need a note (Pin, Favorite, Lock, Move to Trash, Export,
+ * Print) or a focused list (View > Sort By / Group By) when there is none.
  */
 @interface VeyraNMacMenu : RCTEventEmitter <RCTBridgeModule>
 
@@ -89,6 +96,21 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * system-following behaviour rather than pinning the last concrete style.
  */
 + (void)applyWindowAppearanceToWindowScene:(UIWindowScene *)scene;
+
+/**
+ * Whether a note is open in the editor, as last published by JS with
+ * `setContext`. Defaults to NO until JS has spoken, so the note commands start
+ * out greyed instead of doing nothing. Read by the AppDelegate's
+ * -buildMenuWithBuilder: / -validateCommand: on the main thread.
+ */
++ (BOOL)menuContextHasNote;
+
+/**
+ * Whether a list has published its own menu (useMacWindowStore.listMenu), as
+ * last published by JS with `setContext`. View > Sort By / Group By forward to
+ * that menu, so they are greyed while there is none.
+ */
++ (BOOL)menuContextHasList;
 #endif
 
 @end

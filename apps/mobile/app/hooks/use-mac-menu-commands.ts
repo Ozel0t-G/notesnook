@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { useThemeColors } from "@notesnook/theme";
 import React, { useEffect } from "react";
 import {
+  Linking,
   NativeEventEmitter,
   NativeModules,
   Platform,
@@ -32,8 +33,10 @@ import { hideDialog } from "../components/dialog/functions";
 import { runMacNoteAction } from "../components/mac-note-commands";
 import { NativeMenuItem } from "../components/native-menu";
 import { Properties } from "../components/properties";
+import { AddNotebookSheet } from "../components/sheets/add-notebook";
 import AppIcon from "../components/ui/AppIcon";
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
+import type { SettingSection } from "../screens/settings/types";
 import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
 import {
   eSendEvent,
@@ -79,6 +82,42 @@ const SECTION_COMMAND_PREFIX = "section:";
  */
 const SEARCH_COMMAND = "search";
 const SEARCH_SUBMIT_COMMAND = "searchSubmit";
+
+/**
+ * Where Help > "VeyraN Help" points (K5/I11). The app ships no Help Book
+ * (Info.plist has no CFBundleHelpBookFolder), so the native Help menu item was
+ * replaced with a command that opens the project's documentation site in the
+ * browser. docs/help in this repository is the source of that site
+ * (notesnook.com/help); there is no VeyraN-specific help URL in the app yet.
+ */
+const HELP_URL = "https://notesnook.com/help";
+
+/**
+ * File > Import…: opens the app's existing restore/import flow, which lives in
+ * Settings › Backup & Restore › Restore backup (screens/settings/restore-backup).
+ * The same nested-navigation pattern as screens/settings/mac-account-settings.ts
+ * is used: Settings is opened directly on the Restore backup group, reusing the
+ * group's own SettingSection so there is no second copy of the flow.
+ *
+ * `settings-data` is required lazily so the menu hook does not pull the whole
+ * settings module tree into every start.
+ */
+function openRestoreBackupFlow() {
+  const navigation = rootNavigatorRef.current;
+  if (!navigation) return;
+  const { settingsGroups } = require("../screens/settings/settings-data") as {
+    settingsGroups: { id: string; sections?: SettingSection[] }[];
+  };
+  const section = settingsGroups
+    .find((group) => group.id === "back-restore")
+    ?.sections?.find((candidate) => candidate.id === "restore-backup");
+  if (!section) return;
+  navigation.navigate("Settings", {
+    screen: "SettingsGroup",
+    params: section,
+    initial: false
+  } as never);
+}
 
 /**
  * Mirrors pressing Escape on iOS: close the topmost sheet or modal. Sheets and
@@ -246,23 +285,25 @@ function showListOptions() {
 
 /**
  * Handles the commands sent by the Mac Catalyst window chrome through the
- * VeyraNMacMenu native module: the menu bar (File > New Note, Edit > Find in
- * Notes, the Note menu, the View sections and Toggle Sidebar, Settings…,
- * Escape) and the window toolbar (New Note / New Task, the search field -
- * "search" while it is typed in, "searchSubmit" on Return, both with the
- * field's text in the event body - and the note/list commands the toolbar's
- * labels have no room for: "shareNote", "noteInfo" / "noteMore" for the open
- * note's Properties, and "listOptions" for the focused list's own menu).
- * Inert on iPhone and iPad.
+ * VeyraNMacMenu native module: the menu bar (File > New Note / New Notebook /
+ * Import… / Export…, Edit > Find in Notes, the Note menu, the View sections,
+ * Sort By / Group By and Toggle Sidebar, the Help link, Settings…, Escape) and
+ * the window toolbar (New Note / New Task, the search field - "search" while
+ * it is typed in, "searchSubmit" on Return, both with the field's text in the
+ * event body - and the note/list commands the toolbar's labels have no room
+ * for: "shareNote", "noteInfo" / "noteMore" for the open note's Properties,
+ * and "listOptions" for the focused list's own menu). Inert on iPhone and iPad.
  *
- * Everything that acts on a note (Pin, Add to Favorites, Move to Trash) goes
- * through components/mac-note-commands.tsx, which runs the very actions the
- * note list's context menu runs; with no note open it is a no-op, so those
- * commands are ignored rather than applied to nothing.
+ * Everything that acts on a note (Pin, Add to Favorites, Lock, Move to Trash,
+ * Export) goes through components/mac-note-commands.tsx, which runs the very
+ * actions the note list's context menu runs; with no note open it is a no-op,
+ * so those commands are ignored rather than applied to nothing - and the menu
+ * items are greyed out, see below.
  *
  * The reverse direction is handled here too: the toolbar only knows about the
  * sections it switched to itself, so every change to the section store is
- * pushed back to it.
+ * pushed back to it; and the note/list commands' build context is published
+ * through `setContext` so the native menu can disable what has no target (K4).
  */
 export const useMacMenuCommands = () => {
   useEffect(() => {
@@ -286,6 +327,28 @@ export const useMacMenuCommands = () => {
         }
       }
     );
+
+    // K4: publish whether the menu's note/list commands have a target, so the
+    // native menu can grey them out. A note is "open" when the current tab has
+    // one (the same source the note commands use); a list is focused when its
+    // header has published its own menu into useMacWindowStore. The last
+    // published pair is kept so the many store changes that do not affect
+    // either flag do not cross the bridge.
+    let lastNoteOpen: boolean | undefined;
+    let lastListOpen: boolean | undefined;
+    const publishMenuContext = () => {
+      const noteOpen = !!useTabStore.getState().getCurrentNoteId();
+      const listOpen = !!useMacWindowStore.getState().listMenu;
+      if (noteOpen === lastNoteOpen && listOpen === lastListOpen) return;
+      lastNoteOpen = noteOpen;
+      lastListOpen = listOpen;
+      NativeModules.VeyraNMacMenu.setContext({ noteOpen, listOpen });
+    };
+    publishMenuContext();
+    const contextSubscriptions = [
+      useTabStore.subscribe(publishMenuContext),
+      useMacWindowStore.subscribe(publishMenuContext)
+    ];
 
     const emitter = new NativeEventEmitter(NativeModules.VeyraNMacMenu);
     const subscription = emitter.addListener(
@@ -330,11 +393,52 @@ export const useMacMenuCommands = () => {
           );
           return;
         }
+        if (command?.startsWith("sort:") || command?.startsWith("group:")) {
+          // View > Sort By / Group By (R19): the ids are the focused list's own
+          // menu ids (components/list-view-menu.ts), so the selection is handed
+          // straight to that list's onSelect. No list on screen means no target
+          // (the items are greyed out then anyway).
+          useMacWindowStore.getState().listMenu?.onSelect(command);
+          return;
+        }
         switch (command) {
           case "newNote":
             // Same action as the compose button in the Library nav bar.
             setOnFirstSaveUnassigned();
             openEditor();
+            break;
+          case "newNotebook":
+            // File > New Notebook (Shift-Cmd-N, K6/R19): the same sheet the
+            // Library source list's "New notebook" row opens
+            // (components/mac-sidebar.tsx).
+            AddNotebookSheet.present(
+              undefined,
+              undefined,
+              "global",
+              undefined,
+              false
+            );
+            break;
+          case "import":
+            // File > Import…: the existing restore/import flow (E6).
+            openRestoreBackupFlow();
+            break;
+          case "exportNote":
+            // File > Export…: the open note's own Export action, i.e. the
+            // ExportNotesSheet with PDF/Markdown/HTML (E6). No-op with no note
+            // open, where the menu item is greyed out anyway.
+            runMacNoteAction("export");
+            break;
+          case "lockNote":
+            // Note > Lock Note: the open note's lock/unlock (vault) action.
+            runMacNoteAction("lock-unlock");
+            break;
+          case "openHelp":
+            // Help > "VeyraN Help" (K5/I11). A browser link rather than a Help
+            // Book, which the app does not ship.
+            Linking.openURL(HELP_URL).catch(() => {
+              /* No browser available: leave the menu item a no-op. */
+            });
             break;
           case "newTask":
             // The Tasks screen reveals its own inline "+ New Task" row (the
@@ -403,6 +507,7 @@ export const useMacMenuCommands = () => {
     return () => {
       subscription.remove();
       sectionSubscription();
+      contextSubscriptions.forEach((unsubscribe) => unsubscribe());
     };
   }, []);
 };

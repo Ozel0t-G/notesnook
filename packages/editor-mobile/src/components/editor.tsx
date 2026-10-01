@@ -48,7 +48,11 @@ import StatusBar from "./statusbar";
 import Tags from "./tags";
 import TiptapEditorWrapper from "./tiptap";
 import Title from "./title";
-import { MAC_TOOLBAR_HEIGHT } from "../utils/mac";
+import {
+  MAC_TEXT_COLUMN_MAX_WIDTH,
+  MAC_TEXT_COLUMN_PADDING,
+  MAC_TOOLBAR_HEIGHT
+} from "../utils/mac";
 
 globalThis.toBlobURL = toBlobURL as typeof globalThis.toBlobURL;
 
@@ -619,10 +623,24 @@ const Tiptap = ({
                   justifyContent: "space-between",
                   display: "flex",
                   alignItems: "center",
-                  padding: "0px 16px",
+                  padding: settings.isMacCatalyst
+                    ? `0px ${MAC_TEXT_COLUMN_PADDING}px`
+                    : "0px 16px",
                   paddingBottom: "3px",
                   boxSizing: "border-box",
-                  minHeight: "28px"
+                  minHeight: "28px",
+                  /**
+                   * R7: on Mac the word count and "+ Add tag" line up with the
+                   * centered text column instead of sitting at the window
+                   * edges. iPhone and iPad keep the full-width row.
+                   */
+                  ...(settings.isMacCatalyst
+                    ? {
+                        width: "100%",
+                        maxWidth: MAC_TEXT_COLUMN_MAX_WIDTH,
+                        margin: "0 auto"
+                      }
+                    : {})
                 }}
               >
                 <StatusBar
@@ -1020,7 +1038,20 @@ const TiptapProvider = (): JSX.Element => {
     editorContainer.classList.add("selectable", "main-editor", "searching");
     editorContainer.style.flex = "1";
     editorContainer.style.cursor = "text";
-    editorContainer.style.padding = "0px 16px";
+    editorContainer.style.padding = settings.isMacCatalyst
+      ? `0px ${MAC_TEXT_COLUMN_PADDING}px`
+      : "0px 16px";
+    if (settings.isMacCatalyst) {
+      /**
+       * E1/R7: Mac centers the note in a fixed-width text column the way macOS
+       * Notes does (see `utils/mac.ts`). `overflow-x: auto` keeps wide tables
+       * and code blocks inside the column instead of pushing the pane around.
+       */
+      editorContainer.style.boxSizing = "border-box";
+      editorContainer.style.maxWidth = MAC_TEXT_COLUMN_MAX_WIDTH;
+      editorContainer.style.margin = "0 auto";
+      editorContainer.style.overflowX = "auto";
+    }
     editorContainer.style.color = colors.primary.paragraph;
     editorContainer.style.fontSize = `${settings.fontSize}px`;
     editorContainer.style.lineHeight = `${settings.defaultLineHeight}`;

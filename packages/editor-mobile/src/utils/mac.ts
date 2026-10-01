@@ -47,6 +47,31 @@ export const MAC_TOOLBAR_ICON_SIZE = 16;
 export const MAC_TOOLBAR_GAP = 4;
 
 /**
+ * Maximum width of the note's text column on Mac: 46rem (≈736 pt at the
+ * default 16 px root font size), centered in the editor pane the way macOS
+ * Notes does it. iPhone, iPad and Android keep the full-width column.
+ *
+ * The title, the note body and the word-count/add-tag row above the title all
+ * use this same width so their left edges line up.
+ */
+export const MAC_TEXT_COLUMN_MAX_WIDTH = "46rem";
+
+/**
+ * Horizontal padding inside the Mac text column. The desktop editor's 16 px
+ * read too narrow once the column is centered and capped, so Mac gets 24 px.
+ */
+export const MAC_TEXT_COLUMN_PADDING = 24;
+
+/** Title font size on Mac. Other platforms keep the hard-coded 25 px. */
+export const MAC_TITLE_FONT_SIZE = 22;
+
+/**
+ * Title line height on Mac, paired with `MAC_TITLE_FONT_SIZE` so the hidden
+ * measuring div and the title textarea wrap identically.
+ */
+export const MAC_TITLE_LINE_HEIGHT = 28;
+
+/**
  * Height of the toolbar row itself: a 28 pt button plus 4 pt of padding above
  * and below.
  */

@@ -1,6 +1,6 @@
 # WP08 · Editor wie Notes: Textspalte, Aa-Format, Suchen
 
-**Status:** offen · **Befunde:** 10 (P1×5 · P2×4 · P3×1) · **Abhängig von:** WP02, WP10
+**Status:** Teil A (Textspalte) umgesetzt, Teil B offen · **Befunde:** 10 (P1×5 · P2×4 · P3×1) · **Abhängig von:** WP02, WP10
 
 ## Ziel
 
@@ -38,7 +38,7 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 - **Befund:** Keine maximale Textbreite/zentrierte Spalte: `editor-mobile/src/components/editor.tsx:480` (`maxWidth:"100vw"`), 12 px Padding (`:596-612`), Titel 100 % (`title.tsx:120`).
 - **So macht es macOS:** macOS Notizen begrenzt die Textspalte (~600-700 pt, zentriert).
 - **Fix:** Im WebView bei `isMacCatalyst` `max-width: 46rem; margin: 0 auto`.
-- [ ] erledigt
+- [~] erledigt (Teil A: zentrierte Spalte in `editor.tsx`/`title.tsx`; nicht build-verifiziert)
 
 #### E3
 
@@ -78,7 +78,7 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 - **Befund:** Titel 25 pt hartkodiert, keine Mac-Größe: `title.tsx:97,119`.
 - **So macht es macOS:** Mac-Titel ~17-22 pt (oder im Fenstertitel).
 - **Fix:** Mac-Titelgröße über `settings.isMacCatalyst`.
-- [ ] erledigt
+- [~] erledigt (Teil A: 22 pt/700 mit passender Zeilenhöhe in `title.tsx`; nicht build-verifiziert)
 
 #### E7
 
@@ -102,7 +102,7 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 - **Screenshot:** [01-main-dark.png](../screenshots/01-main-dark.png)
 - **Befund:** Text klebt links an der Spalte. „6 words“ und „Add tag“ stehen als eigene Inhaltszeile über dem Titel.
 - **Fix:** Zentrierte Textspalte mit max. ca. 700 pt (E1). Wortzahl in die Statusanzeige oder ins Info-Popover, Tags unter den Text.
-- [ ] erledigt
+- [~] erledigt (Teil A: Wortzahl-/„Add tag“-Zeile auf die zentrierte Spalte ausgerichtet; Verschieben in Statusanzeige/Info-Popover offen; nicht build-verifiziert)
 
 #### E9
 
@@ -123,3 +123,14 @@ Mit dem Read-Tool ansehen, bevor du anfängst.
 ## Ergebnis
 
 _(nach Abschluss ausfüllen: was geändert wurde, Commits, offene Punkte)_
+
+### Ergebnis (Teil A)
+
+Teil A (zentrierte Textspalte, Mac-Titeltypografie, Kopfzeile an der Spalte) ist implementiert. Das Editor-Bundle baut der Supervisor (`npm run tx editor-mobile:build`), deshalb sind E1, E2 und R7 nur mit `[~]` markiert: eslint/prettier sind grün, aber im laufenden Catalyst-Build ist nichts davon verifiziert.
+
+- **Neue Mac-Metriken** in `packages/editor-mobile/src/utils/mac.ts`: `MAC_TEXT_COLUMN_MAX_WIDTH = "46rem"`, `MAC_TEXT_COLUMN_PADDING = 24`, `MAC_TITLE_FONT_SIZE = 22`, `MAC_TITLE_LINE_HEIGHT = 28`.
+- **E1/R7 – Textspalte** (`packages/editor-mobile/src/components/editor.tsx`): Der Editor-Inhalt (`getContentDiv`, die ProseMirror-Wurzel) bekommt auf dem Mac `max-width: 46rem`, `margin: 0 auto`, 24 px horizontales Padding, `box-sizing: border-box` und `overflow-x: auto`, damit breite Tabellen/Codeblöcke in der Spalte scrollen statt das Layout zu verschieben. Die Zeile mit Wortzahl und „+ Add tag“ ist auf dem Mac über `max-width`/`margin: 0 auto`/24 px ebenfalls auf dieselbe Spalte ausgerichtet. Formatleiste (weiterhin `left: 0; right: 0` in `tiptap.tsx`) und die Kopfzeile (auf dem Mac `null`) bleiben unverändert voll breit.
+- **E2 – Titel** (`packages/editor-mobile/src/components/title.tsx`): Auf dem Mac 22 pt, Gewicht 700, `line-height: 28px`; der unsichtbare Mess-Div nutzt exakt dieselben Werte, damit das Auto-Grow des Textareas unverändert funktioniert. Der Titel hat außerdem dieselbe zentrierte 46-rem-Spalte wie der Text. iPhone, iPad und Android behalten 25 pt/600 bei voller Breite.
+- Alle Änderungen hängen an `settings.isMacCatalyst` bzw. `globalThis.isMacCatalyst` (WebView-Injection, siehe `apps/mobile/app/screens/editor/index.tsx:181`); ohne das Flag ist der Pfad unverändert.
+- **Prüfung:** `prettier --check` sauber; ESLint mit der Repo-Config: 0 Fehler, nur die zwei vorbestehenden Warnungen (`insets`, `e` in `editor.tsx`); `tsc` konnte in diesem isolierten Checkout nicht laufen (keine `node_modules`).
+- **Offen (Teil B):** „Aa“-Toolbar-Popover statt Web-Formatleiste (E3/K2/R6), ⌘F/⌥⌘F (E4/K3), Drag & Drop von Dateien (E7), Wortzahl/Tags ins Info-Popover bzw. unter den Text.

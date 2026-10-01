@@ -21,6 +21,12 @@ import { getFontById, replaceDateTime } from "@notesnook/editor";
 import React, { RefObject, useCallback, useEffect, useRef } from "react";
 import { EditorController } from "../hooks/useEditorController";
 import { useTabContext } from "../hooks/useTabStore";
+import {
+  MAC_TEXT_COLUMN_MAX_WIDTH,
+  MAC_TEXT_COLUMN_PADDING,
+  MAC_TITLE_FONT_SIZE,
+  MAC_TITLE_LINE_HEIGHT
+} from "../utils/mac";
 import styles from "./styles.module.css";
 function Title({
   controller,
@@ -44,6 +50,23 @@ function Title({
   const tab = useTabContext();
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const titleSizeDiv = useRef<HTMLDivElement>(null);
+  /**
+   * E1/R7 + E2: on Mac the title shares the centered 46 rem text column of
+   * the note body and is set at 22 pt/700 with a matching line height. The
+   * hidden measuring div and the textarea use the exact same metrics, so the
+   * textarea keeps auto-growing to the right height. iPhone, iPad and Android
+   * keep the 25 pt title at the full pane width.
+   */
+  const isMacCatalyst = globalThis.isMacCatalyst ?? false;
+  const titleFontSize = isMacCatalyst ? MAC_TITLE_FONT_SIZE : 25;
+  const titleFontWeight = isMacCatalyst ? 700 : 600;
+  const titleLineHeight = isMacCatalyst
+    ? `${MAC_TITLE_LINE_HEIGHT}px`
+    : undefined;
+  const titlePadding = isMacCatalyst ? MAC_TEXT_COLUMN_PADDING : 16;
+  const titleColumnStyle: React.CSSProperties = isMacCatalyst
+    ? { maxWidth: MAC_TEXT_COLUMN_MAX_WIDTH, margin: "0 auto" }
+    : {};
 
   const resizeTextarea = useCallback(() => {
     if (!titleSizeDiv.current || !titleRef.current) return;
@@ -86,15 +109,16 @@ function Title({
         ref={titleSizeDiv}
         style={{
           width: "100%",
-          maxWidth: "100%",
+          maxWidth: isMacCatalyst ? MAC_TEXT_COLUMN_MAX_WIDTH : "100%",
           minHeight: 40,
           opacity: 0,
-          paddingRight: 16,
-          paddingLeft: 16,
-          fontWeight: 600,
+          paddingRight: titlePadding,
+          paddingLeft: titlePadding,
+          fontWeight: titleFontWeight,
+          lineHeight: titleLineHeight,
           fontFamily: getFontById(fontFamily)?.font || "Inter",
           boxSizing: "border-box",
-          fontSize: 25,
+          fontSize: titleFontSize,
           zIndex: -1,
           position: "absolute",
           userSelect: "none",
@@ -114,16 +138,18 @@ function Title({
         readOnly={readonly}
         defaultValue={title}
         style={{
+          ...titleColumnStyle,
           height: 40,
           minHeight: 40,
-          fontSize: 25,
+          fontSize: titleFontSize,
           width: "100%",
           boxSizing: "border-box",
           border: 0,
           opacity: 1,
-          paddingRight: 16,
-          paddingLeft: 16,
-          fontWeight: 600,
+          paddingRight: titlePadding,
+          paddingLeft: titlePadding,
+          fontWeight: titleFontWeight,
+          lineHeight: titleLineHeight,
           fontFamily: getFontById(fontFamily)?.font || "Inter",
           backgroundColor: "transparent",
           color: "var(--nn_primary_heading)",

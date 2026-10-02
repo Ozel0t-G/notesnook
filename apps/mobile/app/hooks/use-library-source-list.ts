@@ -23,6 +23,9 @@ import { db } from "../common/database";
 import type { NavigationProps } from "../services/navigation";
 import { useSettingStore } from "../stores/use-setting-store";
 
+/** Max ids per notebook/tag count query (SQLite bound-parameter headroom). */
+const COUNT_QUERY_CHUNK = 500;
+
 export type LibrarySourceListData = {
   notebooks: Notebook[];
   tags: Tag[];
@@ -33,6 +36,14 @@ export type LibrarySourceListData = {
     archived?: number;
     trash?: number;
   };
+  /**
+   * Note count per notebook / tag. Only requested by Mac's source list
+   * (components/mac-sidebar.tsx), whose Notebooks and Tags rows show them; the
+   * iPad Library list has no such count, so it is left undefined there and no
+   * extra query runs.
+   */
+  notebookCounts?: Record<string, number>;
+  tagCounts?: Record<string, number>;
 };
 
 /**
@@ -43,10 +54,13 @@ export type LibrarySourceListData = {
  * screen itself) and Mac's source list pane (components/mac-sidebar.tsx), so
  * the queries and the database subscriptions that keep them fresh live in one
  * place only. Mac's sidebar is not a navigation screen, so `navigation` is
- * optional: it is only passed where there is a route to listen to.
+ * optional: it is only passed where there is a route to listen to. The
+ * per-notebook / per-tag counts are opt-in for the same reason: only the
+ * sidebar renders them.
  */
 export function useLibrarySourceList(
-  navigation?: NavigationProps<"Library">["navigation"]
+  navigation?: NavigationProps<"Library">["navigation"],
+  options?: { countsByNotebookAndTag?: boolean }
 ): LibrarySourceListData {
   const [notebooks, setNotebooks] = React.useState<Notebook[]>([]);
   const [tags, setTags] = React.useState<Tag[]>([]);
@@ -57,7 +71,12 @@ export function useLibrarySourceList(
     archived?: number;
     trash?: number;
   }>({});
+  const [notebookCounts, setNotebookCounts] = React.useState<
+    Record<string, number>
+  >({});
+  const [tagCounts, setTagCounts] = React.useState<Record<string, number>>({});
   const isAppLoading = useSettingStore((state) => state.isAppLoading);
+  const countsByNotebookAndTag = !!options?.countsByNotebookAndTag;
 
   React.useEffect(() => {
     let alive = true;
@@ -80,6 +99,35 @@ export function useLibrarySourceList(
       ]);
       // The Trash cache is kept in memory, so its count needs no query.
       const trashCount = db.trash.count();
+      // Per-notebook / per-tag note counts are only shown in Mac's source list,
+      // so callers that do not ask for them skip the query entirely.
+      let nextNotebookCounts: Record<string, number> | undefined;
+      let nextTagCounts: Record<string, number> | undefined;
+      if (countsByNotebookAndTag) {
+        // Chunked so an id list of up to `limit(2000)` items can never exceed
+        // SQLite's bound-parameter limit.
+        nextNotebookCounts = {};
+        for (let i = 0; i < nextNotebooks.length; i += COUNT_QUERY_CHUNK) {
+          const chunk = nextNotebooks.slice(i, i + COUNT_QUERY_CHUNK);
+          const totals = await db.notebooks.totalNotes(
+            ...chunk.map((notebook) => notebook.id)
+          );
+          chunk.forEach((notebook, index) => {
+            nextNotebookCounts![notebook.id] = totals[index] || 0;
+          });
+        }
+        nextTagCounts = {};
+        for (let i = 0; i < nextTags.length; i += COUNT_QUERY_CHUNK) {
+          const chunk = nextTags.slice(i, i + COUNT_QUERY_CHUNK);
+          const relations = await db.relations
+            .from({ ids: chunk.map((tag) => tag.id), type: "tag" }, "note")
+            .get();
+          for (const relation of relations) {
+            nextTagCounts[relation.fromId] =
+              (nextTagCounts[relation.fromId] || 0) + 1;
+          }
+        }
+      }
       if (alive) {
         setNotebooks(nextNotebooks);
         setTags(nextTags);
@@ -90,6 +138,10 @@ export function useLibrarySourceList(
           archived: archivedCount,
           trash: trashCount
         });
+        if (nextNotebookCounts && nextTagCounts) {
+          setNotebookCounts(nextNotebookCounts);
+          setTagCounts(nextTagCounts);
+        }
       }
     };
     void load();
@@ -121,9 +173,9 @@ export function useLibrarySourceList(
       subscriptions.forEach((subscription) => subscription.unsubscribe());
       unsubscribe?.();
     };
-  }, [navigation, isAppLoading]);
+  }, [navigation, isAppLoading, countsByNotebookAndTag]);
 
-  return { notebooks, tags, counts };
+  return { notebooks, tags, counts, notebookCounts, tagCounts };
 }
 
 export default useLibrarySourceList;

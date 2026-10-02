@@ -18,9 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import {
-  EVENTS,
   Task,
-  TaskFavorite,
   TaskList,
   TaskPriority,
   isTaskOverdue,
@@ -31,7 +29,6 @@ import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import {
   ActivityIndicator,
-  AppState,
   FlatList,
   Keyboard,
   Platform,
@@ -71,13 +68,23 @@ import { TaskNotifications } from "../../services/task-notifications";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../utils/constants";
 import { eCreateTaskRequest } from "../../utils/events";
-import { SystemColorName, systemColor } from "../../utils/ios-system-colors";
+import { systemColor } from "../../utils/ios-system-colors";
 import { showAlert } from "../../utils/mac-alert";
 import { macAccent, macSelectionFill } from "../../utils/mac-system-state";
 import { useMacListTitleStore } from "../../utils/mac-window-title";
 import { useAppleNavigationStore } from "../../stores/use-apple-navigation-store";
 import { useMacSystemStore } from "../../stores/use-mac-system-store";
 import { useMacWindowStore } from "../../stores/use-mac-window-store";
+import {
+  taskSmartList,
+  TILE_SMART_LISTS,
+  TaskSmartListId,
+  useTaskSmartLists
+} from "../../hooks/use-task-smart-lists";
+import {
+  TaskSelection,
+  useTasksSelectionStore
+} from "../../stores/use-tasks-selection-store";
 import { FavoritesEditor } from "./favorites-editor";
 import {
   ListCustomization,
@@ -92,52 +99,7 @@ import {
 } from "./task-focus";
 import { localCalendarDate, TaskListRow, taskListRows } from "./task-sections";
 
-type SmartList = "today" | "scheduled" | "all" | "flagged" | "completed";
-type Selection =
-  | { kind: "smart"; id: SmartList }
-  | { kind: "list"; id: string };
-
-/** Reminders-style smart lists: one colored circle each, found without reading. */
-const SMART_LISTS: {
-  id: SmartList;
-  symbol: string;
-  color: SystemColorName;
-  label: () => string;
-}[] = [
-  {
-    id: "today",
-    symbol: "calendar",
-    color: "blue",
-    label: strings.tasksToday
-  },
-  {
-    id: "scheduled",
-    symbol: "calendar",
-    color: "red",
-    label: strings.tasksScheduled
-  },
-  { id: "all", symbol: "tray.fill", color: "darkGray", label: strings.tasksAll },
-  {
-    id: "flagged",
-    symbol: "flag.fill",
-    color: "orange",
-    label: strings.tasksFlagged
-  },
-  {
-    id: "completed",
-    symbol: "checkmark",
-    color: "gray",
-    label: strings.tasksCompleted
-  }
-];
-
-/** "Completed" is a filter of every list, not a tile of its own. */
-const TILE_SMART_LISTS = new Set<SmartList>([
-  "today",
-  "scheduled",
-  "all",
-  "flagged"
-]);
+type Selection = TaskSelection;
 
 /** Undo window for deletions and the time a checked-off Task stays visible. */
 const UNDO_DELETE_MS = 4000;
@@ -260,32 +222,42 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   // Accessibility text sizes (AX1 and up) get a single-column overview so
   // titles never break mid-word and counts never overflow their tile.
   const accessibilityLayout = fontScale >= 1.4;
-  const [selection, setSelection] = React.useState<Selection>(
+  /**
+   * On Mac the selected list lives in a store because Mac's sidebar drives it
+   * (components/mac-sidebar.tsx); iPhone/iPad keep their own local selection, so
+   * nothing changes there.
+   */
+  const macSelection = useTasksSelectionStore((state) => state.selection);
+  const macSetSelection = useTasksSelectionStore((state) => state.setSelection);
+  const [localSelection, setLocalSelection] = React.useState<Selection>(
     route.params?.listId
       ? { kind: "list", id: route.params.listId }
       : { kind: "smart", id: route.params?.smartList || "today" }
   );
+  const selection: Selection = isMac ? macSelection : localSelection;
+  const setSelection = (next: Selection) => {
+    if (isMac) macSetSelection(next);
+    else setLocalSelection(next);
+  };
   const [showListOnPhone, setShowListOnPhone] = React.useState(
     !!(route.params?.listId || route.params?.smartList)
   );
-  const [tasks, setTasks] = React.useState<Task[]>([]);
-  const [allTasks, setAllTasks] = React.useState<Task[]>([]);
-  const [lists, setLists] = React.useState<TaskList[]>([]);
-  const [favorites, setFavorites] = React.useState<TaskFavorite[]>([]);
+  const {
+    lists,
+    allTasks,
+    favorites,
+    defaultListId,
+    smartLists,
+    counts,
+    listCounts,
+    loading,
+    error,
+    refresh
+  } = useTaskSmartLists(navigation);
   const [favoritesEditorOpen, setFavoritesEditorOpen] = React.useState(false);
   const [editingList, setEditingList] = React.useState<
     TaskList | null | undefined
   >();
-  const [defaultListId, setDefaultListId] = React.useState<string>();
-  const [counts, setCounts] = React.useState<Record<SmartList, number>>({
-    today: 0,
-    scheduled: 0,
-    all: 0,
-    flagged: 0,
-    completed: 0
-  });
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState(false);
   const [includeCompleted, setIncludeCompleted] = React.useState(
     !!route.params?.includeCompleted
   );
@@ -304,7 +276,6 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const deleteTimers = React.useRef(
     new Map<string, ReturnType<typeof setTimeout>>()
   );
-  const refreshGeneration = React.useRef(0);
   const listRef = React.useRef<FlatList<TaskListRow>>(null);
   const dismissedFocusRequest = React.useRef<string | undefined>(undefined);
   const focusTaskId =
@@ -347,24 +318,18 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     // A second notification/deep-link tap while this screen is already mounted
     // still delivers new route params (React Navigation updates params on an
     // existing screen instance rather than always creating a new one). Show the
-    // requested List; only re-enter the loading state when the shown List (or
-    // the completed-inclusion flag) would actually change, so a tap that lands
-    // on the List already on screen does not flash a spinner.
+    // requested List.
     const next: Selection | undefined = route.params?.listId
       ? { kind: "list", id: route.params.listId }
       : route.params?.smartList
         ? { kind: "smart", id: route.params.smartList }
         : undefined;
     const nextIncludeCompleted = !!route.params?.includeCompleted;
-    const current = selectionRef.current;
     if (next) {
-      const changed = current.kind !== next.kind || current.id !== next.id;
       setSelection(next);
       setShowListOnPhone(true);
-      if (changed) setLoading(true);
     }
     setIncludeCompleted(nextIncludeCompleted);
-    if (nextIncludeCompleted !== includeCompleted) setLoading(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     route.params?.listId,
@@ -374,102 +339,36 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     route.params?.highlightTaskId
   ]);
 
-  const refresh = React.useCallback(async () => {
-    if (!db.isInitialized) return;
-    const generation = ++refreshGeneration.current;
-    try {
-      const [
-        taskLists,
-        allTasks,
-        today,
-        scheduled,
-        all,
-        flagged,
-        completed,
-        favoriteRefs
-      ] = await Promise.all([
-        db.taskLists.list(),
-        db.tasks.list(),
-        db.tasks.smartList("today"),
-        db.tasks.smartList("scheduled"),
-        db.tasks.smartList("all"),
-        db.tasks.smartList("flagged"),
-        db.tasks.smartList("completed"),
-        db.taskFavorites.list()
-      ]);
-      const defaultList = await db.taskLists.default();
-      if (generation !== refreshGeneration.current) return;
-      setLists(taskLists);
-      setAllTasks(allTasks);
-      setFavorites(favoriteRefs);
-      setDefaultListId(defaultList.id);
-      setCounts({
-        today: today.length,
-        scheduled: scheduled.length,
-        all: all.length,
-        flagged: flagged.length,
-        completed: completed.length
-      });
-      const smart = { today, scheduled, all, flagged, completed } as Record<
-        SmartList,
-        Task[]
-      >;
+  /**
+   * The Tasks of the current selection, derived from the shared data above
+   * (hooks/use-task-smart-lists.ts). Keeping it derived instead of loaded means
+   * switching lists is instant and Mac's sidebar can drive the selection from
+   * its own store.
+   */
+  const tasks = React.useMemo(() => {
+    if (selection.kind === "list") {
+      const listId = selection.id;
+      return allTasks.filter(
+        (task) => task.listId === listId && (includeCompleted || !task.completed)
+      );
+    }
+    const smartId = selection.id;
+    const smart = smartLists[smartId];
+    if (smartId !== "completed" && includeCompleted) {
       const todayDate = localCalendarDate(new Date());
       // "Show Completed" adds the completed Tasks that belong to the list.
-      const completedFor = (id: SmartList) =>
-        completed.filter((task) => {
-          const date = taskReminderSchedule(task).date;
-          if (id === "all") return true;
-          if (id === "flagged") return task.flagged;
-          if (id === "scheduled") return !!date;
-          if (id === "today") return !!date && date <= todayDate;
-          return false;
-        });
-      setTasks(
-        selection.kind === "list"
-          ? allTasks.filter(
-              (task) =>
-                task.listId === selection.id &&
-                (includeCompleted || !task.completed)
-            )
-          : selection.id !== "completed" && includeCompleted
-            ? [...smart[selection.id], ...completedFor(selection.id)]
-            : smart[selection.id]
-      );
-      setError(false);
-    } catch {
-      if (generation !== refreshGeneration.current) return;
-      setError(true);
-    } finally {
-      if (generation === refreshGeneration.current) setLoading(false);
+      const completedFor = smartLists.completed.filter((task) => {
+        const date = taskReminderSchedule(task).date;
+        if (smartId === "all") return true;
+        if (smartId === "flagged") return task.flagged;
+        if (smartId === "scheduled") return !!date;
+        if (smartId === "today") return !!date && date <= todayDate;
+        return false;
+      });
+      return [...smart, ...completedFor];
     }
-  }, [selection, includeCompleted]);
-
-  React.useEffect(() => {
-    const generationRef = refreshGeneration;
-    refresh();
-    const focus = navigation.addListener("focus", refresh);
-    const appState = AppState.addEventListener("change", (state) => {
-      if (state === "active") refresh();
-    });
-    const clock = setInterval(refresh, 60_000);
-    const update = db.eventManager.subscribe(
-      EVENTS.databaseUpdated,
-      (event) => {
-        if (event.collection === "settings" || event.collection === "reminders")
-          refresh();
-      }
-    );
-    const sync = db.eventManager.subscribe(EVENTS.syncCompleted, refresh);
-    return () => {
-      generationRef.current++;
-      focus();
-      appState.remove();
-      clearInterval(clock);
-      update.unsubscribe();
-      sync.unsubscribe();
-    };
-  }, [navigation, refresh]);
+    return smart;
+  }, [selection, includeCompleted, allTasks, smartLists]);
 
   // Leaving the screen never loses a pending check-off or deletion: both are
   // committed right away instead of waiting for their undo window.
@@ -491,7 +390,6 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const select = (next: Selection) => {
     setSelection(next);
     setShowListOnPhone(true);
-    setLoading(true);
     setIncludeCompleted(false);
     setHighlightedTaskId(undefined);
     focusSession.current?.cancel();
@@ -501,6 +399,22 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   // (it only touches setters and the focus session ref, so any instance does).
   const selectRef = React.useRef(select);
   selectRef.current = select;
+
+  /**
+   * Mac's sidebar "Lists" + button asks for the New List sheet through the
+   * selection store (components/mac-sidebar.tsx): handle a request that arrived
+   * before this screen mounted as well as ones that arrive while it is up.
+   */
+  React.useEffect(() => {
+    if (!isMac) return;
+    const openNewList = () => {
+      if (useTasksSelectionStore.getState().takeNewListRequest())
+        setEditingList(null);
+    };
+    openNewList();
+    const unsubscribe = useTasksSelectionStore.subscribe(openNewList);
+    return unsubscribe;
+  }, [isMac]);
 
   /**
    * Mac's window toolbar sends "newTask" for its "New Task" button
@@ -528,9 +442,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   }, []);
 
   const selectedSmart =
-    selection.kind === "smart"
-      ? SMART_LISTS.find((item) => item.id === selection.id)
-      : undefined;
+    selection.kind === "smart" ? taskSmartList(selection.id) : undefined;
   const selectedList =
     selection.kind === "list"
       ? lists.find((list) => list.id === selection.id)
@@ -671,7 +583,6 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
 
   const onTaskListMenuSelect = (id: string) => {
     if (id === "toggle-completed") {
-      setLoading(true);
       setIncludeCompleted((value) => !value);
     } else if (id === "edit-list" && selectedList) editList(selectedList);
     else if (id === "delete-list" && selectedList) deleteList(selectedList);
@@ -1101,7 +1012,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     >
       {favorites.flatMap((ref) => {
         const smart = ref.startsWith("smart:")
-          ? SMART_LISTS.find((item) => item.id === ref.slice(6))
+          ? taskSmartList(ref.slice(6) as TaskSmartListId)
           : undefined;
         if (smart && !TILE_SMART_LISTS.has(smart.id)) return [];
         const taskList = ref.startsWith("list:")
@@ -1118,9 +1029,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
           isTablet && selection.kind === next.kind && selection.id === next.id;
         const count = smart
           ? counts[smart.id]
-          : allTasks.filter(
-              (task) => task.listId === taskList!.id && !task.completed
-            ).length;
+          : listCounts[taskList!.id] || 0;
         const testID = smart
           ? `task-smart-${smart.id}`
           : `task-favorite-list-${taskList!.id}`;
@@ -1256,11 +1165,7 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
                 name={item.name}
                 symbol={taskListSymbol(item.symbol)}
                 color={taskListColor(item.color)}
-                count={
-                  allTasks.filter(
-                    (task) => task.listId === item.id && !task.completed
-                  ).length
-                }
+                count={listCounts[item.id] || 0}
                 selected={selection.kind === "list" && selection.id === item.id}
                 onPress={() => select({ kind: "list", id: item.id })}
               />
@@ -1675,6 +1580,9 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         </Text>
       ) : (
         <FlatList
+          // Remount on a list/Show-Completed change so the new list starts at
+          // the top (the old spinner round-trip used to remount it for us).
+          key={`${selection.kind}:${selection.id}:${includeCompleted ? 1 : 0}`}
           ref={listRef}
           data={rows}
           keyExtractor={(item) => item.id}
@@ -1745,7 +1653,10 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
         flexDirection: "row"
       }}
     >
-      {(isTablet || !showListOnPhone) && (
+      {/* Mac's Tasks section is only the selected list's content: its smart
+          lists and user Lists live in the sidebar (components/mac-sidebar.tsx),
+          so the overview/list column is not drawn there. */}
+      {!isMac && (isTablet || !showListOnPhone) && (
         <View
           style={{
             flex: 1,
@@ -1757,8 +1668,8 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
           {nav}
         </View>
       )}
-      {(isTablet || showListOnPhone) && (
-        <View style={{ flex: isTablet ? 2 : 1 }}>{list}</View>
+      {(isMac || isTablet || showListOnPhone) && (
+        <View style={{ flex: isMac ? 1 : isTablet ? 2 : 1 }}>{list}</View>
       )}
       <FavoritesEditor
         visible={favoritesEditorOpen}

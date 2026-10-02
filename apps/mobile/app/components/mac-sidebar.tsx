@@ -45,12 +45,38 @@ import { MacSidebarAccountFooter } from "./mac-sidebar-account-footer";
 import { isMacCatalyst } from "../utils/constants";
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import { confirmEmptyTrash } from "../screens/trash";
+import { systemColor, SystemColorName } from "../utils/ios-system-colors";
+import {
+  taskSmartList,
+  TaskSmartListId,
+  useTaskSmartLists
+} from "../hooks/use-task-smart-lists";
+import {
+  TaskSelection,
+  useTasksSelectionStore
+} from "../stores/use-tasks-selection-store";
+import {
+  MacSidebarSectionId,
+  useMacSidebarSectionsStore
+} from "../stores/use-mac-sidebar-sections-store";
+import {
+  taskListColor,
+  taskListSymbol
+} from "../screens/tasks/list-appearance";
 
 type LibraryDestination = {
   key: string;
   label: string;
   symbol: string;
   count?: number;
+  /**
+   * Explicit SF Symbol color. Library rows leave this unset and keep the accent
+   * (the selected row overrides it with the selection color); notebook, tag,
+   * Archive, Trash and user List rows pass their own gray/List color.
+   */
+  iconColor?: string;
+  /** Set on Tasks rows so exactly that row can be highlighted. */
+  taskSelection?: TaskSelection;
   onPress: () => void;
   /**
    * The notebook/tag a row stands for. Rows backed by an item get the same
@@ -93,8 +119,6 @@ const MAC_SELECTED_ROUTE_ID: Record<string, string> = {
  * `MAC_SOURCE_LIST_INSET`, the 10 pt margin the rows sit in).
  */
 const MAC_ROW_HEIGHT = 28;
-/** Style of the pane's own heading row (was IosNavBar's 13 pt leading label). */
-const MAC_HEADING_FONT_SIZE = 13;
 const MAC_ROW_RADIUS = 6;
 const MAC_ROW_FONT_SIZE = 13;
 const MAC_ROW_ICON_SIZE = 16;
@@ -103,65 +127,75 @@ const MAC_ROW_PADDING = 8;
 /** Text of a row/section header, measured from the column's edge. */
 const MAC_LIST_TEXT_LEFT = MAC_SOURCE_LIST_INSET + MAC_ROW_PADDING;
 
+/**
+ * The smart lists Mac's Tasks section shows, in the sidebar's own order (the
+ * Tasks screen's tiles keep theirs). "All" is drawn as a grey checklist here
+ * even though the tile uses a tray, so the row reads as "every task".
+ */
+const SIDEBAR_SMART_LISTS: TaskSmartListId[] = [
+  "today",
+  "scheduled",
+  "flagged",
+  "all"
+];
+
 const presentNewNotebook = () =>
   AddNotebookSheet.present(undefined, undefined, "global", undefined, false);
 
 /**
- * Mac's sidebar pane: a persistent source list (Library, in Notes' terms) at
- * the left edge of the window. It is the Library screen's source-list rendering
- * lifted out of the navigation stack, so iPhone/iPad keep the card-style list of
- * screens/library and Mac gets the 28 pt source rows.
+ * Mac's sidebar pane: a persistent source list at the left edge of the window.
+ * It is the Library screen's source-list rendering lifted out of the navigation
+ * stack, so iPhone/iPad keep the card-style list of screens/library and Mac gets
+ * the 28 pt source rows.
  *
- * Selecting a row opens that list in the middle column through
- * `openMacList` (services/mac-list-navigation.ts), which drives the note-list
- * stack the same way the Library rows used to; the selected row follows
- * `focusedRouteId`, so it stays in sync with navigation started anywhere else
- * (a link, a search result, the editor's "go to notebook", ...).
+ * The list is split like the app's top-level sections: a Library group (Library,
+ * Notebooks, Tags), a Tasks group (the smart lists and the user's Task Lists)
+ * and Archive/Trash at the bottom. Selecting a Library row opens that list in
+ * the middle column through `openMacList`
+ * (services/mac-list-navigation.ts); selecting a Tasks row switches to the Tasks
+ * section and selects that list in useTasksSelectionStore, which the Tasks
+ * screen follows on Mac (screens/tasks/index.tsx). The selected row follows
+ * `focusedRouteId` (Library) or that store (Tasks), so it stays in sync with
+ * navigation started anywhere else.
  */
 export function MacSidebar() {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const insets = useGlobalSafeAreaInsets();
-  const { notebooks, tags, counts } = useLibrarySourceList();
+  const { notebooks, tags, counts, notebookCounts, tagCounts } =
+    useLibrarySourceList(undefined, { countsByNotebookAndTag: true });
+  const {
+    lists: taskLists,
+    counts: taskCounts,
+    listCounts
+  } = useTaskSmartLists();
   const focusedRouteId = useNavigationStore((state) => state.focusedRouteId);
   const section = useAppleNavigationStore((state) => state.section);
+  const taskSelectionState = useTasksSelectionStore((state) => state.selection);
+  const collapsed = useMacSidebarSectionsStore((state) => state.collapsed);
+  const toggleSection = useMacSidebarSectionsStore((state) => state.toggle);
 
-  /**
-   * The window toolbar has no segmented control any more, so the three sections
-   * it used to switch are rows at the top of the source list now. Switching
-   * goes through the same handler the iPad tab bar and the toolbar's
-   * `section:<name>` commands use, and the selected section is also pushed to
-   * the native toolbar, which still tracks it for its own state.
-   */
-  const selectSection = (next: AppleSection) => {
+  /** Switches the top-level section through the same handler the toolbar uses. */
+  const switchSection = (next: AppleSection) => {
     NativeModules.VeyraNMacMenu?.setSelectedSection(next);
     selectAppleSection(next);
   };
 
-  const sectionRows: LibraryDestination[] = [
-    {
-      key: "section:library",
-      label: strings.routes.Library(),
-      symbol: "books.vertical",
-      onPress: () => selectSection("library")
-    },
-    {
-      key: "section:tasks",
-      // Same label as the iPad tab bar's Tasks item.
-      label: strings.tasksTitle(),
-      symbol: "checklist",
-      onPress: () => selectSection("tasks")
-    },
-    {
-      key: "section:search",
-      label: strings.routes.Search(),
-      symbol: "magnifyingglass",
-      onPress: () => selectSection("search")
-    }
-  ];
+  /**
+   * A Tasks row (smart list or user List): select it for the Tasks screen, then
+   * bring the Tasks section forward so the list it drives is on screen.
+   */
+  const selectTaskList = (next: TaskSelection) => {
+    useTasksSelectionStore.getState().setSelection(next);
+    switchSection("tasks");
+  };
 
-  // Tasks and Search are sections of their own (the native toolbar switches to
-  // them): the sidebar stays mounted, but no Library row is the current one.
+  /** The sidebar's "Lists" + button: the Tasks screen's own New List action. */
+  const requestNewList = () => {
+    useTasksSelectionStore.getState().requestNewList();
+    switchSection("tasks");
+  };
+
   // Settings is a full view next to the sidebar: no source-list row is current.
   const settingsOpen = useNavigationStore(
     (state) => state.currentRoute === "Settings"
@@ -178,6 +212,14 @@ export function MacSidebar() {
     [focusedRouteId, section, settingsOpen]
   );
 
+  /** Exactly one row is highlighted: a Library list or the selected Task list. */
+  const isTaskSelected = (selection?: TaskSelection) =>
+    !!selection &&
+    section === "tasks" &&
+    !settingsOpen &&
+    taskSelectionState.kind === selection.kind &&
+    taskSelectionState.id === selection.id;
+
   /** C9: the destinations' own right-click actions (see `menuItems` above). */
   const onDestinationMenu = (id: string) => {
     if (id === "new-note") startNewNote();
@@ -191,11 +233,11 @@ export function MacSidebar() {
     }
   ];
 
-  const collections: LibraryDestination[] = [
+  const libraryRows: LibraryDestination[] = [
     {
       key: "all-notes",
       label: strings.routes.AllNotes(),
-      symbol: "note.text",
+      symbol: "books.vertical",
       count: counts.allNotes,
       menuItems: newNoteMenuItems,
       onMenuSelect: onDestinationMenu,
@@ -211,15 +253,11 @@ export function MacSidebar() {
       onMenuSelect: onDestinationMenu,
       onPress: () =>
         openMacList("Library", { initialCollection: "inbox" }, "Inbox")
-    }
-  ];
-
-  const destinations: LibraryDestination[] = [
+    },
     {
       key: "favorites",
       label: strings.routes.Favorites(),
       symbol: "star",
-      count: counts.favorites,
       onPress: () => openMacList("Favorites", {}, "Favorites")
     },
     {
@@ -232,19 +270,22 @@ export function MacSidebar() {
           { type: "monograph", id: "monograph", canGoBack: true },
           "monograph"
         )
-    },
+    }
+  ];
+
+  const bottomRows: LibraryDestination[] = [
     {
       key: "archive",
       label: strings.routes.Archive(),
       symbol: "archivebox",
-      count: counts.archived,
+      iconColor: visual.secondaryText,
       onPress: () => openMacList("Archive", {}, "Archive")
     },
     {
       key: "trash",
       label: strings.routes.Trash(),
       symbol: "trash",
-      count: counts.trash,
+      iconColor: visual.secondaryText,
       menuItems: [
         {
           id: "empty-trash",
@@ -258,56 +299,22 @@ export function MacSidebar() {
     }
   ];
 
-  /**
-   * Section header ("Notebooks", "Tags"): a plain 11 pt label in the secondary
-   * color, like a source list's section header.
-   */
-  const sectionTitle = (title: string, onAdd?: () => void) => (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        marginTop: 14,
-        marginBottom: 2,
-        marginLeft: MAC_LIST_TEXT_LEFT,
-        marginRight: MAC_LIST_TEXT_LEFT
-      }}
-    >
-      <Text
-        accessibilityRole="header"
-        style={{
-          flex: 1,
-          color: visual.secondaryText,
-          fontSize: 11,
-          fontWeight: "600"
-        }}
-      >
-        {title}
-      </Text>
-      {onAdd ? (
-        <IosBarButton
-          symbol="plus"
-          accessibilityLabel={strings.newNotebookRow()}
-          testID="library-new-notebook"
-          iconSize={16}
-          onPress={onAdd}
-        />
-      ) : null}
-    </View>
-  );
-
   const notebookRows: LibraryDestination[] = notebooks.map((item) => ({
     key: `notebook:${item.id}`,
     label: item.title,
     symbol: "book.closed",
+    count: notebookCounts?.[item.id] || 0,
+    iconColor: visual.secondaryText,
     item,
     onPress: () =>
       openMacList("Notebook", { id: item.id, canGoBack: true }, item.id)
   }));
   const tagRows: LibraryDestination[] = tags.map((item) => ({
     key: `tag:${item.id}`,
-    label: item.title,
+    label: `#${item.title}`,
     symbol: "number",
+    count: tagCounts?.[item.id] || 0,
+    iconColor: visual.secondaryText,
     item,
     onPress: () =>
       openMacList(
@@ -315,6 +322,33 @@ export function MacSidebar() {
         { type: "tag", id: item.id, canGoBack: true },
         item.id
       )
+  }));
+
+  const smartListRows: LibraryDestination[] = SIDEBAR_SMART_LISTS.map((id) => {
+    const definition = taskSmartList(id);
+    // "All" is the one row whose sidebar glyph differs from its tile.
+    const symbol = id === "all" ? "checklist" : definition?.symbol || "checklist";
+    const color: SystemColorName =
+      id === "all" ? "gray" : definition?.color || "gray";
+    return {
+      key: `task:${id}`,
+      label: definition?.label() || strings.tasksAll(),
+      symbol,
+      iconColor: systemColor(color, isDark),
+      count: taskCounts[id],
+      taskSelection: { kind: "smart", id },
+      onPress: () => selectTaskList({ kind: "smart", id })
+    };
+  });
+
+  const taskListRows: LibraryDestination[] = taskLists.map((list) => ({
+    key: `tasklist:${list.id}`,
+    label: list.name,
+    symbol: taskListSymbol(list.symbol),
+    iconColor: taskListColor(list.color),
+    count: listCounts[list.id] || 0,
+    taskSelection: { kind: "list", id: list.id },
+    onPress: () => selectTaskList({ kind: "list", id: list.id })
   }));
 
   return (
@@ -341,50 +375,36 @@ export function MacSidebar() {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
       >
-        {/* Mac sidebars have no large title, and no 44 pt bar either: the pane's
-            name is just a 13 pt secondary label above the rows. */}
-        <View style={{ paddingLeft: MAC_LIST_TEXT_LEFT, paddingBottom: 4 }}>
-          <Text
-            accessibilityRole="header"
-            testID="library-heading"
-            style={{
-              color: visual.secondaryText,
-              fontSize: MAC_HEADING_FONT_SIZE,
-              fontWeight: "600"
-            }}
-          >
-            {strings.routes.Library()}
-          </Text>
-        </View>
-        {sectionRows.map((item, index) => (
-          <MacRow
-            key={item.key}
-            item={item}
-            index={index}
-            selected={
-              !settingsOpen && section === item.key.slice("section:".length)
-            }
-          />
-        ))}
-        {collections.map((item, index) => (
-          <MacRow
-            key={item.key}
-            item={item}
-            index={index}
-            selected={isCurrentDestination(item.key)}
-          />
-        ))}
-        {destinations.map((item, index) => (
-          <MacRow
-            key={item.key}
-            item={item}
-            index={index}
-            marginTop={visual.sectionSpacing}
-            selected={isCurrentDestination(item.key)}
-          />
-        ))}
-        {sectionTitle(strings.routes.Notebooks(), presentNewNotebook)}
-        {notebookRows.length ? (
+        {/* 1. Library: notes destinations, accent-tinted icons. */}
+        <MacSectionHeader
+          id="library"
+          title={strings.routes.Library()}
+          testID="library-heading"
+          collapsed={collapsed.library}
+          onToggle={toggleSection}
+        />
+        {collapsed.library
+          ? null
+          : libraryRows.map((item, index) => (
+              <MacRow
+                key={item.key}
+                item={item}
+                index={index}
+                selected={isCurrentDestination(item.key)}
+              />
+            ))}
+
+        {/* 2. Notebooks, with the existing new-notebook action. */}
+        <MacSectionHeader
+          id="notebooks"
+          title={strings.routes.Notebooks()}
+          collapsed={collapsed.notebooks}
+          onToggle={toggleSection}
+          onAdd={presentNewNotebook}
+          addAccessibilityLabel={strings.newNotebookRow()}
+          addTestID="library-new-notebook"
+        />
+        {collapsed.notebooks ? null : notebookRows.length ? (
           notebookRows.map((item, index) => (
             <MacRow
               key={item.key}
@@ -405,9 +425,88 @@ export function MacSidebar() {
             selected={false}
           />
         )}
-        {/* An empty Tags section is hidden; tags appear once a note has one. */}
-        {tagRows.length ? sectionTitle(strings.routes.Tags()) : null}
-        {tagRows.map((item, index) => (
+
+        {/* 3. Tags, hidden entirely while there are none. */}
+        {tagRows.length ? (
+          <>
+            <MacSectionHeader
+              id="tags"
+              title={strings.routes.Tags()}
+              collapsed={collapsed.tags}
+              onToggle={toggleSection}
+            />
+            {collapsed.tags
+              ? null
+              : tagRows.map((item, index) => (
+                  <MacRow
+                    key={item.key}
+                    item={item}
+                    index={index}
+                    selected={isCurrentDestination(item.key)}
+                  />
+                ))}
+          </>
+        ) : null}
+
+        {/* 4. Divider between the two source-list halves. */}
+        <View
+          style={{
+            height: 1,
+            backgroundColor: visual.separator,
+            marginHorizontal: 8,
+            marginVertical: 10
+          }}
+        />
+
+        {/* 5. Tasks: the smart lists, reusing the Tasks screen's data. */}
+        <MacSectionHeader
+          id="tasks"
+          title={strings.tasksTitle()}
+          collapsed={collapsed.tasks}
+          onToggle={toggleSection}
+        />
+        {collapsed.tasks
+          ? null
+          : smartListRows.map((item, index) => (
+              <MacRow
+                key={item.key}
+                item={item}
+                index={index}
+                selected={isTaskSelected(item.taskSelection)}
+              />
+            ))}
+
+        {/* 6. Lists: the user's Task Lists, with the New List action. */}
+        <MacSectionHeader
+          id="lists"
+          title={strings.tasksLists()}
+          collapsed={collapsed.lists}
+          onToggle={toggleSection}
+          onAdd={requestNewList}
+          addAccessibilityLabel={strings.tasksNewList()}
+          addTestID="mac-sidebar-new-list"
+        />
+        {collapsed.lists
+          ? null
+          : taskListRows.map((item, index) => (
+              <MacRow
+                key={item.key}
+                item={item}
+                index={index}
+                selected={isTaskSelected(item.taskSelection)}
+              />
+            ))}
+
+        {/* 7. A second divider, then Archive and Trash at the bottom. */}
+        <View
+          style={{
+            height: 1,
+            backgroundColor: visual.separator,
+            marginHorizontal: 8,
+            marginVertical: 10
+          }}
+        />
+        {bottomRows.map((item, index) => (
           <MacRow
             key={item.key}
             item={item}
@@ -423,9 +522,89 @@ export function MacSidebar() {
 }
 
 /**
- * One Library destination as a source-list row: 28 pt tall, no card
- * background, no separators, a 6 pt rounded accent highlight when the route it
- * opens is the one on screen, and counts right-aligned in the secondary color.
+ * A collapsible source-list section header: an 11 pt semibold label in the
+ * secondary color with a small chevron (and, for Notebooks and Lists, a "+"
+ * button). Clicking the header toggles the section through
+ * use-mac-sidebar-sections-store.
+ */
+function MacSectionHeader({
+  id,
+  title,
+  testID,
+  collapsed,
+  onToggle,
+  onAdd,
+  addAccessibilityLabel,
+  addTestID
+}: {
+  id: MacSidebarSectionId;
+  title: string;
+  testID?: string;
+  collapsed: boolean;
+  onToggle: (id: MacSidebarSectionId) => void;
+  onAdd?: () => void;
+  addAccessibilityLabel?: string;
+  addTestID?: string;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 14,
+        marginBottom: 2,
+        marginLeft: MAC_LIST_TEXT_LEFT,
+        marginRight: MAC_SOURCE_LIST_INSET,
+        minHeight: 20
+      }}
+    >
+      {/* The label + chevron is the collapse target; the "+" (if any) is a
+          sibling so its own press never also toggles the section. */}
+      <Pressable
+        onPress={() => onToggle(id)}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: !collapsed }}
+        style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
+      >
+        <Text
+          testID={testID}
+          style={{
+            flex: 1,
+            color: visual.secondaryText,
+            fontSize: 11,
+            fontWeight: "600"
+          }}
+        >
+          {title}
+        </Text>
+        <View style={{ marginLeft: 4 }}>
+          <TaskSymbolView
+            name={collapsed ? "chevron.right" : "chevron.down"}
+            size={9}
+            color={visual.tertiaryText}
+          />
+        </View>
+      </Pressable>
+      {onAdd ? (
+        <IosBarButton
+          symbol="plus"
+          accessibilityLabel={addAccessibilityLabel}
+          testID={addTestID}
+          iconSize={16}
+          onPress={onAdd}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * One source-list row: 28 pt tall, no card background, no separators, a 6 pt
+ * rounded accent highlight when the route it opens is the one on screen, and
+ * counts right-aligned in the secondary color.
  *
  * The pointer draws the same 6 pt highlight in the theme's hover color while
  * it is over the row; a selected row keeps its accent (the hover layer is only
@@ -513,7 +692,11 @@ function MacRow({
         size={MAC_ROW_ICON_SIZE}
         // The selected row's icon keeps the accent while the window is active
         // and follows the selection grey while it is not.
-        color={selected ? selection.color : colors.primary.accent}
+        color={
+          selected
+            ? selection.color
+            : item.iconColor || colors.primary.accent
+        }
       />
       <Text
         numberOfLines={1}

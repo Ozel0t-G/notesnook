@@ -519,14 +519,15 @@ export const FluidPanelsView = React.memo(
         ) : null}
 
         {/*
-          Mac: while Tasks or Search owns the content area, nothing of the
-          Library's three columns may show through or poke out of an edge - the
-          section's screen is the only thing on that surface, and the strip
-          under the toolbar has to have the same background as the rest of it.
-          This covers the panes (whose own surfaces are painted on top of each
-          other: source list, note list, editor) with the screen background the
-          section screens use, so the Library layout cannot be part of the
-          section.
+          Mac: while Tasks or Search owns the content area, the sidebar pane
+          stays where it is and the section's screen fills everything to its
+          right (the section routes bring their own source-list pane, see
+          components/mac-section-layout.tsx). This covers the Library's note
+          list and editor columns - whose own surfaces are painted on top of
+          each other - with the screen background the section screens use, so
+          none of the Library layout can show through the section. It starts at
+          the sidebar's right edge, so it never covers the source list; with the
+          sidebar hidden that edge is 0 and it covers the whole window.
 
           It is not touchable - the section's screen is above this one - and the
           panes stay mounted underneath, so the editor keeps its state and the
@@ -539,7 +540,7 @@ export const FluidPanelsView = React.memo(
             style={{
               position: "absolute",
               top: 0,
-              left: 0,
+              left: macSidebarWidth(dimensions.width, macSidebarVisible),
               right: 0,
               bottom: 0,
               backgroundColor: visual.screenBackground

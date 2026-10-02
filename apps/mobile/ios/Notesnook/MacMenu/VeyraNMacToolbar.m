@@ -396,11 +396,12 @@ static CGFloat currentToolbarHeight = 0;
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:
     (NSToolbar *)toolbar {
-  // One band, like Apple Notes: the sidebar toggle leads (right after the
-  // traffic lights, where the window title sits natively), then the list's own
-  // menu and the New item, the editor actions and the search field trail (the
-  // flexible space pulls everything after it over), and the field sits at the
-  // far right.
+  // One band, like Apple Notes. The sidebar toggle is first here and marked
+  // navigational (see -makeToggleSidebarItem), so the system places it before
+  // the window title, right after the traffic lights; the rest of the band is
+  // the list's own menu and the New item, the editor actions and the search
+  // field trail (the flexible space pulls everything after it over), and the
+  // field sits at the far right.
   //
   // The columns cannot be tied to the toolbar with separators: Catalyst has no
   // NSTrackingSeparatorToolbarItem. AppKit's header marks it
@@ -479,13 +480,16 @@ static CGFloat currentToolbarHeight = 0;
 }
 
 /**
- * The leading "Toggle Sidebar" button, the first item in the band (right after
- * the traffic lights). It is icon-only, so - like the other action items - the
- * label, palette label and tool tip all have to name the action; otherwise the
- * item would be announced with the SF Symbol's own description ("Sidebar
- * left"). Its command is the one View > Toggle Sidebar (Ctrl-Cmd-S) sends, so
- * the pane collapses through the same handler in
- * hooks/use-mac-menu-commands.ts.
+ * The "Toggle Sidebar" button, at the leading edge of the window: it is marked
+ * navigational (`NSToolbarItem.navigational`, macOS 11 / Mac Catalyst 14), so
+ * the system positions it before the window title, right of the traffic lights,
+ * rather than in the item list after the title.
+ *
+ * It is icon-only, so - like the other action items - the label, palette label
+ * and tool tip all have to name the action; otherwise the item would be
+ * announced with the SF Symbol's own description ("Sidebar left"). Its command
+ * is the one View > Toggle Sidebar (Ctrl-Cmd-S) sends, so the pane collapses
+ * through the same handler in hooks/use-mac-menu-commands.ts.
  */
 - (NSToolbarItem *)makeToggleSidebarItem {
   NSToolbarItem *item = [[NSToolbarItem alloc]
@@ -503,6 +507,12 @@ static CGFloat currentToolbarHeight = 0;
   item.toolTip = VeyraNToggleSidebarToolTip;
   item.target = self;
   item.action = @selector(toggleSidebarFromToolbar:);
+  if (@available(macCatalyst 14.0, *)) {
+    // The system lifts navigational items out of the normal identifier order
+    // and places them before the title; without this the item renders in the
+    // right-hand group, after the title (where the flexible space sits).
+    item.navigational = YES;
+  }
   // Navigation chrome is the last thing to fold into the overflow menu.
   item.visibilityPriority = NSToolbarItemVisibilityPriorityHigh;
   return item;

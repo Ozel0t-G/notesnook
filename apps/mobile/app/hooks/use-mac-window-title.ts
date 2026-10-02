@@ -20,18 +20,15 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { strings } from "@notesnook/intl";
 import { useEffect } from "react";
 import { NativeModules } from "react-native";
-import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
 import {
   AppleSection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
-import { useMacWindowStore } from "../stores/use-mac-window-store";
 import { isMacCatalyst } from "../utils/constants";
 import {
   applyMacWindowTitle,
   useMacListTitleStore
 } from "../utils/mac-window-title";
-import { useDBItem } from "./use-db-item";
 
 /**
  * Human name of each top-level section, for the window title (W4): the Library
@@ -68,10 +65,11 @@ function countLabelFor(section: AppleSection, count?: number) {
 
 /**
  * Resolves the title from the parts several, otherwise unrelated panes own -
- * the section (useAppleNavigationStore), the focused list's name and item count
- * (published by the list header through useMacListTitleStore) and the open note
- * (useMacWindowStore.noteTitle) - and pushes it to the native window. Reads the
- * stores outside React so it can double as a zustand subscriber.
+ * the section (useAppleNavigationStore) and the focused list's name and item
+ * count (published by the list header through useMacListTitleStore) - and
+ * pushes it to the native window. The title is always that list/section name,
+ * so an open note never takes it over. Reads the stores outside React so it can
+ * double as a zustand subscriber.
  */
 function refreshMacWindowTitle() {
   const section = useAppleNavigationStore.getState().section;
@@ -79,7 +77,6 @@ function refreshMacWindowTitle() {
     section,
     sectionTitle: SECTION_TITLES[section](),
     listTitle: useMacListTitleStore.getState().listTitle,
-    noteTitle: useMacWindowStore.getState().noteTitle,
     countLabel: countLabelFor(
       section,
       useMacListTitleStore.getState().listCount
@@ -91,42 +88,24 @@ function refreshMacWindowTitle() {
  * Keeps the Mac Catalyst window's title/subtitle in sync with what the window
  * shows (W4). Mounted once from app.tsx, next to useMacMenuCommands, and inert
  * on iPhone/iPad.
- *
- * The open note's title is resolved the same way the menu bar's note commands
- * resolve their note (explorer tab store -> db), because the editor's own,
- * unsaved title lives inside the WebView and is not reachable from here cheaply.
- * It is published into useMacWindowStore.noteTitle - the store's documented
- * contract - so any other Mac chrome can read it too; a save (eDBItemUpdate)
- * refreshes it, unsaved keystrokes do not.
  */
 export const useMacWindowTitle = () => {
   const enabled = isMacCatalyst();
-  const noteId = useTabStore((state) =>
-    enabled ? state.getTab(state.currentTab)?.session?.noteId : undefined
-  );
-  const [note] = useDBItem(noteId, "note");
-  const noteTitle = note?.title;
 
   useEffect(() => {
     if (!enabled || !NativeModules?.VeyraNMacMenu) return;
     // The stores may already hold state by the time this mounts (a restored
     // session, a deep link): publish the title once up front, then follow every
-    // change of its three inputs.
+    // change of its two inputs.
     refreshMacWindowTitle();
     const unsubscribers = [
       useAppleNavigationStore.subscribe(refreshMacWindowTitle),
-      useMacListTitleStore.subscribe(refreshMacWindowTitle),
-      useMacWindowStore.subscribe(refreshMacWindowTitle)
+      useMacListTitleStore.subscribe(refreshMacWindowTitle)
     ];
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) return;
-    useMacWindowStore.getState().setNoteTitle(noteTitle);
-  }, [enabled, noteTitle]);
 };
 
 export default useMacWindowTitle;

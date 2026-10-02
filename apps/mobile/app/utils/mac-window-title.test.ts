@@ -91,19 +91,20 @@ describe("Mac window title", () => {
     ).toEqual({ title: "Search", subtitle: "" });
   });
 
-  test("prefers the open note, with the list's count line as the subtitle", () => {
+  test("keeps the list's own name as the title, whatever note is open", () => {
+    // The window title is always the focused list/section; the open note's
+    // title is not part of the resolver's inputs any more.
     expect(
       resolveMacWindowTitle({
         section: "library",
         sectionTitle: "Library",
-        listTitle: "Notebooks",
-        noteTitle: "Meeting notes",
-        countLabel: "12 notes"
+        listTitle: "All Notes",
+        countLabel: "3 notes"
       })
-    ).toEqual({ title: "Meeting notes", subtitle: "12 notes" });
+    ).toEqual({ title: "All Notes", subtitle: "3 notes" });
   });
 
-  test("has nothing to show without a list or a note", () => {
+  test("has nothing to show without a list", () => {
     expect(
       resolveMacWindowTitle({ section: "library", sectionTitle: "Library" })
     ).toBeUndefined();
@@ -114,15 +115,11 @@ describe("Mac window title", () => {
       section: "library",
       sectionTitle: "Library",
       listTitle: "Notebooks",
-      noteTitle: "Meeting notes",
       countLabel: "12 notes"
     });
 
     expect(applied).toBe(true);
-    expect(mockSetWindowTitle).toHaveBeenCalledWith(
-      "Meeting notes",
-      "12 notes"
-    );
+    expect(mockSetWindowTitle).toHaveBeenCalledWith("Notebooks", "12 notes");
   });
 
   test("does not touch the window when there is nothing to show", () => {

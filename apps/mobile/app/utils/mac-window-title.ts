@@ -55,7 +55,9 @@ export type MacWindowTitle = {
 
 /**
  * The window title of the Mac Catalyst window, derived from the state the
- * window shows:
+ * window shows. It is always the focused list/section's own name, so an open
+ * note never takes the title over ("All Notes", "Inbox", a notebook or tag
+ * name, "Today", "Scheduled", "Search"):
  *
  * - the Task section shows the selected task list ("Today", a List's name) as
  *   the title, and names itself when no list is selected (the listTitle it
@@ -63,8 +65,6 @@ export type MacWindowTitle = {
  *   components/header/index.tsx);
  * - the Search section names itself (the list behind it keeps its own title,
  *   but it is not what the window shows);
- * - with a note open in the editor, the note is the title, like Notes shows the
- *   open note;
  * - otherwise the focused list names the window.
  *
  * The subtitle is `countLabel` - the count line the list publishes ("12 notes",
@@ -78,13 +78,11 @@ export function resolveMacWindowTitle({
   section,
   sectionTitle,
   listTitle,
-  noteTitle,
   countLabel
 }: {
   section: "library" | "tasks" | "search";
   sectionTitle: string;
   listTitle?: string;
-  noteTitle?: string;
   countLabel?: string;
 }): MacWindowTitle | undefined {
   const subtitle = countLabel || "";
@@ -96,9 +94,6 @@ export function resolveMacWindowTitle({
   }
   if (section !== "library") {
     return sectionTitle ? { title: sectionTitle, subtitle: "" } : undefined;
-  }
-  if (noteTitle) {
-    return { title: noteTitle, subtitle };
   }
   if (listTitle) return { title: listTitle, subtitle };
   return undefined;
@@ -121,7 +116,6 @@ export function applyMacWindowTitle(options: {
   section: "library" | "tasks" | "search";
   sectionTitle: string;
   listTitle?: string;
-  noteTitle?: string;
   countLabel?: string;
 }) {
   const resolved = resolveMacWindowTitle(options);

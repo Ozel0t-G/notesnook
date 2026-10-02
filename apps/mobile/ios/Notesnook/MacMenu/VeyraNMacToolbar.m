@@ -22,6 +22,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #if TARGET_OS_MACCATALYST
 
 #import <AppKit/NSToolbarItem.h>
+// NSToolbarItemGroup is a separate header: the editor actions are one group, so
+// the system draws them in a single glass capsule (see
+// -makeEditorActionsGroup).
+#import <AppKit/NSToolbarItemGroup.h>
 
 #import "VeyraNMacMenu.h"
 
@@ -31,6 +35,17 @@ static NSToolbarItemIdentifier const VeyraNToggleSidebarIdentifier =
 static NSToolbarItemIdentifier const VeyraNSearchIdentifier = @"veyran.search";
 static NSToolbarItemIdentifier const VeyraNNewItemIdentifier = @"veyran.newItem";
 static NSToolbarIdentifier const VeyraNToolbarIdentifier = @"veyran.main";
+
+/**
+ * The editor actions (Share, Note Info, More) travel as one
+ * `NSToolbarItemGroup`: macOS 26 draws the bordered items of a group inside a
+ * single glass capsule, while three separate items would each get their own
+ * circle - and since the glyphs are plain now, that is the only circle. The
+ * group's own identifier is not an action; the subitems keep the action
+ * identifiers and tags (see -makeEditorActionsGroup).
+ */
+static NSToolbarItemIdentifier const VeyraNEditorActionsIdentifier =
+    @"veyran.editorActions";
 
 /**
  * Leading "Toggle Sidebar" button. Its label and tool tip are fixed (unlike the
@@ -47,21 +62,24 @@ static NSString *const VeyraNToggleSidebarCommand = @"toggleSidebar";
 /**
  * The toolbar's icon-only actions, in the order they appear: the list's
  * "Sort & View" menu first (it leads, next to the New item), then the three
- * editor actions after the flexible space. The index into these four arrays is
- * the item's `tag`, which is how -actionFromToolbar: reads the command back
- * (an NSToolbarItem carries no command string of its own).
+ * editor actions, which are inserted as one group after the flexible space (see
+ * -makeEditorActionsGroup). The index into these four arrays is the item's
+ * `tag`, which is how -actionFromToolbar: reads the command back (an
+ * NSToolbarItem carries no command string of its own).
  *
- * The symbols are the ones Apple's Mac apps use for the same actions. A symbol
- * that does not resolve falls back to `circle` rather than leaving a blank item
- * (see -makeActionItem:).
+ * The symbols are the ones Apple's Mac apps use for the same actions: the
+ * editor actions are plain glyphs (`info`, `ellipsis`), not their `.circle`
+ * variants, because a bordered item already draws the circle and a circled
+ * glyph would sit inside it as a circle within a circle. A symbol that does not
+ * resolve falls back to `circle` rather than leaving a blank item (see
+ * -makeActionItem:).
  */
 static NSToolbarItemIdentifier const VeyraNActionIdentifiers[] = {
   @"veyran.listOptions", @"veyran.shareNote", @"veyran.noteInfo",
   @"veyran.noteMore"
 };
 static NSString *const VeyraNActionSymbols[] = {
-  @"arrow.up.arrow.down", @"square.and.arrow.up", @"info.circle",
-  @"ellipsis.circle"
+  @"arrow.up.arrow.down", @"square.and.arrow.up", @"info", @"ellipsis"
 };
 static NSString *const VeyraNActionLabels[] = { @"Sort & View", @"Share",
                                                 @"Note Info", @"More" };
@@ -125,13 +143,13 @@ static NSUInteger VeyraNActionIndex(NSString *identifier) {
 /**
  * Search field metrics. The field is a view the toolbar is handed, not a
  * system search item, so it has to size itself: a standard search field width
- * (the one Finder and Mail give theirs) and the height of a small control. The
- * width is a constraint with a low enough priority to let the toolbar compress
- * it before clipping the item, and it is also what the item uses to measure
- * itself.
+ * (the one Finder and Mail give theirs) and the height of the glass buttons it
+ * sits next to, so its capsule matches them. The width is a constraint with a
+ * low enough priority to let the toolbar compress it before clipping the item,
+ * and it is also what the container uses to measure itself.
  */
 static const CGFloat VeyraNSearchFieldWidth = 220;
-static const CGFloat VeyraNSearchFieldHeight = 28;
+static const CGFloat VeyraNSearchFieldHeight = 30;
 
 /**
  * The toolbar owns the search field and is its delegate for Return
@@ -338,16 +356,34 @@ static CGFloat currentToolbarHeight = 0;
 }
 
 /**
+ * The item on the toolbar carrying `identifier`, looking inside item groups as
+ * well: Share, Note Info and More are subitems of one NSToolbarItemGroup now
+ * (see -makeEditorActionsGroup), so a plain walk over `_toolbar.items` would
+ * not see them. Keeping every identifier lookup in one place means a future
+ * grouped item cannot be missed.
+ */
+- (NSToolbarItem *)toolbarItemWithIdentifier:(NSString *)identifier {
+  for (NSToolbarItem *item in _toolbar.items) {
+    if ([item.itemIdentifier isEqualToString:identifier]) {
+      return item;
+    }
+    if ([item isKindOfClass:[NSToolbarItemGroup class]]) {
+      for (NSToolbarItem *subitem in ((NSToolbarItemGroup *)item).subitems) {
+        if ([subitem.itemIdentifier isEqualToString:identifier]) {
+          return subitem;
+        }
+      }
+    }
+  }
+  return nil;
+}
+
+/**
  * The leading action item currently on the toolbar, or nil before the toolbar
  * asked for it.
  */
 - (NSToolbarItem *)newItem {
-  for (NSToolbarItem *item in _toolbar.items) {
-    if ([item.itemIdentifier isEqualToString:VeyraNNewItemIdentifier]) {
-      return item;
-    }
-  }
-  return _newItem;
+  return [self toolbarItemWithIdentifier:VeyraNNewItemIdentifier] ?: _newItem;
 }
 
 /**
@@ -387,6 +423,11 @@ static CGFloat currentToolbarHeight = 0;
   if ([itemIdentifier isEqualToString:VeyraNNewItemIdentifier]) {
     return [self makeNewItem];
   }
+  // Share, Note Info and More are one group; the identifier is the only one
+  // the toolbar is given for them (see -toolbarDefaultItemIdentifiers:).
+  if ([itemIdentifier isEqualToString:VeyraNEditorActionsIdentifier]) {
+    return [self makeEditorActionsGroup];
+  }
   NSUInteger action = VeyraNActionIndex(itemIdentifier);
   if (action != NSNotFound) {
     return [self makeActionItem:action];
@@ -399,9 +440,9 @@ static CGFloat currentToolbarHeight = 0;
   // One band, like Apple Notes. The sidebar toggle is first here and marked
   // navigational (see -makeToggleSidebarItem), so the system places it before
   // the window title, right after the traffic lights; the rest of the band is
-  // the list's own menu and the New item, the editor actions and the search
-  // field trail (the flexible space pulls everything after it over), and the
-  // field sits at the far right.
+  // the list's own menu and the New item, the editor actions - Share, Note
+  // Info and More as one glass group - and the search field trail (the flexible
+  // space pulls everything after it over), and the field sits at the far right.
   //
   // The columns cannot be tied to the toolbar with separators: Catalyst has no
   // NSTrackingSeparatorToolbarItem. AppKit's header marks it
@@ -413,8 +454,7 @@ static CGFloat currentToolbarHeight = 0;
       arrayWithObjects:VeyraNToggleSidebarIdentifier, VeyraNActionIdentifiers[0],
                        VeyraNNewItemIdentifier,
                        NSToolbarFlexibleSpaceItemIdentifier,
-                       VeyraNActionIdentifiers[1], VeyraNActionIdentifiers[2],
-                       VeyraNActionIdentifiers[3], nil];
+                       VeyraNEditorActionsIdentifier, nil];
   // The field only exists where it can be built; on Mac Catalyst 15 the
   // identifier is left out rather than returned as a nil item (AppKit raises
   // on a missing item).
@@ -433,7 +473,9 @@ static CGFloat currentToolbarHeight = 0;
 
 /**
  * One of the icon-only actions (see the arrays at the top): the list's
- * "Sort & View" menu or the editor's Share / Note Info / More.
+ * "Sort & View" menu, or one of the editor's Share / Note Info / More, which
+ * only ever appear as the subitems of the editor-actions group (see
+ * -makeEditorActionsGroup).
  *
  * The label, palette label, tool tip and the image's accessibility description
  * all name the action, because an icon-only item would otherwise be announced
@@ -461,14 +503,40 @@ static CGFloat currentToolbarHeight = 0;
   item.target = self;
   item.action = @selector(actionFromToolbar:);
   // The leading menu item is the last to be pushed into the overflow menu (with
-  // the New item, see -makeNewItem); the editor actions go first. The search
-  // field yields before all of them (see -makeSearchItem), so at 900 pt the
-  // window keeps the items that are still useful without the field.
+  // the New item, see -makeNewItem); the editor actions go first, and as
+  // subitems they fold away with their group (whose own priority is standard).
+  // The search field yields before all of them (see -makeSearchItem), so at
+  // 900 pt the window keeps the items that are still useful without the field.
   NSToolbarItemVisibilityPriority priority =
       index == 0 ? NSToolbarItemVisibilityPriorityHigh
                  : NSToolbarItemVisibilityPriorityStandard;
   item.visibilityPriority = priority;
   return item;
+}
+
+/**
+ * The editor actions as one `NSToolbarItemGroup`: Share, Note Info and More
+ * share a single glass capsule in the toolbar, the way Notes, Mail and Finder
+ * group related buttons, instead of each surrounded by its own circle.
+ *
+ * The subitems are built by -makeActionItem: and keep their own identifier,
+ * label, tool tip, target/action and `tag`, so -actionFromToolbar: reads the
+ * command off the sender unchanged. The convenience
+ * `+groupWithItemIdentifier:images:selectionMode:...` constructors are
+ * deliberately not used: they build a segmented control with one shared
+ * action, which would lose the per-item actions and tool tips.
+ */
+- (NSToolbarItemGroup *)makeEditorActionsGroup {
+  NSToolbarItemGroup *group = [[NSToolbarItemGroup alloc]
+      initWithItemIdentifier:VeyraNEditorActionsIdentifier];
+  group.subitems = @[
+    [self makeActionItem:1], [self makeActionItem:2], [self makeActionItem:3]
+  ];
+  group.label = @"Note Actions";
+  group.paletteLabel = @"Note Actions";
+  // The group folds away as a whole with the other editor items.
+  group.visibilityPriority = NSToolbarItemVisibilityPriorityStandard;
+  return group;
 }
 
 - (void)actionFromToolbar:(NSToolbarItem *)item {
@@ -490,6 +558,11 @@ static CGFloat currentToolbarHeight = 0;
  * announced with the SF Symbol's own description ("Sidebar left"). Its command
  * is the one View > Toggle Sidebar (Ctrl-Cmd-S) sends, so the pane collapses
  * through the same handler in hooks/use-mac-menu-commands.ts.
+ *
+ * It is unbordered: the button sits on the translucent sidebar, and a bordered
+ * (bordered is the default) item would draw a filled glass circle behind the
+ * glyph, which reads as a heavy disc floating on the sidebar. Native macOS 26
+ * apps show it as a plain glyph over the sidebar.
  */
 - (NSToolbarItem *)makeToggleSidebarItem {
   NSToolbarItem *item = [[NSToolbarItem alloc]
@@ -507,6 +580,9 @@ static CGFloat currentToolbarHeight = 0;
   item.toolTip = VeyraNToggleSidebarToolTip;
   item.target = self;
   item.action = @selector(toggleSidebarFromToolbar:);
+  // No glass chip behind the glyph; the sidebar shows through (see the comment
+  // on this item). `bordered` is Mac Catalyst 13+.
+  item.bordered = NO;
   if (@available(macCatalyst 14.0, *)) {
     // The system lifts navigational items out of the normal identifier order
     // and places them before the title; without this the item renders in the
@@ -538,6 +614,10 @@ static CGFloat currentToolbarHeight = 0;
  * field is the toolbar's own control: text goes to JS as "search" while it is
  * typed and as "searchSubmit" on Return, and JavaScript pushes the section
  * changes back (see hooks/use-mac-menu-commands.ts).
+ *
+ * The view the item hosts is a glass capsule wrapping the field, so the search
+ * box matches the bordered items beside it instead of standing out as a flat
+ * grey rectangle (see -makeSearchContainerWithField:).
  */
 - (NSToolbarItem *)makeSearchItem {
   if (!_searchAvailable) {
@@ -549,9 +629,11 @@ static CGFloat currentToolbarHeight = 0;
   if (@available(macCatalyst 16.0, *)) {
     UISearchTextField *field = [self makeSearchField];
     _searchField = field;
+    // The item hosts the capsule around the field, not the field itself: the
+    // field stays transparent inside it (see makeSearchContainerWithField:).
     NSUIViewToolbarItem *item = [[NSUIViewToolbarItem alloc]
         initWithItemIdentifier:VeyraNSearchIdentifier
-                        uiView:field];
+                        uiView:[self makeSearchContainerWithField:field]];
     item.label = @"Search";
     item.paletteLabel = @"Search";
     item.toolTip = @"Search";
@@ -564,17 +646,25 @@ static CGFloat currentToolbarHeight = 0;
 }
 
 /**
- * The field itself: a standard `UISearchTextField` (magnifier, clear button,
- * rounded search background) with its text carried over, wired to the toolbar
- * for edits and shaped by two constraints so the hosting item can measure it.
+ * The field itself: a standard `UISearchTextField` (magnifier, clear button)
+ * with its text carried over and wired to the toolbar for edits and Return. It
+ * is left transparent and borderless, because it lives inside the glass capsule
+ * the container draws (see -makeSearchContainerWithField:); UIKit exposes no
+ * background image to clear on `UISearchTextField`, so the fill it would
+ * normally draw is removed with `borderStyle` and a clear `backgroundColor`.
+ * It is sized entirely by the container's constraints.
  */
 - (UISearchTextField *)makeSearchField {
-  CGRect frame =
-      CGRectMake(0, 0, VeyraNSearchFieldWidth, VeyraNSearchFieldHeight);
-  UISearchTextField *field = [[UISearchTextField alloc] initWithFrame:frame];
+  UISearchTextField *field =
+      [[UISearchTextField alloc] initWithFrame:CGRectZero];
+  field.translatesAutoresizingMaskIntoConstraints = NO;
   field.placeholder = @"Search";
   field.returnKeyType = UIReturnKeySearch;
   field.clearButtonMode = UITextFieldViewModeWhileEditing;
+  // No border and no fill: the capsule supplies both, so the field does not
+  // paint a second grey rectangle inside it.
+  field.borderStyle = UITextBorderStyleNone;
+  field.backgroundColor = UIColor.clearColor;
   field.text = _searchText;
   field.accessibilityLabel = @"Search";
   // The item is the field's delegate only for Return (see
@@ -586,19 +676,80 @@ static CGFloat currentToolbarHeight = 0;
   [field addTarget:self
                 action:@selector(searchFieldDidChange:)
       forControlEvents:UIControlEventEditingChanged];
-
-  // A search field has no intrinsic width, and the hosting item measures the
-  // view it is given: the width constraint is what keeps the field 220 pt wide
-  // in the toolbar. It yields to the field's own content compression before
-  // the item would be clipped, and the height is what stops the field from
-  // being stretched to the toolbar's full height.
-  NSLayoutConstraint *width =
-      [field.widthAnchor constraintEqualToConstant:VeyraNSearchFieldWidth];
-  width.priority = UILayoutPriorityDefaultHigh;
-  NSLayoutConstraint *height =
-      [field.heightAnchor constraintEqualToConstant:VeyraNSearchFieldHeight];
-  [NSLayoutConstraint activateConstraints:@[ width, height ]];
   return field;
+}
+
+/**
+ * Wraps the field in a glass capsule that matches the bordered items beside
+ * it: a `UISearchTextField` on its own is a flat grey rounded rectangle, which
+ * next to the toolbar's glass capsules reads as a different, older control.
+ *
+ * On macOS 26 the capsule is real Liquid Glass (`UIGlassEffect`, style
+ * regular); older systems get the nearest material, the thin translucent blur
+ * (glass does not exist there). The effect view is the capsule: clipped, and
+ * either given the scaling capsule corner configuration (26+) or the
+ * half-height continuous radius, so the field inside cannot paint outside it.
+ *
+ * The container is what the toolbar item hosts and measures, so the size
+ * constraints live here rather than on the field; the effect view's
+ * contentView pins the field with a small inset at the ends.
+ */
+- (UIView *)makeSearchContainerWithField:(UISearchTextField *)field {
+  UIVisualEffect *effect = nil;
+  if (@available(ios 26.0, macCatalyst 26.0, *)) {
+    effect = [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+  } else {
+    effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemThinMaterial];
+  }
+  UIVisualEffectView *effectView =
+      [[UIVisualEffectView alloc] initWithEffect:effect];
+  effectView.translatesAutoresizingMaskIntoConstraints = NO;
+  // The material is clipped to the capsule shape.
+  effectView.clipsToBounds = YES;
+  if (@available(ios 26.0, macCatalyst 26.0, *)) {
+    // The glass shape scales with the view; macOS 26 rounds it into a capsule.
+    effectView.cornerConfiguration =
+        [UICornerConfiguration capsuleConfiguration];
+  } else {
+    effectView.layer.cornerRadius = VeyraNSearchFieldHeight / 2;
+    effectView.layer.cornerCurve = kCACornerCurveContinuous;
+  }
+
+  UIView *container = [[UIView alloc]
+      initWithFrame:CGRectMake(0, 0, VeyraNSearchFieldWidth,
+                               VeyraNSearchFieldHeight)];
+  [container addSubview:effectView];
+  UIView *content = effectView.contentView;
+  [content addSubview:field];
+
+  [NSLayoutConstraint activateConstraints:@[
+    // The capsule fills the container the item measures.
+    [effectView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+    [effectView.trailingAnchor
+        constraintEqualToAnchor:container.trailingAnchor],
+    [effectView.topAnchor constraintEqualToAnchor:container.topAnchor],
+    [effectView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor],
+    // The field keeps a small inset at the ends and fills the height, so the
+    // magnifier and clear button stay inside the rounded shape.
+    [field.leadingAnchor constraintEqualToAnchor:content.leadingAnchor
+                                        constant:6],
+    [field.trailingAnchor constraintEqualToAnchor:content.trailingAnchor
+                                         constant:-6],
+    [field.topAnchor constraintEqualToAnchor:content.topAnchor],
+    [field.bottomAnchor constraintEqualToAnchor:content.bottomAnchor],
+  ]];
+
+  // The toolbar measures the view it is handed, so the old field size
+  // constraints moved here. The width yields to the item's own compression
+  // before the field would be clipped; the height keeps the capsule from being
+  // stretched to the toolbar's full height.
+  NSLayoutConstraint *width =
+      [container.widthAnchor constraintEqualToConstant:VeyraNSearchFieldWidth];
+  width.priority = UILayoutPriorityDefaultHigh;
+  NSLayoutConstraint *height = [container.heightAnchor
+      constraintEqualToConstant:VeyraNSearchFieldHeight];
+  [NSLayoutConstraint activateConstraints:@[ width, height ]];
+  return container;
 }
 
 /**

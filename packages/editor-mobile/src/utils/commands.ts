@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { Attachment, ImageAttributes, LinkAttributes } from "@notesnook/editor";
 import { Settings } from ".";
+import { editorDate } from "./editor-date";
 
 globalThis.commands = {
   clearContent: (tabId: string) => {
@@ -48,6 +49,7 @@ globalThis.commands = {
         statusBar.current.resetWords();
         statusBar.current.set({ date: "", saved: "" });
       }
+      editorDate.set(tabId, "");
     } catch (error) {
       logger("error", "clearContent", error, (error as Error).stack);
     }
@@ -79,6 +81,8 @@ globalThis.commands = {
     if (statusBar?.current) {
       statusBar.current.set({ date: date || "", saved });
     }
+    // The Mac date line above the title reads this; other platforms ignore it.
+    editorDate.set(tabId, date || "");
   },
 
   setLoading: (loading?: boolean, tabId?: string) => {

@@ -48,10 +48,11 @@ import StatusBar from "./statusbar";
 import Tags from "./tags";
 import TiptapEditorWrapper from "./tiptap";
 import Title from "./title";
+import EditorDate from "./editor-date";
 import {
   MAC_TEXT_COLUMN_MAX_WIDTH,
   MAC_TEXT_COLUMN_PADDING,
-  MAC_TOOLBAR_HEIGHT
+  MAC_TOOLBAR_CAPSULE_CLEARANCE
 } from "../utils/mac";
 import { setupMacFileDrop } from "../utils/mac-drop";
 
@@ -625,12 +626,15 @@ const Tiptap = ({
             flexDirection: "column",
             position: "relative",
             /**
-             * Mac's format bar is pinned over the top of this scroller, so the
-             * note keeps its usual 12 pt of breathing room *below* the bar.
+             * Mac's format bar now floats over the bottom of the pane, so the
+             * note keeps its usual 12 pt of breathing room at the top and gets
+             * extra bottom padding instead, so the capsule never covers the
+             * last lines.
              */
-            paddingTop: settings.isMacCatalyst
-              ? `${12 + MAC_TOOLBAR_HEIGHT}px`
-              : "12px"
+            paddingTop: "12px",
+            paddingBottom: settings.isMacCatalyst
+              ? `${MAC_TOOLBAR_CAPSULE_CLEARANCE}px`
+              : 0
           }}
         >
           {settings.noHeader || tab.session?.locked ? null : (
@@ -667,6 +671,8 @@ const Tiptap = ({
                 />
                 <Tags settings={settings} loading={controller.loading} />
               </div>
+
+              {settings.isMacCatalyst ? <EditorDate /> : null}
 
               <Title
                 titlePlaceholder={controller.titlePlaceholder}

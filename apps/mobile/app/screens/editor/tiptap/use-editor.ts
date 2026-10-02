@@ -164,12 +164,11 @@ export const useEditor = (
    * Mac Catalyst's window chrome (title, toolbar and traffic lights) sits above
    * the window's content area, not inside it. The pane's RN wrapper - not the
    * WebView - takes the padding that clears it (`macToolbarInset` in
-   * screens/editor/wrapper.tsx), so the WebView itself starts at inset 0 while
-   * the editor's fixed 52pt web header (`MAC_EDITOR_HEADER_HEIGHT` in
-   * @notesnook/editor-mobile/src/utils/mac.ts) is the pane's first row. Adding
-   * the window inset here as well would push the header down and leave the
-   * format bar below it sitting under the header. iPhone and iPad keep the
-   * inset.
+   * screens/editor/wrapper.tsx), so the WebView itself starts at inset 0 and
+   * the editor's note content is its first row (there is no web header on
+   * Mac, see `MAC_EDITOR_HEADER_HEIGHT` in
+   * @notesnook/editor-mobile/src/utils/mac.ts). Adding the window inset here
+   * as well would push the content down. iPhone and iPad keep the inset.
    */
   const webviewInsets = useMemo(
     () => (isMacCatalyst() ? { ...insets, top: 0 } : insets),

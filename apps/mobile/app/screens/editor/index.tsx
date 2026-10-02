@@ -171,13 +171,14 @@ const Editor = React.memo(
               globalThis.noToolbar=${noToolbar};
               globalThis.noHeader=${noHeader};
               globalThis.handwriting=${isHandwritingSupported(Platform as any)};
-              // Mac gets its own editor chrome: a 52pt header at the top of the
-              // editor pane, right under the window's native toolbar
-              // (MAC_EDITOR_HEADER_HEIGHT in packages/editor-mobile). It is a
-              // property of the window rather than of the session, so it is set
-              // before the bundle runs: the first frame is laid out for Mac even
-              // when the settings message (which also carries the flag) is still
-              // cached from a previous session.
+              // Mac has no editor header of its own (the window's native
+              // toolbar carries the editor actions); the web editor only
+              // needs the flag to lay out its centered text column, the
+              // floating format capsule and its other Mac-only touches. It is
+              // a property of the window rather than of the session, so it is
+              // set before the bundle runs: the first frame is laid out for
+              // Mac even when the settings message (which also carries the
+              // flag) is still cached from a previous session.
               globalThis.isMacCatalyst=${isMacCatalyst()};
               globalThis.DEFAULT_THEME = ${JSON.stringify(theme)};
               globalThis.LINGUI_LOCALE = "${i18n.locale}";

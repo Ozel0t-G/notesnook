@@ -26,7 +26,10 @@ import { DesktopOnly } from "../../components/responsive/index.js";
 import { Icon } from "@notesnook/ui";
 import { Icons } from "../../toolbar/icons.js";
 import { ToolbarGroup } from "../../toolbar/components/toolbar-group.js";
-import { useToolbarStore } from "../../toolbar/stores/toolbar-store.js";
+import {
+  useIsMacCatalyst,
+  useToolbarStore
+} from "../../toolbar/stores/toolbar-store.js";
 import { Resizer } from "../../components/resizer/index.js";
 import {
   corsify,
@@ -76,6 +79,14 @@ export function ImageComponent(
   // Apple Pencil handwriting (iPad only): shows an edit button on the image.
   const canEditHandwriting = useCanEditHandwriting(editor, node.attrs);
   const isSVG = !!mime && mime.includes("/svg");
+  /**
+   * Mac Catalyst shows note images with macOS-style rounded corners. The
+   * accent outline stays reserved for the selected node: when it is not
+   * selected the border is transparent and any native focus ring is suppressed
+   * (the browser's default blue outline otherwise showed on click).
+   */
+  const isMacCatalyst = useIsMacCatalyst();
+  const imageRadius = isMacCatalyst ? "14px" : "default";
 
   useEffect(() => {
     if (!inView) return;
@@ -293,7 +304,8 @@ export function ImageComponent(
                 border: selected
                   ? "2px solid var(--accent)"
                   : "2px solid transparent",
-                borderRadius: "default",
+                borderRadius: imageRadius,
+                outline: isMacCatalyst ? "none" : undefined,
                 flexDirection: "column",
                 alignItems: "center",
                 justifyContent: "center",
@@ -332,7 +344,8 @@ export function ImageComponent(
               border: selected
                 ? "2px solid var(--accent) !important"
                 : "2px solid transparent !important",
-              borderRadius: "default",
+              borderRadius: imageRadius,
+              outline: isMacCatalyst ? "none" : undefined,
               ...(isSVG ? { bg: "transparent" } : {})
             }}
             onDoubleClick={() => {

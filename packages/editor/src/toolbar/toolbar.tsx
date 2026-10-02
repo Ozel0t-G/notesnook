@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { Flex, FlexProps } from "@theme-ui/components";
+import { useThemeColors } from "@notesnook/theme";
 import {
   getDefaultPresets,
   STATIC_TOOLBAR_GROUPS,
@@ -52,15 +53,29 @@ type ToolbarProps = FlexProps & {
 };
 
 /**
- * Horizontal padding of the Mac toolbar row (each side).
+ * Horizontal padding inside the Mac floating format capsule (each side).
  */
-const MAC_TOOLBAR_ROW_PADDING = 6;
+const MAC_TOOLBAR_ROW_PADDING = 14;
+/**
+ * Gap between the tool buttons inside the Mac floating format capsule.
+ */
+const MAC_TOOLBAR_BUTTON_GAP = 18;
+/**
+ * Corner radius of the Mac floating format capsule (half its 42 pt height).
+ */
+const MAC_TOOLBAR_CAPSULE_RADIUS = 21;
+/**
+ * Margin kept between the Mac floating capsule and the pane edges (20 pt each
+ * side). Must match the `maxWidth: calc(100% - 40px)` the mobile app sets on
+ * the toolbar in `tiptap.tsx`.
+ */
+const MAC_TOOLBAR_CAPSULE_MARGIN = 40;
 /**
  * Width reserved for the "more" button while deciding how many groups fit.
- * Close enough to a 28 pt icon button plus its separator; the row is measured
- * again once the button is actually rendered, which settles the count.
+ * Close enough to a 29 pt icon button plus its gap; the row is measured again
+ * once the button is actually rendered, which settles the count.
  */
-const MAC_MORE_BUTTON_WIDTH = 40;
+const MAC_MORE_BUTTON_WIDTH = 47;
 
 export function Toolbar(props: ToolbarProps) {
   const {
@@ -76,6 +91,7 @@ export function Toolbar(props: ToolbarProps) {
   } = props;
   const isMobile = useIsMobile();
   const isMac = !!macCatalyst;
+  const { isDark } = useThemeColors();
   const toolbarTools = useMemo(
     () =>
       isMobile
@@ -159,9 +175,19 @@ export function Toolbar(props: ToolbarProps) {
     }
 
     const measure = () => {
-      const rowWidth = row.clientWidth;
-      if (!rowWidth) return;
-      const available = rowWidth - MAC_TOOLBAR_ROW_PADDING * 2;
+      /**
+       * The capsule hugs its content, so measuring the row itself would make
+       * the budget shrink as groups collapse (a feedback loop). Measure the
+       * pane instead: the capsule may grow to (pane width - 2 * 20 pt), so
+       * that is the stable width the groups are fitted into.
+       */
+      const paneWidth = row.parentElement?.clientWidth || row.clientWidth;
+      if (!paneWidth) return;
+      const available =
+        paneWidth -
+        MAC_TOOLBAR_CAPSULE_MARGIN -
+        MAC_TOOLBAR_ROW_PADDING * 2 -
+        2;
 
       const children = Array.from(row.children).filter((child) =>
         child.classList.contains("toolbar-group")
@@ -183,8 +209,12 @@ export function Toolbar(props: ToolbarProps) {
         // Every hidden group costs nothing extra: it lives inside the same
         // "more" button. Only the first hidden group needs room for it.
         const reserved = hidden > 0 && fit === i ? moreButtonWidth.current : 0;
-        if (used + width + reserved > available) break;
-        used += width + reserved;
+        // The capsule spaces its children with an 18 pt gap, so every group
+        // after the first (and the "more" button that replaces a hidden one)
+        // needs that much more room.
+        const gap = fit > 0 || reserved > 0 ? MAC_TOOLBAR_BUTTON_GAP : 0;
+        if (used + width + reserved + gap > available) break;
+        used += width + reserved + gap;
         fit = i + 1;
       }
 
@@ -194,6 +224,9 @@ export function Toolbar(props: ToolbarProps) {
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(row);
+    // The pane's width sets the capsule's budget, and a content-hugging row
+    // does not change size while it still fits, so watch the pane as well.
+    if (row.parentElement) observer.observe(row.parentElement);
     return () => observer.disconnect();
     // `overflowFrom` is a dependency on purpose: a collapse renders the row
     // again, which confirms (or corrects) the count with the real widths.
@@ -219,15 +252,34 @@ export function Toolbar(props: ToolbarProps) {
           sx={{
             flexWrap: isMac ? "nowrap" : isMobile ? "nowrap" : "wrap",
             overflowX: isMac || !isMobile ? "hidden" : "auto",
-            bg: "background",
-            borderRadius: isMac ? "0px" : isMobile ? "0px" : "default",
             ...(isMac
               ? {
+                  /**
+                   * The Mac format bar is a floating "Liquid Glass" capsule:
+                   * translucent background, blurred behind, hairline inset
+                   * border and a soft shadow. See `utils/mac.ts` for the
+                   * metrics and `tiptap.tsx` for its position.
+                   */
                   alignItems: "center",
+                  gap: `${MAC_TOOLBAR_BUTTON_GAP}px`,
                   px: `${MAC_TOOLBAR_ROW_PADDING}px`,
-                  minWidth: 0
+                  minWidth: 0,
+                  boxSizing: "border-box",
+                  borderRadius: `${MAC_TOOLBAR_CAPSULE_RADIUS}px`,
+                  background: isDark
+                    ? "rgba(58, 58, 66, 0.55)"
+                    : "rgba(255, 255, 255, 0.65)",
+                  backdropFilter: "blur(30px) saturate(1.8)",
+                  WebkitBackdropFilter: "blur(30px) saturate(1.8)",
+                  border: isDark
+                    ? "1px solid rgba(255, 255, 255, 0.16)"
+                    : "1px solid rgba(0, 0, 0, 0.08)",
+                  boxShadow: "0 8px 30px rgba(0, 0, 0, 0.35)"
                 }
-              : {}),
+              : {
+                  bg: "background",
+                  borderRadius: isMobile ? "0px" : "default"
+                }),
             ...sx
           }}
           {...flexProps}
@@ -245,16 +297,18 @@ export function Toolbar(props: ToolbarProps) {
                 sx={{
                   ...(isMac
                     ? {
-                        // Compact desktop spacing: 4 pt gaps between the
-                        // buttons and 4 pt around a group, so its separator
-                        // sits that far from the icons on either side.
+                        // Uniform 18 pt gaps between the capsule's buttons:
+                        // neither the group nor the row adds extra padding or
+                        // separators, so the rhythm is the same inside a group
+                        // and across a group boundary.
                         p: 0,
-                        px: "4px",
-                        gap: "4px"
+                        px: 0,
+                        gap: `${MAC_TOOLBAR_BUTTON_GAP}px`
                       }
-                    : {}),
-                  borderRight: "1px solid var(--separator)",
-                  ":last-of-type": { borderRight: "none" },
+                    : {
+                        borderRight: "1px solid var(--separator)",
+                        ":last-of-type": { borderRight: "none" }
+                      }),
                   alignItems: "center"
                 }}
               />

@@ -35,9 +35,9 @@ const modifyToolbarTheme = (toolbarTheme: Theme) => {
     ? settingsController.previous?.fontScale
     : 1;
   /**
-   * Mac's format bar uses compact desktop metrics (see `Toolbar`): 16 pt
-   * icons and 4 pt gaps, which makes a 28 pt button. iPhone and iPad keep the
-   * larger finger-sized buttons.
+   * Mac's format capsule uses compact desktop metrics (see `Toolbar`): 17 pt
+   * icons spaced 18 pt apart inside the floating glass capsule. iPhone and
+   * iPad keep the larger finger-sized buttons.
    */
   const isMac = settingsController.previous?.isMacCatalyst;
   toolbarTheme.iconSizes = {

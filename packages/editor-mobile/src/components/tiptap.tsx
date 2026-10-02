@@ -27,7 +27,10 @@ import { useEffect } from "react";
 import { useTabContext } from "../hooks/useTabStore";
 import { EmotionEditorToolbarTheme } from "../theme-factory";
 import { Settings } from "../utils";
-import { MAC_EDITOR_HEADER_HEIGHT, MAC_TOOLBAR_HEIGHT } from "../utils/mac";
+import {
+  MAC_TOOLBAR_CAPSULE_BOTTOM,
+  MAC_TOOLBAR_CAPSULE_HEIGHT
+} from "../utils/mac";
 export default function TiptapEditorWrapper(props: {
   options: Partial<TiptapOptions>;
   onEditorUpdate: (editor: Editor) => void;
@@ -37,13 +40,6 @@ export default function TiptapEditorWrapper(props: {
   const editor = useTiptap(props.options, [props.options]);
   globalThis.editors[tab.id] = editor;
   const isMac = props.settings.isMacCatalyst;
-  /**
-   * Top of the Mac format bar: the Mac editor has no header of its own (the
-   * actions live in the native window toolbar), so the bar starts at the very
-   * top of the pane. Kept via the (now zero) header constant so the offset
-   * stays in one place.
-   */
-  const macToolbarTop = MAC_EDITOR_HEADER_HEIGHT;
 
   useEffect(() => {
     props.onEditorUpdate(editor);
@@ -59,21 +55,23 @@ export default function TiptapEditorWrapper(props: {
             sx={{
               display: props.settings.noToolbar ? "none" : "flex",
               overflowY: "hidden",
-              minHeight: isMac ? MAC_TOOLBAR_HEIGHT : "45px",
+              minHeight: isMac ? MAC_TOOLBAR_CAPSULE_HEIGHT : "45px",
               ...(isMac
                 ? {
                     /**
-                     * The Mac format bar is pinned to the top of the editor,
-                     * the way Pages and Notes put it. It does not scroll: the
-                     * editor's content is padded down by its height (see
-                     * `editor.tsx`) and then scrolls underneath it.
+                     * The Mac format bar is a floating glass capsule centered
+                     * horizontally 20 pt above the bottom of the editor pane,
+                     * the way Pages floats its format bar over the page. It
+                     * does not scroll: the note scroller reserves bottom
+                     * padding for it (see `editor.tsx`).
                      */
                     position: "absolute",
-                    top: macToolbarTop,
-                    left: 0,
-                    right: 0,
+                    bottom: MAC_TOOLBAR_CAPSULE_BOTTOM,
+                    left: "50%",
+                    transform: "translateX(-50%)",
                     zIndex: 998,
-                    height: MAC_TOOLBAR_HEIGHT,
+                    height: MAC_TOOLBAR_CAPSULE_HEIGHT,
+                    maxWidth: "calc(100% - 40px)",
                     alignItems: "center"
                   }
                 : globalThis.__PLATFORM__ === "ios" && {
@@ -84,7 +82,12 @@ export default function TiptapEditorWrapper(props: {
                   })
             }}
             editor={editor}
-            location={isMac ? "top" : "bottom"}
+            /**
+             * The Mac capsule floats at the bottom of the pane now, so its
+             * popovers ("Aa", the "more" overflow) open upwards like the iOS
+             * and Android bottom toolbar instead of downward past the edge.
+             */
+            location="bottom"
             tools={
               /**
                * On Mac the toolbar is the Notes-style simplified format bar

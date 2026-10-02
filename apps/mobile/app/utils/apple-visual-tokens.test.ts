@@ -80,38 +80,47 @@ describe("Mac Catalyst visual tokens", () => {
     mockIsMacCatalyst = true;
   });
 
-  test("uses macOS semantic window colors in the dark appearance", () => {
-    const tokens = getAppleVisualTokens(theme(true), true);
+  test("uses the theme's primary background for the whole window (dark)", () => {
+    const themeColors = theme(true);
+    const tokens = getAppleVisualTokens(themeColors, true);
 
     // Catalyst is still an iOS build: the layout branches keyed off `ios`
     // (radii, insets, three-column reach) must not move.
     expect(tokens.ios).toBe(true);
-    expect(tokens.screenBackground).toBe("#1E1E1E");
-    expect(tokens.sidebarBackground).toBe("#252527");
+    // One background across the window: the root, the note list, the editor
+    // and the band behind the toolbar all resolve to the theme's primary
+    // background (macOS 26 Notes), not to a fixed macOS grey.
+    expect(tokens.screenBackground).toBe(themeColors.primary.background);
+    expect(tokens.sidebarBackground).toBe(themeColors.primary.background);
+    expect(tokens.navigationSurface).toBe(themeColors.primary.background);
+    expect(tokens.toolbarSurface).toBe(themeColors.primary.background);
+    expect(tokens.editorSurround).toBe(themeColors.primary.background);
+    // Elevated surfaces keep their macOS semantic greys: they are supposed to
+    // float above the window, not merge with it.
     expect(tokens.contentSurface).toBe("#1E1E1E");
     expect(tokens.secondarySurface).toBe("#2A2A2C");
     expect(tokens.separator).toBe("rgba(255,255,255,0.1)");
     expect(tokens.selectedSurface).toBe("#3A3A3D");
     expect(tokens.selectionBackground).toBe("#3A3A3D");
-    expect(tokens.navigationSurface).toBe(MAC_DARK.window);
     expect(tokens.surface).toBe(MAC_DARK.content);
-    // The source list must be distinct from the window (no more pure black).
-    expect(tokens.sidebarBackground).not.toBe("#000000");
-    expect(tokens.sidebarBackground).not.toBe(tokens.screenBackground);
   });
 
-  test("uses the macOS source-list grey in the light appearance", () => {
-    const tokens = getAppleVisualTokens(theme(false), false);
+  test("uses the theme's primary background for the whole window (light)", () => {
+    const themeColors = theme(false);
+    const tokens = getAppleVisualTokens(themeColors, false);
 
     expect(tokens.ios).toBe(true);
-    expect(tokens.screenBackground).toBe("#FFFFFF");
-    expect(tokens.sidebarBackground).toBe("#EFEFF1");
+    expect(tokens.screenBackground).toBe(themeColors.primary.background);
+    expect(tokens.sidebarBackground).toBe(themeColors.primary.background);
+    expect(tokens.navigationSurface).toBe(themeColors.primary.background);
+    expect(tokens.toolbarSurface).toBe(themeColors.primary.background);
+    expect(tokens.editorSurround).toBe(themeColors.primary.background);
     expect(tokens.contentSurface).toBe("#FFFFFF");
     expect(tokens.secondarySurface).toBe("#F5F5F7");
     expect(tokens.separator).toBe("#D8D8DA");
     expect(tokens.selectedSurface).toBe("#DCDCE0");
     expect(tokens.selectionBackground).toBe("#DCDCE0");
-    expect(tokens.sidebarBackground).toBe(MAC_LIGHT.sidebar);
+    expect(tokens.surface).toBe(MAC_LIGHT.content);
   });
 
   test("never returns an IOS_DARK value on the Mac", () => {

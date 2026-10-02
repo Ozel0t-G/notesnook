@@ -28,6 +28,7 @@ import {
   ViewStyle
 } from "react-native";
 import { isMacCatalyst } from "../utils/constants";
+import { getColorLinearShade } from "../utils/colors";
 
 /**
  * The native Mac Catalyst Liquid Glass surface (`VeyraNGlassView`).
@@ -48,9 +49,39 @@ import { isMacCatalyst } from "../utils/constants";
  * `cornerRadius`, "capsule" derives it from the view's height. `interactive`
  * and `tint` only reach the native glass on Mac; the glass's appearance always
  * follows the *app* theme (`useThemeColors().isDark`), not the system's.
+ *
+ * The tint defaults to a few-percent shade of the theme's primary background -
+ * lighter in dark mode, darker in light mode - so the panel reads as the same
+ * surface as the window, just slightly lifted, instead of the bright grey slab
+ * the un-tinted system material renders over the near-black window. Callers can
+ * still pass their own `tint`.
+ *
+ * The tint alone is not enough: on macOS 26 the Liquid Glass material still
+ * composites to a much lighter grey than the window (measured ~#454449 over a
+ * #17181a window in dark mode) because the glass blurs and lifts whatever is
+ * behind it. So for the panel variants ("sidebar", "card") a solid overlay of
+ * the theme's primary background is drawn on top of the glass at `dimOpacity`
+ * (0.82 dark / 0.7 light), pulling the fill back to roughly the window colour
+ * (#1f2023) while the native glass rim underneath stays visible. "capsule" is
+ * a small, self-contained control and keeps the raw material.
  */
 
 export type MacGlassVariant = "sidebar" | "card" | "capsule";
+
+/**
+ * Default opacity of the theme-background overlay over the glass, per
+ * appearance. Chosen so the sidebar lands ~3-5% lighter than the window:
+ * dark (#454449 glass over a #17181a window -> ~#1f2023 at 0.82) and light
+ * (the same relationship, equally subtle, over the light window background).
+ */
+const DEFAULT_DIM_OPACITY_DARK = 0.82;
+const DEFAULT_DIM_OPACITY_LIGHT = 0.7;
+
+/**
+ * The native glass draws its 1 px specular rim *inside* its bounds, so the
+ * overlay is inset by 1 px to leave that edge highlight visible.
+ */
+const GLASS_EDGE_INSET = 1;
 
 type NativeGlassProps = {
   cornerRadius?: number;
@@ -59,6 +90,12 @@ type NativeGlassProps = {
   tint?: string;
   /** Forces the material into the app's appearance (Mac Catalyst only). */
   dark?: boolean;
+  /**
+   * Opacity of the solid theme-background overlay drawn over the glass for the
+   * "sidebar"/"card" variants (ignored for "capsule"). Defaults to 0.82 in
+   * dark mode and 0.7 in light mode; pass a value to tune the lift.
+   */
+  dimOpacity?: number;
   /** The glass is a background layer: it must never take touches. */
   pointerEvents?: "none" | "box-none" | "box-only" | "auto";
   style?: StyleProp<ViewStyle>;
@@ -75,19 +112,38 @@ export function MacGlassView({
   cornerRadius = 0,
   interactive = false,
   tint,
+  dimOpacity,
   style,
   children
 }: NativeGlassProps) {
-  const { isDark } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
   // "capsule" derives its radius from the view's height, which is only known
   // after layout; the container below needs it to clip the children to the
   // same rounded shape as the glass.
   const [capsuleRadius, setCapsuleRadius] = React.useState(0);
+  /**
+   * The default glass tint: the window's primary background lifted a few
+   * percent, so the panel is only just distinguishable from the surface it
+   * floats over (macOS 26 Notes' sidebar). `getColorLinearShade` lightens in
+   * dark mode and darkens in light mode, so both appearances get the same
+   * subtle lift. The shade itself is applied by the native view as the glass's
+   * `tintColor` (see VeyraNGlassView.swift).
+   */
+  const themeTint = React.useMemo(
+    () => getColorLinearShade(colors.primary.background, 0.05, isDark),
+    [colors.primary.background, isDark]
+  );
 
   if (!isMacCatalyst() || !NativeGlassView)
     return <View style={style}>{children}</View>;
 
   const radius = variant === "capsule" ? capsuleRadius : cornerRadius;
+  // Only the panel variants get the overlay: a "capsule" is a small control
+  // whose material should stay as-is.
+  const dimmed = variant !== "capsule";
+  const resolvedDimOpacity =
+    dimOpacity ??
+    (isDark ? DEFAULT_DIM_OPACITY_DARK : DEFAULT_DIM_OPACITY_LIGHT);
 
   return (
     <View
@@ -102,13 +158,33 @@ export function MacGlassView({
         variant={variant}
         cornerRadius={cornerRadius}
         interactive={interactive}
-        tint={tint}
+        tint={tint ?? themeTint}
         // The glass follows the app theme, not only the window's/system's
         // appearance (see VeyraNGlassView.swift).
         dark={isDark}
         pointerEvents="none"
         style={StyleSheet.absoluteFill}
       />
+      {dimmed ? (
+        // Solid wash of the window's own background over the material, so the
+        // panel reads as the same surface just slightly lifted instead of the
+        // much lighter grey the un-dimmed glass composites to. Inset by 1 px so
+        // it never covers the native glass's specular edge highlight; the
+        // container's `overflow: hidden` clips its corners to the glass radius.
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: GLASS_EDGE_INSET,
+            left: GLASS_EDGE_INSET,
+            right: GLASS_EDGE_INSET,
+            bottom: GLASS_EDGE_INSET,
+            borderRadius: Math.max(radius - GLASS_EDGE_INSET, 0),
+            backgroundColor: colors.primary.background,
+            opacity: resolvedDimOpacity
+          }}
+        />
+      ) : null}
       {children}
     </View>
   );

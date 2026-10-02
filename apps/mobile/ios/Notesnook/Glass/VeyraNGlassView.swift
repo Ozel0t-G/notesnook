@@ -61,10 +61,13 @@ final class VeyraNGlassNativeView: RCTView {
     }
   }
 
-  /// A dark-mode glass gets a very subtle white tint so the panel reads as
-  /// glass (a faint edge highlight) over the dark window instead of a light
-  /// slab; a light-mode glass needs none.
-  private static let darkTint = UIColor.white.withAlphaComponent(0.04)
+  /// Fallback dark-mode tint, used only when JS passes no `tint`. JS normally
+  /// supplies a few-percent shade of the theme's primary background (see
+  /// components/mac-glass-view.tsx), so the panel reads as the window surface
+  /// just slightly lifted rather than the light grey slab the un-tinted
+  /// material produced. This faint white is deliberately weaker than that old
+  /// 0.04 tint and is only the no-tint default; a light-mode glass needs none.
+  private static let darkTint = UIColor.white.withAlphaComponent(0.015)
 
   override init(frame: CGRect) {
     super.init(frame: frame)

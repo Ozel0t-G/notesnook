@@ -355,10 +355,10 @@ export default function List(props: ListProps) {
       <View
         style={{
           flex: 1,
-          // Mac's note list column is the theme's secondary background, one
-          // low-contrast step off the editor's primary background.
+          // Mac's note list column is the theme's primary background, the same
+          // colour as the editor and the rest of the window (macOS 26 Notes).
           backgroundColor: isMacListColumn
-            ? colors.secondary.background
+            ? colors.primary.background
             : visual.ios && isTabletPane
             ? visual.contentSurface
             : visual.screenBackground

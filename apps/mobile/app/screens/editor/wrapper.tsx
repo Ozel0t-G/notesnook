@@ -109,11 +109,12 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
            * The editor WebView is transparent and paints its own background, so
            * whatever shows through it (a rounding gap, the 0.5px hairline under
            * the header, the rounding gap at the top of the pane) has to be the
-           * editor's own background. On Mac the editor is the app's primary
-           * surface, one low-contrast step off the note list's secondary
-           * background (see navigation/fluid-panels-view.tsx); `editorSurround`
-           * - the iPad choice - is a different (lighter) surface and showed up
-           * as a strip above the header.
+           * editor's own background. On Mac the window is one colour: the
+           * editor pane uses the same theme primary background as the note list
+           * column and the React root (see navigation/fluid-panels-view.tsx and
+           * apple-visual-tokens' `withMacSemanticColors`); `editorSurround` -
+           * the iPad choice - is a different (lighter) surface and showed up as
+           * a strip above the header.
            */
           backgroundColor: isMacCatalyst()
             ? colors.primary.background
@@ -161,7 +162,13 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
         <KeyboardAvoidingView
           behavior="padding"
           style={{
-            backgroundColor: visual.contentSurface,
+            // Mac's editor surface is the same primary background as the
+            // wrapper above and the WebView's page behind it (see
+            // packages/editor-mobile/src/index.css); the iPad surface is a
+            // different (lighter) tone and would show through any gap.
+            backgroundColor: isMacCatalyst()
+              ? colors.primary.background
+              : visual.contentSurface,
             flex: 1
           }}
           enabled={!floating}

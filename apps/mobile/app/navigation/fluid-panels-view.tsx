@@ -373,11 +373,13 @@ export const FluidPanelsView = React.memo(
           // The root is opaque on every platform, Mac included: Catalyst does
           // not show the desktop through a clear UIWindow, so the Mac window is
           // opaque too (see SceneDelegate.m) and the glass sidebar needs a real
-          // colour behind it, not a blank/light backdrop. `screenBackground` is
-          // the Mac window colour (#1E1E1E dark / #FFFFFF light, mac-layout /
-          // apple-visual-tokens), so the strip between the floating glass panel
-          // and the window edge matches the window instead of showing through
-          // as a light corner. The list and editor panes still bring their own
+          // colour behind it, not a blank/light backdrop. On Mac
+          // `screenBackground` resolves to the theme's primary background
+          // (apple-visual-tokens' `withMacSemanticColors`), the same colour the
+          // note list column, the editor pane and the band behind the toolbar
+          // paint, so the strip between the floating glass panel and the window
+          // edge matches the rest of the window instead of showing through as a
+          // different corner. The list and editor panes still bring their own
           // opaque surfaces; only the sidebar pane stays transparent.
           backgroundColor: visual.screenBackground
         }}
@@ -462,17 +464,17 @@ export const FluidPanelsView = React.memo(
                 width: fullscreen
                   ? 0
                   : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list,
-                // Mac's note list column is the theme's secondary background,
-                // one low-contrast step off the editor's primary background
-                // (macOS Notes' list vs. editor). Opaque on purpose (F5): the
-                // sidebar's glass panel is the only translucent surface, and it
-                // sits on the opaque root (the app's window colour), never on
-                // this column.
+                // Mac's note list column is the *same* background as the
+                // editor and the rest of the window: the theme's primary
+                // background (macOS 26 Notes keeps one colour across the whole
+                // window). Opaque on purpose (F5): the sidebar's glass panel is
+                // the only translucent surface, and it sits on the opaque root
+                // (the app's window colour), never on this column.
                 backgroundColor: isMacCatalyst()
-                  ? colors.secondary.background
+                  ? colors.primary.background
                   : visual.screenBackground,
                 // No hard separator between the list and the editor on Mac:
-                // the two backgrounds and the spacing are the separation.
+                // the spacing alone is the separation.
                 borderRightWidth: isMacCatalyst()
                   ? 0
                   : visual.ios && deviceMode === "tablet"
@@ -528,10 +530,12 @@ export const FluidPanelsView = React.memo(
                 {/* Mac's scroll-edge fade: the note list's background at the
                     top, transparent 56 pt down, over the scrolling content and
                     under the transparent toolbar. Not touchable, so the list
-                    underneath keeps every scroll and press. */}
+                    underneath keeps every scroll and press. Its opaque end
+                    matches the list column above: the theme's primary
+                    background. */}
                 {isMacCatalyst() ? (
                   <MacScrollEdgeFade
-                    color={colors.secondary.background}
+                    color={colors.primary.background}
                     height={MAC_SCROLL_EDGE_FADE_HEIGHT}
                   />
                 ) : null}

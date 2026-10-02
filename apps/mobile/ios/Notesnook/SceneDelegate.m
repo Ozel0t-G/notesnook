@@ -62,16 +62,25 @@ static void VeyraNMacRestoreWindowFrame(UIWindowScene *windowScene) {
 /// just makes the app's glass panels sample a blank (light) backdrop, which is
 /// what turned the sidebar's Liquid Glass into a flat light slab. The window is
 /// opaque instead, and the strip between the floating glass panel and the
-/// window edge is this colour. Dark uses systemBackgroundColor, light
-/// systemGroupedBackgroundColor; both are dynamic colours, so they resolve
-/// against the window's `overrideUserInterfaceStyle` - the *app* theme, pushed
-/// by JS through VeyraNMacMenu (see -scene:willConnectToSession:options:).
+/// window edge is this colour.
+///
+/// The Mac window content is now one colour: the theme's primary background
+/// (see `withMacSemanticColors` in app/utils/apple-visual-tokens.ts, which
+/// resolves the React root, the note list column, the editor and the band
+/// behind the toolbar to `colors.primary.background`). Native code cannot read
+/// the JS theme, so this mirrors the app's default Veyran themes
+/// (#17181A dark / #FFFFFF light, packages/theme/src/theme-engine/veyran).
+/// It only fills the frames before React draws its own opaque root; keep it in
+/// sync with the default themes if those ever change.
 static UIColor *VeyraNMacWindowBackgroundColor(void) {
   return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
     if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
-      return [[UIColor systemBackgroundColor] resolvedColorWithTraitCollection:traits];
+      return [UIColor colorWithRed:0x17 / 255.0
+                             green:0x18 / 255.0
+                              blue:0x1A / 255.0
+                             alpha:1.0];
     }
-    return [[UIColor systemGroupedBackgroundColor] resolvedColorWithTraitCollection:traits];
+    return [UIColor whiteColor];
   }];
 }
 

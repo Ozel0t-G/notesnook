@@ -302,14 +302,13 @@ export const Header = ({
     return (
       <View
         style={{
-          // Mac's list column is the theme's secondary background now (its
-          // editor neighbour is the primary one), so the in-column bar paints
-          // the same surface as the list behind it. Pushed screens without a
-          // list menu (Settings, Move Notes, ...) keep their own surface.
+          // Mac's window content is one background (the theme's primary
+          // background, see apple-visual-tokens' `withMacSemanticColors`), so
+          // every in-column bar - the list's selection bar and the pushed
+          // screens (Settings, Move Notes, ...) - paints that same colour and
+          // disappears into the column behind it.
           backgroundColor: isMac
-            ? hasListMenu
-              ? colors.secondary.background
-              : visual.contentSurface
+            ? colors.primary.background
             : visual.screenBackground,
           // The list column no longer reserves a band for the native toolbar
           // (see navigation/fluid-panels-view.tsx), so the one Mac header that

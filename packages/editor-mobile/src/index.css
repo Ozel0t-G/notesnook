@@ -12,6 +12,20 @@ body {
   overscroll-behavior: none;
 }
 
+/*
+ * Mac Catalyst: the editor is one of the window's panes now, so its page (the
+ * WebView's html/body) has to paint the same background as the native wrapper
+ * and the note list - the theme's primary background. The class is added by
+ * App.tsx from `globalThis.isMacCatalyst`, so iPhone, iPad and Android keep
+ * their transparent page and the native wrapper's own surface shows through.
+ * `--nn_primary_background` is injected into `:root` before the first paint
+ * (see App.tsx), from the editor scope's primary background.
+ */
+html.mac-catalyst,
+html.mac-catalyst body {
+  background-color: var(--nn_primary_background);
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;

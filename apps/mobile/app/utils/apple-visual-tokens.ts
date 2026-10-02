@@ -36,16 +36,17 @@ export const IOS_DARK = {
 } as const;
 
 /**
- * macOS semantic window colors for the dark appearance (F2, R8). Unlike UIKit's
- * grouped colors these are *not* black: the window and the content are the same
- * near-black, the source list sits slightly lighter and distinct, and cards are
- * one step up again. No value here may repeat an IOS_DARK value.
+ * macOS semantic surface colors for the dark appearance (F2, R8), used only for
+ * genuinely *elevated* surfaces on Mac: cards, sheets and the secondary fill.
+ *
+ * The window itself is no longer one of these greys. Mac Catalyst follows the
+ * macOS 26 Notes design and paints one background across the whole window (the
+ * source list, the note list, the editor and the band behind the toolbar), and
+ * that background is the active theme's `primary.background`, not a semantic
+ * grey - see `withMacSemanticColors` below. No value here may repeat an
+ * IOS_DARK value.
  */
 export const MAC_DARK = {
-  /** NSColor.windowBackgroundColor (dark). */
-  window: "#1E1E1E",
-  /** Source-list colour: lighter and distinct from the window, not #000. */
-  sidebar: "#252527",
   content: "#1E1E1E",
   secondarySurface: "#2A2A2C",
   separator: "rgba(255,255,255,0.1)",
@@ -53,11 +54,8 @@ export const MAC_DARK = {
   selected: "#3A3A3D"
 } as const;
 
-/** macOS semantic window colors for the light appearance (F2, R8). */
+/** macOS semantic surface colors for the light appearance (F2, R8). */
 export const MAC_LIGHT = {
-  window: "#FFFFFF",
-  /** The source-list grey macOS uses for sidebars. */
-  sidebar: "#EFEFF1",
   content: "#FFFFFF",
   secondarySurface: "#F5F5F7",
   separator: "#D8D8DA",
@@ -143,7 +141,7 @@ export const getAppleVisualTokens = (
       shadowRadius: 14
     }
   };
-  if (mac) return withMacSemanticColors(base, isDark);
+  if (mac) return withMacSemanticColors(base, isDark, colors);
   if (!iosDark) return base;
   return {
     ...base,
@@ -163,22 +161,35 @@ export const getAppleVisualTokens = (
 };
 
 /**
- * The Mac Catalyst overrides (F2, R8): macOS semantic window colors replace the
- * UIKit grouped ones, so no IOS_DARK value is ever returned on the Mac. The
- * text/hover/radius/spacing tokens stay theme-driven and are left untouched.
+ * The Mac Catalyst overrides (F2, R8): the macOS semantic surface greys replace
+ * the UIKit grouped ones, so no IOS_DARK value is ever returned on the Mac, and
+ * the text/hover/radius/spacing tokens stay theme-driven.
+ *
+ * The window-level surfaces are theme-driven, not grey. The Mac window is one
+ * background from edge to edge (macOS 26 Notes): the note list column, the
+ * editor pane and the band behind the native toolbar all use the active theme's
+ * `primary.background`, so switching themes re-tints the whole window instead
+ * of leaving a fixed grey. `contentSurface`, `secondarySurface` and `surface`
+ * keep their macOS greys: those are elevated cards, sheets and fields that are
+ * supposed to float above the window, not the window itself.
  */
-function withMacSemanticColors<T extends object>(base: T, isDark: boolean) {
+function withMacSemanticColors<T extends object>(
+  base: T,
+  isDark: boolean,
+  colors: VariantsWithStaticColors<true>
+) {
   const tokens = isDark ? MAC_DARK : MAC_LIGHT;
+  const windowBackground = colors.primary.background;
   return {
     ...base,
-    screenBackground: tokens.window,
-    sidebarBackground: tokens.sidebar,
+    screenBackground: windowBackground,
+    sidebarBackground: windowBackground,
     contentSurface: tokens.content,
     secondarySurface: tokens.secondarySurface,
     elevatedSurface: tokens.content,
-    toolbarSurface: tokens.window,
-    navigationSurface: tokens.window,
-    editorSurround: tokens.window,
+    toolbarSurface: windowBackground,
+    navigationSurface: windowBackground,
+    editorSurround: windowBackground,
     surface: tokens.content,
     separator: tokens.separator,
     selectedSurface: tokens.selected,

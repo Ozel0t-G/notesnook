@@ -52,6 +52,19 @@ if (currentTheme) {
   injectCss(transform(getThemeScope("editor", currentTheme).colors));
 }
 
+/**
+ * Mac: mark the page so `index.css` paints the WebView's html/body with
+ * `--nn_primary_background` (the editor scope's primary background, injected
+ * into `:root` just above), matching the native editor wrapper and the note
+ * list. `globalThis.isMacCatalyst` is injected by the native app before the
+ * bundle runs (apps/mobile/app/screens/editor/index.tsx). iPhone, iPad and
+ * Android never get the class, so their page stays transparent and the native
+ * wrapper's own surface keeps showing through.
+ */
+if (globalThis.isMacCatalyst) {
+  document.documentElement.classList.add("mac-catalyst");
+}
+
 class ExceptionHandler extends React.Component<{
   children: React.ReactNode;
   component: string;

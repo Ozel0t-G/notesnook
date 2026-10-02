@@ -9,10 +9,11 @@
 #   export PENCIL_ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 # Without them xcodebuild uses the account signed in to Xcode.
 #
-# Usage: scripts/build-pencil-testflight.sh [--bump] [--archive-only] [--upload]
+# Usage: scripts/build-pencil-testflight.sh [--bump] [--archive-only] [--upload] [--mac]
 #   --archive-only  stop after the archive (upload it from Xcode's Organizer)
 #   --bump    increment IOS_CURRENT_PROJECT_VERSION (build number) first
 #   --upload  upload the exported build to App Store Connect (destination=upload)
+#   --mac     build/upload the Mac Catalyst variant (macOS platform of the same app)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,12 +21,13 @@ IOS="$ROOT/apps/mobile/ios"
 CFG="$IOS/build-configs/ios-build.pencil.xcconfig"
 ACTIVE="$IOS/build-configs/ios-build.active.xcconfig"
 OUT="${PENCIL_BUILD_DIR:-$HOME/Notesnook/archives}"
-BUMP=0; UPLOAD=0; ARCHIVE_ONLY=0
+BUMP=0; UPLOAD=0; ARCHIVE_ONLY=0; MAC=0
 for a in "$@"; do
   case "$a" in
     --bump) BUMP=1 ;;
     --upload) UPLOAD=1 ;;
     --archive-only) ARCHIVE_ONLY=1 ;;
+    --mac) MAC=1 ;;
     *) echo "unknown option: $a" >&2; exit 1 ;;
   esac
 done
@@ -40,8 +42,18 @@ fi
 cp "$CFG" "$ACTIVE"
 BUILD=$(sed -n 's/^IOS_CURRENT_PROJECT_VERSION *= *//p' "$CFG")
 VERSION=$(sed -n 's/^IOS_MARKETING_VERSION *= *//p' "$CFG")
-ARCHIVE="$OUT/NotesnookPencil-$VERSION-$BUILD.xcarchive"
-EXPORT="$OUT/export-$VERSION-$BUILD"
+# Mac Catalyst shares the iOS App Store Connect app and bundle ids, but TestFlight
+# for macOS treats build numbers per platform: the Electron Mac builds used unix
+# timestamps as CFBundleVersion, so the Mac build number must be a fresh timestamp.
+# Passed as a build setting override (not written into the xcconfig).
+if [[ $MAC -eq 1 ]]; then
+  MAC_BUILD=$(date +%s)
+  ARCHIVE="$OUT/NotesnookPencil-mac-$VERSION-$MAC_BUILD.xcarchive"
+  EXPORT="$OUT/export-mac-$VERSION-$MAC_BUILD"
+else
+  ARCHIVE="$OUT/NotesnookPencil-$VERSION-$BUILD.xcarchive"
+  EXPORT="$OUT/export-$VERSION-$BUILD"
+fi
 mkdir -p "$OUT"
 
 AUTH=()
@@ -56,9 +68,16 @@ fi
 
 ( cd "$IOS" && pod install )
 
-( cd "$IOS" && xcodebuild -workspace Notesnook.xcworkspace -scheme Notesnook \
-    -configuration Release -destination 'generic/platform=iOS' \
-    -archivePath "$ARCHIVE" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} archive )
+if [[ $MAC -eq 1 ]]; then
+  ( cd "$IOS" && xcodebuild -workspace Notesnook.xcworkspace -scheme Notesnook \
+      -configuration Release -destination 'generic/platform=macOS,variant=Mac Catalyst' \
+      CURRENT_PROJECT_VERSION="$MAC_BUILD" \
+      -archivePath "$ARCHIVE" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} archive )
+else
+  ( cd "$IOS" && xcodebuild -workspace Notesnook.xcworkspace -scheme Notesnook \
+      -configuration Release -destination 'generic/platform=iOS' \
+      -archivePath "$ARCHIVE" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"} archive )
+fi
 
 if [[ $ARCHIVE_ONLY -eq 1 ]]; then echo "Archive: $ARCHIVE"; exit 0; fi
 
@@ -73,3 +92,4 @@ xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
 
 echo "Archive: $ARCHIVE"
 echo "Export:  $EXPORT"
+if [[ $MAC -eq 1 ]]; then echo "Mac build number: $MAC_BUILD"; fi

@@ -4,10 +4,7 @@ IOS_MARKETING_VERSION = 3.4.16
 IOS_MAIN_BUNDLE_ID = com.ozel0t.note.notesnookpencil
 IOS_WIDGET_BUNDLE_ID = com.ozel0t.note.notesnookpencil.widget
 IOS_SHARE_BUNDLE_ID = com.ozel0t.note.notesnookpencil.share
-// Mac Catalyst: own IDs so the Electron Mac app keeps com.ozel0t.note.notesnookpencil.
-IOS_MAIN_BUNDLE_ID[sdk=macosx*] = com.ozel0t.note.notesnookpencil.mac
-IOS_WIDGET_BUNDLE_ID[sdk=macosx*] = com.ozel0t.note.notesnookpencil.mac.widget
-IOS_SHARE_BUNDLE_ID[sdk=macosx*] = com.ozel0t.note.notesnookpencil.mac.share
+// Mac Catalyst shares the iOS bundle ids so the Mac build ships as the macOS platform of the same App Store Connect app (replacing the Electron builds).
 // Mac Catalyst is built for Apple Silicon only.
 EXCLUDED_ARCHS[sdk=macosx*] = x86_64
 APP_DISPLAY_NAME = VeyraN

@@ -63,11 +63,20 @@ import { selectAppleSection } from "../navigation/navigation-stack";
  * Root stack routes Escape can dismiss. TaskDetail/AddReminder are always
  * sheets; Settings is a sheet on iPhone/iPad but a full view inside the main
  * window on Mac Catalyst (see SETTINGS_SHEET_OPTIONS in navigation-stack.tsx).
+ * The tag and notebook pickers are Mac form sheets (MAC_PICKER_SHEET_OPTIONS).
  * Escape pops the topmost one of these with `Navigation.goBack()`, landing back
  * on whatever was underneath (normally the Library section); the base screens
  * inside FluidPanelsView have nothing to dismiss.
  */
-const DISMISSABLE_ROUTES = new Set(["Settings", "TaskDetail", "AddReminder"]);
+const DISMISSABLE_ROUTES = new Set([
+  "Settings",
+  "TaskDetail",
+  "AddReminder",
+  "ManageTags",
+  "LinkNotebooks",
+  "MoveNotebook",
+  "MoveNotes"
+]);
 
 /**
  * Prefix of the section-switch commands: the section follows it

@@ -44,6 +44,7 @@ import {
 } from "../../stores/item-selection-store";
 import { useRelationStore } from "../../stores/use-relation-store";
 import { useTagStore } from "../../stores/use-tag-store";
+import { isMacCatalyst } from "../../utils/constants";
 import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 
@@ -270,6 +271,10 @@ const ManageTags = (props: NavigationProps<"ManageTags">) => {
 
   return (
     <SafeAreaView
+      // A Mac form sheet is centered over the window, not tucked under the
+      // native toolbar, so it must not clear the toolbar inset Mac's full-window
+      // screens pad themselves with. iPhone/iPad keep every edge.
+      edges={isMacCatalyst() ? ["left", "right", "bottom"] : undefined}
       style={{
         width: "100%",
         alignSelf: "center",
@@ -278,7 +283,7 @@ const ManageTags = (props: NavigationProps<"ManageTags">) => {
         flex: 1
       }}
     >
-      <Header title={strings.manageTags()} canGoBack />
+      <Header title={strings.manageTags()} canGoBack macSheet />
 
       <View
         style={{

@@ -183,6 +183,21 @@ const TASK_SHEET_OPTIONS = {
 };
 
 /**
+ * The pickers - Manage tags, Add to notebook (`LinkNotebooks`), Move notebook
+ * and Add notes (`MoveNotes`) - are small sheets on Mac, not full-window pages:
+ * they open centered over the window with a dimmed backdrop, like the Task
+ * detail sheet (`TASK_SHEET_OPTIONS`) they are launched from, and their header
+ * carries the "Done" button that dismisses them (`macSheet` on
+ * components/header). Pushed as cards they covered the sidebar, note list and
+ * editor and, because Mac's headers only show a back chevron for Settings, had
+ * no visible way back. iPhone/iPad are unchanged: they keep pushing these as
+ * full screens, where the header's own back chevron already returns.
+ */
+const MAC_PICKER_SHEET_OPTIONS: NativeStackNavigationOptions = isMacCatalyst()
+  ? { presentation: "formSheet" }
+  : {};
+
+/**
  * How Mac presents the two section routes, Tasks and Search.
  *
  * They are sections, not steps of the Library stack: each one takes over the
@@ -795,6 +810,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="LinkNotebooks"
+            options={MAC_PICKER_SHEET_OPTIONS}
             getComponent={() => {
               LinkNotebooks =
                 LinkNotebooks || require("../screens/link-notebooks").default;
@@ -804,6 +820,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="MoveNotebook"
+            options={MAC_PICKER_SHEET_OPTIONS}
             getComponent={() => {
               MoveNotebook =
                 MoveNotebook || require("../screens/move-notebook").default;
@@ -813,6 +830,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="MoveNotes"
+            options={MAC_PICKER_SHEET_OPTIONS}
             getComponent={() => {
               MoveNotes = MoveNotes || require("../screens/move-notes").default;
               return MoveNotes;
@@ -838,6 +856,7 @@ export const RootNavigation = () => {
 
           <RootStack.Screen
             name="ManageTags"
+            options={MAC_PICKER_SHEET_OPTIONS}
             getComponent={() => {
               ManageTags =
                 ManageTags || require("../screens/manage-tags").default;

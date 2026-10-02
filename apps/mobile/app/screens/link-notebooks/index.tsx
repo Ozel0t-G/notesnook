@@ -33,6 +33,7 @@ import {
 import { ItemSelection } from "../../stores/item-selection-store";
 import { useNotebooks } from "../../stores/use-notebook-store";
 import { useRelationStore } from "../../stores/use-relation-store";
+import { isMacCatalyst } from "../../utils/constants";
 import { updateNotebook } from "../../utils/notebooks";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
@@ -207,6 +208,10 @@ const LinkNotebooks = (props: NavigationProps<"LinkNotebooks">) => {
 
   return (
     <SafeAreaView
+      // A Mac form sheet is centered over the window, not tucked under the
+      // native toolbar, so it must not clear the toolbar inset Mac's full-window
+      // screens pad themselves with. iPhone/iPad keep every edge.
+      edges={isMacCatalyst() ? ["left", "right", "bottom"] : undefined}
       style={{
         gap: DefaultAppStyles.GAP_VERTICAL,
         flex: 1,
@@ -216,6 +221,7 @@ const LinkNotebooks = (props: NavigationProps<"LinkNotebooks">) => {
       <Header
         title={strings.addToNotebook()}
         canGoBack
+        macSheet
         rightButton={
           hasSelection
             ? {

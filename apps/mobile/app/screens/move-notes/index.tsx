@@ -39,6 +39,7 @@ import {
   createItemSelectionStore,
   SelectionState
 } from "../../stores/item-selection-store";
+import { isMacCatalyst } from "../../utils/constants";
 import { updateNotebook } from "../../utils/notebooks";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
@@ -117,13 +118,17 @@ export const MoveNotes = (props: NavigationProps<"MoveNotes">) => {
 
   return (
     <SafeAreaView
+      // A Mac form sheet is centered over the window, not tucked under the
+      // native toolbar, so it must not clear the toolbar inset Mac's full-window
+      // screens pad themselves with. iPhone/iPad keep every edge.
+      edges={isMacCatalyst() ? ["left", "right", "bottom"] : undefined}
       style={{
         gap: DefaultAppStyles.GAP_VERTICAL,
         flex: 1,
         backgroundColor: colors.primary.background
       }}
     >
-      <Header title={strings.addNotes()} canGoBack />
+      <Header title={strings.addNotes()} canGoBack macSheet />
 
       <View
         style={{

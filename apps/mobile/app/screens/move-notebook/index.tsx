@@ -49,6 +49,7 @@ import {
   getAllNotebookChildren,
   getParentNotebookId
 } from "../../utils/notebooks";
+import { isMacCatalyst } from "../../utils/constants";
 import { DefaultAppStyles } from "../../utils/styles";
 import { useNavigationFocus } from "../../hooks/use-navigation-focus";
 import { eSendEvent, ToastManager } from "../../services/event-manager";
@@ -221,6 +222,10 @@ export const MoveNotebook = (props: NavigationProps<"MoveNotebook">) => {
 
   return (
     <SafeAreaView
+      // A Mac form sheet is centered over the window, not tucked under the
+      // native toolbar, so it must not clear the toolbar inset Mac's full-window
+      // screens pad themselves with. iPhone/iPad keep every edge.
+      edges={isMacCatalyst() ? ["left", "right", "bottom"] : undefined}
       style={{
         gap: DefaultAppStyles.GAP_VERTICAL,
         flex: 1,
@@ -233,6 +238,7 @@ export const MoveNotebook = (props: NavigationProps<"MoveNotebook">) => {
           selectedNotebooks[0].title
         )}
         canGoBack
+        macSheet
       />
 
       <FlatList

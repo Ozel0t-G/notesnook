@@ -77,6 +77,7 @@ export const Header = ({
   title,
   id,
   canGoBack,
+  macSheet,
   hasSearch,
   onSearch,
   rightButton,
@@ -97,6 +98,15 @@ export const Header = ({
    */
   count?: number;
   canGoBack?: boolean;
+  /**
+   * Mac: this header belongs to a picker the Mac stack presents as a form
+   * sheet (`MAC_PICKER_SHEET_OPTIONS` in navigation-stack.tsx). A sheet has no
+   * push history and no window toolbar to fall back on, and `canGoBack` alone
+   * draws no back chevron on Mac (only Settings does), so the bar shows a
+   * "Done" button that dismisses it with `Navigation.goBack()`. Inert on
+   * iPhone/iPad, which keep their back chevron.
+   */
+  macSheet?: boolean;
   onPressDefaultRightButton?: () => void;
   hasSearch?: boolean;
   onSearch?: () => void;
@@ -286,7 +296,10 @@ export const Header = ({
     // Mac's list column is the middle column's top screen (the sidebar owns
     // list switching), so its bar shows no "‹ Library" button. A Settings
     // sub-page is a real push under the Settings sheet, though, and needs a way
-    // back that is not only Esc.
+    // back that is not only Esc. That is also why a Mac form sheet (`macSheet`)
+    // gets its own "Done" button in the bar below instead of the chevron - the
+    // chevron's label would be the previous screen's title and a sheet has no
+    // previous screen in its own right.
     const showBack =
       !selectionMode &&
       canGoBack === true &&
@@ -373,6 +386,17 @@ export const Header = ({
                     accessibilityLabel={strings.newNoteTab()}
                     testID="header-compose"
                     onPress={onCompose}
+                  />
+                ) : null}
+                {/* A Mac form sheet's only way out: it is not a push and has
+                    no window toolbar. Last in the trailing row so it reads as
+                    the sheet's Done button, whatever else the screen shows. */}
+                {isMac && macSheet ? (
+                  <IosBarButton
+                    label={strings.done()}
+                    bold
+                    testID="header-sheet-close"
+                    onPress={() => Navigation.goBack()}
                   />
                 ) : null}
               </>

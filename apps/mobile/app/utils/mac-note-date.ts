@@ -36,10 +36,7 @@ export function formatMacNoteDate(
 
   const dayDiff = calendarDayDiff(now, value);
   if (dayDiff === 0 || dayDiff === -1) {
-    const relative = new Intl.RelativeTimeFormat(locale, {
-      numeric: "auto"
-    }).format(dayDiff, "day");
-    return `${capitalize(relative, locale)} ${formatTime(value, locale)}`;
+    return `${relativeDay(dayDiff, locale)} ${formatTime(value, locale)}`;
   }
 
   return value.toLocaleDateString(locale, {
@@ -59,6 +56,37 @@ function calendarDayDiff(now: Date, date: Date): number {
   const to = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const dayMs = 24 * 60 * 60 * 1000;
   return Math.round((to.getTime() - from.getTime()) / dayMs);
+}
+
+/**
+ * "Today"/"Yesterday", localized. Hermes ships without
+ * `Intl.RelativeTimeFormat`, so it is feature-checked and falls back to
+ * English/German words instead of throwing while rendering the list.
+ */
+function relativeDay(dayDiff: number, locale?: string): string {
+  const RelativeTimeFormat = (Intl as { RelativeTimeFormat?: any })
+    .RelativeTimeFormat;
+  if (typeof RelativeTimeFormat === "function") {
+    try {
+      const relative = new RelativeTimeFormat(locale, {
+        numeric: "auto"
+      }).format(dayDiff, "day");
+      return capitalize(relative, locale);
+    } catch {
+      // Fall through to the fixed words below.
+    }
+  }
+  const german = (locale ?? currentLocale()).toLowerCase().startsWith("de");
+  if (dayDiff === 0) return german ? "Heute" : "Today";
+  return german ? "Gestern" : "Yesterday";
+}
+
+function currentLocale(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().locale ?? "en";
+  } catch {
+    return "en";
+  }
 }
 
 function formatTime(date: Date, locale?: string): string {

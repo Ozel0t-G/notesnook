@@ -28,10 +28,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * Catalyst window (UITitlebarToolbarStyleUnified) as the app's single chrome
  * band (Apple Notes style).
  *
- * Item order: the list's "Sort & View" menu and the New item lead, a flexible
- * space pushes the editor actions (Share, Note Info, More) and the search field
- * to the trailing side, with the field at the far right. Every action reports
- * to JavaScript through [VeyraNMacMenu sendCommand:]: "listOptions",
+ * Item order: the "Toggle Sidebar" button leads (right after the traffic
+ * lights, where the window title sits natively), the list's "Sort & View" menu
+ * and the New item follow, a flexible space pushes the editor actions (Share,
+ * Note Info, More) and the search field to the trailing side, with the field at
+ * the far right. Every action reports
+ * to JavaScript through [VeyraNMacMenu sendCommand:]: "toggleSidebar" (the same
+ * command View > Toggle Sidebar sends, so the sidebar pane collapses through
+ * the one handler), "listOptions",
  * "shareNote", "noteInfo", "noteMore", "newNote" (the same command the File
  * menu's Cmd-N item sends) or "newTask" in the Tasks section, where it does
  * what the Tasks screen's own "+ New Task" row does, and the search field as

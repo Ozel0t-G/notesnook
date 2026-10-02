@@ -162,6 +162,8 @@ const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
       <Header
         renderedInRoute={route.name}
         title={notebook?.title}
+        // Mac window subtitle: the number of notes filed in this notebook.
+        count={notes?.placeholders?.length}
         canGoBack={params?.current?.canGoBack}
         rightButton={
           Platform.OS === "ios"

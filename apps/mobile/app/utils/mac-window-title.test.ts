@@ -51,38 +51,56 @@ describe("Mac window title", () => {
     ).toEqual({ title: "Notebooks", subtitle: "" });
   });
 
-  test("names the selected Task list, with Tasks as the subtitle", () => {
+  test("shows the list's count line as the subtitle", () => {
+    expect(
+      resolveMacWindowTitle({
+        section: "library",
+        sectionTitle: "Library",
+        listTitle: "All Notes",
+        countLabel: "12 notes"
+      })
+    ).toEqual({ title: "All Notes", subtitle: "12 notes" });
+  });
+
+  test("names the selected Task list, with its count line as the subtitle", () => {
     expect(
       resolveMacWindowTitle({
         section: "tasks",
         sectionTitle: "Tasks",
-        listTitle: "Today"
+        listTitle: "Today",
+        countLabel: "4 tasks"
       })
-    ).toEqual({ title: "Today", subtitle: "Tasks" });
+    ).toEqual({ title: "Today", subtitle: "4 tasks" });
   });
 
   test("names the Tasks and Search sections themselves without a list", () => {
     expect(
-      resolveMacWindowTitle({ section: "tasks", sectionTitle: "Tasks" })
-    ).toEqual({ title: "Tasks", subtitle: "" });
+      resolveMacWindowTitle({
+        section: "tasks",
+        sectionTitle: "Tasks",
+        countLabel: "4 tasks"
+      })
+    ).toEqual({ title: "Tasks", subtitle: "4 tasks" });
     expect(
       resolveMacWindowTitle({
         section: "search",
         sectionTitle: "Search",
-        listTitle: "All Notes"
+        listTitle: "All Notes",
+        countLabel: "12 notes"
       })
     ).toEqual({ title: "Search", subtitle: "" });
   });
 
-  test("prefers the open note and its list as the subtitle", () => {
+  test("prefers the open note, with the list's count line as the subtitle", () => {
     expect(
       resolveMacWindowTitle({
         section: "library",
         sectionTitle: "Library",
         listTitle: "Notebooks",
-        noteTitle: "Meeting notes"
+        noteTitle: "Meeting notes",
+        countLabel: "12 notes"
       })
-    ).toEqual({ title: "Meeting notes", subtitle: "Notebooks" });
+    ).toEqual({ title: "Meeting notes", subtitle: "12 notes" });
   });
 
   test("has nothing to show without a list or a note", () => {
@@ -91,18 +109,19 @@ describe("Mac window title", () => {
     ).toBeUndefined();
   });
 
-  test("pushes the resolved title to the native window", () => {
+  test("pushes the resolved title and count line to the native window", () => {
     const applied = applyMacWindowTitle({
       section: "library",
       sectionTitle: "Library",
       listTitle: "Notebooks",
-      noteTitle: "Meeting notes"
+      noteTitle: "Meeting notes",
+      countLabel: "12 notes"
     });
 
     expect(applied).toBe(true);
     expect(mockSetWindowTitle).toHaveBeenCalledWith(
       "Meeting notes",
-      "Notebooks"
+      "12 notes"
     );
   });
 
@@ -136,37 +155,41 @@ describe("Mac focused list title", () => {
     mockSetWindowTitle.mockClear();
   });
 
-  test("publishes the list header's title and clears it again", () => {
-    useMacListTitleStore.getState().setListTitle("Notebooks");
+  test("publishes the list header's title and count, and clears both again", () => {
+    useMacListTitleStore.getState().setListTitle("Notebooks", 12);
     expect(useMacListTitleStore.getState().listTitle).toBe("Notebooks");
+    expect(useMacListTitleStore.getState().listCount).toBe(12);
 
     useMacListTitleStore.getState().setListTitle(undefined);
     expect(useMacListTitleStore.getState().listTitle).toBeUndefined();
+    expect(useMacListTitleStore.getState().listCount).toBeUndefined();
   });
 
-  test("the published title names the window", () => {
-    useMacListTitleStore.getState().setListTitle("Notebooks");
+  test("the published title names the window, the count the subtitle", () => {
+    useMacListTitleStore.getState().setListTitle("Notebooks", 12);
 
     const applied = applyMacWindowTitle({
       section: "library",
       sectionTitle: "Library",
-      listTitle: useMacListTitleStore.getState().listTitle
+      listTitle: useMacListTitleStore.getState().listTitle,
+      countLabel: "12 notes"
     });
 
     expect(applied).toBe(true);
-    expect(mockSetWindowTitle).toHaveBeenCalledWith("Notebooks", "");
+    expect(mockSetWindowTitle).toHaveBeenCalledWith("Notebooks", "12 notes");
   });
 
-  test("the Tasks screen's list title is the window title, Tasks the subtitle", () => {
-    useMacListTitleStore.getState().setListTitle("Today");
+  test("the Tasks screen's list title is the window title, its count the subtitle", () => {
+    useMacListTitleStore.getState().setListTitle("Today", 4);
 
     const applied = applyMacWindowTitle({
       section: "tasks",
       sectionTitle: "Tasks",
-      listTitle: useMacListTitleStore.getState().listTitle
+      listTitle: useMacListTitleStore.getState().listTitle,
+      countLabel: "4 tasks"
     });
 
     expect(applied).toBe(true);
-    expect(mockSetWindowTitle).toHaveBeenCalledWith("Today", "Tasks");
+    expect(mockSetWindowTitle).toHaveBeenCalledWith("Today", "4 tasks");
   });
 });

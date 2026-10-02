@@ -76,12 +76,20 @@ export const Header = ({
   rightButton,
   backTitle,
   menu,
-  onCompose
+  onCompose,
+  count
 }: {
   onLeftMenuButtonPress?: () => void;
   renderedInRoute?: RouteName;
   id?: string;
   title?: string;
+  /**
+   * Number of items in the list this header names, used only on Mac: it is
+   * published with the list's title so the window's subtitle shows the count
+   * line ("12 notes"). Optional; lists that cannot count themselves leave it
+   * out and the window's subtitle stays empty.
+   */
+  count?: number;
   canGoBack?: boolean;
   onPressDefaultRightButton?: () => void;
   hasSearch?: boolean;
@@ -147,6 +155,15 @@ export const Header = ({
   const listMenuRef = useRef(listMenu);
   listMenuRef.current = listMenu;
   /**
+   * The list's item count, read at publish time. It changes far more often than
+   * the list itself (every note created, deleted or refiled re-renders the
+   * screen), so it is carried in a ref instead of in the effect's dependencies:
+   * a dependency would re-run the publication effect on every count change and
+   * briefly clear the window title each time.
+   */
+  const listCountRef = useRef(count);
+  listCountRef.current = count;
+  /**
    * The navigation object of the screen this header belongs to. A list header
    * stays mounted while the next list is pushed over it (and while the Tasks and
    * Search sections take the window over), so the publication has to follow
@@ -171,7 +188,11 @@ export const Header = ({
     }
     if (title) {
       publishedTitleRef.current = title;
-      useMacListTitleStore.getState().setListTitle(title);
+      // Title and count go together: the window's subtitle is the count line
+      // (see hooks/use-mac-window-title.ts).
+      useMacListTitleStore
+        .getState()
+        .setListTitle(title, listCountRef.current);
     }
   }, [title]);
 
@@ -232,6 +253,20 @@ export const Header = ({
     // above carry the fresh values into the listeners.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMac, hasListMenu, listMenuSignature, syncMacListChrome]);
+
+  /**
+   * The list's item count changes without focus or section changing (a note is
+   * created, deleted or refiled), so the publication above would not run. This
+   * updates it in place - but only while this header owns the published title
+   * (`publishedTitleRef` is set by -publishMacListChrome), so a header that is
+   * mounted but blurred (the next list pushed over it) can never re-grab the
+   * window title when its own count changes.
+   */
+  useEffect(() => {
+    if (!isMac || !hasListMenu) return;
+    if (publishedTitleRef.current === undefined) return;
+    publishMacListChrome();
+  }, [isMac, hasListMenu, title, count, publishMacListChrome]);
 
   if (visual.ios) {
     const back = () => {

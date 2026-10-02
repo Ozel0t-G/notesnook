@@ -46,9 +46,30 @@ const SECTION_TITLES: Record<AppleSection, () => string> = {
 };
 
 /**
+ * The window subtitle of a task list: "4 tasks" / "1 task". The app's shared
+ * strings only pluralise notes (strings.notes), and the intl package is outside
+ * the Mac files' reach here, so the task line is pluralised locally; the count
+ * itself comes from the Tasks screen (useTaskSmartLists).
+ */
+function taskCountLabel(count: number) {
+  return `${count} ${count === 1 ? "task" : "tasks"}`;
+}
+
+/**
+ * The count line for the section's list, or an empty string when there is
+ * nothing to count (the Search section has no list behind it, the count is not
+ * known yet, or the section publishes no count at all). Notes use the app's own
+ * pluralised string, so "1 note" / "12 notes" reads like the rest of the app.
+ */
+function countLabelFor(section: AppleSection, count?: number) {
+  if (count === undefined || section === "search") return "";
+  return section === "tasks" ? taskCountLabel(count) : strings.notes(count);
+}
+
+/**
  * Resolves the title from the parts several, otherwise unrelated panes own -
- * the section (useAppleNavigationStore), the focused list's name (published by
- * the list header through useMacListTitleStore) and the open note
+ * the section (useAppleNavigationStore), the focused list's name and item count
+ * (published by the list header through useMacListTitleStore) and the open note
  * (useMacWindowStore.noteTitle) - and pushes it to the native window. Reads the
  * stores outside React so it can double as a zustand subscriber.
  */
@@ -58,7 +79,11 @@ function refreshMacWindowTitle() {
     section,
     sectionTitle: SECTION_TITLES[section](),
     listTitle: useMacListTitleStore.getState().listTitle,
-    noteTitle: useMacWindowStore.getState().noteTitle
+    noteTitle: useMacWindowStore.getState().noteTitle,
+    countLabel: countLabelFor(
+      section,
+      useMacListTitleStore.getState().listCount
+    )
   });
 }
 

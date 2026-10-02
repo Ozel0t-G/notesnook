@@ -450,6 +450,16 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
   const selectedLabel = selectedSmart
     ? selectedSmart.label()
     : selectedList?.name || strings.tasksList();
+  /**
+   * The selected list's own count, published with its title so Mac's window
+   * subtitle shows "4 tasks" (see useMacListTitleStore / use-mac-window-title).
+   * Smart lists use the same counts the sidebar rows do; a List uses its open
+   * (not completed) task count, like its sidebar row.
+   */
+  const selectedCount =
+    selection.kind === "smart"
+      ? counts[selection.id]
+      : listCounts[selection.id] || 0;
   const visibleTasks = tasks.filter((task) => !pendingDelete.has(task.id));
   const openCount = visibleTasks.filter((task) => !task.completed).length;
   const overdueCount = visibleTasks.filter((task) => isTaskOverdue(task)).length;
@@ -464,7 +474,8 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
 
   /**
    * Mac's window toolbar carries the list column's name, so the selected Task
-   * list ("Today", a List's name) is published as the window's list title.
+   * list ("Today", a List's name) is published as the window's list title,
+   * together with its count for the window's count-line subtitle.
    * Guarded like the Library header's publication (components/header/index.tsx):
    * the cleanup only clears the title this screen put there, so a list title
    * the Library header published - or one it publishes right after this screen
@@ -475,8 +486,12 @@ export default function Tasks({ navigation, route }: NavigationProps<"Tasks">) {
     if (!isMac) return;
     const title = selectedLabel || undefined;
     publishedTaskTitleRef.current = title;
-    if (title) useMacListTitleStore.getState().setListTitle(title);
-  }, [isMac, selectedLabel]);
+    // The count goes with the title: Mac's window subtitle is the list's count
+    // line. `selectedCount` changes on its own when a task is completed or
+    // added, so it is a dependency, not a ref.
+    if (title)
+      useMacListTitleStore.getState().setListTitle(title, selectedCount);
+  }, [isMac, selectedLabel, selectedCount]);
   React.useEffect(() => {
     if (!isMac) return;
     return () => {

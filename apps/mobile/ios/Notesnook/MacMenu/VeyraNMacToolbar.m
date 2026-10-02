@@ -26,9 +26,23 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #import "VeyraNMacMenu.h"
 
 /// Toolbar item identifiers, all namespaced to the app's own items.
+static NSToolbarItemIdentifier const VeyraNToggleSidebarIdentifier =
+    @"veyran.toggleSidebar";
 static NSToolbarItemIdentifier const VeyraNSearchIdentifier = @"veyran.search";
 static NSToolbarItemIdentifier const VeyraNNewItemIdentifier = @"veyran.newItem";
 static NSToolbarIdentifier const VeyraNToolbarIdentifier = @"veyran.main";
+
+/**
+ * Leading "Toggle Sidebar" button. Its label and tool tip are fixed (unlike the
+ * New item, which follows the section): it does one thing, and the symbol is the
+ * one macOS uses for it (Finder, Mail, Notes). It reports to JavaScript as the
+ * same "toggleSidebar" command View > Toggle Sidebar sends, so the sidebar pane
+ * collapses through the one handler (hooks/use-mac-menu-commands.ts).
+ */
+static NSString *const VeyraNToggleSidebarLabel = @"Toggle Sidebar";
+static NSString *const VeyraNToggleSidebarToolTip = @"Show or hide the sidebar";
+static NSString *const VeyraNToggleSidebarSymbol = @"sidebar.left";
+static NSString *const VeyraNToggleSidebarCommand = @"toggleSidebar";
 
 /**
  * The toolbar's icon-only actions, in the order they appear: the list's
@@ -364,6 +378,9 @@ static CGFloat currentToolbarHeight = 0;
 - (NSToolbarItem *)toolbar:(NSToolbar *)toolbar
      itemForItemIdentifier:(NSToolbarItemIdentifier)itemIdentifier
  willBeInsertedIntoToolbar:(BOOL)flag {
+  if ([itemIdentifier isEqualToString:VeyraNToggleSidebarIdentifier]) {
+    return [self makeToggleSidebarItem];
+  }
   if ([itemIdentifier isEqualToString:VeyraNSearchIdentifier]) {
     return [self makeSearchItem];
   }
@@ -379,9 +396,11 @@ static CGFloat currentToolbarHeight = 0;
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:
     (NSToolbar *)toolbar {
-  // One band, like Apple Notes: the list's own menu and the New item lead, the
-  // editor actions and the search field trail (the flexible space pulls
-  // everything after it over), and the field sits at the far right.
+  // One band, like Apple Notes: the sidebar toggle leads (right after the
+  // traffic lights, where the window title sits natively), then the list's own
+  // menu and the New item, the editor actions and the search field trail (the
+  // flexible space pulls everything after it over), and the field sits at the
+  // far right.
   //
   // The columns cannot be tied to the toolbar with separators: Catalyst has no
   // NSTrackingSeparatorToolbarItem. AppKit's header marks it
@@ -390,7 +409,8 @@ static CGFloat currentToolbarHeight = 0;
   // or list dividers. The order above still reads left (list) to right
   // (editor), which is what it would convey.
   NSMutableArray<NSToolbarItemIdentifier> *identifiers = [NSMutableArray
-      arrayWithObjects:VeyraNActionIdentifiers[0], VeyraNNewItemIdentifier,
+      arrayWithObjects:VeyraNToggleSidebarIdentifier, VeyraNActionIdentifiers[0],
+                       VeyraNNewItemIdentifier,
                        NSToolbarFlexibleSpaceItemIdentifier,
                        VeyraNActionIdentifiers[1], VeyraNActionIdentifiers[2],
                        VeyraNActionIdentifiers[3], nil];
@@ -456,6 +476,40 @@ static CGFloat currentToolbarHeight = 0;
     return;
   }
   [VeyraNMacMenu sendCommand:VeyraNActionCommands[index]];
+}
+
+/**
+ * The leading "Toggle Sidebar" button, the first item in the band (right after
+ * the traffic lights). It is icon-only, so - like the other action items - the
+ * label, palette label and tool tip all have to name the action; otherwise the
+ * item would be announced with the SF Symbol's own description ("Sidebar
+ * left"). Its command is the one View > Toggle Sidebar (Ctrl-Cmd-S) sends, so
+ * the pane collapses through the same handler in
+ * hooks/use-mac-menu-commands.ts.
+ */
+- (NSToolbarItem *)makeToggleSidebarItem {
+  NSToolbarItem *item = [[NSToolbarItem alloc]
+      initWithItemIdentifier:VeyraNToggleSidebarIdentifier];
+  UIImage *image = [UIImage systemImageNamed:VeyraNToggleSidebarSymbol];
+  // A missing symbol would leave a blank item: circle is the oldest SF Symbol
+  // and always resolves.
+  if (image == nil) {
+    image = [UIImage systemImageNamed:@"circle"];
+  }
+  image.accessibilityLabel = VeyraNToggleSidebarLabel;
+  item.image = image;
+  item.label = VeyraNToggleSidebarLabel;
+  item.paletteLabel = VeyraNToggleSidebarLabel;
+  item.toolTip = VeyraNToggleSidebarToolTip;
+  item.target = self;
+  item.action = @selector(toggleSidebarFromToolbar:);
+  // Navigation chrome is the last thing to fold into the overflow menu.
+  item.visibilityPriority = NSToolbarItemVisibilityPriorityHigh;
+  return item;
+}
+
+- (void)toggleSidebarFromToolbar:(id)sender {
+  [VeyraNMacMenu sendCommand:VeyraNToggleSidebarCommand];
 }
 
 /**

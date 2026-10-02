@@ -190,6 +190,9 @@ const NotesPage = ({
         title={
           route.name === "Monographs" ? strings.routes[route.name]() : title
         }
+        // Mac window subtitle: the number of notes in the list (the grouping's
+        // length is its row count).
+        count={notes?.placeholders?.length}
         canGoBack={params?.current?.canGoBack}
         hasSearch={true}
         id={route.name === "Monographs" ? "Monographs" : params?.current?.id}

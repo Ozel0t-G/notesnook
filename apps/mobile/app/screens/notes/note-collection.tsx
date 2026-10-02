@@ -159,6 +159,9 @@ export default function NoteCollection({
       <Header
         renderedInRoute={id}
         title={title}
+        // The exact number of notes in the collection (a VirtualizedGrouping's
+        // length is its row count); Mac shows it as the window subtitle.
+        count={notes?.placeholders?.length}
         canGoBack={true}
         onLeftMenuButtonPress={onGoBack}
         hasSearch={true}

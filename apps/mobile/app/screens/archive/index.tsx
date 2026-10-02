@@ -51,6 +51,8 @@ export const Archive = ({ navigation, route }: NavigationProps<"Archive">) => {
       <Header
         renderedInRoute={route.name}
         title={strings.routes[route.name]()}
+        // Mac window subtitle: the number of archived notes.
+        count={archive?.placeholders?.length}
         canGoBack={Platform.OS === "ios"}
         hasSearch={true}
         id={route.name}

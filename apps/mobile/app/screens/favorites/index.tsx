@@ -54,6 +54,8 @@ export const Favorites = ({
       <Header
         renderedInRoute={route.name}
         title={strings.routes[route.name]()}
+        // Mac window subtitle: the number of favorite notes.
+        count={favorites?.placeholders?.length}
         canGoBack={Platform.OS === "ios"}
         hasSearch={true}
         id={route.name}

@@ -88,6 +88,8 @@ export const Trash = ({ navigation, route }: NavigationProps<"Trash">) => {
       <Header
         renderedInRoute={route.name}
         title={strings.routes.Trash()}
+        // Mac window subtitle: the number of notes in the trash.
+        count={trash?.placeholders?.length}
         id={route.name}
         canGoBack={Platform.OS === "ios"}
         hasSearch={true}

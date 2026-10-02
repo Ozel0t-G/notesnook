@@ -54,6 +54,14 @@ const JumpToSectionDialog = () => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const currentScrollPosition = useRef(0);
   const [loading, setLoading] = useState(false);
+  /**
+   * The top inset the target section must clear. Mac's note list column paints
+   * its toolbar inset as scroll-content padding, so jumping to a section would
+   * otherwise align that section's header to y 0, under the toolbar
+   * (components/list/index.tsx / list-item.wrapper.tsx pass the same
+   * `macListTopInset` the rows are padded by). 0 on iPhone/iPad and sheets.
+   */
+  const viewOffset = useRef(0);
 
   const [groups, setGroups] = useState<
     {
@@ -66,7 +74,11 @@ const JumpToSectionDialog = () => {
   const onPress = (item: { index: number; group: GroupHeader }) => {
     scrollRef.current?.current?.scrollToIndex({
       index: item.index,
-      animated: true
+      animated: true,
+      // Mac: keep the jumped-to section's header below the toolbar. The inset
+      // travels with the ref because only the list that owns the row knows it
+      // (see `viewOffset` above).
+      viewOffset: viewOffset.current
     });
     close();
   };
@@ -74,14 +86,19 @@ const JumpToSectionDialog = () => {
   const open = useCallback(
     ({
       data,
-      ref
+      ref,
+      viewOffset: offset
     }: {
       data: VirtualizedGrouping<Item>;
       ref: RefObject<FlatList>;
+      viewOffset?: number;
     }) => {
       setLoading(true);
       setData(data);
       scrollRef.current = ref;
+      // Never a negative offset: the inset is content padding, so the list's
+      // top is 0.
+      viewOffset.current = Math.max(0, offset ?? 0);
       setVisible(true);
     },
     []

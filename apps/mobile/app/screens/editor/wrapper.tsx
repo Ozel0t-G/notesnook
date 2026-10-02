@@ -109,12 +109,14 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
            * The editor WebView is transparent and paints its own background, so
            * whatever shows through it (a rounding gap, the 0.5px hairline under
            * the header, the rounding gap at the top of the pane) has to be the
-           * editor's own background. `editorSurround` - the iPad choice - is a
-           * different (lighter) surface and showed up as a strip above the
-           * header on Mac, whose 52pt header is the pane's first row.
+           * editor's own background. On Mac the editor is the app's primary
+           * surface, one low-contrast step off the note list's secondary
+           * background (see navigation/fluid-panels-view.tsx); `editorSurround`
+           * - the iPad choice - is a different (lighter) surface and showed up
+           * as a strip above the header.
            */
           backgroundColor: isMacCatalyst()
-            ? visual.contentSurface
+            ? colors.primary.background
             : visual.ios
             ? visual.editorSurround
             : toolBarColors.primary.background,
@@ -140,7 +142,16 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
            * color. iPhone and iPad keep their own layout (no top padding here).
            */
           paddingTop: isMacCatalyst() ? macToolbarInset(insets.top) : null,
-          borderLeftWidth: DDS.isTab ? (visual.ios ? 0.5 : 1) : 0,
+          // No hard separator between the note list and the editor on Mac: the
+          // two backgrounds (secondary vs. primary) and the spacing are the
+          // separation. iPad keeps its hairline.
+          borderLeftWidth: isMacCatalyst()
+            ? 0
+            : DDS.isTab
+            ? visual.ios
+              ? 0.5
+              : 1
+            : 0,
           borderLeftColor: DDS.isTab ? visual.separator : "transparent",
           paddingBottom: insets.bottom
         }

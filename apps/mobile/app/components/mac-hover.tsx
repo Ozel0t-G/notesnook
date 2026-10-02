@@ -43,6 +43,21 @@ export const MAC_HOVER_RADIUS = 6;
  */
 export const MAC_HOVER_OPACITY = 0.5;
 
+/**
+ * The note list's own hover wash (part 2 of the Mac glass design): a neutral
+ * white over the dark list and black over the light one, weak enough that it
+ * only reads as pointer feedback. Unlike the theme-driven default above, the
+ * colour is baked in at this opacity and the layer is applied at full strength.
+ */
+export function macNoteRowHoverFill(isDark: boolean): {
+  color: string;
+  opacity: number;
+} {
+  return isDark
+    ? { color: "#FFFFFF", opacity: 0.06 }
+    : { color: "#000000", opacity: 0.04 };
+}
+
 type HoverProps = {
   onHoverIn?: () => void;
   onHoverOut?: () => void;
@@ -80,10 +95,19 @@ export function useMacHover(enabled = true): {
 export function MacHoverHighlight({
   visible,
   radius = MAC_HOVER_RADIUS,
+  color,
+  opacity = MAC_HOVER_OPACITY,
   style
 }: {
   visible: boolean;
   radius?: number;
+  /**
+   * Override the wash's colour. The note list passes the neutral macOS hover
+   * (see `macNoteRowHoverFill`) instead of the theme's hover colour.
+   */
+  color?: string;
+  /** Override the wash's opacity (defaults to MAC_HOVER_OPACITY). */
+  opacity?: number;
   style?: StyleProp<ViewStyle>;
 }) {
   const { colors, isDark } = useThemeColors();
@@ -100,8 +124,8 @@ export function MacHoverHighlight({
           right: 0,
           bottom: 0,
           borderRadius: radius,
-          backgroundColor: visual.hoverSurface,
-          opacity: MAC_HOVER_OPACITY
+          backgroundColor: color || visual.hoverSurface,
+          opacity
         },
         style
       ]}

@@ -42,6 +42,7 @@ import Animated, {
 import { notesnook } from "../../e2e/test.ids";
 import { db } from "../common/database";
 import { FluidPanels } from "../components/fluid-panels";
+import { MacScrollEdgeFade } from "../components/mac-scroll-edge-fade";
 import { MacSidebar } from "../components/mac-sidebar";
 import { useSideBarDraggingStore } from "../components/side-menu/dragging-store";
 import useGlobalSafeAreaInsets from "../hooks/use-global-safe-area-insets";
@@ -72,10 +73,10 @@ import { useAppleNavigationStore } from "../stores/use-apple-navigation-store";
 import { useMacSidebarVisible } from "../stores/use-mac-sidebar-store";
 import { isMacCatalyst } from "../utils/constants";
 import {
+  MAC_SCROLL_EDGE_FADE_HEIGHT,
   macEditorWidth,
   macListWidth,
-  macSidebarWidth,
-  macToolbarInset
+  macSidebarWidth
 } from "../utils/mac-layout";
 
 /**
@@ -461,16 +462,22 @@ export const FluidPanelsView = React.memo(
                 width: fullscreen
                   ? 0
                   : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list,
-                // Mac's note list column is the content surface, one shade off
-                // the sidebar's source list (macOS Notes' list vs. sidebar).
-                // Opaque on purpose (F5): the sidebar's glass panel is the only
-                // translucent surface, and it sits on the opaque root (the
-                // app's window colour), never on this column.
+                // Mac's note list column is the theme's secondary background,
+                // one low-contrast step off the editor's primary background
+                // (macOS Notes' list vs. editor). Opaque on purpose (F5): the
+                // sidebar's glass panel is the only translucent surface, and it
+                // sits on the opaque root (the app's window colour), never on
+                // this column.
                 backgroundColor: isMacCatalyst()
-                  ? visual.contentSurface
+                  ? colors.secondary.background
                   : visual.screenBackground,
-                borderRightWidth:
-                  visual.ios && deviceMode === "tablet" ? 0.5 : 0,
+                // No hard separator between the list and the editor on Mac:
+                // the two backgrounds and the spacing are the separation.
+                borderRightWidth: isMacCatalyst()
+                  ? 0
+                  : visual.ios && deviceMode === "tablet"
+                  ? 0.5
+                  : 0,
                 borderRightColor: visual.separator
               }}
             >
@@ -502,17 +509,14 @@ export const FluidPanelsView = React.memo(
                 <View
                   style={{
                     flex: 1,
-                    // Mac's window chrome (the native toolbar and the traffic
-                    // lights) is drawn by the system above the window's content
-                    // area, and UIKit reports its height as the window's top
-                    // safe-area inset: padding by it is what puts the list
-                    // below the toolbar instead of under it. The padding sits
-                    // on this column, whose own screenBackground is what shows
-                    // through, so the strip under the toolbar has the list's
-                    // color. See `macToolbarInset`.
-                    paddingTop: isMacCatalyst()
-                      ? macToolbarInset(insets.top)
-                      : insets.top,
+                    // Mac: no band for the toolbar here. The list's own scroll
+                    // content pads itself by `macToolbarInset` (components/
+                    // list/index.tsx), so it starts below the borderless
+                    // toolbar but still slides under it; the fade overlay below
+                    // dissolves whatever reaches the top. iPhone/iPad keep the
+                    // safe-area padding that puts the list below their opaque
+                    // nav bar.
+                    paddingTop: isMacCatalyst() ? 0 : insets.top,
                     // On iOS the bottom bar is laid out below this pane and
                     // already covers the home indicator; padding here as well
                     // would leave a dead strip above the bar.
@@ -521,6 +525,16 @@ export const FluidPanelsView = React.memo(
                 >
                   <AppNavigationStack />
                 </View>
+                {/* Mac's scroll-edge fade: the note list's background at the
+                    top, transparent 56 pt down, over the scrolling content and
+                    under the transparent toolbar. Not touchable, so the list
+                    underneath keeps every scroll and press. */}
+                {isMacCatalyst() ? (
+                  <MacScrollEdgeFade
+                    color={colors.secondary.background}
+                    height={MAC_SCROLL_EDGE_FADE_HEIGHT}
+                  />
+                ) : null}
               </ScopedThemeProvider>
             </View>
 

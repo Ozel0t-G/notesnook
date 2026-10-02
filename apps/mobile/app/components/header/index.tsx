@@ -22,6 +22,8 @@ import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
+import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
+import { MAC_TOOLBAR_HEIGHT, macToolbarInset } from "../../utils/mac-layout";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import {
   eSubscribeEvent,
@@ -104,6 +106,7 @@ export const Header = ({
 }) => {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
+  const insets = useGlobalSafeAreaInsets();
   const [borderHidden, setBorderHidden] = useState(true);
   const [selectedItemsList, selectionMode] = useSelectionStore((state) => [
     state.selectedItemsList,
@@ -299,11 +302,24 @@ export const Header = ({
     return (
       <View
         style={{
-          // Mac's list column is the content surface; the iPhone/iPad bar
-          // matches the grouped background of the list behind it.
+          // Mac's list column is the theme's secondary background now (its
+          // editor neighbour is the primary one), so the in-column bar paints
+          // the same surface as the list behind it. Pushed screens without a
+          // list menu (Settings, Move Notes, ...) keep their own surface.
           backgroundColor: isMac
-            ? visual.contentSurface
-            : visual.screenBackground
+            ? hasListMenu
+              ? colors.secondary.background
+              : visual.contentSurface
+            : visual.screenBackground,
+          // The list column no longer reserves a band for the native toolbar
+          // (see navigation/fluid-panels-view.tsx), so the one Mac header that
+          // still draws in the column - selection mode's "N selected" bar -
+          // pads itself below the toolbar. Floored at the known toolbar height
+          // so a not-yet-measured safe area cannot leave the bar under it.
+          paddingTop:
+            isMac && hasListMenu
+              ? Math.max(macToolbarInset(insets.top), MAC_TOOLBAR_HEIGHT)
+              : 0
         }}
       >
         <IosNavBar

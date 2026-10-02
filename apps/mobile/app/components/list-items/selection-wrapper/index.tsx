@@ -30,7 +30,7 @@ import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { macAccent, macSelectionFill } from "../../../utils/mac-system-state";
 import { Pressable } from "../../ui/pressable";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, View } from "react-native";
 import { Note } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { db } from "../../../common/database";
@@ -44,13 +44,20 @@ import {
   macPointerModifiers
 } from "../../../utils/mac-multi-select";
 import { ItemContextMenu } from "../../item-actions-menu";
-import { MacHoverHighlight, useMacHover } from "../../mac-hover";
+import {
+  MacHoverHighlight,
+  macNoteRowHoverFill,
+  useMacHover
+} from "../../mac-hover";
 import { SwipeRow } from "../../swipe-row";
 
 /** Mac note list row metrics (same shape as the Library source list). */
 const MAC_NOTE_ROW_PADDING = 8;
 const MAC_NOTE_ROW_PADDING_VERTICAL = 10;
-const MAC_NOTE_ROW_RADIUS = 6;
+/** Part 2 of the Mac glass design: 12 pt rows, separated by a gap, not a line. */
+const MAC_NOTE_ROW_RADIUS = 12;
+/** Vertical gap between two Mac note rows (the separator's replacement). */
+const MAC_NOTE_ROW_GAP = 4;
 
 export function selectItem(item: Item) {
   if (useSelectionStore.getState().selectionMode === item.type) {
@@ -122,9 +129,9 @@ const SelectionWrapper = ({
   const showEditing = isEditingNote && isTabletPane;
   /**
    * Mac's note list rows are source-list rows: no card background, 10 pt of
-   * vertical padding, a hairline separator between rows, and the open note
-   * marked with the system accent at low opacity (grey while the window is not
-   * key) instead of the iPad's 5 pt side bar.
+   * vertical padding, a 4 pt gap instead of a hairline separator, a 12 pt
+   * radius, and the open note marked with the system accent at low opacity
+   * (grey while the window is not key) instead of the iPad's 5 pt side bar.
    */
   const macRow = isMacCatalyst() && isNoteItem && !isSheet;
   const macHighlighted = macRow && (showEditing || isSelected);
@@ -138,8 +145,11 @@ const SelectionWrapper = ({
     isDark
   );
   // Pointer feedback for the Mac rows only: iPhone/iPad rows have no pointer
-  // to hover with, and a sheet's rows keep the iOS look.
+  // to hover with, and a sheet's rows keep the iOS look. The note list's wash
+  // is the neutral macOS one (white over dark, black over light), not the
+  // theme's hover colour the rest of the Mac UI uses.
   const { hovered, hoverProps } = useMacHover(macRow);
+  const macRowHover = macNoteRowHoverFill(isDark);
 
   const onLongPress = () => {
     if (isSheet) return;
@@ -222,7 +232,7 @@ const SelectionWrapper = ({
             ? MAC_SOURCE_LIST_INSET
             : visual.listInset,
         marginBottom: macRow
-          ? 0
+          ? MAC_NOTE_ROW_GAP
           : isSheet
             ? DefaultAppStyles.GAP_VERTICAL
             : visual.ios
@@ -233,8 +243,9 @@ const SelectionWrapper = ({
                   : 2
               : visual.rowSpacing,
         borderWidth: macRow ? 0 : isSheet || visual.ios ? 0 : 0.5,
+        // No hairline between Mac rows: the gap above is the separation.
         borderBottomWidth: macRow
-          ? StyleSheet.hairlineWidth
+          ? 0
           : visual.ios && isTabletPane && !isSheet
             ? 0.5
             : 0,
@@ -247,6 +258,8 @@ const SelectionWrapper = ({
       <MacHoverHighlight
         visible={hovered && !macHighlighted}
         radius={MAC_NOTE_ROW_RADIUS}
+        color={macRowHover.color}
+        opacity={macRowHover.opacity}
       />
       {macHighlighted ? (
         /* Accent at low opacity (grey while the window is not key): a layer of

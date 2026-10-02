@@ -83,6 +83,10 @@ export const SectionHeader = React.memo<
      * iPhone/iPad header shows. Mac Catalyst shows them in the first group
      * header too (N7/C10); the handlers are the shared ones (presentSheet's
      * Sort sheet and SettingsService), so no Mac-only menu is duplicated.
+     *
+     * Mac's pair is the 16 pt, background-less toolbar glyph size the pointer
+     * draws a hover highlight under (IconButton's plain type + mac-hover), the
+     * same treatment the window toolbar's buttons get.
      */
     const sortAndViewButtons = (
       <>
@@ -115,7 +119,7 @@ export const SectionHeader = React.memo<
             width: 25,
             height: 25
           }}
-          size={AppFontSize.lg - 2}
+          size={isMacCatalyst() ? 16 : AppFontSize.lg - 2}
         />
         <IconButton
           hidden={
@@ -142,7 +146,7 @@ export const SectionHeader = React.memo<
                 : "normal"
             });
           }}
-          size={AppFontSize.lg - 2}
+          size={isMacCatalyst() ? 16 : AppFontSize.lg - 2}
         />
       </>
     );

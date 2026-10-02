@@ -66,7 +66,7 @@ import {
 } from "../../../utils/home-note-presentation";
 
 /** Mac note row typography (see SelectionWrapper for the row metrics). */
-const MAC_NOTE_TITLE_SIZE = 13;
+const MAC_NOTE_TITLE_SIZE = 13.5;
 const MAC_NOTE_PREVIEW_SIZE = 12;
 
 type NoteItemProps = {
@@ -104,7 +104,7 @@ const NoteItem = ({
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const isHomeIOS = visual.ios && isHomeNoteRoute(renderedInRoute);
-  // Mac's source list rows are compact: a 13 pt title with an 11-12 pt
+  // Mac's source list rows are compact: a 13.5 pt semibold title with a 12 pt
   // secondary preview/date underneath.
   const isMac = isMacCatalyst();
   // The first line is the title, everywhere (list, editor, search).

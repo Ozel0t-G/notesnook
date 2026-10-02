@@ -113,6 +113,17 @@ export const MAC_TITLEBAR_CONTROL_FONT_SIZE = 12;
 export const MAC_SOURCE_LIST_INSET = 10;
 
 /**
+ * Height of the note list's scroll-edge fade (part 2 of the Mac glass design).
+ *
+ * The list column no longer reserves an opaque band for the native toolbar:
+ * its content scrolls from the window's top edge and this gradient - the
+ * column's own background colour at the top, fading to transparent at the
+ * bottom - sits over the scroll content, so anything sliding under the
+ * transparent toolbar dissolves into the list instead of hitting a hard edge.
+ */
+export const MAC_SCROLL_EDGE_FADE_HEIGHT = 56;
+
+/**
  * Below this window width the Mac sidebar collapses on its own (R10): at the
  * 900 pt minimum the three panes would leave the editor only ~440 pt, so the
  * source list gives way instead and the editor keeps >= ~560 pt.

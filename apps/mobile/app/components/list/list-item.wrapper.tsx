@@ -62,6 +62,12 @@ type ListItemWrapperProps<TItem = Item> = {
   customAccentColor?: string;
   dataType: string;
   scrollRef: any;
+  /**
+   * Mac's list column: the top inset the "jump to section" dialog's item
+   * scrolls must clear (components/list/index.tsx passes the same
+   * `macListTopInset` the rows are padded by). 0 on iPhone/iPad and sheets.
+   */
+  scrollViewOffset?: number;
   groupOptions: GroupOptions;
   groupId?: string;
   type?: GroupingByIdKey;
@@ -69,6 +75,7 @@ type ListItemWrapperProps<TItem = Item> = {
 
 export function ListItemWrapper(props: ListItemWrapperProps) {
   const { items, group, isSheet, index, groupOptions } = props;
+  const scrollViewOffset = props.scrollViewOffset ?? 0;
   const [item, setItem] = useState<Item>();
   const tags = useRef<TagsWithDateEdited>(undefined);
   const notebooks = useRef<NotebooksWithDateEdited>(undefined);
@@ -193,7 +200,8 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
               onOpenJumpToDialog={() => {
                 eSendEvent(eOpenJumpToDialog, {
                   ref: props.scrollRef,
-                  data: items
+                  data: items,
+                  viewOffset: scrollViewOffset
                 });
               }}
             />
@@ -232,7 +240,8 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
               onOpenJumpToDialog={() => {
                 eSendEvent(eOpenJumpToDialog, {
                   ref: props.scrollRef,
-                  data: items
+                  data: items,
+                  viewOffset: scrollViewOffset
                 });
               }}
             />
@@ -263,7 +272,8 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
               onOpenJumpToDialog={() => {
                 eSendEvent(eOpenJumpToDialog, {
                   ref: props.scrollRef,
-                  data: items
+                  data: items,
+                  viewOffset: scrollViewOffset
                 });
               }}
             />
@@ -292,7 +302,8 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
               onOpenJumpToDialog={() => {
                 eSendEvent(eOpenJumpToDialog, {
                   ref: props.scrollRef,
-                  data: items
+                  data: items,
+                  viewOffset: scrollViewOffset
                 });
               }}
             />
@@ -322,7 +333,8 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
               onOpenJumpToDialog={() => {
                 eSendEvent(eOpenJumpToDialog, {
                   ref: props.scrollRef,
-                  data: items
+                  data: items,
+                  viewOffset: scrollViewOffset
                 });
               }}
             />

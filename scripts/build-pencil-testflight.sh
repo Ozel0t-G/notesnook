@@ -9,6 +9,13 @@
 #   export PENCIL_ASC_ISSUER_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 # Without them xcodebuild uses the account signed in to Xcode.
 #
+# Mac Catalyst export signing (optional; auto-detected when not set):
+#   export PENCIL_MAC_SIGNING_CERT=...        SHA-1 of an "Apple Distribution" identity
+#   export PENCIL_MAC_INSTALLER_CERT=...      installer identity (default: "3rd Party Mac Developer Installer")
+# Mac App Store profiles for Catalyst only accept "Apple Distribution" certificates,
+# but Xcode's export prefers the legacy local "3rd Party Mac Developer Application"
+# identity, so --mac pins signingCertificate/installerSigningCertificate explicitly.
+#
 # Usage: scripts/build-pencil-testflight.sh [--bump] [--archive-only] [--upload] [--mac]
 #   --archive-only  stop after the archive (upload it from Xcode's Organizer)
 #   --bump    increment IOS_CURRENT_PROJECT_VERSION (build number) first
@@ -63,6 +70,26 @@ if [[ -n "${PENCIL_ASC_KEY_PATH:-}" ]]; then
         -authenticationKeyIssuerID "${PENCIL_ASC_ISSUER_ID:?}")
 fi
 
+# Resolve the Mac Catalyst signing identity before the long archive step, so a
+# missing "Apple Distribution" certificate fails fast. Xcode's export otherwise
+# picks the legacy "3rd Party Mac Developer Application" identity, which Mac App
+# Store provisioning profiles reject.
+MAC_SIGNING_CERT="${PENCIL_MAC_SIGNING_CERT:-}"
+if [[ $MAC -eq 1 && $ARCHIVE_ONLY -eq 0 && -z "$MAC_SIGNING_CERT" ]]; then
+  # Match the local "Apple Distribution: <name> (<teamID>)" identity by its SHA-1.
+  team_id=$(/usr/libexec/PlistBuddy -c "Print :teamID" "$IOS/ExportOptionsPencil.plist" 2>/dev/null || true)
+  found=$(security find-identity -v -p codesigning 2>/dev/null \
+    | grep -E "\"Apple Distribution: .* \(${team_id}\)\"" || true)
+  MAC_SIGNING_CERT=$(printf '%s\n' "$found" | grep -Eo '[0-9A-F]{40}' | head -n1 || true)
+  if [[ -z "$MAC_SIGNING_CERT" ]]; then
+    echo "error: no 'Apple Distribution' code-signing identity for team '${team_id:-?}' was found." >&2
+    echo "       Create one in Xcode > Settings > Accounts > Manage Certificates > + > Apple Distribution," >&2
+    echo "       then re-run. Alternatively set PENCIL_MAC_SIGNING_CERT to a SHA-1 hash." >&2
+    exit 1
+  fi
+fi
+MAC_INSTALLER_CERT="${PENCIL_MAC_INSTALLER_CERT:-3rd Party Mac Developer Installer}"
+
 # Editor bundle (embedded in the app)
 ( cd "$ROOT" && npm run tx editor-mobile:build )
 
@@ -82,10 +109,19 @@ fi
 if [[ $ARCHIVE_ONLY -eq 1 ]]; then echo "Archive: $ARCHIVE"; exit 0; fi
 
 OPTIONS="$IOS/ExportOptionsPencil.plist"
-if [[ $UPLOAD -eq 1 ]]; then
+if [[ $MAC -eq 1 || $UPLOAD -eq 1 ]]; then
   OPTIONS="$(mktemp -t exportoptions).plist"
   cp "$IOS/ExportOptionsPencil.plist" "$OPTIONS"
+fi
+if [[ $UPLOAD -eq 1 ]]; then
   /usr/libexec/PlistBuddy -c "Set :destination upload" "$OPTIONS"
+fi
+if [[ $MAC -eq 1 ]]; then
+  # Mac Catalyst: pin the App Store distribution and installer identities (see above).
+  /usr/libexec/PlistBuddy -c "Delete :signingCertificate" "$OPTIONS" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :signingCertificate string $MAC_SIGNING_CERT" "$OPTIONS"
+  /usr/libexec/PlistBuddy -c "Delete :installerSigningCertificate" "$OPTIONS" 2>/dev/null || true
+  /usr/libexec/PlistBuddy -c "Add :installerSigningCertificate string $MAC_INSTALLER_CERT" "$OPTIONS"
 fi
 xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportPath "$EXPORT" \
   -exportOptionsPlist "$OPTIONS" -allowProvisioningUpdates ${AUTH[@]+"${AUTH[@]}"}

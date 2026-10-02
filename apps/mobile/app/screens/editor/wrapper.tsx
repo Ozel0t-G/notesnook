@@ -35,7 +35,7 @@ import { editorRef } from "../../utils/global-refs";
 import { editorController, textInput } from "./tiptap/utils";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../utils/constants";
-import { macToolbarInset } from "../../utils/mac-layout";
+import { macToolbarInset, macWindowBackground } from "../../utils/mac-layout";
 
 export type PaneWidths = {
   mobile: {
@@ -117,7 +117,7 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
            * a strip above the header.
            */
           backgroundColor: isMacCatalyst()
-            ? colors.primary.background
+            ? macWindowBackground(colors, isDark)
             : visual.ios
             ? visual.editorSurround
             : toolBarColors.primary.background,
@@ -167,7 +167,7 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
             // packages/editor-mobile/src/index.css); the iPad surface is a
             // different (lighter) tone and would show through any gap.
             backgroundColor: isMacCatalyst()
-              ? colors.primary.background
+              ? macWindowBackground(colors, isDark)
               : visual.contentSurface,
             flex: 1
           }}

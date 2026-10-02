@@ -137,6 +137,52 @@ export const macSidebarAutoCollapsed = (
 ) => windowWidth < threshold;
 
 /**
+ * The Mac window surface in the light theme (soft off-white).
+ *
+ * On Mac the light theme must not use the theme's pure `#FFFFFF` for large
+ * surfaces - it is glaring on a desktop display. Every window-level surface
+ * (window, note list, editor, toolbar band) uses this off-white instead; the
+ * dark theme keeps the active theme's own `primary.background`.
+ */
+export const MAC_LIGHT_WINDOW_BACKGROUND = "#F3F3F5";
+
+/**
+ * The Mac floating glass sidebar and account card in the light theme: a step
+ * darker than the window so the panel still reads as lifted off it. In dark
+ * mode the panel is the theme background dimmed over the glass (see
+ * components/mac-glass-view.tsx).
+ */
+export const MAC_LIGHT_SIDEBAR_BACKGROUND = "#E9E9EC";
+
+/** Anything with a primary background colour; keeps this helper theme-agnostic. */
+type MacWindowColors = { primary: { background: string } };
+
+/**
+ * The one Mac window background used by every window-level surface (window,
+ * note list, editor, toolbar band and the strip around the floating sidebar).
+ *
+ * Dark: the active theme's `primary.background`, so switching themes re-tints
+ * the whole window. Light: a fixed soft off-white (`MAC_LIGHT_WINDOW_BACKGROUND`)
+ * instead of the theme's pure white, which is too bright for a full window.
+ * iPhone/iPad never call this.
+ */
+export const macWindowBackground = (
+  colors: MacWindowColors,
+  isDark: boolean
+): string => (isDark ? colors.primary.background : MAC_LIGHT_WINDOW_BACKGROUND);
+
+/**
+ * The colour the floating glass sidebar panel (and its account card) is dimmed
+ * to: the window background in dark mode, the slightly darker sidebar grey in
+ * light mode (see components/mac-glass-view.tsx).
+ */
+export const macGlassPanelBackground = (
+  colors: MacWindowColors,
+  isDark: boolean
+): string =>
+  isDark ? colors.primary.background : MAC_LIGHT_SIDEBAR_BACKGROUND;
+
+/**
  * A manual View > Toggle Sidebar choice, remembered together with which side of
  * the breakpoint (`narrow`) the window was on when it was made. It only holds
  * while the window stays on that side: crossing the breakpoint hands control

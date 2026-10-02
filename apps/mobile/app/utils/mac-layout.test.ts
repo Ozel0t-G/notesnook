@@ -84,6 +84,42 @@ describe("Mac toolbar inset", () => {
   });
 });
 
+describe("Mac window background", () => {
+  afterEach(() => {
+    jest.dontMock("react-native");
+    jest.resetModules();
+  });
+
+  const colors = { primary: { background: "#101012" } };
+
+  test("dark keeps the theme's primary background", () => {
+    const {
+      macWindowBackground,
+      macGlassPanelBackground
+    } = loadMacLayout(undefined);
+    expect(macWindowBackground(colors, true)).toBe("#101012");
+    expect(macGlassPanelBackground(colors, true)).toBe("#101012");
+  });
+
+  test("light uses the soft off-white window, never pure white", () => {
+    const {
+      macWindowBackground,
+      macGlassPanelBackground,
+      MAC_LIGHT_WINDOW_BACKGROUND,
+      MAC_LIGHT_SIDEBAR_BACKGROUND
+    } = loadMacLayout(undefined);
+
+    expect(macWindowBackground(colors, false)).toBe(MAC_LIGHT_WINDOW_BACKGROUND);
+    expect(macWindowBackground(colors, false)).toBe("#F3F3F5");
+    expect(macWindowBackground(colors, false)).not.toBe("#FFFFFF");
+    // The glass panel/card is a step darker than the window in light mode.
+    expect(macGlassPanelBackground(colors, false)).toBe(
+      MAC_LIGHT_SIDEBAR_BACKGROUND
+    );
+    expect(macGlassPanelBackground(colors, false)).toBe("#E9E9EC");
+  });
+});
+
 describe("sidebar auto-collapse (R10)", () => {
   const {
     macSidebarAutoCollapsed,

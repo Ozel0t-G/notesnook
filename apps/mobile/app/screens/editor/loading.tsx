@@ -42,6 +42,7 @@ import { editorState } from "./tiptap/utils";
 import { strings } from "@notesnook/intl";
 import { DefaultAppStyles } from "../../utils/styles";
 import { isMacCatalyst } from "../../utils/constants";
+import { macWindowBackground } from "../../utils/mac-layout";
 
 const EditorOverlay = ({
   editorId = "",
@@ -50,7 +51,7 @@ const EditorOverlay = ({
   editorId: string;
   editor: ReturnType<typeof useEditor>;
 }) => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
   const [error, setError] = useState(false);
   const opacity = useSharedValue(1);
   const translateValue = useSharedValue(0);
@@ -140,7 +141,9 @@ const EditorOverlay = ({
           position: "absolute",
           width: "100%",
           height: "100%",
-          backgroundColor: colors.primary.background,
+          backgroundColor: isMacCatalyst()
+            ? macWindowBackground(colors, isDark)
+            : colors.primary.background,
           justifyContent: "center",
           alignItems: "center",
           zIndex: 100
@@ -151,7 +154,9 @@ const EditorOverlay = ({
       <View
         style={{
           width: "100%",
-          backgroundColor: colors.primary.background,
+          backgroundColor: isMacCatalyst()
+            ? macWindowBackground(colors, isDark)
+            : colors.primary.background,
           borderRadius: defaultBorderRadius,
           height: "100%",
           alignItems: "flex-start",

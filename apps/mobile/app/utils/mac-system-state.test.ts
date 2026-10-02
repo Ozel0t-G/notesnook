@@ -75,13 +75,15 @@ describe("Mac native system state", () => {
 
 describe("Mac selection fill", () => {
   test("uses the accent at low opacity while the window is active", () => {
+    // Dark window: 0.22; light Mac window: 0.18, so the fill is not a
+    // saturated block on the soft off-white surface.
     expect(macSelectionFill("#FF375F", true, true)).toEqual({
       color: "#FF375F",
       opacity: 0.22
     });
     expect(macSelectionFill("#FF375F", true, false)).toEqual({
       color: "#FF375F",
-      opacity: 0.22
+      opacity: 0.18
     });
   });
 

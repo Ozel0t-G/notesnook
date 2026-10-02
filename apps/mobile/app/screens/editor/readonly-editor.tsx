@@ -37,6 +37,8 @@ import { db } from "../../common/database";
 import { i18n } from "@lingui/core";
 import { defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { isMacCatalyst } from "../../utils/constants";
+import { macWindowBackground } from "../../utils/mac-layout";
 
 const onShouldStartLoadWithRequest = (request: ShouldStartLoadRequest) => {
   if (request.url.includes("https")) {
@@ -62,7 +64,7 @@ export function ReadonlyEditor(props: {
   ) => void;
   editorId: string;
 }) {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
   // Handed to the WebView before its bundle runs so the first frame uses the
   // current appearance (see the main editor WebView for the details).
   const theme = useThemeEngineStore((state) => state.theme);
@@ -192,7 +194,9 @@ export function ReadonlyEditor(props: {
               position: "absolute",
               width: "100%",
               height: "100%",
-              backgroundColor: colors.primary.background,
+              backgroundColor: isMacCatalyst()
+                ? macWindowBackground(colors, isDark)
+                : colors.primary.background,
               justifyContent: "center",
               alignItems: "center",
               zIndex: 100
@@ -202,7 +206,9 @@ export function ReadonlyEditor(props: {
           <View
             style={{
               width: "100%",
-              backgroundColor: colors.primary.background,
+              backgroundColor: isMacCatalyst()
+                ? macWindowBackground(colors, isDark)
+                : colors.primary.background,
               borderRadius: defaultBorderRadius,
               height: "100%",
               alignItems: "flex-start",

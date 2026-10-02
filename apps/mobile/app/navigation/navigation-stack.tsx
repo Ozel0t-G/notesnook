@@ -47,7 +47,7 @@ import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { AppleTabBar, isTopTabBar } from "../components/apple-tab-bar";
 import { isMacCatalyst } from "../utils/constants";
-import { macToolbarInset } from "../utils/mac-layout";
+import { macToolbarInset, macWindowBackground } from "../utils/mac-layout";
 import {
   SafeAreaInsetsContext,
   useSafeAreaInsets
@@ -273,7 +273,7 @@ const LegacyNotesRedirect = ({ navigation }: { navigation: any }) => {
 
 const AppNavigation = React.memo(
   () => {
-    const { colors } = useThemeColors();
+    const { colors, isDark } = useThemeColors();
     const homepageV2 = useSettingStore((state) => state.settings.homepageV2);
     const loading = useSettingStore((state) => state.isAppLoading);
     const [home, setHome] = React.useState<
@@ -420,7 +420,11 @@ const AppNavigation = React.memo(
           headerShown: false,
           animation: "none",
           contentStyle: {
-            backgroundColor: colors.primary.background
+            // Mac's note list column is the Mac window background; iPhone/iPad
+            // keep the theme's primary background.
+            backgroundColor: isMacCatalyst()
+              ? macWindowBackground(colors, isDark)
+              : colors.primary.background
           }
         }}
       >
@@ -557,7 +561,7 @@ let Tasks: any = null;
 let TaskDetail: any = null;
 let GlobalSearch: any = null;
 export const RootNavigation = () => {
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
   );
@@ -697,7 +701,16 @@ export const RootNavigation = () => {
   const topTabBar = showTabBar && isTopTabBar();
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.primary.background }}>
+    <View
+      style={{
+        flex: 1,
+        // The opaque root behind every route: the Mac window background on
+        // Mac (soft off-white in light), the theme's primary elsewhere.
+        backgroundColor: isMacCatalyst()
+          ? macWindowBackground(colors, isDark)
+          : colors.primary.background
+      }}
+    >
       {topTabBar && <AppleTabBar onSelect={selectAppleSection} />}
       {/*
         The iPad bar strip (and only it) is drawn in the flow above the
@@ -732,7 +745,20 @@ export const RootNavigation = () => {
       >
         <RootStack.Navigator
           screenOptions={{
-            headerShown: false
+            headerShown: false,
+            // Mac's cards (Settings, Tasks, Search, ...) are full views in the
+            // window, not iOS sheets: their screen container must be the Mac
+            // window background, otherwise the default navigation theme's
+            // light background shows around the floating sidebar when a card
+            // covers the panes (the white ring in dark mode). On iPhone/iPad
+            // this is left to each screen's own surface.
+            ...(isMacCatalyst()
+              ? {
+                  contentStyle: {
+                    backgroundColor: macWindowBackground(colors, isDark)
+                  }
+                }
+              : {})
           }}
           initialRouteName={initialRouteName}
         >

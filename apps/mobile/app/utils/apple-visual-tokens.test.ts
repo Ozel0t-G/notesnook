@@ -105,22 +105,28 @@ describe("Mac Catalyst visual tokens", () => {
     expect(tokens.surface).toBe(MAC_DARK.content);
   });
 
-  test("uses the theme's primary background for the whole window (light)", () => {
+  test("never uses pure white for the light Mac window", () => {
     const themeColors = theme(false);
     const tokens = getAppleVisualTokens(themeColors, false);
 
     expect(tokens.ios).toBe(true);
-    expect(tokens.screenBackground).toBe(themeColors.primary.background);
-    expect(tokens.sidebarBackground).toBe(themeColors.primary.background);
-    expect(tokens.navigationSurface).toBe(themeColors.primary.background);
-    expect(tokens.toolbarSurface).toBe(themeColors.primary.background);
-    expect(tokens.editorSurround).toBe(themeColors.primary.background);
-    expect(tokens.contentSurface).toBe("#FFFFFF");
-    expect(tokens.secondarySurface).toBe("#F5F5F7");
-    expect(tokens.separator).toBe("#D8D8DA");
+    // The light Mac window is the soft off-white, not the theme's near-white
+    // (#FBFBFB here) and never #FFFFFF.
+    expect(tokens.screenBackground).toBe("#F3F3F5");
+    expect(tokens.sidebarBackground).toBe("#F3F3F5");
+    expect(tokens.navigationSurface).toBe("#F3F3F5");
+    expect(tokens.toolbarSurface).toBe("#F3F3F5");
+    expect(tokens.editorSurround).toBe("#F3F3F5");
+    expect(tokens.screenBackground).not.toBe("#FFFFFF");
+    // Cards/fields/settings rows are a hair above the window, never #FFFFFF.
+    expect(tokens.contentSurface).toBe("#FAFAFB");
+    expect(tokens.secondarySurface).toBe("#FAFAFB");
+    expect(tokens.elevatedSurface).toBe("#FAFAFB");
+    expect(tokens.surface).toBe(MAC_LIGHT.content);
+    expect(tokens.separator).toBe("#D9D9DE");
     expect(tokens.selectedSurface).toBe("#DCDCE0");
     expect(tokens.selectionBackground).toBe("#DCDCE0");
-    expect(tokens.surface).toBe(MAC_LIGHT.content);
+    expect(tokens.contentSurface).not.toBe("#FFFFFF");
   });
 
   test("never returns an IOS_DARK value on the Mac", () => {

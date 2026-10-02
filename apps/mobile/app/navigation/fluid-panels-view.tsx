@@ -76,7 +76,9 @@ import {
   MAC_SCROLL_EDGE_FADE_HEIGHT,
   macEditorWidth,
   macListWidth,
-  macSidebarWidth
+  macSidebarWidth,
+  macToolbarInset,
+  macWindowBackground
 } from "../utils/mac-layout";
 
 /**
@@ -465,16 +467,17 @@ export const FluidPanelsView = React.memo(
                   ? 0
                   : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list,
                 // Mac's note list column is the *same* background as the
-                // editor and the rest of the window: the theme's primary
-                // background (macOS 26 Notes keeps one colour across the whole
-                // window). Opaque on purpose (F5): the sidebar's glass panel is
-                // the only translucent surface, and it sits on the opaque root
-                // (the app's window colour), never on this column.
+                // editor and the rest of the window: the Mac window background
+                // (macOS 26 Notes keeps one colour across the whole window).
+                // Opaque on purpose (F5): the sidebar's glass panel is the only
+                // translucent surface, and it sits on the opaque root (the
+                // app's window colour), never on this column.
                 backgroundColor: isMacCatalyst()
-                  ? colors.primary.background
+                  ? macWindowBackground(colors, isDark)
                   : visual.screenBackground,
-                // No hard separator between the list and the editor on Mac:
-                // the spacing alone is the separation.
+                // The separator between the list and the editor on Mac is the
+                // 1 px line below, not a border on this column: it must start
+                // at the toolbar's bottom edge, not run under the toolbar.
                 borderRightWidth: isMacCatalyst()
                   ? 0
                   : visual.ios && deviceMode === "tablet"
@@ -535,11 +538,30 @@ export const FluidPanelsView = React.memo(
                     background. */}
                 {isMacCatalyst() ? (
                   <MacScrollEdgeFade
-                    color={colors.primary.background}
+                    color={macWindowBackground(colors, isDark)}
                     height={MAC_SCROLL_EDGE_FADE_HEIGHT}
                   />
                 ) : null}
               </ScopedThemeProvider>
+              {/* Mac's list/editor separation: a 1 px hairline at the list
+                  column's right edge, from the toolbar's bottom edge to the
+                  window bottom. It stops under the toolbar band so the title
+                  row stays clean, and both sides keep the same window
+                  background. */}
+              {isMacCatalyst() && !fullscreen ? (
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    top: macToolbarInset(insets.top),
+                    bottom: 0,
+                    right: 0,
+                    width: 1,
+                    backgroundColor: colors.primary.border,
+                    opacity: 0.6
+                  }}
+                />
+              ) : null}
             </View>
 
             <ScopedThemeProvider value="editor">

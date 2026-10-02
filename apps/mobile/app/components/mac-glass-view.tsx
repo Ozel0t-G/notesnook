@@ -29,6 +29,10 @@ import {
 } from "react-native";
 import { isMacCatalyst } from "../utils/constants";
 import { getColorLinearShade } from "../utils/colors";
+import {
+  macGlassPanelBackground,
+  macWindowBackground
+} from "../utils/mac-layout";
 
 /**
  * The native Mac Catalyst Liquid Glass surface (`VeyraNGlassView`).
@@ -69,13 +73,14 @@ import { getColorLinearShade } from "../utils/colors";
 export type MacGlassVariant = "sidebar" | "card" | "capsule";
 
 /**
- * Default opacity of the theme-background overlay over the glass, per
- * appearance. Chosen so the sidebar lands ~3-5% lighter than the window:
- * dark (#454449 glass over a #17181a window -> ~#1f2023 at 0.82) and light
- * (the same relationship, equally subtle, over the light window background).
+ * Default opacity of the panel-colour overlay over the glass, per appearance.
+ * Chosen so the sidebar reads as the same surface, only slightly lifted, and
+ * never disappears into the window: dark (#454449 glass over a #17181a window
+ * -> ~#1f2023 at 0.82) and light (the glass over the #F3F3F5 window is dimmed
+ * to the slightly darker #E9E9EC sidebar grey at 0.82).
  */
 const DEFAULT_DIM_OPACITY_DARK = 0.82;
-const DEFAULT_DIM_OPACITY_LIGHT = 0.7;
+const DEFAULT_DIM_OPACITY_LIGHT = 0.82;
 
 /**
  * The native glass draws its 1 px specular rim *inside* its bounds, so the
@@ -130,7 +135,7 @@ export function MacGlassView({
    * `tintColor` (see VeyraNGlassView.swift).
    */
   const themeTint = React.useMemo(
-    () => getColorLinearShade(colors.primary.background, 0.05, isDark),
+    () => getColorLinearShade(macWindowBackground(colors, isDark), 0.05, isDark),
     [colors.primary.background, isDark]
   );
 
@@ -166,11 +171,13 @@ export function MacGlassView({
         style={StyleSheet.absoluteFill}
       />
       {dimmed ? (
-        // Solid wash of the window's own background over the material, so the
-        // panel reads as the same surface just slightly lifted instead of the
-        // much lighter grey the un-dimmed glass composites to. Inset by 1 px so
-        // it never covers the native glass's specular edge highlight; the
-        // container's `overflow: hidden` clips its corners to the glass radius.
+        // Solid wash of the panel's own colour over the material, so the panel
+        // reads as the same surface just slightly lifted instead of the much
+        // lighter grey the un-dimmed glass composites to. Dark: the window
+        // background; light: the slightly darker sidebar grey (see
+        // `macGlassPanelBackground`). Inset by 1 px so it never covers the
+        // native glass's specular edge highlight; the container's
+        // `overflow: hidden` clips its corners to the glass radius.
         <View
           pointerEvents="none"
           style={{
@@ -180,7 +187,7 @@ export function MacGlassView({
             right: GLASS_EDGE_INSET,
             bottom: GLASS_EDGE_INSET,
             borderRadius: Math.max(radius - GLASS_EDGE_INSET, 0),
-            backgroundColor: colors.primary.background,
+            backgroundColor: macGlassPanelBackground(colors, isDark),
             opacity: resolvedDimOpacity
           }}
         />

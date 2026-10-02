@@ -87,8 +87,12 @@ export type MacSelectionFill = {
 /** "Unemphasized" selection: macOS greys the selection out when the window is
  * not key (N4, S1). */
 const MAC_UNEMPHASIZED_GRAY = "rgba(128,128,128,1)";
-/** Strength of the accent fill (what the sidebar and list rows use today). */
-const MAC_SELECTION_OPACITY = 0.22;
+/**
+ * Strength of the accent fill (what the sidebar and list rows use). The light
+ * Mac window is a soft off-white now, so the accent is laid on a little weaker
+ * there (0.18) than on the dark window (0.22), where it needs more presence.
+ */
+const MAC_SELECTION_OPACITY = { light: 0.18, dark: 0.22 } as const;
 /** The grey reads weaker than the accent on the dark window, so it is a touch
  * stronger there (macOS' unemphasizedSelectedContentBackgroundColor). */
 const MAC_UNEMPHASIZED_OPACITY = { light: 0.22, dark: 0.28 } as const;
@@ -105,7 +109,9 @@ export function macSelectionFill(
   if (active) {
     return {
       color: accent || FALLBACK_SYSTEM_ACCENT,
-      opacity: MAC_SELECTION_OPACITY
+      opacity: isDark
+        ? MAC_SELECTION_OPACITY.dark
+        : MAC_SELECTION_OPACITY.light
     };
   }
   return {

@@ -63,6 +63,22 @@ if (currentTheme) {
  */
 if (globalThis.isMacCatalyst) {
   document.documentElement.classList.add("mac-catalyst");
+  /**
+   * The Mac window surface in the light theme: the native window, the note
+   * list and the editor wrapper all use the soft off-white `#F3F3F5` instead
+   * of the theme's pure white (see `macWindowBackground` in the native app's
+   * utils/mac-layout.ts). The dark theme keeps the theme's own primary
+   * background. `index.css` paints the page with this variable; the fallback
+   * is the theme's primary background for older bundles.
+   */
+  const macWindowBackground =
+    currentTheme?.colorScheme === "dark"
+      ? getThemeScope("editor", currentTheme).colors.primary.background
+      : "#F3F3F5";
+  document.documentElement.style.setProperty(
+    "--nn_mac_window_background",
+    macWindowBackground
+  );
 }
 
 class ExceptionHandler extends React.Component<{

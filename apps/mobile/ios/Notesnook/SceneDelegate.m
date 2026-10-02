@@ -64,14 +64,16 @@ static void VeyraNMacRestoreWindowFrame(UIWindowScene *windowScene) {
 /// opaque instead, and the strip between the floating glass panel and the
 /// window edge is this colour.
 ///
-/// The Mac window content is now one colour: the theme's primary background
-/// (see `withMacSemanticColors` in app/utils/apple-visual-tokens.ts, which
-/// resolves the React root, the note list column, the editor and the band
-/// behind the toolbar to `colors.primary.background`). Native code cannot read
-/// the JS theme, so this mirrors the app's default Veyran themes
-/// (#17181A dark / #FFFFFF light, packages/theme/src/theme-engine/veyran).
+/// The Mac window content is now one colour: the app's Mac window background
+/// (see `macWindowBackground` in app/utils/mac-layout.ts, which resolves the
+/// React root, the note list column, the editor and the band behind the
+/// toolbar). In the dark theme that is the theme's primary background
+/// (#17181A for the default Veyran dark theme); in the light theme it is the
+/// soft off-white #F3F3F5, never pure white (which is too bright for a whole
+/// window). Native code cannot read the JS theme, so the dark value mirrors
+/// the default Veyran theme; the light value is the fixed Mac off-white.
 /// It only fills the frames before React draws its own opaque root; keep it in
-/// sync with the default themes if those ever change.
+/// sync with `MAC_LIGHT_WINDOW_BACKGROUND` if that ever changes.
 static UIColor *VeyraNMacWindowBackgroundColor(void) {
   return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
     if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
@@ -80,7 +82,10 @@ static UIColor *VeyraNMacWindowBackgroundColor(void) {
                               blue:0x1A / 255.0
                              alpha:1.0];
     }
-    return [UIColor whiteColor];
+    return [UIColor colorWithRed:0xF3 / 255.0
+                           green:0xF3 / 255.0
+                            blue:0xF5 / 255.0
+                           alpha:1.0];
   }];
 }
 
@@ -121,6 +126,13 @@ static void VeyraNMacSaveWindowFrame(UIWindowScene *windowScene) {
     windowScene.titlebar.separatorStyle = UITitlebarSeparatorStyleNone;
   }
   self.macToolbar = [[VeyraNMacToolbar alloc] initWithWindowScene:windowScene];
+  if (@available(macCatalyst 14.0, *)) {
+    // Assigning the toolbar (and its unified style, see VeyraNMacToolbar) can
+    // reset the titlebar's separator style, which puts the hairline back under
+    // the title/traffic-light row - the line across the top of the window.
+    // Re-apply "no separator" after the toolbar is in place.
+    windowScene.titlebar.separatorStyle = UITitlebarSeparatorStyleNone;
+  }
   windowScene.sizeRestrictions.minimumSize = VeyraNMacMinimumWindowSize;
   VeyraNMacRestoreWindowFrame(windowScene);
 #endif

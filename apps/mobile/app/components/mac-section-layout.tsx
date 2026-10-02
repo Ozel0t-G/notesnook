@@ -25,7 +25,7 @@ import { useSettingStore } from "../stores/use-setting-store";
 import { useMacSidebarVisible } from "../stores/use-mac-sidebar-store";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
-import { macSidebarWidth } from "../utils/mac-layout";
+import { macSidebarWidth, macWindowBackground } from "../utils/mac-layout";
 
 /**
  * One wrapper per wrapped screen, so a `getComponent` closure that calls
@@ -85,7 +85,20 @@ export function withMacSidebar<P extends object>(
     const sidebarVisible = useMacSidebarVisible(windowWidth);
 
     return (
-      <View style={{ flex: 1, flexDirection: "row" }}>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          // This wrapper *is* the pushed screen's root on Mac. Without an
+          // explicit background the strip around the floating glass sidebar
+          // (left/top/bottom 9 pt and the corners) showed whatever the
+          // navigation stack paints behind the screen - the React Navigation
+          // default theme's light background, i.e. white even in a dark app.
+          // Painting the Mac window background here keeps the strip identical
+          // to the rest of the window in both themes.
+          backgroundColor: macWindowBackground(colors, isDark)
+        }}
+      >
         <View
           style={{
             height: "100%",

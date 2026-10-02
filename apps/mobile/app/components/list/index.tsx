@@ -50,7 +50,11 @@ import { useMacListFocusStore } from "../../stores/use-mac-list-focus-store";
 import { eScrollEvent } from "../../utils/events";
 import { fluidTabsRef } from "../../utils/global-refs";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
-import { MAC_TOOLBAR_HEIGHT, macToolbarInset } from "../../utils/mac-layout";
+import {
+  MAC_TOOLBAR_HEIGHT,
+  macToolbarInset,
+  macWindowBackground
+} from "../../utils/mac-layout";
 import { Header } from "../list-items/headers/header";
 import { ContextMenu, NativeMenuItem } from "../native-menu";
 import { Empty, PlaceholderData } from "./empty";
@@ -355,10 +359,10 @@ export default function List(props: ListProps) {
       <View
         style={{
           flex: 1,
-          // Mac's note list column is the theme's primary background, the same
+          // Mac's note list column is the Mac window background, the same
           // colour as the editor and the rest of the window (macOS 26 Notes).
           backgroundColor: isMacListColumn
-            ? colors.primary.background
+            ? macWindowBackground(colors, isDark)
             : visual.ios && isTabletPane
             ? visual.contentSurface
             : visual.screenBackground

@@ -23,7 +23,11 @@ import { useThemeColors } from "@notesnook/theme";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import useGlobalSafeAreaInsets from "../../hooks/use-global-safe-area-insets";
-import { MAC_TOOLBAR_HEIGHT, macToolbarInset } from "../../utils/mac-layout";
+import {
+  MAC_TOOLBAR_HEIGHT,
+  macToolbarInset,
+  macWindowBackground
+} from "../../utils/mac-layout";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import {
   eSubscribeEvent,
@@ -308,7 +312,7 @@ export const Header = ({
           // screens (Settings, Move Notes, ...) - paints that same colour and
           // disappears into the column behind it.
           backgroundColor: isMac
-            ? colors.primary.background
+            ? macWindowBackground(colors, isDark)
             : visual.screenBackground,
           // The list column no longer reserves a band for the native toolbar
           // (see navigation/fluid-panels-view.tsx), so the one Mac header that

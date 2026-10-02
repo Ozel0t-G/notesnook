@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { VariantsWithStaticColors } from "@notesnook/theme";
 import { Platform } from "react-native";
 import { isMacCatalyst } from "./constants";
+import { macWindowBackground } from "./mac-layout";
 
 /*
  * Presentation-only tokens for the iOS/iPadOS visual layer.
@@ -54,11 +55,18 @@ export const MAC_DARK = {
   selected: "#3A3A3D"
 } as const;
 
-/** macOS semantic surface colors for the light appearance (F2, R8). */
+/**
+ * macOS semantic surface colors for the light appearance (F2, R8).
+ *
+ * The light Mac window never uses pure white: cards/fields/settings rows are
+ * `#FAFAFB` (a hair above the `#F3F3F5` window) and hairlines are `#D9D9DE`.
+ * The window-level surfaces are not here - they resolve from
+ * `macWindowBackground` in the `withMacSemanticColors` branch below.
+ */
 export const MAC_LIGHT = {
-  content: "#FFFFFF",
-  secondarySurface: "#F5F5F7",
-  separator: "#D8D8DA",
+  content: "#FAFAFB",
+  secondarySurface: "#FAFAFB",
+  separator: "#D9D9DE",
   selected: "#DCDCE0"
 } as const;
 
@@ -179,7 +187,9 @@ function withMacSemanticColors<T extends object>(
   colors: VariantsWithStaticColors<true>
 ) {
   const tokens = isDark ? MAC_DARK : MAC_LIGHT;
-  const windowBackground = colors.primary.background;
+  // Dark: the theme's own primary background. Light: the soft off-white Mac
+  // window surface (`macWindowBackground`), never the theme's pure white.
+  const windowBackground = macWindowBackground(colors, isDark);
   return {
     ...base,
     screenBackground: windowBackground,

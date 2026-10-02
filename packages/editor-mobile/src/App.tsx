@@ -22,10 +22,11 @@ import { Global, css } from "@emotion/react";
 import {
   getThemeScope,
   ScopedThemeProvider,
+  ThemeDefinition,
   themeToCSS,
   useThemeEngineStore
 } from "@notesnook/theme";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Freeze } from "react-freeze";
 import "./App.css";
 import Tiptap from "./components/editor";
@@ -53,6 +54,28 @@ if (currentTheme) {
 }
 
 /**
+ * The Mac window surface in the light theme: the native window, the note
+ * list and the editor wrapper all use the soft off-white `#F3F3F5` instead
+ * of the theme's pure white (see `macWindowBackground` in the native app's
+ * utils/mac-layout.ts). The dark theme keeps the theme's own primary
+ * background. `index.css` paints the page with this variable; the fallback
+ * is the theme's primary background for older bundles.
+ *
+ * Called once at module load for the first paint and again whenever the
+ * runtime theme changes (see `GlobalStyles`).
+ */
+function applyMacWindowBackground(theme: ThemeDefinition | undefined) {
+  const macWindowBackground =
+    theme?.colorScheme === "dark"
+      ? getThemeScope("editor", theme).colors.primary.background
+      : "#F3F3F5";
+  document.documentElement.style.setProperty(
+    "--nn_mac_window_background",
+    macWindowBackground
+  );
+}
+
+/**
  * Mac: mark the page so `index.css` paints the WebView's html/body with
  * `--nn_primary_background` (the editor scope's primary background, injected
  * into `:root` just above), matching the native editor wrapper and the note
@@ -63,22 +86,7 @@ if (currentTheme) {
  */
 if (globalThis.isMacCatalyst) {
   document.documentElement.classList.add("mac-catalyst");
-  /**
-   * The Mac window surface in the light theme: the native window, the note
-   * list and the editor wrapper all use the soft off-white `#F3F3F5` instead
-   * of the theme's pure white (see `macWindowBackground` in the native app's
-   * utils/mac-layout.ts). The dark theme keeps the theme's own primary
-   * background. `index.css` paints the page with this variable; the fallback
-   * is the theme's primary background for older bundles.
-   */
-  const macWindowBackground =
-    currentTheme?.colorScheme === "dark"
-      ? getThemeScope("editor", currentTheme).colors.primary.background
-      : "#F3F3F5";
-  document.documentElement.style.setProperty(
-    "--nn_mac_window_background",
-    macWindowBackground
-  );
+  applyMacWindowBackground(currentTheme);
 }
 
 class ExceptionHandler extends React.Component<{
@@ -234,6 +242,9 @@ export default withErrorBoundry(App, "Editor");
 
 function GlobalStyles() {
   const theme = useThemeEngineStore((store) => store.theme);
+  useEffect(() => {
+    if (globalThis.isMacCatalyst) applyMacWindowBackground(theme);
+  }, [theme]);
   const cssTheme = useMemo(() => themeToCSS(theme), [theme]);
   return (
     <>

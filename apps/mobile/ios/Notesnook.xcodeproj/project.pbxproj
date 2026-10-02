@@ -86,6 +86,7 @@
 		D10000000000000000000061 /* CatalystOpenPGPStubs.c in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000060 /* CatalystOpenPGPStubs.c */; };
 		D10000000000000000000070 /* VeyraNMacMenu.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000070 /* VeyraNMacMenu.m */; };
 		D10000000000000000000072 /* VeyraNMacToolbar.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000072 /* VeyraNMacToolbar.m */; };
+		D10000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m */; };
 		D10000000000000000000080 /* VeyraNGlassView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000080 /* VeyraNGlassView.swift */; };
 		D10000000000000000000081 /* VeyraNGlassViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000081 /* VeyraNGlassViewManager.m */; };
 		E63910B563ED7C2EC6602FA0 /* HandwritingModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C2824E09020408C06D888A /* HandwritingModule.m */; };
@@ -236,6 +237,7 @@
 		D20000000000000000000071 /* VeyraNMacMenu.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = VeyraNMacMenu.h; sourceTree = "<group>"; };
 		D20000000000000000000072 /* VeyraNMacToolbar.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNMacToolbar.m; sourceTree = "<group>"; };
 		D20000000000000000000073 /* VeyraNMacToolbar.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; path = VeyraNMacToolbar.h; sourceTree = "<group>"; };
+		D20000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = "UIScrollView+VeyraNEdgeEffect.m"; sourceTree = "<group>"; };
 		D20000000000000000000080 /* VeyraNGlassView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNGlassView.swift; sourceTree = "<group>"; };
 		D20000000000000000000081 /* VeyraNGlassViewManager.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNGlassViewManager.m; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
@@ -517,6 +519,7 @@
 				D20000000000000000000071 /* VeyraNMacMenu.h */,
 				D20000000000000000000072 /* VeyraNMacToolbar.m */,
 				D20000000000000000000073 /* VeyraNMacToolbar.h */,
+				D20000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m */,
 			);
 			name = MacMenu;
 			path = Notesnook/MacMenu;
@@ -1170,6 +1173,7 @@
 				D10000000000000000000060 /* CatalystOpenPGPStubs.c in Sources */,
 				D10000000000000000000070 /* VeyraNMacMenu.m in Sources */,
 				D10000000000000000000072 /* VeyraNMacToolbar.m in Sources */,
+				D10000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m in Sources */,
 				D10000000000000000000080 /* VeyraNGlassView.swift in Sources */,
 				D10000000000000000000081 /* VeyraNGlassViewManager.m in Sources */,
 			);

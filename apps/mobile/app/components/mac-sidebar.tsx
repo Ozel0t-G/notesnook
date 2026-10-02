@@ -23,7 +23,6 @@ import React from "react";
 import { NativeModules, Pressable, ScrollView, Text, View } from "react-native";
 import { Item } from "@notesnook/core";
 import { TaskSymbolView } from "./task-symbol-view";
-import { IosBarButton } from "./ios-nav-bar";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { useLibrarySourceList } from "../hooks/use-library-source-list";
 import { openMacList } from "../services/mac-list-navigation";
@@ -560,8 +559,11 @@ function MacSectionHeader({
         minHeight: 20
       }}
     >
-      {/* The label + chevron is the collapse target; the "+" (if any) is a
-          sibling so its own press never also toggles the section. */}
+      {/* The title + chevron is the collapse target and fills the row's
+          remaining width; the "+" (if any) is a sibling so its own press never
+          also toggles the section. The chevron sits directly after the title
+          (4 pt gap) rather than at the row's right edge, per macOS source-list
+          convention. */}
       <Pressable
         onPress={() => onToggle(id)}
         accessibilityRole="button"
@@ -571,8 +573,8 @@ function MacSectionHeader({
       >
         <Text
           testID={testID}
+          numberOfLines={1}
           style={{
-            flex: 1,
             color: visual.secondaryText,
             fontSize: 11,
             fontWeight: "600"
@@ -589,15 +591,53 @@ function MacSectionHeader({
         </View>
       </Pressable>
       {onAdd ? (
-        <IosBarButton
-          symbol="plus"
+        <MacHeaderAddButton
           accessibilityLabel={addAccessibilityLabel}
           testID={addTestID}
-          iconSize={16}
           onPress={onAdd}
         />
       ) : null}
     </View>
+  );
+}
+
+/**
+ * The sidebar section headers' "+" button (New Notebook / New List).
+ *
+ * Unlike the toolbar's `IosBarButton` (44×44 pt with 6 pt of hit slop, sized
+ * for touch), this is a compact Mac target: 22×22 pt with no hit slop, so it
+ * ends at the row's right edge and can never overlap the header's title +
+ * chevron toggle to its left.
+ */
+function MacHeaderAddButton({
+  accessibilityLabel,
+  testID,
+  onPress
+}: {
+  accessibilityLabel?: string;
+  testID?: string;
+  onPress: () => void;
+}) {
+  const { colors } = useThemeColors();
+  const { hovered, hoverProps } = useMacHover();
+  return (
+    <Pressable
+      {...hoverProps}
+      onPress={onPress}
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => ({
+        width: 22,
+        height: 22,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: pressed ? 0.4 : 1
+      })}
+    >
+      <MacHoverHighlight visible={hovered} />
+      <TaskSymbolView name="plus" size={16} color={colors.primary.accent} />
+    </Pressable>
   );
 }
 

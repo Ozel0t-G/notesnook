@@ -26,7 +26,6 @@ import {
   Easing,
   Pressable,
   StyleProp,
-  StyleSheet,
   Text,
   View,
   ViewStyle
@@ -35,33 +34,38 @@ import { useReduceMotion } from "../hooks/use-reduce-motion";
 import Navigation from "../services/navigation";
 import useNavigationStore from "../stores/use-navigation-store";
 import { SyncStatus, useUserStore } from "../stores/use-user-store";
-import { useMacSystemStore } from "../stores/use-mac-system-store";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { systemColor } from "../utils/ios-system-colors";
-import { MAC_SOURCE_LIST_INSET } from "../utils/mac-layout";
-import { macAccent, macSelectionFill } from "../utils/mac-system-state";
+import {
+  MAC_ACCOUNT_CARD_HEIGHT,
+  MAC_ACCOUNT_CARD_MARGIN,
+  MAC_ACCOUNT_CARD_RADIUS,
+  MAC_SIDEBAR_ROW_RADIUS,
+  macSidebarSelectionFill
+} from "../utils/mac-layout";
 import {
   openMacAccountSettings,
   openMacSettings
 } from "../screens/settings/mac-account-settings";
 import { AuthMode } from "./auth/common";
+import { MacGlassView } from "./mac-glass-view";
 import { MacHoverHighlight, useMacHover } from "./mac-hover";
 import AppIcon from "./ui/AppIcon";
 
 /**
  * Mac source-list footer (WP10.1): the account row macOS apps keep pinned to
- * the bottom of their sidebar. It sits below the ScrollView, so it stays put
- * while the Library list scrolls.
+ * the bottom of their sidebar. On the glass sidebar it is a floating glass card
+ * of its own (`VeyraNGlassView` variant "card"), inset from the panel's edges,
+ * with a round avatar initial on the leading edge. It sits below the ScrollView,
+ * so it stays put while the Library list scrolls.
  *
- * Signed in: the account e-mail (13 pt, single line) with a status line below
- * it ("Signed in" plus a pulsing sync dot) and a gear on the trailing edge.
- * Tapping the e-mail opens Settings on the Account group; the gear opens the
- * Settings home. Signed out: "Not logged in" opens the login flow, the gear
- * still opens Settings, and there is no sync dot.
+ * Signed in: the avatar initial, the account e-mail (13 pt, single line) with a
+ * status line below it ("Signed in" plus a pulsing sync dot) and a gear on the
+ * trailing edge. Tapping the account opens Settings on the Account group; the
+ * gear opens the Settings home. Signed out: "Not logged in" opens the login
+ * flow, the gear still opens Settings, and there is no sync dot.
  */
 
-/** Footer height: source lists use a touch more than a 28 pt row here. */
-const FOOTER_HEIGHT = 56;
 /** E-mail text size (matches a source-list row's label). */
 const EMAIL_FONT_SIZE = 13;
 /** Status line size (matches the sidebar's section headers). */
@@ -70,14 +74,12 @@ const STATUS_FONT_SIZE = 11;
 const DOT_SIZE = 9;
 /** Gear hit area. */
 const GEAR_SIZE = 24;
-/** Corner radius of the row/button highlight: the sidebar's own 6 pt. */
-const FOOTER_RADIUS = 6;
-/**
- * The footer's rows sit in the same gutter as the source-list rows: the pane
- * inset plus the row's own 8 pt padding puts the e-mail exactly where a MacRow
- * label starts (`MAC_LIST_TEXT_LEFT` in mac-sidebar.tsx).
- */
-const FOOTER_HORIZONTAL_PADDING = MAC_SOURCE_LIST_INSET;
+/** Round avatar diameter: the account line + status fit next to it in 46 pt. */
+const AVATAR_SIZE = 28;
+/** Corner radius of the row/button highlight inside the card: the row's 9 pt. */
+const INNER_RADIUS = MAC_SIDEBAR_ROW_RADIUS;
+/** Horizontal padding that keeps the content off the card's own edges. */
+const CARD_PADDING = 9;
 
 export function MacSidebarAccountFooter() {
   const { colors, isDark } = useThemeColors();
@@ -90,13 +92,7 @@ export function MacSidebarAccountFooter() {
   // The gear is the selected row while Settings is on screen (this also stops
   // the sidebar from keeping a Library row highlighted behind Settings, WP05).
   const settingsSelected = currentRoute === "Settings";
-  const systemAccent = useMacSystemStore((state) => state.accent);
-  const windowActive = useMacSystemStore((state) => state.active);
-  const selection = macSelectionFill(
-    macAccent(colors.primary.accent, systemAccent),
-    windowActive,
-    isDark
-  );
+  const selection = macSidebarSelectionFill(isDark);
 
   const email = user?.email;
   const signedIn = !!user && !!email;
@@ -126,104 +122,170 @@ export function MacSidebarAccountFooter() {
     <View
       testID="mac-sidebar-account-footer"
       style={{
-        height: FOOTER_HEIGHT,
-        flexDirection: "row",
-        alignItems: "center",
-        paddingLeft: FOOTER_HORIZONTAL_PADDING,
-        paddingRight: FOOTER_HORIZONTAL_PADDING,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: visual.separator,
-        backgroundColor: visual.sidebarBackground
+        height: MAC_ACCOUNT_CARD_HEIGHT,
+        // The card floats inside the sidebar panel with its own margins. It is
+        // the last child of the panel's flex column, so it must never be
+        // squeezed by the scrolling list above it.
+        flexShrink: 0,
+        margin: MAC_ACCOUNT_CARD_MARGIN
       }}
     >
-      <MacFooterPressable
-        testID="mac-sidebar-account"
-        accessibilityLabel={accountLabel}
-        onPress={onPressAccount}
-        // 8 pt of inner padding on top of the pane inset puts the e-mail on
-        // the same line as a MacRow's label (see FOOTER_HORIZONTAL_PADDING).
-        style={{ flex: 1, minWidth: 0, paddingHorizontal: 8 }}
-      >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            testID="mac-sidebar-account-email"
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={{
-              color: visual.primaryText,
-              fontSize: EMAIL_FONT_SIZE
-            }}
-          >
-            {signedIn ? email : strings.notLoggedIn()}
-          </Text>
-          {signedIn ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                marginTop: 2
-              }}
-            >
-              <SyncDot
-                failed={syncFailed}
-                isDark={isDark}
-                accessibilityLabel={syncLabel}
-              />
-              <Text
-                numberOfLines={1}
-                style={{
-                  color: visual.secondaryText,
-                  fontSize: STATUS_FONT_SIZE,
-                  marginLeft: 5
-                }}
-              >
-                {strings.loginSuccess()}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-      </MacFooterPressable>
-
-      <MacFooterPressable
-        testID="mac-sidebar-settings"
-        accessibilityLabel={strings.routes.Settings()}
-        accessibilityState={{ selected: settingsSelected }}
-        hideHover={settingsSelected}
-        onPress={openMacSettings}
+      <MacGlassView
+        variant="card"
+        cornerRadius={MAC_ACCOUNT_CARD_RADIUS}
         style={{
-          width: GEAR_SIZE,
-          height: GEAR_SIZE,
-          marginLeft: 4
+          flex: 1,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: CARD_PADDING
         }}
       >
-        {settingsSelected ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              borderRadius: FOOTER_RADIUS,
-              backgroundColor: selection.color,
-              opacity: selection.opacity
-            }}
+        <MacFooterPressable
+          testID="mac-sidebar-account"
+          accessibilityLabel={accountLabel}
+          onPress={onPressAccount}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            paddingHorizontal: 7,
+            height: 34,
+            // The avatar is part of the account target, so the row keeps its
+            // content at the leading edge instead of the base style's center.
+            justifyContent: "flex-start"
+          }}
+        >
+          <AccountAvatar signedIn={signedIn} email={email} />
+          <View style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
+            <Text
+              testID="mac-sidebar-account-email"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={{
+                color: visual.primaryText,
+                fontSize: EMAIL_FONT_SIZE
+              }}
+            >
+              {signedIn ? email : strings.notLoggedIn()}
+            </Text>
+            {signedIn ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  marginTop: 1
+                }}
+              >
+                <SyncDot
+                  failed={syncFailed}
+                  isDark={isDark}
+                  accessibilityLabel={syncLabel}
+                />
+                <Text
+                  numberOfLines={1}
+                  style={{
+                    color: visual.secondaryText,
+                    fontSize: STATUS_FONT_SIZE,
+                    marginLeft: 5
+                  }}
+                >
+                  {strings.loginSuccess()}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </MacFooterPressable>
+
+        <MacFooterPressable
+          testID="mac-sidebar-settings"
+          accessibilityLabel={strings.routes.Settings()}
+          accessibilityState={{ selected: settingsSelected }}
+          hideHover={settingsSelected}
+          onPress={openMacSettings}
+          style={{
+            width: GEAR_SIZE,
+            height: GEAR_SIZE,
+            marginLeft: 4
+          }}
+        >
+          {settingsSelected ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                borderRadius: INNER_RADIUS,
+                backgroundColor: selection.color,
+                opacity: selection.opacity
+              }}
+            />
+          ) : null}
+          <AppIcon
+            name="cog-outline"
+            size={16}
+            color={
+              settingsSelected ? colors.primary.accent : visual.secondaryText
+            }
           />
-        ) : null}
+        </MacFooterPressable>
+      </MacGlassView>
+    </View>
+  );
+}
+
+/**
+ * The round avatar at the leading edge of the account card: the first letter of
+ * the signed-in e-mail, or a person glyph while signed out. Its fill is the
+ * theme's secondary surface so it reads as a disc on the glass.
+ */
+function AccountAvatar({
+  signedIn,
+  email
+}: {
+  signedIn: boolean;
+  email?: string;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const initial = signedIn && email ? email.trim().charAt(0).toUpperCase() : "";
+  return (
+    <View
+      style={{
+        width: AVATAR_SIZE,
+        height: AVATAR_SIZE,
+        borderRadius: AVATAR_SIZE / 2,
+        backgroundColor: colors.secondary.background,
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden"
+      }}
+    >
+      {signedIn && initial ? (
+        <Text
+          style={{
+            color: visual.primaryText,
+            fontSize: 13,
+            fontWeight: "600"
+          }}
+        >
+          {initial}
+        </Text>
+      ) : (
         <AppIcon
-          name="cog-outline"
+          name="account-outline"
           size={16}
-          color={settingsSelected ? selection.color : visual.secondaryText}
+          color={visual.secondaryText}
         />
-      </MacFooterPressable>
+      )}
     </View>
   );
 }
 
 /**
  * A pressable footer row/button with the same pointer feedback as the sidebar's
- * MacRow: a 6 pt rounded hover highlight under the content.
+ * MacRow: a rounded hover highlight under the content.
  */
 function MacFooterPressable({
   testID,
@@ -257,7 +319,7 @@ function MacFooterPressable({
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
-          borderRadius: FOOTER_RADIUS,
+          borderRadius: INNER_RADIUS,
           overflow: "hidden"
         },
         style
@@ -265,7 +327,7 @@ function MacFooterPressable({
     >
       <MacHoverHighlight
         visible={hovered && !hideHover}
-        radius={FOOTER_RADIUS}
+        radius={INNER_RADIUS}
       />
       {children}
     </Pressable>

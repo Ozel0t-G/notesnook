@@ -56,6 +56,25 @@ static void VeyraNMacRestoreWindowFrame(UIWindowScene *windowScene) {
   }
 }
 
+/// The Mac window's own background colour, following the app's appearance.
+///
+/// Catalyst never shows the desktop through a clear `UIWindow`: a clear window
+/// just makes the app's glass panels sample a blank (light) backdrop, which is
+/// what turned the sidebar's Liquid Glass into a flat light slab. The window is
+/// opaque instead, and the strip between the floating glass panel and the
+/// window edge is this colour. Dark uses systemBackgroundColor, light
+/// systemGroupedBackgroundColor; both are dynamic colours, so they resolve
+/// against the window's `overrideUserInterfaceStyle` - the *app* theme, pushed
+/// by JS through VeyraNMacMenu (see -scene:willConnectToSession:options:).
+static UIColor *VeyraNMacWindowBackgroundColor(void) {
+  return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traits) {
+    if (traits.userInterfaceStyle == UIUserInterfaceStyleDark) {
+      return [[UIColor systemBackgroundColor] resolvedColorWithTraitCollection:traits];
+    }
+    return [[UIColor systemGroupedBackgroundColor] resolvedColorWithTraitCollection:traits];
+  }];
+}
+
 /// Remembers the window's current frame.
 static void VeyraNMacSaveWindowFrame(UIWindowScene *windowScene) {
   if (@available(macCatalyst 16.0, *)) {
@@ -98,10 +117,23 @@ static void VeyraNMacSaveWindowFrame(UIWindowScene *windowScene) {
 #endif
 
   self.window = [[UIWindow alloc] initWithWindowScene:windowScene];
-  // The floating tab bar leaves its safe-area inset translucent. Without an
-  // explicit window colour that strip renders black in both appearances;
-  // systemBackground follows light/dark automatically.
+#if TARGET_OS_MACCATALYST
+  // Mac's sidebar is a floating glass panel (see components/mac-sidebar.tsx
+  // and ios/Notesnook/Glass/VeyraNGlassView.swift). Its Liquid Glass needs an
+  // opaque backdrop to read as glass: Catalyst does not show the desktop
+  // through a clear UIWindow, so a clear window made the material sample a
+  // blank light backdrop and render as a light slab. The window is therefore
+  // opaque and follows the app's appearance (VeyraNMacWindowBackgroundColor);
+  // the list/editor panes keep their own opaque surfaces and the sidebar pane
+  // stays transparent so its glass sits directly over this colour. (On
+  // iPhone/iPad the floating tab bar leaves its safe-area inset translucent,
+  // and without an explicit window colour that strip renders black;
+  // systemBackground follows light/dark.)
+  self.window.backgroundColor = VeyraNMacWindowBackgroundColor();
+  self.window.opaque = YES;
+#else
   self.window.backgroundColor = [UIColor systemBackgroundColor];
+#endif
   // Keep code that still reads the app delegate's window working.
   appDelegate.window = self.window;
 
@@ -138,6 +170,14 @@ static void VeyraNMacSaveWindowFrame(UIWindowScene *windowScene) {
   [appDelegate.reactNativeFactory startReactNativeWithModuleName:@"Notesnook"
                                                         inWindow:self.window
                                                    launchOptions:launchOptions];
+#if TARGET_OS_MACCATALYST
+  // The UIKit view backing the React root carries the same opaque colour as
+  // the window, so the first frames (before React has drawn anything) are the
+  // app's window colour instead of a light/clear sheet. React's own root then
+  // paints the app's screen background on top.
+  self.window.rootViewController.view.backgroundColor = VeyraNMacWindowBackgroundColor();
+  self.window.rootViewController.view.opaque = YES;
+#endif
   [self.window makeKeyAndVisible];
 
   if (connectionOptions.shortcutItem != nil) {

@@ -369,6 +369,15 @@ export const FluidPanelsView = React.memo(
         style={{
           height: "100%",
           width: "100%",
+          // The root is opaque on every platform, Mac included: Catalyst does
+          // not show the desktop through a clear UIWindow, so the Mac window is
+          // opaque too (see SceneDelegate.m) and the glass sidebar needs a real
+          // colour behind it, not a blank/light backdrop. `screenBackground` is
+          // the Mac window colour (#1E1E1E dark / #FFFFFF light, mac-layout /
+          // apple-visual-tokens), so the strip between the floating glass panel
+          // and the window edge matches the window instead of showing through
+          // as a light corner. The list and editor panes still bring their own
+          // opaque surfaces; only the sidebar pane stays transparent.
           backgroundColor: visual.screenBackground
         }}
       >
@@ -391,11 +400,13 @@ export const FluidPanelsView = React.memo(
             }}
           >
             {/* Mac's sidebar pane: a persistent source list (Library) at the
-                left edge of the window, the leftmost of the three columns, with
-                a hairline between it and the note list. It is not the side menu
-                and has no drawer: selecting a row opens the note list in the
-                middle column. The pane paints its own background and clears the
-                native toolbar's inset (see components/mac-sidebar.tsx). */}
+                left edge of the window, the leftmost of the three columns. It
+                is not the side menu and has no drawer: selecting a row opens
+                the note list in the middle column. The pane itself is
+                transparent — the floating glass panel inside it is what paints
+                the sidebar (see components/mac-sidebar.tsx) — so the opaque
+                root below it (the app's window colour) shows through the
+                material and through the 9 pt strip around the panel. */}
             {isMacCatalyst() ? (
               <View
                 key="1"
@@ -408,10 +419,10 @@ export const FluidPanelsView = React.memo(
                     ? 0
                     : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]
                         ?.sidebar,
-                  // The hairline separates the source list from the note list,
-                  // so it goes away with the sidebar.
-                  borderRightWidth: macSidebarVisible ? 0.5 : 0,
-                  borderRightColor: visual.separator,
+                  // The floating glass panel draws its own rounded edge; a
+                  // hairline here would cut across it, so the separator is
+                  // gone with the opaque column.
+                  borderRightWidth: 0,
                   // A zero-width pane keeps its children mounted (the source
                   // list keeps its scroll position), and iOS Views do not clip
                   // by default: without this the list would still paint over
@@ -452,8 +463,9 @@ export const FluidPanelsView = React.memo(
                   : PANE_WIDTHS[deviceMode as keyof typeof PANE_WIDTHS]?.list,
                 // Mac's note list column is the content surface, one shade off
                 // the sidebar's source list (macOS Notes' list vs. sidebar).
-                // Opaque on purpose (F5): the native source-list material is a
-                // follow-up, so this must not be made transparent yet.
+                // Opaque on purpose (F5): the sidebar's glass panel is the only
+                // translucent surface, and it sits on the opaque root (the
+                // app's window colour), never on this column.
                 backgroundColor: isMacCatalyst()
                   ? visual.contentSurface
                   : visual.screenBackground,

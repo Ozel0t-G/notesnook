@@ -193,3 +193,57 @@ export const macEditorWidth = (windowWidth: number, sidebarVisible = true) =>
   windowWidth -
   macSidebarWidth(windowWidth, sidebarVisible) -
   macListWidth(windowWidth);
+
+/**
+ * Liquid Glass sidebar metrics (Part 1 of the Mac glass design).
+ *
+ * The sidebar is no longer an opaque, full-height column: it is a floating
+ * glass panel inset from the window's top, left and bottom edges, with the
+ * source list and the account card living inside it. The window has no right
+ * edge here (the note list is the sidebar's neighbour), so the panel stays
+ * flush with the list column on that side.
+ *
+ * The panel is translucent, so it needs an opaque backdrop: the Mac window and
+ * the React root both carry the app's window colour (SceneDelegate.m,
+ * navigation/fluid-panels-view.tsx) and the sidebar pane stays transparent, so
+ * the glass - and the `MAC_SIDEBAR_PANEL_INSET` strip around it - sits on that
+ * colour instead of a blank, light backdrop.
+ */
+/** Inset of the floating glass sidebar panel from the window's edges. */
+export const MAC_SIDEBAR_PANEL_INSET = 9;
+/** Corner radius of the floating glass sidebar panel. */
+export const MAC_SIDEBAR_PANEL_RADIUS = 19;
+/** Height of one Mac source-list row (the glass-era, roomier row). */
+export const MAC_SIDEBAR_ROW_HEIGHT = 30;
+/** Corner radius of a source-list row's selection/hover highlight. */
+export const MAC_SIDEBAR_ROW_RADIUS = 9;
+
+/** The account card the sidebar pins to its bottom: a glass card of its own. */
+export const MAC_ACCOUNT_CARD_HEIGHT = 46;
+export const MAC_ACCOUNT_CARD_RADIUS = 14;
+/** Margin of the account card inside the sidebar panel. */
+export const MAC_ACCOUNT_CARD_MARGIN = 10;
+
+/** A row-selection fill, applied with `opacity` on a layer of its own. */
+export type MacSidebarSelection = { color: string; opacity: number };
+
+/**
+ * Strength of the sidebar's selection highlight. Unlike the accent fill still
+ * used by the note list (see `macSelectionFill` in mac-system-state.ts), the
+ * source list uses a subtle neutral wash: white over a dark glass panel, black
+ * over a light one.
+ */
+export const MAC_SIDEBAR_SELECTION_OPACITY = {
+  light: 0.08,
+  dark: 0.14
+} as const;
+
+/** The sidebar's subtle rounded selection highlight for the given appearance. */
+export function macSidebarSelectionFill(isDark: boolean): MacSidebarSelection {
+  return {
+    color: isDark ? "#FFFFFF" : "#000000",
+    opacity: isDark
+      ? MAC_SIDEBAR_SELECTION_OPACITY.dark
+      : MAC_SIDEBAR_SELECTION_OPACITY.light
+  };
+}

@@ -32,10 +32,19 @@ import {
   AppleSection,
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
-import { macAccent, macSelectionFill } from "../utils/mac-system-state";
+import { macAccent } from "../utils/mac-system-state";
 import { AddNotebookSheet } from "./sheets/add-notebook";
 import useGlobalSafeAreaInsets from "../hooks/use-global-safe-area-insets";
-import { MAC_SOURCE_LIST_INSET, macToolbarInset } from "../utils/mac-layout";
+import {
+  MAC_SIDEBAR_PANEL_INSET,
+  MAC_SIDEBAR_PANEL_RADIUS,
+  MAC_SIDEBAR_ROW_HEIGHT,
+  MAC_SIDEBAR_ROW_RADIUS,
+  MAC_SOURCE_LIST_INSET,
+  macSidebarSelectionFill,
+  macToolbarInset
+} from "../utils/mac-layout";
+import { MacGlassView } from "./mac-glass-view";
 import { ItemContextMenu } from "./item-actions-menu";
 import { ContextMenu, NativeMenuItem } from "./native-menu";
 import { MacHoverHighlight, useMacHover } from "./mac-hover";
@@ -114,11 +123,13 @@ const MAC_SELECTED_ROUTE_ID: Record<string, string> = {
 };
 
 /**
- * Mac source list metrics (see `mac-layout.ts` for the window chrome and for
- * `MAC_SOURCE_LIST_INSET`, the 10 pt margin the rows sit in).
+ * Mac source list metrics (see `mac-layout.ts` for the window chrome, the
+ * floating glass panel and `MAC_SOURCE_LIST_INSET`, the 10 pt margin the rows
+ * sit in). Row height/radius live there too now that selection is a subtle
+ * rounded highlight rather than the note list's accent fill.
  */
-const MAC_ROW_HEIGHT = 28;
-const MAC_ROW_RADIUS = 6;
+const MAC_ROW_HEIGHT = MAC_SIDEBAR_ROW_HEIGHT;
+const MAC_ROW_RADIUS = MAC_SIDEBAR_ROW_RADIUS;
 const MAC_ROW_FONT_SIZE = 13;
 const MAC_ROW_ICON_SIZE = 16;
 /** Inner padding of a row: the icon/text inset inside the highlight. */
@@ -354,26 +365,50 @@ export function MacSidebar() {
     <View
       style={{
         flex: 1,
-        // The window's native toolbar is drawn above the content area, and
-        // UIKit reports its height as the window's top safe-area inset: the
-        // padding puts the source list below it, and this pane's own background
-        // is what shows through that strip (see `macToolbarInset`).
-        paddingTop: macToolbarInset(insets.top),
-        // Opaque macOS source-list colour for now (F5/R8): the pane stays a
-        // real, distinct surface instead of UIKit's grouped black. Letting the
-        // native sidebar material (NSVisualEffectView) show through is a
-        // follow-up, so this must not be made transparent yet.
-        backgroundColor: visual.sidebarBackground
+        // The pane itself is transparent: the floating glass panel below is
+        // what paints the sidebar, so the opaque window background behind the
+        // React root shows through the material and through the 9 pt strip
+        // around the panel. Any colour here would block that backdrop and
+        // leave the glass nothing to blend with.
+        backgroundColor: "transparent",
+        // Inset the glass panel from the window's top, left and bottom edges.
+        // The panel's top-left corner sits under the traffic lights and the
+        // Toggle Sidebar toolbar item; the toolbar inset is applied inside the
+        // panel (below), keeping the source list clear of it.
+        paddingTop: MAC_SIDEBAR_PANEL_INSET,
+        paddingLeft: MAC_SIDEBAR_PANEL_INSET,
+        paddingBottom: MAC_SIDEBAR_PANEL_INSET
       }}
     >
-      <ScrollView
-        testID="library-scroll"
-        // flex: 1 so the account footer below can stay pinned to the bottom
-        // while the list scrolls; its own paddingBottom only needs the small
-        // gap under the last row now that the footer owns the bottom edge.
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: 8, paddingBottom: 8 }}
+      <MacGlassView
+        variant="sidebar"
+        cornerRadius={MAC_SIDEBAR_PANEL_RADIUS}
+        // The panel is a full-height flex column: the list takes everything
+        // the account footer does not. The glass itself is only a background
+        // layer of the panel (see mac-glass-view.tsx), so the column is laid
+        // out by React Native and the footer always sits at the bottom.
+        style={{ flex: 1, flexDirection: "column" }}
       >
+        <ScrollView
+          testID="library-scroll"
+          // flex: 1 so the account footer below can stay pinned to the bottom
+          // while the list scrolls; its own paddingBottom only needs the small
+          // gap under the last row now that the footer owns the bottom edge.
+          // Explicitly transparent: the panel's glass is what paints behind
+          // the rows.
+          style={{ flex: 1, backgroundColor: "transparent" }}
+          contentContainerStyle={{
+            // The window's native toolbar is drawn above the content area, and
+            // UIKit reports its height as the window's top safe-area inset. The
+            // glass panel now starts `MAC_SIDEBAR_PANEL_INSET` below the window
+            // top, so that inset is subtracted here: the source list's first
+            // row lands at the same height under the toolbar as before, and the
+            // toolbar/traffic lights stay clear of it.
+            paddingTop:
+              macToolbarInset(insets.top) - MAC_SIDEBAR_PANEL_INSET + 8,
+            paddingBottom: 8
+          }}
+        >
         {/* 1. Library: notes destinations, accent-tinted icons. */}
         <MacSectionHeader
           id="library"
@@ -513,9 +548,13 @@ export function MacSidebar() {
             selected={isCurrentDestination(item.key)}
           />
         ))}
-      </ScrollView>
-      {/* Pinned account row, outside the ScrollView so it never scrolls away. */}
-      {isMacCatalyst() ? <MacSidebarAccountFooter /> : null}
+        </ScrollView>
+        {/* Pinned glass account card: last child of the panel's flex column,
+            outside the ScrollView so it never scrolls away with the source
+            list and always sits at the panel's bottom, 10 pt in from the
+            edges (its own margin, see mac-sidebar-account-footer.tsx). */}
+        {isMacCatalyst() ? <MacSidebarAccountFooter /> : null}
+      </MacGlassView>
     </View>
   );
 }
@@ -642,15 +681,18 @@ function MacHeaderAddButton({
 }
 
 /**
- * One source-list row: 28 pt tall, no card background, no separators, a 6 pt
- * rounded accent highlight when the route it opens is the one on screen, and
+ * One source-list row: 30 pt tall, no card background, no separators, a 9 pt
+ * rounded neutral highlight when the route it opens is the one on screen, and
  * counts right-aligned in the secondary color.
  *
- * The pointer draws the same 6 pt highlight in the theme's hover color while
- * it is over the row; a selected row keeps its accent (the hover layer is only
- * rendered when the row is not selected). Notebook and tag rows additionally
- * carry their item's context menu, so right-click / control-click offers the
- * same actions as the row has in the note list (see item-actions-menu.tsx).
+ * On the glass sidebar the selection is a subtle wash (white over a dark panel,
+ * black over a light one) rather than the note list's saturated accent fill;
+ * the selected row's icon keeps the system accent. The pointer draws the same
+ * 9 pt highlight in the theme's (lighter) hover color while it is over the row;
+ * a selected row keeps its own highlight (the hover layer is only rendered
+ * when the row is not selected). Notebook and tag rows additionally carry their
+ * item's context menu, so right-click / control-click offers the same actions
+ * as the row has in the note list (see item-actions-menu.tsx).
  */
 function MacRow({
   item,
@@ -667,15 +709,10 @@ function MacRow({
   const visual = getAppleVisualTokens(colors, isDark);
   const { hovered, hoverProps } = useMacHover();
   const systemAccent = useMacSystemStore((state) => state.accent);
-  const windowActive = useMacSystemStore((state) => state.active);
-  // S1: the selected source-list row follows the macOS system accent, and goes
-  // neutral grey while the window is not key. The theme accent is only the
-  // fallback when the bridge has no system accent to offer.
-  const selection = macSelectionFill(
-    macAccent(colors.primary.accent, systemAccent),
-    windowActive,
-    isDark
-  );
+  // The selected row's icon follows the macOS system accent (theme accent as
+  // the fallback); the highlight behind it is the sidebar's neutral wash.
+  const accent = macAccent(colors.primary.accent, systemAccent);
+  const selection = macSidebarSelectionFill(isDark);
 
   const row = (
     <Pressable
@@ -710,8 +747,8 @@ function MacRow({
         visible={hovered && !selected}
         radius={MAC_ROW_RADIUS}
       />
-      {/* Accent at low opacity (grey while the window is not key): a layer of
-          its own so custom themes (and their non-hex colors) keep working. */}
+      {/* Neutral wash at low opacity: a layer of its own so custom themes
+          (and their non-hex colors) keep working. */}
       {selected ? (
         <View
           pointerEvents="none"
@@ -730,13 +767,9 @@ function MacRow({
       <TaskSymbolView
         name={item.symbol}
         size={MAC_ROW_ICON_SIZE}
-        // The selected row's icon keeps the accent while the window is active
-        // and follows the selection grey while it is not.
-        color={
-          selected
-            ? selection.color
-            : item.iconColor || colors.primary.accent
-        }
+        // The selected row's icon keeps the accent; the neutral wash behind it
+        // is what marks the row, not the icon color.
+        color={selected ? accent : item.iconColor || colors.primary.accent}
       />
       <Text
         numberOfLines={1}

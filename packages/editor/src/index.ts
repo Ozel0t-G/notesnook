@@ -101,6 +101,9 @@ interface TiptapStorage {
   openAttachmentPicker?: (type: AttachmentType) => void;
   /** Enables the Apple Pencil handwriting actions (iPad only). */
   handwritingEnabled?: boolean;
+  /** Enables the "Insert template" action (iOS only). */
+  templatesEnabled?: boolean;
+  openTemplatePicker?: () => void;
   editHandwriting?: (image: Attachment) => void;
   hasHandwritingSource?: (image: Attachment) => Promise<boolean>;
   previewAttachment?: (attachment: Attachment) => void;
@@ -154,6 +157,8 @@ const useTiptap = (
     downloadAttachment,
     openAttachmentPicker,
     handwritingEnabled,
+    templatesEnabled,
+    openTemplatePicker,
     editHandwriting,
     hasHandwritingSource,
     previewAttachment,
@@ -409,6 +414,8 @@ const useTiptap = (
         editor.storage.downloadAttachment = downloadAttachment;
         editor.storage.openAttachmentPicker = openAttachmentPicker;
         editor.storage.handwritingEnabled = !!handwritingEnabled;
+        editor.storage.templatesEnabled = !!templatesEnabled;
+        editor.storage.openTemplatePicker = openTemplatePicker;
         editor.storage.editHandwriting = editHandwriting;
         editor.storage.hasHandwritingSource = hasHandwritingSource;
         editor.storage.previewAttachment = previewAttachment;
@@ -429,6 +436,8 @@ const useTiptap = (
       downloadAttachment,
       openAttachmentPicker,
       handwritingEnabled,
+      templatesEnabled,
+      openTemplatePicker,
       editHandwriting,
       hasHandwritingSource,
       getAttachmentData,

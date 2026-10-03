@@ -207,6 +207,10 @@ class Commands {
     await this.sendCommand("insertImage", image, tabId);
   };
 
+  insertTemplate = async (html: string, tabId: string) => {
+    await this.sendCommand("insertTemplate", html, tabId);
+  };
+
   handleBack = async () => {
     return this.sendCommand("handleBack");
   };

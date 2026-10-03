@@ -45,6 +45,7 @@ import {
 import { useRelationStore } from "../../stores/use-relation-store";
 import { useTagStore } from "../../stores/use-tag-store";
 import { isMacCatalyst } from "../../utils/constants";
+import { isHiddenTag, visibleTags } from "../../utils/hidden-tags";
 import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 
@@ -117,7 +118,9 @@ const ManageTags = (props: NavigationProps<"ManageTags">) => {
 
       for (let i = 0; i < items.placeholders.length; i++) {
         const item = (await items.item(i)).item;
-        if (item) {
+        // The internal "template" tag never shows in the picker, even when it
+        // came through the lookup path (which cannot be filtered in SQL).
+        if (item && !isHiddenTag(item)) {
           if (assignedTags.find((tag) => tag.id === item.id)) {
             noteTags.push(item);
           } else {
@@ -138,7 +141,7 @@ const ManageTags = (props: NavigationProps<"ManageTags">) => {
         .sorted(db.settings.getGroupOptions("tags"))
         .then(sortAndSetTags);
     } else {
-      db.tags.all
+      visibleTags()
         .sorted(db.settings.getGroupOptions("tags"))
         .then(sortAndSetTags);
     }
@@ -153,7 +156,7 @@ const ManageTags = (props: NavigationProps<"ManageTags">) => {
   }, [refreshSelection]);
 
   const checkQueryExists = (query: string) => {
-    db.tags.all
+    visibleTags()
       .find((v) => v.and([v(`title`, "==", query)]))
       .then((exists) => setQueryExists(!!exists));
   };
@@ -169,7 +172,7 @@ const ManageTags = (props: NavigationProps<"ManageTags">) => {
     });
 
     try {
-      const exists = await db.tags.all.find((v) =>
+      const exists = await visibleTags().find((v) =>
         v.and([v(`title`, "==", tag)])
       );
 

@@ -21,7 +21,9 @@ import { EVENTS, Notebook, Tag } from "@notesnook/core";
 import React from "react";
 import { db } from "../common/database";
 import type { NavigationProps } from "../services/navigation";
+import { getTemplateCount } from "../services/templates";
 import { useSettingStore } from "../stores/use-setting-store";
+import { visibleTags } from "../utils/hidden-tags";
 
 /** Max ids per notebook/tag count query (SQLite bound-parameter headroom). */
 const COUNT_QUERY_CHUNK = 500;
@@ -34,6 +36,7 @@ export type LibrarySourceListData = {
     inbox?: number;
     favorites?: number;
     archived?: number;
+    templates?: number;
     trash?: number;
   };
   /**
@@ -69,6 +72,7 @@ export function useLibrarySourceList(
     inbox?: number;
     favorites?: number;
     archived?: number;
+    templates?: number;
     trash?: number;
   }>({});
   const [notebookCounts, setNotebookCounts] = React.useState<
@@ -88,14 +92,16 @@ export function useLibrarySourceList(
         allNotesCount,
         inboxCount,
         favoritesCount,
-        archivedCount
+        archivedCount,
+        templatesCount
       ] = await Promise.all([
         db.notebooks.all.limit(2000).items(),
-        db.tags.all.limit(2000).items(),
+        visibleTags().limit(2000).items(),
         db.notes.all.count(),
         db.notes.unassigned.count(),
         db.notes.favorites.count(),
-        db.notes.archived.count()
+        db.notes.archived.count(),
+        getTemplateCount()
       ]);
       // The Trash cache is kept in memory, so its count needs no query.
       const trashCount = db.trash.count();
@@ -136,6 +142,7 @@ export function useLibrarySourceList(
           inbox: inboxCount,
           favorites: favoritesCount,
           archived: archivedCount,
+          templates: templatesCount,
           trash: trashCount
         });
         if (nextNotebookCounts && nextTagCounts) {

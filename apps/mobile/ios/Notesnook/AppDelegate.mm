@@ -594,6 +594,10 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
   UIAction *toggleFavorite =
       VeyraNMenuAction(@"Add to Favorites", @"toggleFavorite", hasNote);
   UIAction *lockNote = VeyraNMenuAction(@"Lock Note", @"lockNote", hasNote);
+  UIAction *insertTemplate =
+      VeyraNMenuAction(@"Insert Template…", @"insertTemplate", hasNote);
+  UIAction *saveAsTemplate =
+      VeyraNMenuAction(@"Save as Template", @"saveAsTemplate", hasNote);
   UIKeyCommand *moveToTrash =
       VeyraNMenuCommand(@"Move to Trash", UIKeyInputDelete,
                         UIKeyModifierCommand, @selector(veyranMoveToTrash:));
@@ -604,6 +608,7 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
                                    options:0
                                   children:@[
                                     pinNote, toggleFavorite, lockNote,
+                                    insertTemplate, saveAsTemplate,
                                     moveToTrash
                                   ]];
   if ([builder menuForIdentifier:UIMenuEdit]) {

@@ -94,6 +94,7 @@ declare global {
   var readonly: boolean;
   var noToolbar: boolean;
   var handwriting: boolean;
+  var templates: boolean;
   var noHeader: boolean;
   /**
    * True in the Mac Catalyst app. Injected by the WebView before this bundle

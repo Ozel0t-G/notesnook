@@ -299,6 +299,7 @@ export const useEditorEvents = (
     if (fluidTabsRef.current?.page() === "editor") {
       if (
         useNavigationStore.getState().currentRoute === "ManageTags" ||
+        useNavigationStore.getState().currentRoute === "TemplatePicker" ||
         useNavigationStore.getState().currentRoute === "LinkNotebooks" ||
         useNavigationStore.getState().currentRoute === "AddReminder"
       ) {
@@ -557,6 +558,13 @@ export const useEditorEvents = (
             { noteId: noteId, tabId: editorMessage.tabId },
             { hash: image?.hash, filename: image?.filename }
           );
+          break;
+        }
+        case EditorEvents.openTemplatePicker: {
+          Navigation.navigate("TemplatePicker", {
+            noteId,
+            tabId: editorMessage.tabId
+          });
           break;
         }
         case EditorEvents.download: {

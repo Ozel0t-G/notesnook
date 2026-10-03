@@ -28,6 +28,7 @@ import { TaggedNotes } from "../../screens/notes/tagged";
 import Navigation from "../../services/navigation";
 import useNavigationStore from "../../stores/use-navigation-store";
 import { useTags } from "../../stores/use-tag-store";
+import { visibleTags } from "../../utils/hidden-tags";
 import { AppFontSize, defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
@@ -215,7 +216,7 @@ export const SideMenuTags = () => {
   useEffect(() => {
     useSideMenuTagsSelectionStore.setState({
       selectAll: async () => {
-        const tags = await db.tags.all.items();
+        const tags = await visibleTags().items();
         const allSelected = tags.every((tag) => {
           return (
             useSideMenuTagsSelectionStore.getState().selection[tag.id] ===

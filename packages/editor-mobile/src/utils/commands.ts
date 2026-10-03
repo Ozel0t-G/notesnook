@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { Attachment, ImageAttributes, LinkAttributes } from "@notesnook/editor";
 import { Settings } from ".";
 import { editorDate } from "./editor-date";
+import { insertTemplateContent } from "./template";
 
 globalThis.commands = {
   clearContent: (tabId: string) => {
@@ -166,6 +167,16 @@ globalThis.commands = {
     editor.commands.updateAttachment({ ...image, src: undefined } as any, {
       query: (attachment) => attachment.hash === oldHash
     });
+  },
+
+  /**
+   * Inserts an "Insert template" template (iOS only). Replaces the whole note
+   * when it is still empty and keeps the insertion in a single undo step.
+   */
+  insertTemplate: (html: string, tabId: number) => {
+    const editor = editors[tabId];
+    if (!editor) return;
+    insertTemplateContent(editor, html);
   },
 
   insertImage: (

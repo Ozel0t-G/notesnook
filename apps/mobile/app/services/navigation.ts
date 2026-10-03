@@ -71,7 +71,9 @@ const routeNames = {
   LinkNotebooks: "LinkNotebooks",
   MoveNotes: "MoveNotes",
   Archive: "Archive",
+  Templates: "Templates",
   ManageTags: "ManageTags",
+  TemplatePicker: "TemplatePicker",
   AddReminder: "AddReminder",
   RelationsList: "RelationsList",
   PayWall: "PayWall",
@@ -103,7 +105,9 @@ const routeUpdateFunctions: {
   Reminders: () => useReminderStore.getState().refresh(),
   Tasks: () => {},
   Search: () => eSendEvent(eOnRefreshSearch),
-  Archive: () => useArchivedStore.getState().refresh()
+  Archive: () => useArchivedStore.getState().refresh(),
+  // The Templates screen reloads its list on focus; nothing to refresh here.
+  Templates: () => {}
 };
 
 function clearRouteFromQueue(routeName: RouteName) {

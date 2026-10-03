@@ -84,6 +84,7 @@ export type EditorController = {
   setTitle: React.Dispatch<React.SetStateAction<string>>;
   openFilePicker: (type: "image" | "file" | "camera" | "handwriting") => void;
   editHandwriting: (image: Attachment) => void;
+  openTemplatePicker: () => void;
   downloadAttachment: (attachment: Attachment) => void;
   previewAttachment: (attachment: Attachment) => void;
   content: MutableRefObject<string | null>;
@@ -451,6 +452,15 @@ export function useEditorController({
     );
   }, []);
 
+  const openTemplatePicker = useCallback(() => {
+    post(
+      EditorEvents.openTemplatePicker,
+      undefined,
+      tabRef.current.id,
+      tabRef.current.session?.noteId
+    );
+  }, []);
+
   const downloadAttachment = useCallback((attachment: Attachment) => {
     post(
       EditorEvents.download,
@@ -516,6 +526,7 @@ export function useEditorController({
     setTitlePlaceholder,
     openFilePicker,
     editHandwriting,
+    openTemplatePicker,
     downloadAttachment,
     previewAttachment,
     content: htmlContentRef,

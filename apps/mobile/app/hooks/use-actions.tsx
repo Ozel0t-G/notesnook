@@ -59,6 +59,11 @@ import {
 import Navigation from "../services/navigation";
 import Notifications from "../services/notifications";
 import SettingsService from "../services/settings";
+import {
+  isTemplate,
+  removeFromTemplates,
+  saveNoteAsTemplate
+} from "../services/templates";
 import { useArchivedStore } from "../stores/use-archived-store";
 import { useMenuStore } from "../stores/use-menu-store";
 import useNavigationStore from "../stores/use-navigation-store";
@@ -126,7 +131,9 @@ export type ActionId =
   | "default-tag"
   | "launcher-shortcut"
   | "expiry-date"
-  | "spell-check";
+  | "spell-check"
+  | "save-as-template"
+  | "remove-from-template";
 
 export type Action = {
   id: ActionId;
@@ -219,6 +226,7 @@ export const useActions = ({
 
   const [noteInCurrentNotebook, setNoteInCurrentNotebook] = useState(false);
   const [locked, setLocked] = useState(false);
+  const [isNoteTemplate, setIsNoteTemplate] = useState(false);
   const isHomepage = useSettingStore(
     (state) =>
       state.settings.homepageV2?.type === item.type &&
@@ -240,6 +248,24 @@ export const useActions = ({
         }
       });
     }
+  }, [item]);
+
+  useEffect(() => {
+    if (item.type !== "note") {
+      setIsNoteTemplate(false);
+      return;
+    }
+    let alive = true;
+    isTemplate(item.id)
+      .then((value) => {
+        if (alive) setIsNoteTemplate(value);
+      })
+      .catch(() => {
+        if (alive) setIsNoteTemplate(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [item]);
 
   useEffect(() => {
@@ -1070,6 +1096,48 @@ export const useActions = ({
         title: strings.duplicate(),
         icon: "content-duplicate",
         onPress: duplicateNote
+      },
+      {
+        id: "save-as-template",
+        title: "Save as Template",
+        icon: "content-duplicate",
+        // A locked note's content cannot be copied into a template, and a
+        // template is not saved as a template of itself.
+        hidden: locked || isNoteTemplate,
+        onPress: async () => {
+          try {
+            await saveNoteAsTemplate(item.id);
+            setIsNoteTemplate(true);
+            ToastManager.show({
+              heading: "Saved as template",
+              type: "success",
+              context: toastContext
+            });
+          } catch (e) {
+            ToastManager.error(e as Error);
+          }
+        }
+      },
+      {
+        id: "remove-from-template",
+        title: "Remove from Templates",
+        icon: "minus-circle-outline",
+        hidden: !isNoteTemplate,
+        onPress: async () => {
+          try {
+            await removeFromTemplates(item.id);
+            setIsNoteTemplate(false);
+            useArchivedStore.getState().refresh();
+            Navigation.queueRoutesForUpdate();
+            ToastManager.show({
+              heading: "Removed from templates",
+              type: "success",
+              context: toastContext
+            });
+          } catch (e) {
+            ToastManager.error(e as Error);
+          }
+        }
       },
 
       {

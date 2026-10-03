@@ -39,8 +39,14 @@ import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import type { SettingSection } from "../screens/settings/types";
 import { useTabStore } from "../screens/editor/tiptap/use-tab-store";
 import { editorController } from "../screens/editor/tiptap/utils";
-import { eSendEvent, hideSheet, presentSheet } from "../services/event-manager";
+import {
+  ToastManager,
+  eSendEvent,
+  hideSheet,
+  presentSheet
+} from "../services/event-manager";
 import Navigation from "../services/navigation";
+import { saveNoteAsTemplate } from "../services/templates";
 import { useSettingStore } from "../stores/use-setting-store";
 import {
   AppleSection,
@@ -73,6 +79,7 @@ const DISMISSABLE_ROUTES = new Set([
   "TaskDetail",
   "AddReminder",
   "ManageTags",
+  "TemplatePicker",
   "LinkNotebooks",
   "MoveNotebook",
   "MoveNotes"
@@ -531,6 +538,34 @@ export const useMacMenuCommands = () => {
             // there is nothing to show.
             void showCurrentNoteProperties();
             break;
+          case "insertTemplate": {
+            // Note > Insert Template…: opens the picker for the note the
+            // editor is currently on. With no note open there is nothing to
+            // insert into (the menu item is greyed out then anyway).
+            const tabId = useTabStore.getState().currentTab;
+            const noteId = tabId
+              ? useTabStore.getState().getNoteIdForTab(tabId)
+              : undefined;
+            if (!tabId || !noteId) return;
+            Navigation.navigate("TemplatePicker", { noteId, tabId });
+            break;
+          }
+          case "saveAsTemplate": {
+            // Note > Save as Template: copies the open note's current content
+            // into a new template.
+            const noteId = useTabStore.getState().getCurrentNoteId();
+            if (!noteId) return;
+            saveNoteAsTemplate(noteId)
+              .then(() =>
+                ToastManager.show({
+                  message: "Saved as template",
+                  type: "success",
+                  context: "global"
+                })
+              )
+              .catch((e) => ToastManager.error(e as Error));
+            break;
+          }
           case "listOptions":
             // The focused list's own "Sort & View" menu, published by the
             // list header (see showListOptions).

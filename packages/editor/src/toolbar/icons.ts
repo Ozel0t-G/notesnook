@@ -124,7 +124,8 @@ import {
   mdiMessageOutline,
   mdiVectorLink,
   mdiPinOutline,
-  mdiFileDelimitedOutline
+  mdiFileDelimitedOutline,
+  mdiFileDocumentOutline
 } from "@mdi/js";
 
 export const Icons = {
@@ -186,6 +187,7 @@ export const Icons = {
   // scribble icon for the insert action, pencil for editing an existing one
   handwriting: mdiDraw,
   editHandwriting: mdiPencil,
+  template: mdiFileDocumentOutline,
   attachment: mdiAttachment,
   table: mdiTable,
   rowProperties: mdiTableRowHeight,

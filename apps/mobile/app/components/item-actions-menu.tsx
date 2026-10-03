@@ -61,6 +61,8 @@ const SYMBOLS: Partial<Record<ActionId, string>> = {
   "default-notebook": "star.square",
   "default-tag": "star.square",
   "default-homepage": "house",
+  "save-as-template": "doc.badge.plus",
+  "remove-from-template": "doc.badge.minus",
   select: "checkmark.circle"
 };
 

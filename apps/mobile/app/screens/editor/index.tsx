@@ -171,6 +171,7 @@ const Editor = React.memo(
               globalThis.noToolbar=${noToolbar};
               globalThis.noHeader=${noHeader};
               globalThis.handwriting=${isHandwritingSupported(Platform as any)};
+              globalThis.templates=${Platform.OS === "ios"};
               // Mac has no editor header of its own (the window's native
               // toolbar carries the editor actions); the web editor only
               // needs the flag to lay out its centered text column, the

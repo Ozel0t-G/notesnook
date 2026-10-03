@@ -95,6 +95,7 @@ export interface RouteParams extends ParamListBase {
   ColoredNotes: NotesScreenParams;
   TopicNotes: NotesScreenParams;
   Archive: GenericRouteParam;
+  Templates: GenericRouteParam;
   Monographs: NotesScreenParams;
   Reminders: GenericRouteParam;
   Tasks:
@@ -146,6 +147,10 @@ export interface RouteParams extends ParamListBase {
   };
   ManageTags: {
     ids?: string[];
+  };
+  TemplatePicker: {
+    noteId?: string;
+    tabId: string;
   };
   AddReminder: {
     reminder?: Reminder;

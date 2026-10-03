@@ -17,16 +17,12 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { db } from "../common/database";
-import { visibleTags } from "../utils/hidden-tags";
-import createDBCollectionStore from "./create-db-collection-store";
+/**
+ * Pure helpers for the Templates management screen. Kept free of React Native
+ * imports so they stay unit-testable.
+ */
 
-const { useStore: useTagStore, useCollection: useTags } =
-  createDBCollectionStore({
-    // `visibleTags()` is `db.tags.all` without the internal "template" tag.
-    getCollection: () =>
-      visibleTags().grouped(db.settings.getGroupOptions("tags")),
-    eagerlyFetchFirstBatch: true
-  });
-
-export { useTagStore, useTags };
+/** The title of the confirmation dialog shown on long-press of a template. */
+export function removeTemplateMessage(title?: string): string {
+  return `Remove "${title || "this template"}" from templates?`;
+}

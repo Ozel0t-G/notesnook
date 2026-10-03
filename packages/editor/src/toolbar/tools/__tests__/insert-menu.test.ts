@@ -65,6 +65,30 @@ describe("insert (+) menu", () => {
     expect(image.menu.items.map((i) => i.key)).not.toContain("handwriting");
   });
 
+  test("template is a first-level action when enabled (iOS)", () => {
+    const openTemplatePicker = vi.fn();
+    const items = getInsertMenuItems(
+      fakeEditor({ templatesEnabled: true, openTemplatePicker }),
+      true
+    );
+    const item = items.find((i) => i.key === "template");
+    expect(item).toBeDefined();
+    expect(item?.type).toBe("button");
+    expect(item?.isHidden).toBe(false);
+    // direct action, no sub menu
+    expect((item as { menu?: unknown }).menu).toBeUndefined();
+
+    (item as { onClick: () => void }).onClick();
+    expect(openTemplatePicker).toHaveBeenCalled();
+  });
+
+  test("template is hidden on every other device", () => {
+    for (const storage of [{}, { templatesEnabled: false }]) {
+      const items = getInsertMenuItems(fakeEditor(storage), true);
+      expect(items.find((i) => i.key === "template")?.isHidden).toBe(true);
+    }
+  });
+
   test("keeps the existing entries", () => {
     const keys = getInsertMenuItems(fakeEditor({}), true).map((i) => i.key);
     expect(keys).toEqual(

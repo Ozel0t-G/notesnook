@@ -186,6 +186,13 @@ export default function Library({
       onPress: () => navigation.navigate("Archive", {})
     },
     {
+      key: "templates",
+      label: strings.routes.Templates(),
+      symbol: "doc.on.doc",
+      count: counts.templates,
+      onPress: () => navigation.navigate("Templates", {})
+    },
+    {
       key: "trash",
       label: strings.routes.Trash(),
       symbol: "trash",

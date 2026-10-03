@@ -1767,6 +1767,7 @@ For example:
     Search: () => t`Search`,
     Monographs: () => t`Published`,
     Archive: () => t`Archive`,
+    Templates: () => t`Templates`,
     AllNotes: () => t`All Notes`,
     Inbox: () => t`Inbox`
   },
@@ -3054,5 +3055,6 @@ Continue without attachments?`,
     t`Using VeyraN without an account will not sync your notes across devices. Back up your notes regularly to avoid losing local data.`,
   alignment: () => t`Alignment`,
   handwriting: () => t`Handwriting`,
-  editHandwriting: () => t`Edit handwriting`
+  editHandwriting: () => t`Edit handwriting`,
+  insertTemplate: () => t`Template…`
 };

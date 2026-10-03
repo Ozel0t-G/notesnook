@@ -103,6 +103,7 @@ export function getInsertMenuItems(
     blockquote(editor),
     image(editor, isMobile),
     handwriting(editor),
+    template(editor),
     attachment(editor),
     isMobile ? embedMobile(editor) : embedDesktop(editor),
     table(editor)
@@ -218,6 +219,19 @@ const handwriting = (editor: Editor): MenuItem => ({
   icon: Icons.handwriting,
   isHidden: !editor.storage.handwritingEnabled,
   onClick: () => editor.storage.openAttachmentPicker?.("handwriting")
+});
+
+/**
+ * First-level shortcut (iOS only): lets the user insert a saved note template
+ * from the insert menu. Hidden unless the host app enables it.
+ */
+const template = (editor: Editor): MenuItem => ({
+  key: "template",
+  type: "button",
+  title: strings.insertTemplate(),
+  icon: Icons.template,
+  isHidden: !editor.storage.templatesEnabled,
+  onClick: () => editor.storage.openTemplatePicker?.()
 });
 
 const table = (editor: Editor): MenuItem => ({

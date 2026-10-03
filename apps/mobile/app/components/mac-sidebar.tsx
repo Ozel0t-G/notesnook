@@ -119,6 +119,7 @@ const MAC_SELECTED_ROUTE_ID: Record<string, string> = {
   favorites: "Favorites",
   monographs: "monograph",
   archive: "Archive",
+  templates: "Templates",
   trash: "Trash"
 };
 
@@ -290,6 +291,14 @@ export function MacSidebar() {
       symbol: "archivebox",
       iconColor: visual.secondaryText,
       onPress: () => openMacList("Archive", {}, "Archive")
+    },
+    {
+      key: "templates",
+      label: strings.routes.Templates(),
+      symbol: "doc.on.doc",
+      count: counts.templates,
+      iconColor: visual.secondaryText,
+      onPress: () => openMacList("Templates", {}, "Templates")
     },
     {
       key: "trash",

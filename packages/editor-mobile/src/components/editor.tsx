@@ -161,6 +161,9 @@ const Tiptap = ({
         return true;
       },
       handwritingEnabled: !!globalThis.handwriting,
+      templatesEnabled: !!globalThis.templates,
+      openTemplatePicker: () =>
+        globalThis.editorControllers[tab.id]?.openTemplatePicker(),
       editHandwriting: (image) => {
         globalThis.editorControllers[tab.id]?.editHandwriting(image);
       },

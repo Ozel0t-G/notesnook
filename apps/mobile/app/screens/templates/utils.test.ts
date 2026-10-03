@@ -17,16 +17,21 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { db } from "../common/database";
-import { visibleTags } from "../utils/hidden-tags";
-import createDBCollectionStore from "./create-db-collection-store";
+import { removeTemplateMessage } from "./utils";
 
-const { useStore: useTagStore, useCollection: useTags } =
-  createDBCollectionStore({
-    // `visibleTags()` is `db.tags.all` without the internal "template" tag.
-    getCollection: () =>
-      visibleTags().grouped(db.settings.getGroupOptions("tags")),
-    eagerlyFetchFirstBatch: true
+describe("removeTemplateMessage", () => {
+  test("names the template in the confirmation", () => {
+    expect(removeTemplateMessage("Meeting notes")).toBe(
+      'Remove "Meeting notes" from templates?'
+    );
   });
 
-export { useTagStore, useTags };
+  test("falls back to a generic wording without a title", () => {
+    expect(removeTemplateMessage(undefined)).toBe(
+      'Remove "this template" from templates?'
+    );
+    expect(removeTemplateMessage("")).toBe(
+      'Remove "this template" from templates?'
+    );
+  });
+});

@@ -57,6 +57,8 @@ const BOTTOM_BAR_ITEMS: ActionId[] = [
   "export",
   "copy-link",
   "duplicate",
+  "save-as-template",
+  "remove-from-template",
   "launcher-shortcut",
   "expiry-date",
   "trash"

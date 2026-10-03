@@ -29,6 +29,7 @@ import {
   subscribeToItemUpdate
 } from "../../services/event-manager";
 import Navigation from "../../services/navigation";
+import { getTemplateCount } from "../../services/templates";
 import useNavigationStore, {
   RouteParams
 } from "../../stores/use-navigation-store";
@@ -101,6 +102,9 @@ export function MenuItem({
               break;
             case "Archive":
               setItemCount(await db.notes.archived.count());
+              break;
+            case "Templates":
+              setItemCount(await getTemplateCount());
               break;
             case "Trash":
               {

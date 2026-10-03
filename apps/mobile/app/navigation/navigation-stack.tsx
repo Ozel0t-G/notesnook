@@ -243,6 +243,7 @@ let Monographs: any = null;
 let TaggedNotes: any = null;
 let ColoredNotes: any = null;
 let Archive: any = null;
+let Templates: any = null;
 let Library: any = null;
 /**
  * Everything the content pane can show now hangs off the Library section.
@@ -257,6 +258,7 @@ const LIBRARY_ROUTES = new Set([
   "ColoredNotes",
   "Favorites",
   "Archive",
+  "Templates",
   "Trash",
   "Monographs",
   "Search"
@@ -520,6 +522,16 @@ const AppNavigation = React.memo(
           }}
         />
 
+        <AppStack.Screen
+          name="Templates"
+          getComponent={() => {
+            Templates =
+              Templates ||
+              withMacListNavigation(require("../screens/templates").default);
+            return Templates;
+          }}
+        />
+
         <AppStack.Screen name="Reminders" component={LegacyRemindersRedirect} />
 
         <AppStack.Screen
@@ -569,6 +581,7 @@ let MoveNotebook: any = null;
 let MoveNotes: any = null;
 let Settings: any = null;
 let ManageTags: any = null;
+let TemplatePicker: any = null;
 let AddReminder: any = null;
 let RelationsList: any = null;
 let Wrapped: any = null;
@@ -861,6 +874,16 @@ export const RootNavigation = () => {
               ManageTags =
                 ManageTags || require("../screens/manage-tags").default;
               return ManageTags;
+            }}
+          />
+
+          <RootStack.Screen
+            name="TemplatePicker"
+            options={MAC_PICKER_SHEET_OPTIONS}
+            getComponent={() => {
+              TemplatePicker =
+                TemplatePicker || require("../screens/template-picker").default;
+              return TemplatePicker;
             }}
           />
 

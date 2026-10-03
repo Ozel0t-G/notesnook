@@ -29,6 +29,7 @@ export const EditorEvents = {
   dropFiles: "editor-event:drop-files",
   download: "editor-event:download-attachment",
   editHandwriting: "editor-event:edit-handwriting",
+  openTemplatePicker: "editor-event:open-template-picker",
   hasHandwritingSource: "editor-events:has-handwriting-source",
   logger: "native:logger",
   back: "editor-event:back",

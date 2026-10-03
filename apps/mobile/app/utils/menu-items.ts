@@ -85,6 +85,13 @@ export const MenuItemsList: SideMenuItem[] = [
   },
   {
     dataType: "note",
+    id: "Templates",
+    title: "Templates",
+    icon: "file-document-outline",
+    type: "side-menu-item"
+  },
+  {
+    dataType: "note",
     id: "Trash",
     title: "Trash",
     icon: "delete-outline",

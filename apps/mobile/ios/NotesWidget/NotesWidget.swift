@@ -19,18 +19,15 @@ import AlarmKit
 #endif
 
 private enum WidgetURLs {
-  static let quickNote = URL(string: "ShareMedia://QuickNoteWidget")!
-  static let reminders = URL(string: "ShareMedia://TasksWidget")!
-  static let newReminder = URL(string: "ShareMedia://NewTaskWidget")!
+  // "veyran" is this app's own scheme. The old "ShareMedia" scheme is shared
+  // with the original Notesnook app, so iOS may route it to the wrong app.
+  static let quickNote = URL(string: "veyran://quick-add")!
+  static let reminders = URL(string: "veyran://tasks")!
+  static let newReminder = URL(string: "veyran://task/new")!
 
   static func reminder(id: String) -> URL {
-    var components = URLComponents()
-    components.scheme = "ShareMedia"
-    components.host = "TaskWidget"
-    components.queryItems = [URLQueryItem(name: "id", value: id)]
-    return components.url ?? reminders
+    URL(string: "veyran://task/\(id)") ?? reminders
   }
-
 }
 
 // MARK: - Existing Quick Note widget
@@ -426,13 +423,8 @@ private struct ReminderWidgetEntryView: View {
       .font(.system(size: 22))
       .foregroundStyle(accent)
       .widgetAccented()
-    if #available(iOSApplicationExtension 18.0, *) {
-      Button(intent: VeyraNOpenCaptureIntent(target: .task)) { image }
-        .buttonStyle(.plain)
-    } else {
-      Link(destination: WidgetURLs.newReminder) { image }
-        .buttonStyle(.plain)
-    }
+    Link(destination: WidgetURLs.newReminder) { image }
+      .buttonStyle(.plain)
   }
 
   @ViewBuilder private var content: some View {

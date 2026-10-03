@@ -415,15 +415,23 @@ private struct ReminderWidgetEntryView: View {
       }
 
       if !compact {
-        Link(destination: WidgetURLs.newReminder) {
-          Image(systemName: "plus.circle.fill")
-            .font(.system(size: 22))
-            .foregroundStyle(accent)
-            .widgetAccented()
-        }
-        .buttonStyle(.plain)
+        newTaskButton
         .accessibilityLabel(Text("New task"))
       }
+    }
+  }
+
+  @ViewBuilder private var newTaskButton: some View {
+    let image = Image(systemName: "plus.circle.fill")
+      .font(.system(size: 22))
+      .foregroundStyle(accent)
+      .widgetAccented()
+    if #available(iOSApplicationExtension 18.0, *) {
+      Button(intent: VeyraNOpenCaptureIntent(target: .task)) { image }
+        .buttonStyle(.plain)
+    } else {
+      Link(destination: WidgetURLs.newReminder) { image }
+        .buttonStyle(.plain)
     }
   }
 
@@ -577,7 +585,7 @@ private struct ReminderRow: View {
     if #available(iOSApplicationExtension 27.0, *),
        let accountScope, let rawRevision = reminder.updatedAt,
        let updatedAt = Int(exactly: rawRevision) {
-      Button(intent: CompleteTaskWidgetIntent(
+      Button(intent: CompleteTaskInAppWidgetIntent(
         id: reminder.id, scope: accountScope, updatedAt: updatedAt)) {
         completionImage
       }

@@ -282,3 +282,43 @@ struct CompleteTaskWidgetIntent: AppIntent {
     return .result()
   }
 }
+
+/// Reliable variant used by the widget ring: it queues the completion durably
+/// and brings the app forward, whose foreground drain commits it. It needs no
+/// headless React Native start, which is what the background intent depends on.
+@available(iOS 27.0, iOSApplicationExtension 27.0, *)
+struct CompleteTaskInAppWidgetIntent: AppIntent {
+  static var title: LocalizedStringResource = "Complete Task"
+  static var isDiscoverable: Bool { false }
+  static var supportedModes: IntentModes { .foreground(.immediate) }
+
+  @Parameter(title: "Task") var id: String
+  @Parameter(title: "Account Scope") var scope: String
+  @Parameter(title: "Task Revision") var updatedAt: Int
+
+  init() {}
+  init(id: String, scope: String, updatedAt: Int) {
+    self.id = id
+    self.scope = scope
+    self.updatedAt = updatedAt
+  }
+
+  func perform() async throws -> some IntentResult {
+    let now = Date()
+    guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
+                   options: .regularExpression) != nil,
+          scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil,
+          updatedAt > 0,
+          case let .available(snapshot) = ReminderSnapshotStore.load(at: now),
+          snapshot.privacyHidden != true,
+          snapshot.accountScope == scope,
+          TaskWidgetClock.visibleTasks(snapshot, at: now).contains(where: {
+            $0.id == id && $0.updatedAt.flatMap { Int(exactly: $0) } == updatedAt
+          }) else {
+      throw CocoaError(.fileReadUnknown)
+    }
+    try WidgetCompletionQueue.enqueue(id: id, scope: scope, updatedAt: updatedAt)
+    WidgetCenter.shared.reloadTimelines(ofKind: "ReminderWidget")
+    return .result()
+  }
+}

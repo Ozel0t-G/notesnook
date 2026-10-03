@@ -259,6 +259,8 @@ const onAppOpenedFromURL = async (event: {
       } else if (reminderWidgetLink.action === "create") {
         Navigation.navigate("Tasks");
         setTimeout(() => Navigation.push("TaskDetail", {}), 0);
+      } else if (reminderWidgetLink.action === "list") {
+        Navigation.navigate("Tasks");
       }
       return;
     } else if (

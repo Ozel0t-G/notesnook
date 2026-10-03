@@ -370,6 +370,7 @@ private struct ReminderWidgetEntryView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     .legacyWidgetPadding(compact ? 12 : 14)
     .reminderWidgetBackground()
+    .widgetURL(WidgetURLs.reminders)
     // The app's own light/dark choice wins over the system's, including for
     // the container background.
     .environment(\.colorScheme, effectiveColorScheme)
@@ -583,9 +584,12 @@ private struct ReminderRow: View {
       .buttonStyle(.plain)
       .disabled(isPending)
     } else {
-      // Older systems cannot run the completion intent, but the row still
-      // reads as a Task rather than a bare line of text.
-      completionImage
+      // Older systems cannot run the completion intent: the ring opens the
+      // Task in the app instead of being a dead image.
+      Link(destination: WidgetURLs.reminder(id: reminder.id)) {
+        completionImage
+      }
+      .buttonStyle(.plain)
     }
   }
 

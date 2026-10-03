@@ -20,9 +20,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import PencilKit
 import UIKit
 
-/// Renders the saved page to a PNG: background colour, paper template, then the
-/// strokes on top. The PNG is the single source of truth for every other
-/// Notesnook client, so it never depends on the theme of the device that
+/// Renders the saved page to a PNG: (opaque page only) background colour, then
+/// the paper template, then the strokes on top. A transparent page is rendered
+/// with an alpha channel and no background fill, so the PNG looks like typed
+/// text on any note background. The PNG is the single source of truth for every
+/// other Notesnook client, so it never depends on the theme of the device that
 /// displays it.
 enum HandwritingExporter {
   struct Output {
@@ -79,12 +81,14 @@ enum HandwritingExporter {
     let effectiveScale = max(minimumScale, min(scale, (maxPixels / area).squareRoot()))
 
     var image: UIImage?
-    // Same interface style as the editor (derived from the background): ink
-    // colours are adapted by PencilKit according to it.
+    // A transparent page must keep the alpha channel; an old opaque page is
+    // rendered opaque exactly as before. Same interface style as the editor
+    // (derived from the background): ink colours are adapted by PencilKit.
+    let isTransparent = metadata.isTransparent
     UITraitCollection(userInterfaceStyle: metadata.inkStyle).performAsCurrent {
       let format = UIGraphicsImageRendererFormat()
       format.scale = effectiveScale
-      format.opaque = true
+      format.opaque = !isTransparent
       format.preferredRange = .standard
       let tile = floor(maxTilePixels / effectiveScale)
       let strokeBounds = drawing.bounds
@@ -92,6 +96,8 @@ enum HandwritingExporter {
         let context = renderer.cgContext
         // canvas coordinates -> image coordinates
         context.translateBy(x: -rect.minX, y: -rect.minY)
+        // no-op for a transparent page, so nothing is painted under the template
+        PaperRenderer.fillBackground(metadata, in: context, rect: rect)
         PaperRenderer.draw(metadata, in: context, rect: rect)
         // strokes on top, tile by tile
         var y = rect.minY

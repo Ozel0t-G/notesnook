@@ -37,6 +37,13 @@ const full: HandwritingMetadata = {
   canvas: { width: 1366 }
 };
 
+/** Narrows the background union for assertions on old opaque pages. */
+function colorOf(metadata: HandwritingMetadata): string {
+  if (metadata.background.type !== "color")
+    throw new Error("expected an opaque colour background");
+  return metadata.background.color;
+}
+
 describe("serialize / deserialize", () => {
   test("round trip keeps every field", () => {
     const parsed = parseMetadata(serializeMetadata(full));
@@ -55,7 +62,7 @@ describe("serialize / deserialize", () => {
     );
     expect(parsed.issues).toEqual([]);
     expect(parsed.metadata.paper).toEqual({ type: "lined", spacing: "medium" });
-    expect(parsed.metadata.background.color).toBe("#FFFFFF");
+    expect(colorOf(parsed.metadata)).toBe("#FFFFFF");
   });
 
   test("serialization is deterministic (same bytes => same attachment hash)", () => {
@@ -98,7 +105,7 @@ describe("missing metadata (drawings from Build 1/2)", () => {
       expect(parsed.source).toBe("default");
       expect(parsed.issues).toEqual([]);
       expect(parsed.metadata).toEqual(legacyMetadata());
-      expect(parsed.metadata.background.color).toBe("#FFFFFF");
+      expect(colorOf(parsed.metadata)).toBe("#FFFFFF");
       expect(parsed.metadata.paper.type).toBe("blank");
     }
   );
@@ -131,7 +138,7 @@ describe("invalid metadata", () => {
     );
     expect(parsed.source).toBe("file");
     expect(parsed.issues.length).toBeGreaterThan(0);
-    expect(parsed.metadata.background.color).toBe("#FFFFFF");
+    expect(colorOf(parsed.metadata)).toBe("#FFFFFF");
     expect(parsed.metadata.paper).toEqual({ type: "blank", spacing: "medium" });
     expect(parsed.metadata.canvas).toBeUndefined();
   });
@@ -142,7 +149,7 @@ describe("invalid metadata", () => {
       background: { type: "color", color: "#101010" },
       paper: { type: "dotted", spacing: "nope" }
     });
-    expect(parsed.metadata.background.color).toBe("#101010");
+    expect(colorOf(parsed.metadata)).toBe("#101010");
     expect(parsed.metadata.paper.type).toBe("dotted");
     expect(parsed.metadata.paper.spacing).toBe("medium");
   });
@@ -178,7 +185,7 @@ describe("version handling", () => {
     });
     expect(parsed.source).toBe("file");
     expect(parsed.issues).toEqual(["newer version 7"]);
-    expect(parsed.metadata.background.color).toBe("#2C2C2E");
+    expect(colorOf(parsed.metadata)).toBe("#2C2C2E");
     expect(parsed.metadata.paper.type).toBe("lined");
     // saving again writes the version this build understands
     expect(parsed.metadata.version).toBe(1);
@@ -186,19 +193,48 @@ describe("version handling", () => {
 });
 
 describe("background", () => {
-  test("white (default in light mode)", () => {
-    expect(defaultMetadata("light").background.color).toBe("#FFFFFF");
+  test("new drawings are transparent", () => {
+    expect(defaultMetadata().background).toEqual({ type: "none" });
   });
 
-  test("dark (default in dark mode) is a dark gray preset", () => {
-    const color = defaultMetadata("dark").background.color;
-    expect(color).toBe(BACKGROUND_PRESETS.darkGray);
-    expect(color).toBe("#2C2C2E");
+  test("new drawings start on blank paper with medium spacing", () => {
+    expect(defaultMetadata().paper).toEqual({
+      type: "blank",
+      spacing: "medium"
+    });
   });
 
-  test("defaults for new drawings start on blank paper", () => {
-    expect(defaultMetadata("dark").paper.type).toBe("blank");
-    expect(defaultMetadata("light").paper.type).toBe("blank");
+  test("a transparent background round trips deterministically", () => {
+    const m = defaultMetadata();
+    const json = serializeMetadata(m);
+    expect(JSON.parse(json).background).toEqual({ type: "none" });
+    expect(parseMetadata(json)).toEqual({
+      metadata: m,
+      source: "file",
+      issues: []
+    });
+  });
+
+  test('explicit {type:"none"} wins over a stray colour', () => {
+    const parsed = parseMetadata({
+      version: 1,
+      background: { type: "none", color: "#000000" },
+      paper: { type: "blank", spacing: "medium" }
+    });
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.metadata.background).toEqual({ type: "none" });
+  });
+
+  test("old drawings keep their opaque colour background", () => {
+    const json = serializeMetadata(legacyMetadata());
+    expect(JSON.parse(json).background).toEqual({
+      type: "color",
+      color: "#FFFFFF"
+    });
+    expect(parseMetadata(json).metadata.background).toEqual({
+      type: "color",
+      color: "#FFFFFF"
+    });
   });
 
   test("custom colors are normalized (#RGB, lower case)", () => {
@@ -211,10 +247,10 @@ describe("background", () => {
       background: { type: "color", color: "#f80" },
       paper: { type: "blank", spacing: "medium" }
     });
-    expect(parsed.metadata.background.color).toBe("#FF8800");
+    expect(colorOf(parsed.metadata)).toBe("#FF8800");
   });
 
-  test("all presets are valid colors", () => {
+  test("all historical presets are valid colors", () => {
     for (const color of Object.values(BACKGROUND_PRESETS))
       expect(normalizeColor(color)).toBe(color);
   });

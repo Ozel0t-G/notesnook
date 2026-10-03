@@ -19,9 +19,12 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import UIKit
 
-/// Draws the page underneath the strokes: background colour, then the paper
-/// template. The same code renders the live editor and the exported PNG, so
-/// both are identical by construction.
+/// Draws the page underneath the strokes. The same code renders the live
+/// editor and the exported PNG, so both are identical by construction.
+///
+/// The page background is filled separately (`fillBackground`), because a
+/// transparent page must not fill anything in the export. `draw` only renders
+/// the paper template in the template colour.
 ///
 /// All coordinates are canvas points (origin = top-left of the page). Template
 /// lines / dots sit at multiples of the spacing, starting one spacing away from
@@ -30,17 +33,27 @@ enum PaperRenderer {
   private static let lineThickness: CGFloat = 1
   private static let dotRadius: CGFloat = 1.3
 
-  /// Fills `rect` (canvas points) with the background and the template. The
-  /// context's transform must already map canvas points to the target.
-  static func draw(_ metadata: HandwritingMetadata, in context: CGContext, rect: CGRect) {
+  /// Fills `rect` (canvas points) with the page's own background colour. Does
+  /// nothing for a transparent page, so the exported PNG keeps an alpha
+  /// channel. The context's transform must already map canvas points.
+  static func fillBackground(
+    _ metadata: HandwritingMetadata, in context: CGContext, rect: CGRect
+  ) {
+    guard let color = metadata.pageBackgroundColor else { return }
     context.saveGState()
     defer { context.restoreGState() }
-
-    context.setFillColor(metadata.backgroundColor.cgColor)
+    context.setFillColor(color.cgColor)
     context.fill(rect)
+  }
 
+  /// Draws the paper template (lines / grid / dots) in the template colour.
+  /// Never fills a background.
+  static func draw(_ metadata: HandwritingMetadata, in context: CGContext, rect: CGRect) {
     let spacing = metadata.effectiveSpacing
     guard metadata.paperType != .blank, spacing >= 4 else { return }
+
+    context.saveGState()
+    defer { context.restoreGState() }
     context.setFillColor(metadata.templateColor.cgColor)
 
     let firstRow = max(1, Int(floor(rect.minY / spacing)))
@@ -87,13 +100,20 @@ enum PaperRenderer {
 /// separate view underneath, the template can never be selected, erased or
 /// become part of the PKDrawing.
 final class PaperBackgroundView: UIView {
-  var metadata: HandwritingMetadata = .legacy { didSet { setNeedsDisplay() } }
+  var metadata: HandwritingMetadata = .legacy {
+    didSet {
+      // Opaque editor surface: white for a transparent page. Never exported.
+      backgroundColor = metadata.drawingSurfaceColor
+      setNeedsDisplay()
+    }
+  }
   var contentOffset: CGPoint = .zero { didSet { setNeedsDisplay() } }
   var zoomScale: CGFloat = 1 { didSet { setNeedsDisplay() } }
 
   override init(frame: CGRect) {
     super.init(frame: frame)
     isOpaque = true
+    backgroundColor = metadata.drawingSurfaceColor
     isUserInteractionEnabled = false
     contentMode = .redraw
   }
@@ -108,6 +128,9 @@ final class PaperBackgroundView: UIView {
     let visible = CGRect(
       x: contentOffset.x / zoom, y: contentOffset.y / zoom, width: bounds.width / zoom,
       height: bounds.height / zoom)
+    // Filled here (not only by the layer colour) so a manual draw() snapshot
+    // matches the exported PNG for old opaque pages.
+    PaperRenderer.fillBackground(metadata, in: context, rect: visible)
     PaperRenderer.draw(metadata, in: context, rect: visible)
   }
 }

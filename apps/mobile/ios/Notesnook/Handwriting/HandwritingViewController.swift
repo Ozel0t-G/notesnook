@@ -32,12 +32,11 @@ struct HandwritingResult {
 /// Full-screen PencilKit canvas. Calls `onFinish` exactly once with either a
 /// result (Save) or nil (Cancel).
 ///
-/// Layers, bottom to top: background colour + paper template
+/// Layers, bottom to top: opaque editor surface + paper template
 /// (`PaperBackgroundView`), then the transparent `PKCanvasView` with the
-/// strokes. Only the strokes are part of the PKDrawing.
-final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
-  UIColorPickerViewControllerDelegate
-{
+/// strokes. Only the strokes are part of the PKDrawing. New drawings have a
+/// transparent page: the surface is white but the exported PNG is not.
+final class HandwritingViewController: UIViewController, PKCanvasViewDelegate {
   private let paperView = PaperBackgroundView()
   private let canvasView = PKCanvasView()
   private let toolPicker = PKToolPicker()
@@ -64,9 +63,6 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
     action: #selector(redoTapped))
   private lazy var clearItem = UIBarButtonItem(
     title: "Clear", style: .plain, target: self, action: #selector(clearTapped))
-  private lazy var backgroundItem = UIBarButtonItem(
-    image: UIImage(systemName: "paintpalette") ?? UIImage(systemName: "circle.lefthalf.filled"),
-    menu: nil)
   private lazy var paperItem = UIBarButtonItem(
     image: UIImage(systemName: "square.grid.2x2"), menu: nil)
 
@@ -88,13 +84,12 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
   override func viewDidLoad() {
     super.viewDidLoad()
 
-    backgroundItem.accessibilityLabel = "Background"
     paperItem.accessibilityLabel = "Paper"
     undoItem.accessibilityLabel = "Undo"
     redoItem.accessibilityLabel = "Redo"
-    // Compact bar: [Cancel] [Clear] ........ [Background] [Paper] [Undo] [Redo] [Save]
+    // Compact bar: [Cancel] [Clear] ........ [Paper] [Undo] [Redo] [Save]
     navigationItem.leftBarButtonItems = [cancelItem, clearItem]
-    navigationItem.rightBarButtonItems = [saveItem, redoItem, undoItem, paperItem, backgroundItem]
+    navigationItem.rightBarButtonItems = [saveItem, redoItem, undoItem, paperItem]
 
     for subview in [paperView, canvasView] {
       subview.translatesAutoresizingMaskIntoConstraints = false
@@ -183,49 +178,19 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
     redoItem.isEnabled = canvasView.undoManager?.canRedo ?? false
   }
 
-  // MARK: - Background and paper
+  // MARK: - Page and paper
 
   /// Applies `metadata` to the page and the chrome. The interface style follows
-  /// the background so PencilKit shows the ink exactly as the PNG will contain it.
+  /// the page (light for a transparent page) so PencilKit shows the ink exactly
+  /// as the PNG will contain it. The background colour is not editable: new
+  /// drawings are transparent, old drawings keep their stored colour.
   private func applyMetadata() {
     let style = metadata.inkStyle
     overrideUserInterfaceStyle = style
     navigationController?.overrideUserInterfaceStyle = style
-    view.backgroundColor = metadata.backgroundColor
+    view.backgroundColor = metadata.drawingSurfaceColor
     paperView.metadata = metadata
-    backgroundItem.menu = makeBackgroundMenu()
     paperItem.menu = makePaperMenu()
-  }
-
-  private func setBackground(_ hex: String) {
-    guard hex != metadata.backgroundHex else { return }
-    metadata.backgroundHex = hex
-    applyMetadata()
-  }
-
-  private func makeBackgroundMenu() -> UIMenu {
-    let current = metadata.backgroundHex
-    let presets = HandwritingMetadata.presetBackgrounds
-    let colors = presets.map { preset in
-      UIAction(
-        title: preset.name, image: HandwritingViewController.swatch(preset.hex),
-        state: preset.hex == current ? .on : .off
-      ) { [weak self] _ in self?.setBackground(preset.hex) }
-    }
-    let isCustom = !presets.contains { $0.hex == current }
-    let custom = UIAction(
-      title: "Custom Color…", image: HandwritingViewController.swatch(current, custom: true),
-      state: isCustom ? .on : .off
-    ) { [weak self] _ in
-      // let the menu finish dismissing before presenting the picker
-      DispatchQueue.main.async { self?.presentColorPicker() }
-    }
-    return UIMenu(
-      title: "Background",
-      children: [
-        UIMenu(title: "", options: .displayInline, children: colors),
-        UIMenu(title: "", options: .displayInline, children: [custom]),
-      ])
   }
 
   private func makePaperMenu() -> UIMenu {
@@ -254,48 +219,6 @@ final class HandwritingViewController: UIViewController, PKCanvasViewDelegate,
         UIMenu(title: "", options: .displayInline, children: types),
         UIMenu(title: "Spacing", options: .displayInline, children: spacings),
       ])
-  }
-
-  private static func swatch(_ hex: String, custom: Bool = false) -> UIImage? {
-    let size = CGSize(width: 22, height: 22)
-    let image = UIGraphicsImageRenderer(size: size).image { _ in
-      let rect = CGRect(origin: .zero, size: size).insetBy(dx: 2, dy: 2)
-      (UIColor(hex: hex) ?? .white).setFill()
-      UIBezierPath(ovalIn: rect).fill()
-      UIColor.systemGray.setStroke()
-      let outline = UIBezierPath(ovalIn: rect)
-      outline.lineWidth = 1
-      outline.stroke()
-    }
-    return image.withRenderingMode(.alwaysOriginal)
-  }
-
-  private func presentColorPicker() {
-    guard presentedViewController == nil else { return }
-    let picker = UIColorPickerViewController()
-    picker.selectedColor = metadata.backgroundColor
-    picker.supportsAlpha = false
-    picker.delegate = self
-    picker.modalPresentationStyle = .popover
-    picker.popoverPresentationController?.barButtonItem = backgroundItem
-    present(picker, animated: true)
-  }
-
-  // The system picker reports selections through one of these two delegate
-  // methods depending on the OS; both apply the colour (setBackground is idempotent).
-  func colorPickerViewController(
-    _ viewController: UIColorPickerViewController, didSelect color: UIColor, continuous: Bool
-  ) {
-    setBackground(HandwritingMetadata.hex(from: color))
-  }
-
-  func colorPickerViewControllerDidSelectColor(_ viewController: UIColorPickerViewController) {
-    setBackground(HandwritingMetadata.hex(from: viewController.selectedColor))
-  }
-
-  func colorPickerViewControllerDidFinish(_ viewController: UIColorPickerViewController) {
-    // refresh the "custom" check mark of the menu
-    applyMetadata()
   }
 
   // MARK: - Actions

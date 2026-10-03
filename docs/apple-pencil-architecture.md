@@ -169,29 +169,40 @@ Same mechanism as the PKDrawing (§4, Option R): a hidden attachment bound by an
 ```json
 {
   "version": 1,
-  "background": { "type": "color", "color": "#2C2C2E" },
+  "background": { "type": "none" },
   "paper": { "type": "lined", "spacing": "medium", "spacingPt": 32 },
   "canvas": { "width": 1194 }
 }
 ```
 
+- `background` is optional: `{ "type": "none" }` = transparent page (new drawings), `{ "type": "color", "color": "#RRGGBB" }` = the opaque background of an old drawing. It is no longer user-selectable, but old files keep rendering exactly as before (no migration).
 - `paper.type`: `blank | lined | grid | dotted`; `paper.spacing`: `small | medium | large`.
 - `spacingPt` is the exact distance in points and wins over the preset, so a page never changes its look if the preset table is ever tuned. Presets (points): lined 24/32/44, grid 16/24/36, dotted 16/24/36.
 - Optional `paper.color` / `paper.opacity` override the template colour (not exposed in the UI; derived from the background otherwise).
 - `canvas.width` is the page width in points (PNG = 2x). The page is at least as wide as the screen it is opened on; a stored wider page scrolls sideways.
-- Reading is lenient: missing/empty/invalid file → white blank paper; invalid single fields → their defaults; newer `version` → known fields read best-effort. Writing is deterministic (same settings → same bytes → same attachment hash, so unchanged metadata is de-duplicated).
-- Schema + presets exist twice and must stay in sync: `apps/mobile/app/services/handwriting/metadata.ts` (JS, tested with jest) and `ios/Notesnook/Handwriting/HandwritingMetadata.swift` (native, tested by `scripts/handwriting-native-tests.sh`).
+- Reading is lenient: missing/empty/invalid file → legacy defaults (white blank paper); invalid single fields → their defaults; newer `version` → known fields read best-effort. A NEW drawing is created with `{ "type": "none" }` by `defaultMetadata()`.
+- Writing is deterministic (same settings → same bytes → same attachment hash, so unchanged metadata is de-duplicated).
+- Schema and spacing presets exist twice and must stay in sync: `apps/mobile/app/services/handwriting/metadata.ts` (JS, tested with jest) and `ios/Notesnook/Handwriting/HandwritingMetadata.swift` (native, tested by `scripts/handwriting-native-tests.sh`).
 
 ### Rendering
 
-Order everywhere: background colour → paper template → PKDrawing strokes. Background and template are drawn by one renderer (`PaperRenderer`) into a view *under* the transparent `PKCanvasView` (editor) and into the PNG (export), so they are never part of the PKDrawing and cannot be erased.
+Order everywhere: background colour (opaque pages only) → paper template → PKDrawing strokes. The template is drawn by `PaperRenderer` into a view *under* the transparent `PKCanvasView` (editor) and into the PNG (export), so it is never part of the PKDrawing and cannot be erased.
 
 - Template anchored at the page origin; lines/grid/dots start one spacing away from the top-left edge.
 - PNG extent: blank paper is cropped to strokes + padding (unchanged from Build 1–4). Lined/grid/dotted export the full page width from the top of the page to the last stroke, rounded up to a whole cell, so the PNG lines up with the editor.
-- Ink colours: PencilKit adapts ink to the interface style (default black ink turns white in dark mode). The editor and the export therefore use the interface style derived from the **background luminance**, never from the system appearance; a black-ink drawing on a dark page looks the same in the editor and in the PNG (verified by the native tests).
-- PNG is opaque and does not depend on the theme of the viewing client.
+- Ink colours: PencilKit adapts ink to the interface style (default black ink turns white in dark mode). The editor and the export therefore use the interface style derived from the **background luminance**, never from the system appearance; a black-ink drawing on a dark page looks the same in the editor and in the PNG (verified by the native tests). A transparent page is always rendered with `.light` (normal black ink).
+- A drawing with an opaque background is exported as an opaque PNG and does not depend on the theme of the viewing client.
 - Very long pages are rendered in tiles (GPU texture limit 8192 px) and the export scale is reduced to keep the PNG below ~24 MP.
-- New drawings start with the app theme (light → white, dark → dark gray `#2C2C2E`). Drawings from before metadata existed always open as white blank paper (never theme-dependent).
+- Drawings from before metadata existed always open as white blank paper (never theme-dependent).
+
+### Transparent pages (since TestFlight build 24)
+
+- New drawings are transparent: the metadata stores `background: { "type": "none" }` (`HandwritingMetadata.newDrawing` / `defaultMetadata()`).
+- The exported PNG is rendered with an alpha channel (`format.opaque = false`) and nothing is painted under the strokes, so alpha is 0 wherever there is neither a stroke nor a template mark. In the note it therefore looks like typed text on whatever background the note has, instead of a white rectangle.
+- The paper template is baked into the PNG as semi-transparent lines/dots (light-theme defaults: blue-ish lines at 0.30 alpha, dotted black at 0.38; `paper.color` / `paper.opacity` still override).
+- While drawing, the editor shows the transparent page on a plain white surface (the drawing screen is forced to light so the ink matches the export). That surface is editor-only and is never part of the PNG.
+- Old drawings are unchanged: they keep their stored opaque background and keep exporting an opaque PNG exactly as before (no migration).
+- The background-colour picker (presets and custom colour) has been removed; paper type, spacing and template colour still work.
 
 ### Save (all-or-nothing)
 

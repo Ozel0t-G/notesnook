@@ -42,7 +42,13 @@ import { useObserver } from "../../hooks/use-observer.js";
 import { Attachment, ImageAlignmentOptions } from "../attachment/index.js";
 import { DataURL } from "@notesnook/common";
 import { strings } from "@notesnook/intl";
-import { useCanEditHandwriting } from "./handwriting.js";
+import { useThemeEngineStore } from "@notesnook/theme";
+import {
+  getHandwritingPresentation,
+  isHandwritingFilename,
+  useCanEditHandwriting,
+  useIsTransparentHandwriting
+} from "./handwriting.js";
 
 export function ImageComponent(
   props: ReactNodeViewProps<Partial<ImageAttributes>>
@@ -78,6 +84,27 @@ export function ImageComponent(
   const isReadonly = !editor.isEditable;
   // Apple Pencil handwriting (iPad only): shows an edit button on the image.
   const canEditHandwriting = useCanEditHandwriting(editor, node.attrs);
+  /**
+   * New handwritings are exported on a transparent page, so they should read
+   * like typed text: frameless, and inverted in dark mode (black ink becomes
+   * white). Old handwritings are opaque PNGs and keep rendering as before.
+   * Detection only samples the already-loaded blob URL, so the canvas is
+   * same-origin and never tainted.
+   */
+  const isHandwriting = isHandwritingFilename(node.attrs.filename);
+  const handwritingTransparent = useIsTransparentHandwriting(
+    bloburl,
+    hash,
+    isHandwriting
+  );
+  const isDarkTheme = useThemeEngineStore(
+    (store) => store.theme.colorScheme === "dark"
+  );
+  const { frameless, invertForDark } = getHandwritingPresentation({
+    isHandwriting,
+    transparent: handwritingTransparent,
+    isDark: isDarkTheme
+  });
   const isSVG = !!mime && mime.includes("/svg");
   /**
    * Mac Catalyst shows note images with macOS-style rounded corners. The
@@ -129,7 +156,9 @@ export function ImageComponent(
         }}
       >
         <Resizer
-          style={{ marginTop: 5 }}
+          // Transparent handwriting must not add vertical chrome, otherwise it
+          // sits lower than the surrounding text.
+          style={{ marginTop: frameless ? 0 : 5 }}
           enabled={editor.isEditable}
           selected={selected}
           width={size.width}
@@ -341,11 +370,33 @@ export function ImageComponent(
               objectFit: "contain",
               width: editor.isEditable ? "100%" : size.width,
               height: editor.isEditable ? "100%" : size.height,
-              border: selected
-                ? "2px solid var(--accent) !important"
-                : "2px solid transparent !important",
-              borderRadius: imageRadius,
-              outline: isMacCatalyst ? "none" : undefined,
+              /**
+               * Transparent handwriting is frameless: no border, no shadow, no
+               * background and no macOS rounded corners. The selection outline
+               * is drawn with `outline` (not `border`) so selecting the node
+               * never shifts the layout for a border that is normally absent.
+               */
+              ...(frameless
+                ? {
+                    border: "none",
+                    borderRadius: "0px",
+                    boxShadow: "none",
+                    bg: "transparent",
+                    outline: selected ? "2px solid var(--accent)" : "none"
+                  }
+                : {
+                    border: selected
+                      ? "2px solid var(--accent) !important"
+                      : "2px solid transparent !important",
+                    borderRadius: imageRadius,
+                    outline: isMacCatalyst ? "none" : undefined
+                  }),
+              // Black ink -> white in dark mode; blue-ish paper lines stay
+              // blue-ish, dotted-black becomes white dots. Only transparent
+              // handwritings, never opaque old ones or normal photos.
+              filter: invertForDark
+                ? "invert(1) hue-rotate(180deg)"
+                : undefined,
               ...(isSVG ? { bg: "transparent" } : {})
             }}
             onDoubleClick={() => {

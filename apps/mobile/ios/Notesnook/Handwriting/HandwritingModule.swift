@@ -28,7 +28,8 @@ import UIKit
 ///   edit(sourcePath, drawingId, metadata) -> same shape, keeps `drawingId`
 ///
 /// `metadata` is the JSON of the page settings (background, paper, page width)
-/// as sanitised by JS. Invalid or empty JSON falls back to white blank paper.
+/// as sanitised by JS. A new drawing falls back to a transparent blank page,
+/// an edited drawing (from before metadata existed) to white blank paper.
 
 /// Cancelling rejects with code `E_CANCELLED`.
 @objc(HandwritingModule)
@@ -66,7 +67,8 @@ final class HandwritingModule: NSObject {
     rejecter reject: @escaping RCTPromiseRejectBlock
   ) {
     present(
-      drawing: PKDrawing(), metadata: HandwritingMetadata.parse(json: metadata),
+      drawing: PKDrawing(),
+      metadata: HandwritingMetadata.parse(json: metadata, fallback: .newDrawing),
       id: UUID().uuidString.lowercased(), resolve, reject)
   }
 

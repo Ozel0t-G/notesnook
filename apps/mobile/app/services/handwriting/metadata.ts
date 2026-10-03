@@ -23,15 +23,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  *   handwriting-<UUID>.json   application/json   (hidden, PNG -> JSON relation)
  *
- * The background and the paper are NOT part of the PKDrawing strokes. They are
- * rendered underneath the strokes (background colour -> paper -> strokes) both
- * in the editor and in the exported PNG.
+ * The page background (optional) and the paper template are NOT part of the
+ * PKDrawing strokes. They are rendered underneath the strokes (background
+ * colour -> paper -> strokes) both in the editor and in the exported PNG. A
+ * NEW drawing has a transparent background (`{ "type": "none" }`), so its PNG
+ * has an alpha channel and looks like typed text in the note.
  *
  * Reading is lenient (a broken file never blocks editing), writing is strict
  * and deterministic (same input => same bytes => same attachment hash).
  *
  * The native module (HandwritingMetadata.swift) implements the same schema and
- * the same preset table. Keep both in sync.
+ * the same spacing presets. Keep both in sync.
  *
  * Do not import React Native here so this stays unit-testable.
  */
@@ -63,6 +65,11 @@ export const SPACING_POINTS: Record<
   dotted: { small: 16, medium: 24, large: 36 }
 };
 
+/**
+ * Historical background colours. The background is no longer selectable (new
+ * drawings are transparent), but OLD drawings keep the exact colour they were
+ * created with, so these values are still read and rendered unchanged.
+ */
 export const BACKGROUND_PRESETS = {
   white: "#FFFFFF",
   paper: "#FBF3DD",
@@ -73,7 +80,11 @@ export const BACKGROUND_PRESETS = {
 
 export type HandwritingMetadata = {
   version: number;
-  background: { type: "color"; color: string };
+  /**
+   * `{ type: "none" }` = transparent page (new drawings). `{ type: "color" }`
+   * = an opaque page from an old drawing; kept working without migration.
+   */
+  background: { type: "none" } | { type: "color"; color: string };
   paper: {
     type: PaperType;
     spacing: PaperSpacing;
@@ -115,17 +126,16 @@ export function legacyMetadata(): HandwritingMetadata {
   };
 }
 
-/** Metadata for a NEW drawing: the background follows the app theme. */
-export function defaultMetadata(theme: "light" | "dark"): HandwritingMetadata {
+/**
+ * Metadata for a NEW drawing: transparent background, blank paper, medium
+ * spacing. The exported PNG therefore has an alpha channel, so it looks like
+ * typed text on any note background.
+ */
+export function defaultMetadata(): HandwritingMetadata {
   return {
-    ...legacyMetadata(),
-    background: {
-      type: "color",
-      color:
-        theme === "dark"
-          ? BACKGROUND_PRESETS.darkGray
-          : BACKGROUND_PRESETS.white
-    }
+    version: METADATA_VERSION,
+    background: { type: "none" },
+    paper: { type: "blank", spacing: "medium" }
   };
 }
 
@@ -188,10 +198,17 @@ export function parseMetadata(
   const base = legacyMetadata();
 
   const bg = isObject(raw.background) ? raw.background : undefined;
-  let color = normalizeColor(bg?.color);
-  if (!color) {
-    if (bg !== undefined) issues.push("invalid background");
-    color = base.background.color;
+  let background: HandwritingMetadata["background"];
+  if (bg?.type === "none") {
+    // transparent page (new drawings)
+    background = { type: "none" };
+  } else {
+    let color = normalizeColor(bg?.color);
+    if (!color) {
+      if (bg !== undefined) issues.push("invalid background");
+      color = BACKGROUND_PRESETS.white;
+    }
+    background = { type: "color", color };
   }
 
   const p = isObject(raw.paper) ? raw.paper : undefined;
@@ -216,7 +233,7 @@ export function parseMetadata(
 
   const metadata: HandwritingMetadata = {
     version: METADATA_VERSION,
-    background: { type: "color", color },
+    background,
     paper
   };
   const c = isObject(raw.canvas) ? raw.canvas : undefined;
@@ -242,7 +259,10 @@ export function serializeMetadata(metadata: HandwritingMetadata): string {
   const { background, paper, canvas } = metadata;
   const out: Record<string, unknown> = {
     version: METADATA_VERSION,
-    background: { type: "color", color: background.color },
+    background:
+      background.type === "none"
+        ? { type: "none" }
+        : { type: "color", color: background.color },
     paper: {
       type: paper.type,
       spacing: paper.spacing,

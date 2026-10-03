@@ -28,7 +28,6 @@ import { cacheDir } from "../../common/filesystem/utils";
 import { attachFile } from "../../screens/editor/tiptap/picker";
 import { useTabStore } from "../../screens/editor/tiptap/use-tab-store";
 import { editorController } from "../../screens/editor/tiptap/utils";
-import { useThemeStore } from "../../stores/use-theme-store";
 import { ToastManager } from "../event-manager";
 import {
   HandwritingResult,
@@ -89,11 +88,8 @@ export async function createHandwriting(target: Target) {
     await db.attachments.generateKey();
     let result: HandwritingResult;
     try {
-      // new drawings start with a background that matches the app theme
-      const theme = useThemeStore.getState().colorScheme;
-      result = await Native!.create(
-        serializeMetadata(defaultMetadata(theme === "dark" ? "dark" : "light"))
-      );
+      // new drawings start transparent (blank paper with an alpha-channel PNG)
+      result = await Native!.create(serializeMetadata(defaultMetadata()));
     } catch (e) {
       if (!isCancelled(e)) {
         DatabaseLogger.error(e as Error, "Failed to open handwriting editor");

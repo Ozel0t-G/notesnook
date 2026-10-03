@@ -206,6 +206,20 @@ enum TaskWidgetCompletionFailure: LocalizedError {
   }
 }
 
+/// Any list can show a ring, so snapshot membership, not the Today-only filter, validates a tap.
+private func snapshotListsTask(id: String, scope: String, updatedAt: Int, at now: Date) -> Bool {
+  guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
+                 options: .regularExpression) != nil,
+        scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil,
+        updatedAt > 0,
+        case let .available(snapshot) = ReminderSnapshotStore.load(at: now),
+        snapshot.privacyHidden != true,
+        snapshot.accountScope == scope else { return false }
+  return snapshot.tasks.contains(where: {
+    $0.id == id && $0.updatedAt.flatMap { Int(exactly: $0) } == updatedAt
+  })
+}
+
 @available(iOS 17.0, iOSApplicationExtension 17.0, *)
 struct CompleteTaskWidgetIntent: AppIntent {
   static var title: LocalizedStringResource = "Complete Task"
@@ -242,17 +256,7 @@ struct CompleteTaskWidgetIntent: AppIntent {
     guard #available(iOS 27.0, iOSApplicationExtension 27.0, *) else {
       throw TaskWidgetCompletionFailure.unavailable
     }
-    let now = Date()
-    guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
-                   options: .regularExpression) != nil,
-          scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil,
-          updatedAt > 0,
-          case let .available(snapshot) = ReminderSnapshotStore.load(at: now),
-          snapshot.privacyHidden != true,
-          snapshot.accountScope == scope,
-          TaskWidgetClock.visibleTasks(snapshot, at: now).contains(where: {
-            $0.id == id && $0.updatedAt.flatMap { Int(exactly: $0) } == updatedAt
-          }) else {
+    guard snapshotListsTask(id: id, scope: scope, updatedAt: updatedAt, at: Date()) else {
       throw CocoaError(.fileReadUnknown)
     }
     // Durable first. A repeat tap finds the same deterministic filename, and a
@@ -304,21 +308,20 @@ struct CompleteTaskInAppWidgetIntent: AppIntent {
   }
 
   func perform() async throws -> some IntentResult {
-    let now = Date()
-    guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
-                   options: .regularExpression) != nil,
-          scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil,
-          updatedAt > 0,
-          case let .available(snapshot) = ReminderSnapshotStore.load(at: now),
-          snapshot.privacyHidden != true,
-          snapshot.accountScope == scope,
-          TaskWidgetClock.visibleTasks(snapshot, at: now).contains(where: {
-            $0.id == id && $0.updatedAt.flatMap { Int(exactly: $0) } == updatedAt
-          }) else {
+    guard snapshotListsTask(id: id, scope: scope, updatedAt: updatedAt, at: Date()) else {
       throw CocoaError(.fileReadUnknown)
     }
     try WidgetCompletionQueue.enqueue(id: id, scope: scope, updatedAt: updatedAt)
     WidgetCenter.shared.reloadTimelines(ofKind: "ReminderWidget")
+    // The app can be active before this runs, so its own drain may have missed the new file.
+    await MainActor.run {
+      NotificationCenter.default.post(name: .taskWidgetActionQueued, object: nil)
+    }
     return .result()
   }
+}
+
+extension Notification.Name {
+  /// Posted in-process after a widget tap has been written to the App Group queue.
+  static let taskWidgetActionQueued = Notification.Name("veyran.taskWidget.actionQueued")
 }

@@ -38,13 +38,21 @@ const mockCommitCompletion = jest.fn(
   async (_action: { filename: string; id: string }): Promise<string> =>
     "completed"
 );
+const mockDrainPendingCompletions = jest.fn(async (): Promise<void> => {});
+const mockListeners = new Map<string, () => void>();
 
 jest.mock("react-native", () => ({
   Platform: { OS: "ios" },
-  NativeModules: { TaskWidgetCompletionModule: {} },
+  NativeModules: {
+    TaskWidgetCompletionModule: {
+      pendingRequests: async () => [],
+      resolveRequest: async () => {}
+    }
+  },
   NativeEventEmitter: class {
-    addListener() {
-      return { remove: () => {} };
+    addListener(event: string, handler: () => void) {
+      mockListeners.set(event, handler);
+      return { remove: () => mockListeners.delete(event) };
     }
   }
 }));
@@ -64,7 +72,8 @@ jest.mock("../common/database", () => ({
 jest.mock("./reminder-widget", () => ({
   ReminderWidget: {
     commitCompletion: (action: { filename: string; id: string }) =>
-      mockCommitCompletion(action)
+      mockCommitCompletion(action),
+    drainPendingCompletions: () => mockDrainPendingCompletions()
   }
 }));
 jest.mock("./settings", () => ({
@@ -74,7 +83,8 @@ jest.mock("./settings", () => ({
 
 import {
   isTaskWidgetCompletionRequest,
-  runTaskWidgetCompletion
+  runTaskWidgetCompletion,
+  TaskWidgetCompletionHost
 } from "./task-widget-completion-host";
 
 const request = {
@@ -175,5 +185,32 @@ describe("cold start Task widget completion", () => {
       { ...request, requestId: "x".repeat(65) }
     ])
       expect(isTaskWidgetCompletionRequest(invalid)).toBe(false);
+  });
+});
+
+describe("Task widget ring tapped while the app is already active", () => {
+  beforeEach(() => {
+    mockListeners.clear();
+    mockDrainPendingCompletions.mockClear();
+  });
+
+  test("the queued action is drained as soon as it is announced", () => {
+    const stop = TaskWidgetCompletionHost.start();
+    expect(mockDrainPendingCompletions).not.toHaveBeenCalled();
+    mockListeners.get("taskWidgetActionQueued")?.();
+    expect(mockDrainPendingCompletions).toHaveBeenCalledTimes(1);
+    stop();
+    expect(mockListeners.has("taskWidgetActionQueued")).toBe(false);
+  });
+
+  test("a failed drain is contained and does not break later announcements", async () => {
+    mockDrainPendingCompletions.mockRejectedValueOnce(new Error("boom"));
+    const stop = TaskWidgetCompletionHost.start();
+    const announce = mockListeners.get("taskWidgetActionQueued");
+    announce?.();
+    await Promise.resolve();
+    announce?.();
+    expect(mockDrainPendingCompletions).toHaveBeenCalledTimes(2);
+    stop();
   });
 });

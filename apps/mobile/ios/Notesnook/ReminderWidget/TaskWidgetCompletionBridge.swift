@@ -146,10 +146,13 @@ final class TaskWidgetCompletionBridge: NSObject, TaskWidgetCompletionCommitting
 @objc(TaskWidgetCompletionModule)
 final class TaskWidgetCompletionModule: RCTEventEmitter {
   private var observer: NSObjectProtocol?
+  private var queuedObserver: NSObjectProtocol?
 
   @objc override class func requiresMainQueueSetup() -> Bool { false }
 
-  override func supportedEvents() -> [String]! { ["pendingTaskWidgetCompletion"] }
+  override func supportedEvents() -> [String]! {
+    ["pendingTaskWidgetCompletion", "taskWidgetActionQueued"]
+  }
 
   override func startObserving() {
     observer = NotificationCenter.default.addObserver(
@@ -158,6 +161,13 @@ final class TaskWidgetCompletionModule: RCTEventEmitter {
       queue: .main
     ) { [weak self] _ in
       self?.sendEvent(withName: "pendingTaskWidgetCompletion", body: nil)
+    }
+    queuedObserver = NotificationCenter.default.addObserver(
+      forName: .taskWidgetActionQueued,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.sendEvent(withName: "taskWidgetActionQueued", body: nil)
     }
     // On the cold start the intent itself triggered, the request is submitted
     // while the bundle is still loading, so its notification can be posted
@@ -169,7 +179,9 @@ final class TaskWidgetCompletionModule: RCTEventEmitter {
 
   override func stopObserving() {
     if let observer { NotificationCenter.default.removeObserver(observer) }
+    if let queuedObserver { NotificationCenter.default.removeObserver(queuedObserver) }
     observer = nil
+    queuedObserver = nil
   }
 
   @objc(pendingRequests:rejecter:)

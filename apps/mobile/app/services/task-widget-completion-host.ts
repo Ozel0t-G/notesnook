@@ -160,11 +160,18 @@ function start() {
     "pendingTaskWidgetCompletion",
     requestDrain
   );
+  // The ring queues its action once the app is active, so the foreground drain can miss it.
+  const queued = emitter.addListener("taskWidgetActionQueued", () => {
+    void ReminderWidget.drainPendingCompletions().catch((error) => {
+      DatabaseLogger.error(error as Error, "TaskWidgetCompletion.queued");
+    });
+  });
   // A cold start launched by the intent submits its request before this bundle
   // finishes loading, so that notification is missed. Drain once on start.
   requestDrain();
   return () => {
     pending.remove();
+    queued.remove();
   };
 }
 

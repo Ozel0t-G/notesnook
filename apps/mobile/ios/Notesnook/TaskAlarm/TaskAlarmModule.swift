@@ -23,7 +23,7 @@ final class TaskAlarmModule: NSObject {
   private static let namespace = "com.streetwriters.notesnook.taskAlarm.v1"
   /// How long Snooze postpones the next alert. The Task's own reminder is never
   /// modified, so the occurrence the alarm belongs to stays intact.
-  private static let snoozeInterval: TimeInterval = 9 * 60
+  private static let snoozeInterval: TimeInterval = 10 * 60
   /// Result shape shared by every overdue-activity call. `status` mirrors the
   /// alarm authorization names so JS can be honest about unsupported devices
   /// without a second failure channel.

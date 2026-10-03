@@ -318,7 +318,7 @@ already existed, no Widget snapshot/completion-queue changes, no account/backend
   authorized at all), but not *why* one occurrence failed (simulator vs. real denial vs. an
   individual scheduling error). `verifyAlarms`/`cancelScheduledAlarms` make the unknown path
   honest; they do not add finer failure diagnostics than that.
-- Snooze is an AlarmKit countdown (`postAlert` = 9 minutes) driven by the alarm's own
+- Snooze is an AlarmKit countdown (`postAlert` = 10 minutes) driven by the alarm's own
   `secondaryIntent`; it never edits the Task's reminder occurrence and never persists as Task
   state. Stop only silences the alert through `AlarmManager.stop(id:)` — it never completes the
   Task; completion stays a separate Task-domain action.

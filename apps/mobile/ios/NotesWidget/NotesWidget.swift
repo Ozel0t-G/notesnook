@@ -122,8 +122,7 @@ private struct ReminderEntry: TimelineEntry {
   let list: TaskWidgetList
 }
 
-/// The entries every provider shares: the snapshot now, one entry per due time
-/// and per completion retry, midnight, and a periodic 15 minute refresh.
+/// The snapshot now, one entry per due time, midnight, and a 15 minute refresh.
 private func reminderTimeline(
   state: ReminderSnapshotState,
   list: TaskWidgetList,
@@ -133,24 +132,11 @@ private func reminderTimeline(
   var entries = [ReminderEntry(date: now, state: state, list: list)]
   if case let .available(snapshot) = state {
     let tasks = TaskWidgetClock.tasks(snapshot, list: list, at: now)
-    var changes = Set(
+    let changes = Set(
       tasks.compactMap(TaskWidgetClock.dueInstant).map {
         $0.addingTimeInterval(1)
       }.filter { $0 > now && $0 < nextMidnight }
     )
-    if let scope = snapshot.accountScope {
-      for item in tasks {
-        guard let rawRevision = item.updatedAt,
-              let revision = Int(exactly: rawRevision),
-              let retryDate = WidgetCompletionQueue.retryDate(
-                id: item.id, scope: scope, updatedAt: revision
-              ) else { continue }
-        let retryEntry = retryDate.addingTimeInterval(1)
-        if retryEntry > now && retryEntry < nextMidnight {
-          changes.insert(retryEntry)
-        }
-      }
-    }
     entries.append(contentsOf: changes.sorted().map {
       ReminderEntry(date: $0, state: state, list: list)
     })
@@ -333,17 +319,27 @@ private struct ReminderWidgetEntryView: View {
   private var columnCount: Int { family == .systemExtraLarge ? 2 : 1 }
   private var compact: Bool { family == .systemSmall }
 
+  /// The list's tasks minus queued completions, so freed slots refill.
+  private var visibleTasks: [ReminderSnapshotItem] {
+    guard let snapshot, snapshot.privacyHidden != true else { return [] }
+    return TaskWidgetClock.tasks(snapshot, list: list, at: referenceDate).filter {
+      guard let scope = snapshot.accountScope,
+            let rawRevision = $0.updatedAt,
+            let updatedAt = Int(exactly: rawRevision) else { return true }
+      return !WidgetCompletionQueue.isQueued(
+        id: $0.id, scope: scope, updatedAt: updatedAt, at: referenceDate)
+    }
+  }
+
   private var rows: [ReminderSnapshotItem] {
-    guard let snapshot else { return [] }
-    return Array(
-      TaskWidgetClock.tasks(snapshot, list: list, at: referenceDate)
-        .prefix(rowLimit)
-    )
+    Array(visibleTasks.prefix(rowLimit))
   }
 
   private var totalCount: Int {
     guard let snapshot, snapshot.privacyHidden != true else { return 0 }
-    return TaskWidgetClock.count(snapshot, list: list, at: referenceDate)
+    let queued = TaskWidgetClock.tasks(snapshot, list: list, at: referenceDate).count
+      - visibleTasks.count
+    return max(0, TaskWidgetClock.count(snapshot, list: list, at: referenceDate) - queued)
   }
 
   private var overflow: Int { max(0, totalCount - rows.count) }
@@ -498,9 +494,7 @@ private struct ReminderWidgetEntryView: View {
   }
 }
 
-/// One Task, laid out like a row in Apple Reminders: a gray ring, the title,
-/// and its date on the trailing edge. Tapping the ring completes the Task on
-/// iOS 27; tapping the row opens it in the app.
+/// One Task row: the ring queues a completion, the row opens the Task.
 private struct ReminderRow: View {
   let reminder: ReminderSnapshotItem
   let accountScope: String?
@@ -521,17 +515,13 @@ private struct ReminderRow: View {
       at: referenceDate)
   }
 
-  private var isPending: Bool { completionStatus == .pending }
-
-  private var needsRetry: Bool {
-    completionStatus == .retry || completionStatus == .expired
-  }
+  private var needsRetry: Bool { completionStatus == .expired }
 
   var body: some View {
     HStack(spacing: compact ? 6 : 8) {
       completionControl
-        .accessibilityLabel(Text(isPending ? "Completion pending" :
-          needsRetry ? "Retry completion for \(reminder.title)" : "Complete \(reminder.title)"))
+        .accessibilityLabel(Text(needsRetry ?
+          "Retry completion for \(reminder.title)" : "Complete \(reminder.title)"))
 
       Link(destination: WidgetURLs.reminder(id: reminder.id)) {
         HStack(spacing: 6) {
@@ -577,12 +567,11 @@ private struct ReminderRow: View {
     if #available(iOSApplicationExtension 27.0, *),
        let accountScope, let rawRevision = reminder.updatedAt,
        let updatedAt = Int(exactly: rawRevision) {
-      Button(intent: CompleteTaskInAppWidgetIntent(
+      Button(intent: QueueTaskCompletionWidgetIntent(
         id: reminder.id, scope: accountScope, updatedAt: updatedAt)) {
         completionImage
       }
       .buttonStyle(.plain)
-      .disabled(isPending)
     } else {
       // Older systems cannot run the completion intent: the ring opens the
       // Task in the app instead of being a dead image.
@@ -594,7 +583,7 @@ private struct ReminderRow: View {
   }
 
   private var completionImage: some View {
-    Image(systemName: isPending ? "clock" : needsRetry ? "arrow.clockwise.circle" : "circle")
+    Image(systemName: needsRetry ? "arrow.clockwise.circle" : "circle")
       .font(.system(size: compact ? 16 : 19, weight: .light))
       .foregroundStyle(needsRetry ? Color(UIColor.systemRed) : Color.secondary)
       .frame(width: compact ? 18 : 22)
@@ -602,13 +591,11 @@ private struct ReminderRow: View {
   }
 
   private var statusIsWarning: Bool {
-    needsRetry || (isOverdue && !isPending)
+    needsRetry || isOverdue
   }
 
-  /// Pending and retry states always show; the due date only where there is
-  /// room for it. Undated Tasks have no date text at all.
+  /// The retry state always shows; the due date only where there is room.
   private var statusText: String? {
-    if isPending { return String(localized: "Completion pending") }
     if needsRetry { return String(localized: "Completion not saved · Tap to retry") }
     guard showsDate else { return nil }
     return dueText

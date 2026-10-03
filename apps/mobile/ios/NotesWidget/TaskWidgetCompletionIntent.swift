@@ -34,15 +34,12 @@ struct WidgetCompletionAction: Codable {
   let enqueuedAt: Int
 }
 
-/// The durable record of a tap. It survives a process crash, a locked device
-/// and a signed-out account, and it is what keeps the widget row visibly
-/// pending until the host has actually persisted the completion.
+/// The durable record of a tap, surviving a crash, a locked device and sign-out.
 enum WidgetCompletionQueue {
   static let folder = "task-widget-actions-v1"
   static let maximumPending = 50
   static let maximumAge = 7 * 24 * 60 * 60 * 1000
-  // The host waits at most 25 seconds. A failed or timed-out attempt must
-  // become tappable again even if the app never launches to drain the queue.
+  // The pending/retry split only deduplicates quick repeat taps in `enqueue`.
   static let retryAfter = 40 * 1000
 
   enum Status { case none, pending, retry, expired }
@@ -87,12 +84,13 @@ enum WidgetCompletionQueue {
     return action.enqueuedAt > now - retryAfter ? .pending : .retry
   }
 
-  static func retryDate(id: String, scope: String, updatedAt: Int) -> Date? {
-    guard status(id: id, scope: scope, updatedAt: updatedAt) == .pending,
-          let action = storedAction(id: id, scope: scope, updatedAt: updatedAt) else {
-      return nil
+  static func isQueued(
+    id: String, scope: String, updatedAt: Int, at date: Date = Date()
+  ) -> Bool {
+    switch status(id: id, scope: scope, updatedAt: updatedAt, at: date) {
+    case .pending, .retry: return true
+    case .none, .expired: return false
     }
-    return Date(timeIntervalSince1970: Double(action.enqueuedAt + retryAfter) / 1000)
   }
 
   // Keep valid actions for every account for their full retry window. Only
@@ -287,14 +285,13 @@ struct CompleteTaskWidgetIntent: AppIntent {
   }
 }
 
-/// Reliable variant used by the widget ring: it queues the completion durably
-/// and brings the app forward, whose foreground drain commits it. It needs no
-/// headless React Native start, which is what the background intent depends on.
+/// Queues a completion durably in the App Group; the app commits it later.
 @available(iOS 27.0, iOSApplicationExtension 27.0, *)
-struct CompleteTaskInAppWidgetIntent: AppIntent {
+struct QueueTaskCompletionWidgetIntent: AppIntent {
   static var title: LocalizedStringResource = "Complete Task"
   static var isDiscoverable: Bool { false }
-  static var supportedModes: IntentModes { .foreground(.immediate) }
+  static var openAppWhenRun: Bool { false }
+  static var supportedModes: IntentModes { .background }
 
   @Parameter(title: "Task") var id: String
   @Parameter(title: "Account Scope") var scope: String

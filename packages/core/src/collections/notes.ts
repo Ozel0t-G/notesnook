@@ -521,10 +521,19 @@ export class Notes implements ICollection {
       await this.db.trash.add("note", ids);
     } else {
       await this.db.transaction(async () => {
+        // Collect the tags these notes reference before the relations are
+        // soft-deleted (they stop being queryable afterwards); a tag that no
+        // other note uses should not outlive its last note.
+        const tagIds = new Set(
+          (await this.db.relations.to({ type: "note", ids }, "tag").get()).map(
+            (relation) => relation.fromId
+          )
+        );
         await this.db.relations.unlinkOfType("note", ids);
         await this.collection.softDelete(ids);
         await this.db.content.removeByNoteId(...ids);
         await this.db.inboxItemsHistory.delete(ids);
+        if (tagIds.size) await this.db.tags.removeIfUnused(...tagIds);
       });
     }
 

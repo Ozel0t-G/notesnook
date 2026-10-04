@@ -40,10 +40,10 @@ export type LibrarySourceListData = {
     trash?: number;
   };
   /**
-   * Note count per notebook / tag. Only requested by Mac's source list
-   * (components/mac-sidebar.tsx), whose Notebooks and Tags rows show them; the
-   * iPad Library list has no such count, so it is left undefined there and no
-   * extra query runs.
+   * Note count per notebook / tag. Requested by Mac's source list
+   * (components/mac-sidebar.tsx) and by the iPhone/iPad Library screen
+   * (screens/library/index.tsx), whose Notebooks and Tags rows show them; it is
+   * opt-in, so callers that do not need them skip the extra query.
    */
   notebookCounts?: Record<string, number>;
   tagCounts?: Record<string, number>;
@@ -58,8 +58,8 @@ export type LibrarySourceListData = {
  * the queries and the database subscriptions that keep them fresh live in one
  * place only. Mac's sidebar is not a navigation screen, so `navigation` is
  * optional: it is only passed where there is a route to listen to. The
- * per-notebook / per-tag counts are opt-in for the same reason: only the
- * sidebar renders them.
+ * per-notebook / per-tag counts are opt-in for the same reason: only callers
+ * whose rows render them ask for them.
  */
 export function useLibrarySourceList(
   navigation?: NavigationProps<"Library">["navigation"],
@@ -105,8 +105,9 @@ export function useLibrarySourceList(
       ]);
       // The Trash cache is kept in memory, so its count needs no query.
       const trashCount = db.trash.count();
-      // Per-notebook / per-tag note counts are only shown in Mac's source list,
-      // so callers that do not ask for them skip the query entirely.
+      // Per-notebook / per-tag note counts are opt-in (the Library screen and
+      // Mac's source list show them), so callers that do not ask for them skip
+      // the query entirely.
       let nextNotebookCounts: Record<string, number> | undefined;
       let nextTagCounts: Record<string, number> | undefined;
       if (countsByNotebookAndTag) {

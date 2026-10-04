@@ -19,7 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { create } from "zustand";
 
-/** The collapsible groups of Mac's source list. */
+/** The collapsible groups of Mac's source list and the iPhone/iPad Library. */
 export type MacSidebarSectionId =
   | "library"
   | "notebooks"
@@ -33,12 +33,13 @@ type MacSidebarSectionsState = {
 };
 
 /**
- * Which source-list sections Mac's sidebar (components/mac-sidebar.tsx) has
- * collapsed through their header chevrons. Every section starts expanded;
- * the state is presentation-only and lives for the session, as macOS source
- * lists do.
+ * Which source-list sections have been collapsed through their header
+ * chevrons. Every section starts expanded; the state is presentation-only and
+ * lives for the session, as macOS source lists do.
  *
- * Mac only - iPhone and iPad never read or write it.
+ * Shared by Mac's sidebar (components/mac-sidebar.tsx) and the iPhone/iPad
+ * Library screen (screens/library/index.tsx), which collapses its Notebooks
+ * and Tags sections with the same "notebooks"/"tags" ids.
  */
 export const useMacSidebarSectionsStore = create<MacSidebarSectionsState>(
   (set) => ({

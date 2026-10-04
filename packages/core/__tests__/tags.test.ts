@@ -99,6 +99,81 @@ for (const type of ["tag", "color"] as const) {
     }));
 }
 
+describe("auto-delete unused tags", () => {
+  test("removing the last note's tag deletes the tag", () =>
+    noteTest().then(async ({ db, id }) => {
+      const tagId = await db.tags.add(tag("hello"));
+      await db.relations.add({ id: tagId, type: "tag" }, { id, type: "note" });
+
+      await db.relations.unlink(
+        { id: tagId, type: "tag" },
+        { id, type: "note" }
+      );
+
+      expect(await db.tags.tag(tagId)).toBeUndefined();
+      expect(await db.tags.all.count()).toBe(0);
+    }));
+
+  test("a tag used by 2 notes survives one unlink", () =>
+    noteTest().then(async ({ db, id }) => {
+      const id2 = await db.notes.add(TEST_NOTE);
+      if (!id2) throw new Error("Failed to create note.");
+
+      const tagId = await db.tags.add(tag("hello"));
+      await db.relations.add({ id: tagId, type: "tag" }, { id, type: "note" });
+      await db.relations.add(
+        { id: tagId, type: "tag" },
+        { id: id2, type: "note" }
+      );
+
+      await db.relations.unlink(
+        { id: tagId, type: "tag" },
+        { id, type: "note" }
+      );
+
+      expect(await db.tags.tag(tagId)).toBeDefined();
+      expect(await db.tags.all.count()).toBe(1);
+    }));
+
+  test("removing a note permanently deletes its now-unused tag", () =>
+    noteTest().then(async ({ db, id }) => {
+      const tagId = await db.tags.add(tag("hello"));
+      await db.relations.add({ id: tagId, type: "tag" }, { id, type: "note" });
+
+      await db.notes.remove(id);
+
+      expect(await db.tags.tag(tagId)).toBeUndefined();
+    }));
+
+  test("removing a note keeps a tag another note still uses", () =>
+    noteTest().then(async ({ db, id }) => {
+      const id2 = await db.notes.add(TEST_NOTE);
+      if (!id2) throw new Error("Failed to create note.");
+
+      const tagId = await db.tags.add(tag("hello"));
+      await db.relations.add({ id: tagId, type: "tag" }, { id, type: "note" });
+      await db.relations.add(
+        { id: tagId, type: "tag" },
+        { id: id2, type: "note" }
+      );
+
+      await db.notes.remove(id);
+
+      expect(await db.tags.tag(tagId)).toBeDefined();
+    }));
+
+  test("a tag used only by a trashed note survives the move to trash", () =>
+    noteTest().then(async ({ db, id }) => {
+      const tagId = await db.tags.add(tag("hello"));
+      await db.relations.add({ id: tagId, type: "tag" }, { id, type: "note" });
+
+      await db.notes.moveToTrash(id);
+
+      expect(await db.tags.tag(tagId)).toBeDefined();
+      expect(await db.tags.all.count()).toBe(1);
+    }));
+});
+
 describe("sort tags by", () => {
   const tags = ["apple", "mango", "melon", "orange", "zucchini"];
   const sortTestCases = [

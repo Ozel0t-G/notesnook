@@ -162,6 +162,10 @@ export class Relations implements ICollection {
       direction: "from",
       types: [from.type]
     });
+    // A tag that no note references anymore is dead weight; removing one from
+    // its last note should take it with it (tag -> note is the convention).
+    if (from.type === "tag" && to.type === "note")
+      await this.db.tags.removeIfUnused(from.id);
   }
 
   async unlinkOfType(type: keyof RelatableTable, ids?: string[]) {

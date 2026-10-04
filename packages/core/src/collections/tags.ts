@@ -94,6 +94,27 @@ export class Tags implements ICollection {
     });
   }
 
+  /**
+   * Removes the tags that no note references anymore. Used after a tag is
+   * unlinked from a note or a note is permanently deleted, so tags used only
+   * by trashed notes stay (their relations survive until the note is deleted).
+   */
+  async removeIfUnused(...ids: string[]) {
+    for (const id of ids) {
+      const relation = await this.db
+        .sql()
+        .selectFrom("relations")
+        .select("id")
+        .where("fromType", "==", "tag")
+        .where("fromId", "==", id)
+        .where("toType", "==", "note")
+        .where(isFalse("deleted"))
+        .limit(1)
+        .executeTakeFirst();
+      if (!relation) await this.remove(id);
+    }
+  }
+
   exists(id: string) {
     return this.collection.exists(id);
   }

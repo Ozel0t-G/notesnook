@@ -42,6 +42,10 @@ import { AddNotebookSheet } from "../../components/sheets/add-notebook";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isMacCatalyst } from "../../utils/constants";
 import { useLibrarySourceList } from "../../hooks/use-library-source-list";
+import {
+  useMacSidebarSectionCollapsed,
+  useMacSidebarSectionsStore
+} from "../../stores/use-mac-sidebar-sections-store";
 
 type LibraryDestination = {
   key: string;
@@ -75,7 +79,11 @@ export default function Library({
   const [allNotes, allNotesLoading, refreshAllNotes] = useNotes();
   const [inboxNotes, inboxLoading, refreshInbox] = useInboxNotes();
   const isMac = isMacCatalyst();
-  const { notebooks, tags, counts } = useLibrarySourceList(navigation);
+  const { notebooks, tags, counts, notebookCounts, tagCounts } =
+    useLibrarySourceList(navigation, { countsByNotebookAndTag: true });
+  const notebooksCollapsed = useMacSidebarSectionCollapsed("notebooks");
+  const tagsCollapsed = useMacSidebarSectionCollapsed("tags");
+  const toggleSection = useMacSidebarSectionsStore((state) => state.toggle);
 
   /**
    * The sidebar selects a list by navigating here with `initialCollection`
@@ -202,9 +210,15 @@ export default function Library({
 
   /**
    * Section header ("Notebooks", "Tags"). Mac's source list draws its own
-   * (components/mac-sidebar.tsx); this is the iPhone/iPad card list.
+   * (components/mac-sidebar.tsx); this is the iPhone/iPad card list. The title
+   * area toggles the section through the same store the Mac sidebar uses.
    */
-  const sectionTitle = (title: string, onAdd?: () => void) => (
+  const sectionTitle = (
+    id: "notebooks" | "tags",
+    title: string,
+    collapsed: boolean,
+    onAdd?: () => void
+  ) => (
     <View
       style={{
         flexDirection: "row",
@@ -217,17 +231,31 @@ export default function Library({
         marginRight: 8
       }}
     >
-      <Text
-        accessibilityRole="header"
-        style={{
-          flex: 1,
-          color: visual.primaryText,
-          fontSize: 20,
-          fontWeight: "700"
-        }}
+      <Pressable
+        onPress={() => toggleSection(id)}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+        accessibilityState={{ expanded: !collapsed }}
+        style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
       >
-        {title}
-      </Text>
+        <Text
+          accessibilityRole="header"
+          style={{
+            color: visual.primaryText,
+            fontSize: 20,
+            fontWeight: "700"
+          }}
+        >
+          {title}
+        </Text>
+        <View style={{ marginLeft: 6 }}>
+          <TaskSymbolView
+            name={collapsed ? "chevron.right" : "chevron.down"}
+            size={13}
+            color={visual.tertiaryText}
+          />
+        </View>
+      </Pressable>
       {onAdd ? (
         <IosBarButton
           symbol="plus"
@@ -318,6 +346,7 @@ export default function Library({
     key: `notebook:${item.id}`,
     label: item.title,
     symbol: "book.closed",
+    count: notebookCounts?.[item.id] || 0,
     onPress: () =>
       navigation.navigate("Notebook", { id: item.id, canGoBack: true })
   }));
@@ -325,6 +354,7 @@ export default function Library({
     key: `tag:${item.id}`,
     label: item.title,
     symbol: "number",
+    count: tagCounts?.[item.id] || 0,
     onPress: () =>
       navigation.navigate("TaggedNotes", {
         type: "tag",
@@ -378,10 +408,22 @@ export default function Library({
         {destinations.map((item, index) =>
           row(item, index, destinations.length, visual.sectionSpacing)
         )}
-        {sectionTitle(strings.routes.Notebooks(), () =>
-          AddNotebookSheet.present(undefined, undefined, "global", undefined, false)
+        {sectionTitle(
+          "notebooks",
+          strings.routes.Notebooks(),
+          notebooksCollapsed,
+          () =>
+            AddNotebookSheet.present(
+              undefined,
+              undefined,
+              "global",
+              undefined,
+              false
+            )
         )}
-        {notebookRows.length
+        {notebooksCollapsed
+          ? null
+          : notebookRows.length
           ? notebookRows.map((item, index) =>
               row(item, index, notebookRows.length)
             )
@@ -391,14 +433,24 @@ export default function Library({
                 label: strings.newNotebookRow(),
                 symbol: "folder.badge.plus",
                 onPress: () =>
-                  AddNotebookSheet.present(undefined, undefined, "global", undefined, false)
+                  AddNotebookSheet.present(
+                    undefined,
+                    undefined,
+                    "global",
+                    undefined,
+                    false
+                  )
               },
               0,
               1
             )}
         {/* An empty Tags section is hidden; tags appear once a note has one. */}
-        {tagRows.length ? sectionTitle(strings.routes.Tags()) : null}
-        {tagRows.map((item, index) => row(item, index, tagRows.length))}
+        {tagRows.length
+          ? sectionTitle("tags", strings.routes.Tags(), tagsCollapsed)
+          : null}
+        {tagsCollapsed
+          ? null
+          : tagRows.map((item, index) => row(item, index, tagRows.length))}
       </ScrollView>
     </View>
   );

@@ -174,6 +174,12 @@ jest.mock("./settings", () => ({
     getProperty: () => true
   }
 }));
+// The completion reconcile is best-effort cleanup that runs after the Task
+// write; it is faked here so this suite never has to load the notification and
+// AlarmKit orchestrator (and never depends on it for a completion verdict).
+jest.mock("./task-notifications", () => ({
+  TaskNotifications: { reconcile: jest.fn(async () => {}) }
+}));
 
 import { ReminderWidget } from "./reminder-widget";
 
@@ -268,7 +274,7 @@ describe("Task widget completion commit contract", () => {
     expect(mockAcknowledged).toEqual([action.filename]);
   });
 
-  test("an action a concurrent drain already consumed reports the persisted truth", async () => {
+  test("an already consumed action reports the persisted truth", async () => {
     const action = actionFor(task());
     mockTasks = [task({ completed: true })];
     mockActions = [];
@@ -279,13 +285,30 @@ describe("Task widget completion commit contract", () => {
       })
     ).resolves.toBe("completed");
 
+    // A completed Task is the only thing an absent action proves. An incomplete
+    // Task may just mean the native reader omitted the protected action file,
+    // so the action is retried rather than dropped as stale.
     mockTasks = [task({ completed: false })];
     await expect(
       ReminderWidget.commitCompletion({
         filename: action.filename,
         id: action.id
       })
-    ).resolves.toBe("stale");
+    ).resolves.toBe("failed");
+  });
+
+  test("a targeted drain that finds no action and an incomplete Task retries it", async () => {
+    const action = actionFor(task());
+    mockTasks = [task({ completed: false })];
+    mockActions = [];
+    await expect(
+      ReminderWidget.commitCompletion({
+        filename: action.filename,
+        id: action.id
+      })
+    ).resolves.toBe("failed");
+    expect(mockCompleted).toEqual([]);
+    expect(mockAcknowledged).toEqual([]);
   });
 
   test("an already consumed action still requires a refreshed snapshot", async () => {

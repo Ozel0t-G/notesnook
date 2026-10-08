@@ -205,8 +205,13 @@ jest.mock("react-native", () => {
       TaskAlarmModule: {
         status: async () => device.status,
         requestAuthorization: async () => "authorized",
-        replaceAlarms: (accountId: string, alarms: { alarmKey: string }[]) =>
-          replaceAlarms(accountId, alarms),
+        // The JS bridge now passes the opaque account scope between the account
+        // id and the alarms; the device fake only cares about the latter.
+        replaceAlarms: (
+          accountId: string,
+          _accountScope: string,
+          alarms: { alarmKey: string }[]
+        ) => replaceAlarms(accountId, alarms),
         verifyAlarms: (accountId: string, keys: string[]) =>
           verifyAlarms(accountId, keys),
         cancelScheduledAlarms: (accountId: string, keys: string[]) =>
@@ -279,6 +284,7 @@ jest.mock("../common/database", () => ({
   db: {
     isInitialized: true,
     tasks: { list: jest.fn(async () => []) },
+    taskLists: { list: jest.fn(async () => []) },
     eventManager: { subscribe: jest.fn(() => ({ unsubscribe: jest.fn() })) }
   },
   DatabaseLogger: {
@@ -319,6 +325,7 @@ import {
 const database = db as unknown as {
   isInitialized: boolean;
   tasks: { list: jest.Mock };
+  taskLists: { list: jest.Mock };
   eventManager: { subscribe: jest.Mock };
 };
 const DatabaseLog = DatabaseLogger as unknown as {
@@ -494,6 +501,8 @@ beforeEach(() => {
   );
   database.tasks.list.mockReset();
   database.tasks.list.mockResolvedValue([]);
+  database.taskLists.list.mockReset();
+  database.taskLists.list.mockResolvedValue([]);
   userStore.mockReturnValue({
     user: { id: "account-a" },
     appLocked: false,
@@ -842,6 +851,121 @@ describe("pending device cleanup obligations", () => {
     await TaskNotifications.reconcile();
 
     expect(pendingCleanup.get(CLEANUP_KEY)).toContain("task notifications");
+  });
+
+  test("clears an obsolete obligation whose mechanism this build no longer has", async () => {
+    database.isInitialized = false;
+    pendingCleanup.set(
+      CLEANUP_KEY,
+      JSON.stringify({ labels: ["task notifications v0"], at: NOW - 1000 })
+    );
+
+    await TaskNotifications.reconcile();
+
+    // The label names no cleanup mechanism this build can run, so the
+    // obligation can never be discharged: it is dropped instead of re-running
+    // on every launch forever.
+    expect(pendingCleanup.get(CLEANUP_KEY)).toBeUndefined();
+    expect(device.calls).toEqual([]);
+  });
+
+  test("keeps the known labels of a partially obsolete obligation", async () => {
+    database.isInitialized = false;
+    notifee.getTriggerNotifications.mockRejectedValueOnce(
+      new Error("trigger store unavailable")
+    );
+    pendingCleanup.set(
+      CLEANUP_KEY,
+      JSON.stringify({
+        labels: ["task notifications v0", "task notifications"],
+        at: NOW - 1000
+      })
+    );
+
+    await TaskNotifications.reconcile();
+
+    const remaining = pendingCleanup.get(CLEANUP_KEY) || "";
+    expect(remaining).toContain("task notifications");
+    expect(remaining).not.toContain("task notifications v0");
+  });
+});
+
+/**
+ * An account change is not only a cleanup obligation: a pass that started for
+ * one account must never publish another account's Task content after it. The
+ * reconciliation already checks this at several points; these pin the ones
+ * around the notification writes.
+ */
+describe("account changes during a delivery pass", () => {
+  /** The account-change subscription `TaskNotifications.start()` registered. */
+  function accountChanged() {
+    const subscribe = useUserStore.subscribe as unknown as jest.Mock;
+    const call = subscribe.mock.calls[subscribe.mock.calls.length - 1];
+    return call?.[0] as (state: unknown, previous: unknown) => void;
+  }
+
+  function switchAccount() {
+    accountChanged()(
+      { user: { id: "account-b" }, appLocked: false, isLoggingOut: false },
+      { user: { id: "account-a" }, appLocked: false, isLoggingOut: false }
+    );
+  }
+
+  test("writes nothing when the account changes while the list names are read", async () => {
+    const task = urgentTask("generation-race");
+    database.tasks.list.mockResolvedValue([task]);
+    device.dropAlarms.add(alarmKeyFor(task));
+    TaskNotifications.start();
+    try {
+      let switched = false;
+      database.taskLists.list.mockImplementation(async () => {
+        if (!switched) {
+          switched = true;
+          switchAccount();
+        }
+        return [];
+      });
+
+      await TaskNotifications.reconcile();
+
+      expect(switched).toBe(true);
+      expect(notifee.createTriggerNotification).not.toHaveBeenCalled();
+      expect(createdNotificationIds()).toEqual([]);
+    } finally {
+      TaskNotifications.stop();
+    }
+  });
+
+  test("stops writing once the account changes mid-loop", async () => {
+    const first = urgentTask("generation-first");
+    const second = urgentTask("generation-second");
+    database.tasks.list.mockResolvedValue([first, second]);
+    device.dropAlarms.add(alarmKeyFor(first));
+    device.dropAlarms.add(alarmKeyFor(second));
+    TaskNotifications.start();
+    try {
+      let switched = false;
+      notifee.createTriggerNotification.mockImplementation(
+        async (notification: unknown, trigger: unknown) => {
+          await (notifeeBase.createTrigger as unknown as (
+            n: unknown,
+            t: unknown
+          ) => Promise<void>)(notification, trigger);
+          if (!switched) {
+            switched = true;
+            switchAccount();
+          }
+        }
+      );
+
+      await TaskNotifications.reconcile();
+
+      // The first write landed before the change; the second occurrence of the
+      // old account is never written for the account that is signed in now.
+      expect(createdNotificationIds()).toEqual([triggerId(first.id)]);
+    } finally {
+      TaskNotifications.stop();
+    }
   });
 });
 

@@ -53,8 +53,8 @@ import {
   taskAlertTitle
 } from "./task-alarm-plan";
 import SettingsService from "./settings";
+import { taskWidgetAccountScope } from "../hooks/task-widget-completion-intents";
 import { TASK_NOTIFICATION_CATEGORY } from "./task-notification-actions";
-import { taskListColor } from "../screens/tasks/list-appearance";
 
 // Keep four slots free under iOS's 64 pending local notification limit.
 const MAX_TOTAL_PENDING = Platform.OS === "ios" ? 60 : 500;
@@ -89,17 +89,19 @@ export function taskSurfacesPrivacyHidden() {
 }
 
 /**
- * Shown when App Lock is on but a *held* alarm still presents the real Task
- * title. AlarmKit has no public API to restyle a presentation that has already
- * started (or is about to start), and this app never tears a live alarm down to
- * redact it, so the surface keeps its title until it ends -- the person is told
- * rather than left believing the title is hidden.
+ * Shown when App Lock is on but a held alarm could not be migrated to the
+ * redacted placeholder, so its real Task title is still on screen. AlarmKit has
+ * no in-place presentation update, so the app removes the unredacted
+ * presentation and re-creates it redacted with the same alarm id (see
+ * `TaskAlarmModule.replace`); this notice exists for the case where *neither*
+ * supported removal call got it out of the system, which is retried on every
+ * pass. The person is told rather than left believing the title is hidden.
  *
  * A literal, not an `@notesnook/intl` string, for the same bounded-scope reason
  * as `TASK_UNAVAILABLE_MESSAGE`; it carries no Task content.
  */
 export const TASK_ALARM_UNREDACTED_MESSAGE =
-  "An alarm that is already ringing still shows its Task title. It will be hidden once the alarm ends.";
+  "An alarm that is already on screen still shows its Task title. It will be hidden once the alarm ends.";
 
 /**
  * The last set of unredacted occurrences the notice was shown for, so a
@@ -161,6 +163,13 @@ async function reconcileNow() {
   // occurrences that did schedule.
   let urgentFallback: UrgentAlarmFallback = ALWAYS_FALLBACK;
   let activeAlarmKeys: ReadonlySet<string> = new Set<string>();
+  /**
+   * Whether `activeAlarmKeys` is an answer. When the native read failed the set
+   * is empty because nothing is *known*, not because nothing is presenting; the
+   * overdue-surface reconcile below must then leave every surface exactly as it
+   * is instead of creating one that could compete with an alarm it cannot see.
+   */
+  let activeAlarmKeysKnown = false;
   try {
     const delivery = await reconcileTaskAlarmDelivery(all, privacyHidden, {
       // The exclusivity gate: a competing fallback is withdrawn -- and the
@@ -168,16 +177,10 @@ async function reconcileNow() {
       // alarm, so a lost native acknowledgement can never leave both a pending
       // notification and a newly installed alarm for the same occurrence.
       withdraw: (alarmKeys) => withdrawCompetingFallbacks(alarmKeys, all)
-    }, (listId) => {
-      try {
-        const list = db.taskLists?.getSync(listId);
-        return list ? taskListColor(list.color) : undefined;
-      } catch {
-        return undefined;
-      }
     });
     if (generation !== accountGeneration) return;
     activeAlarmKeys = delivery.activeAlarmKeys;
+    activeAlarmKeysKnown = delivery.activeAlarmKeysKnown;
     urgentFallback = {
       needsFallback: (alarmKey) => delivery.absentAlarmKeys.has(alarmKey),
       // An occurrence in neither set is not answered for by this pass: it keeps
@@ -233,15 +236,28 @@ async function reconcileNow() {
   // It is silent, so it never duplicates an audible alert -- and an occurrence
   // whose alarm is presenting right now already owns a surface, so it is left
   // out rather than shown twice.
-  try {
-    await syncOverdueActivities(
-      overdueTaskSurfaces(all, now, MAX_OVERDUE_SURFACES, (alarmKey) =>
-        activeAlarmKeys.has(alarmKey)
-      ),
-      privacyHidden
-    );
-  } catch (error) {
-    DatabaseLogger.error(error as Error, "Reconcile overdue Task surfaces");
+  //
+  // The native alarm read is authoritative for "is something presenting". When
+  // it could not be read, this pass reconciles nothing at all: it neither
+  // creates a surface (which might compete with an alarm it cannot see) nor
+  // ends one (which could clear an occurrence the app is only temporarily
+  // blind to). The existing surfaces are left exactly as they are.
+  if (activeAlarmKeysKnown) {
+    try {
+      const accountScope = taskWidgetAccountScope(
+        MMKV,
+        useUserStore.getState().user?.id || null
+      );
+      await syncOverdueActivities(
+        overdueTaskSurfaces(all, now, MAX_OVERDUE_SURFACES, (alarmKey) =>
+          activeAlarmKeys.has(alarmKey)
+        ),
+        privacyHidden,
+        accountScope
+      );
+    } catch (error) {
+      DatabaseLogger.error(error as Error, "Reconcile overdue Task surfaces");
+    }
   }
   if (generation !== accountGeneration) return;
   // A Task notification that is already *displayed* in Notification Center /
@@ -309,6 +325,9 @@ async function reconcileNow() {
           vibration: true
         })
       : undefined;
+  // Creating the channel is an await like any other: the account must still be
+  // the one this pass planned for before anything is written for it.
+  if (generation !== accountGeneration) return;
 
   const listNames = new Map(
     (
@@ -320,7 +339,15 @@ async function reconcileNow() {
       list.name
     ])
   );
+  // Same for the list-name read: a pass that started for the previous account
+  // must not publish a notification after that account's cleanup has run.
+  if (generation !== accountGeneration) return;
   for (const task of plan.schedule) {
+    // ...and before *each* write, because the awaits above and the earlier ones
+    // in this loop mean the account can change while the loop is running. The
+    // notification carrying this Task's title must never be created for an
+    // account that is no longer signed in.
+    if (generation !== accountGeneration) return;
     const id = task.notificationId;
     await notifee.createTriggerNotification(
       {
@@ -537,7 +564,16 @@ function readPendingCleanup(): PendingCleanup | undefined {
     if (!raw) return undefined;
     const parsed = JSON.parse(raw) as PendingCleanup;
     if (!Array.isArray(parsed?.labels) || !parsed.labels.length) return undefined;
-    return parsed;
+    // A label this build no longer knows (a renamed mechanism from an older
+    // build) can never be run, so it must not keep the obligation alive
+    // forever: only the labels that name a mechanism this build really has are
+    // owed. An obligation left with none of them is cleared by the next pass.
+    return {
+      at: parsed.at,
+      labels: parsed.labels.filter((label) =>
+        ALL_CLEANUP_LABELS.includes(label)
+      )
+    };
   } catch {
     return undefined;
   }

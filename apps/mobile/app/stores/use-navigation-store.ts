@@ -129,6 +129,15 @@ export interface RouteParams extends ParamListBase {
         initialDate?: string;
         initialTime?: string;
         initialFlagged?: boolean;
+        /** A legacy Reminder id whose Task should be opened (migration links). */
+        reminder?: { id?: string };
+        /** A widget "Reschedule" action: bring the schedule section into view
+         * and open the date/time picker once the Task has loaded. Never opens
+         * the editor by itself and never changes a value. */
+        focusSchedule?: boolean;
+        /** A unique nonce for one focus request, so a repeat of the same Task
+         * re-arms the focus instead of being ignored. */
+        focusRequestId?: string;
       }
     | undefined;
   SettingsGroup: GenericRouteParam;

@@ -1,5 +1,11 @@
 # Notesnook Apple fork handoff — Tasks & Reminders
 
+## October 8, 2026 — Urgent Reminders parity candidate
+
+Current work is uncommitted on `test` at base `5b39107621b2edaa84f6a543b317bae450829671`. Read [the implementation report](artifacts/urgent-reminders-parity-report.md), [current QA](artifacts/urgent-reminders-qa.md), and [architecture](docs/urgent-reminders-architecture.md) for this candidate. The older milestones below remain historical and must not be quoted as its current test evidence.
+
+The new card has no red overdue timer, supports confirmed background completion and a direct reschedule editor path. Simulator evidence distinguishes a successful background Stop from the Snooze card from the system slider, whose Activity request was refused by iOS and recovered at the next app reconciliation. **PHYSICAL_QA_PENDING** and **VISUAL_REFERENCE_QA_PENDING** remain release gates. No commit, push, upload or release was performed.
+
 ## September 28–29 Urgent reminders + notification routing — import recovery, PARTIAL
 
 Two regressions were fixed on `agent/claude-urgent-reminders`, independent of the account

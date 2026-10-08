@@ -43,6 +43,7 @@ import {
   buildPrivateTaskWidgetSnapshot,
   buildTaskWidgetSnapshot
 } from "./task-widget-snapshot";
+import { TaskNotifications } from "./task-notifications";
 
 type NativeReminderWidget = {
   writeSnapshot(snapshot: string): Promise<void>;
@@ -81,6 +82,29 @@ function enqueueDrain<T>(run: () => Promise<T>): Promise<T> {
   const next = drainChain.then(run, run);
   drainChain = next.catch(() => {});
   return next;
+}
+
+/**
+ * Finishes the device side of a Task that was just persisted as completed:
+ * the native alarm, the pending notification fallback and the overdue Live
+ * Activity for the occurrence are reconciled away so a completed occurrence
+ * does not keep ringing or showing a card.
+ *
+ * This is awaited even in a headless process with no mounted subscriptions --
+ * the App Intent process never mounts the App component, so nothing else would
+ * ever run it there. It is deliberately best-effort: `TaskNotifications`
+ * reconciles with `runIndependentCleanup` and keeps its own durable retry
+ * obligation for anything that failed, so a cleanup failure here is logged and
+ * retried later, and it never turns a *persisted* completion into a failure.
+ * The success the caller is told about is the Task write, never this cleanup.
+ */
+async function reconcileAfterCompletion(): Promise<void> {
+  try {
+    await TaskNotifications.reconcile();
+  } catch (error) {
+    // Keep the durable cleanup obligation in TaskNotifications; only log here.
+    DatabaseLogger.error(error as Error, "ReminderWidget.completionReconcile");
+  }
 }
 
 // The widget extension cannot open the encrypted React Native Task domain.
@@ -182,6 +206,11 @@ async function drainOnce(
         continue;
       }
       await flushUpdateForCompletion();
+      // The Task is persisted and projected. Its alarm, pending fallback and
+      // overdue surface are reconciled away here (best effort: a failure is
+      // logged and stays a durable retry obligation, never a clean-up claim),
+      // so a completed occurrence stops ringing and is dropped from the widget.
+      await reconcileAfterCompletion();
       await Native.acknowledgeCompletion(raw.filename);
       record(raw.filename, "completed");
     }
@@ -224,11 +253,14 @@ function commitCompletion(action: {
   return enqueueDrain(async () => {
     const outcome = await drainOnce(action.filename);
     if (outcome) return outcome;
-    // The action was not in the queue, so an earlier pass already consumed it.
-    // The persisted Task is the only authority on what that pass did.
+    // The action was not in the queue. That is *not* proof an earlier pass
+    // consumed it: the native reader can omit a protected App-Group file, so
+    // an incomplete Task means the action must be retried, never dropped as
+    // stale. The persisted Task is the only authority on what a pass did.
     try {
-      if (!(await db.tasks.get(action.id))?.completed) return "stale";
+      if (!(await db.tasks.get(action.id))?.completed) return "failed";
       await flushUpdateForCompletion();
+      await reconcileAfterCompletion();
       return "completed";
     } catch (error) {
       DatabaseLogger.error(error as Error, "ReminderWidget.completeResult");

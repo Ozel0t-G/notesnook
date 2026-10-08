@@ -32,9 +32,15 @@ jest.mock("../common/database", () => ({
   }
 }));
 
+// The account-scope helper reads this store; the real module pulls in React
+// Native, which a plain Jest environment cannot parse.
+jest.mock("../common/database/mmkv", () => ({
+  MMKV: { getString: () => null, setString: () => {} }
+}));
+
 jest.mock("./navigation", () => ({
   __esModule: true,
-  default: { navigate: jest.fn() }
+  default: { navigate: jest.fn(), push: jest.fn() }
 }));
 
 jest.mock("./event-manager", () => ({
@@ -75,12 +81,18 @@ const mockedGetTask = db.tasks.get as unknown as jest.Mock;
 const mockedListTasks = db.tasks.list as unknown as jest.Mock;
 const mockedGetList = db.taskLists.getSync as unknown as jest.Mock;
 const navigate = Navigation.navigate as unknown as jest.Mock;
+const push = Navigation.push as unknown as jest.Mock;
 const toast = ToastManager.show as unknown as jest.Mock;
 const settingState = useSettingStore.getState as unknown as jest.Mock;
 const userState = useUserStore.getState as unknown as jest.Mock;
 
 /** A valid 24-character hex Task id. */
 const taskId = (seed: number) => seed.toString(16).padStart(24, "0");
+
+/** Let the router's already-resolved awaits settle, so a test can act mid-pass. */
+async function flushMicrotasks() {
+  for (let index = 0; index < 12; index++) await Promise.resolve();
+}
 
 function setReadiness(
   options: {
@@ -431,6 +443,81 @@ describe("Task target resolution", () => {
   });
 });
 
+describe("reschedule action", () => {
+  test("opens the Task's own schedule when the claimed revision still matches", async () => {
+    mockedGetTask.mockResolvedValue({
+      id: taskId(30),
+      listId: "inbox",
+      completed: false,
+      updatedAt: 7
+    });
+
+    await openTaskInContext({
+      taskId: taskId(30),
+      source: "widget",
+      action: "reschedule",
+      updatedAt: 7
+    });
+
+    expect(navigate).toHaveBeenCalledWith("Tasks", { listId: "inbox" });
+    expect(push).toHaveBeenCalledWith(
+      "TaskDetail",
+      expect.objectContaining({
+        taskId: taskId(30),
+        listId: "inbox",
+        focusSchedule: true
+      })
+    );
+    // Never a mutation: opening the schedule is not rescheduling.
+    expect(db.tasks.update).not.toHaveBeenCalled();
+    expect(db.tasks.complete).not.toHaveBeenCalled();
+  });
+
+  test("degrades to a safe open, never the schedule, when the revision is stale", async () => {
+    mockedGetTask.mockResolvedValue({
+      id: taskId(31),
+      listId: "inbox",
+      completed: false,
+      updatedAt: 9
+    });
+
+    await openTaskInContext({
+      taskId: taskId(31),
+      source: "widget",
+      action: "reschedule",
+      updatedAt: 8
+    });
+
+    expect(push).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(
+      "Tasks",
+      expect.objectContaining({ focusTaskId: taskId(31) })
+    );
+  });
+
+  test("never opens the schedule of a completed Task", async () => {
+    mockedGetTask.mockResolvedValue({
+      id: taskId(32),
+      listId: "inbox",
+      completed: true,
+      updatedAt: 1
+    });
+
+    await openTaskInContext({
+      taskId: taskId(32),
+      source: "widget",
+      action: "reschedule",
+      updatedAt: 1
+    });
+
+    expect(push).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(
+      "Tasks",
+      expect.objectContaining({ focusTaskId: taskId(32) })
+    );
+  });
+});
+
 describe("recurring occurrence identity", () => {
   test("resolves the record of the exact occurrence the notification was produced for", async () => {
     // The series rolled forward: the record for the tapped occurrence exists and
@@ -492,6 +579,35 @@ describe("recurring occurrence identity", () => {
     expect(navigate).toHaveBeenCalledWith(
       "Tasks",
       expect.objectContaining({ listId: "work", focusTaskId: taskId(22) })
+    );
+  });
+
+  test("degrades a reschedule of a future occurrence to a safe open, never a sibling's schedule", async () => {
+    mockedGetTask.mockResolvedValue(undefined);
+    mockedListTasks.mockResolvedValue([
+      {
+        id: taskId(25),
+        seriesId: "series-5",
+        occurrenceKey: "2026-10-01T14:00",
+        listId: "work",
+        completed: false
+      }
+    ]);
+
+    await openTaskInContext({
+      taskId: taskId(25),
+      seriesId: "series-5",
+      occurrenceKey: "2026-10-05T14:00",
+      source: "notification",
+      action: "reschedule",
+      updatedAt: 7
+    });
+
+    // No matched record exists; the sibling's schedule must never open.
+    expect(push).not.toHaveBeenCalled();
+    expect(navigate).toHaveBeenCalledWith(
+      "Tasks",
+      expect.objectContaining({ listId: "work", focusTaskId: taskId(25) })
     );
   });
 
@@ -578,5 +694,68 @@ describe("last accepted rapid tap wins", () => {
     expect(requestIds).toHaveLength(2);
     expect(requestIds[0]).not.toBe(requestIds[1]);
     expect(nextTaskFocusRequestId(1)).not.toBe(nextTaskFocusRequestId(1));
+  });
+});
+
+describe("open invalidation races", () => {
+  test("clearPendingTaskNavigation invalidates an in-flight open", async () => {
+    let resolveAccount!: (value: unknown) => void;
+    mockedGetUser.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveAccount = resolve))
+    );
+
+    const inFlight = openTaskInContext({
+      taskId: taskId(40),
+      accountId: "account-a",
+      source: "notification"
+    });
+
+    // The router is parked on the account read. A logout/account change clears
+    // the queue and must invalidate this pass as well.
+    clearPendingTaskNavigation();
+    resolveAccount({ id: "account-a" });
+    await inFlight;
+
+    expect(mockedGetTask).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test("does not route when the app locks while the Task lookup is in flight", async () => {
+    let resolveLookup!: (value: unknown) => void;
+    mockedGetTask.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLookup = resolve))
+    );
+
+    const inFlight = openTaskInContext({
+      taskId: taskId(41),
+      accountId: "account-a",
+      source: "notification"
+    });
+    // The account read has resolved and the lookup is parked; App Lock engages.
+    await flushMicrotasks();
+    setReadiness({ appLocked: true });
+    resolveLookup({ id: taskId(41), listId: "inbox", completed: false });
+    await inFlight;
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  test("does not route when the account changes during the Task lookup", async () => {
+    let resolveLookup!: (value: unknown) => void;
+    mockedGetTask.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveLookup = resolve))
+    );
+
+    const inFlight = openTaskInContext({
+      taskId: taskId(42),
+      accountId: "account-a",
+      source: "notification"
+    });
+    await flushMicrotasks();
+    mockedGetUser.mockResolvedValue({ id: "account-b" });
+    resolveLookup({ id: taskId(42), listId: "inbox", completed: false });
+    await inFlight;
+
+    expect(navigate).not.toHaveBeenCalled();
   });
 });

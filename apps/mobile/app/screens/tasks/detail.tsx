@@ -33,6 +33,7 @@ import {
   AppState,
   findNodeHandle,
   Keyboard,
+  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -199,9 +200,7 @@ export default function TaskDetail({
   const visual = getAppleVisualTokens(colors, isDark);
   const { width } = useWindowDimensions();
   const taskId = route.params?.taskId;
-  const legacyReminderId = (
-    route.params as { reminder?: { id?: string } } | undefined
-  )?.reminder?.id;
+  const legacyReminderId = route.params?.reminder?.id;
   const [task, setTask] = React.useState<ScheduledTask>();
   const [lists, setLists] = React.useState<TaskList[]>([]);
   const [title, setTitle] = React.useState(route.params?.initialTitle || "");
@@ -238,6 +237,16 @@ export default function TaskDetail({
   const allowLeave = React.useRef(false);
   const cancelButton = React.useRef<View>(null);
   const deleteButton = React.useRef<View>(null);
+  // "Open the schedule" navigation (a widget's Reschedule action) lands here:
+  // the schedule section is scrolled into view and briefly outlined. It is the
+  // ordinary Task detail screen and the ordinary editable controls -- no copied
+  // Task and no automatic change.
+  const scheduleScroll = React.useRef<ScrollView>(null);
+  const scheduleSection = React.useRef<View>(null);
+  const scheduleOffset = React.useRef(0);
+  const focusSchedule = route.params?.focusSchedule === true;
+  const focusRequestId = route.params?.focusRequestId;
+  const [scheduleHighlighted, setScheduleHighlighted] = React.useState(false);
 
   const refreshPermissions = React.useCallback(() => {
     notifee
@@ -264,6 +273,30 @@ export default function TaskDetail({
     });
     return () => subscription.remove();
   }, [refreshPermissions]);
+
+  // "Open the schedule" navigation (a widget's Reschedule action): bring the
+  // schedule section into view and actually open its picker once the Task has
+  // loaded, so the person lands on the editable control the action is about --
+  // not merely on a highlighted section. It is still the ordinary Task editor
+  // and no value is changed. The ScrollView reports the section's offset through
+  // `onLayout`, so this works for a new or an existing Task; `focusRequestId` is
+  // a dependency so a repeat of the same Task re-arms the focus.
+  React.useEffect(() => {
+    if (!focusSchedule || loading) return;
+    const scrollTimer = setTimeout(() => {
+      scheduleScroll.current?.scrollTo({
+        y: Math.max(0, scheduleOffset.current - 12),
+        animated: true
+      });
+      setScheduleHighlighted(true);
+      setExpandedPicker((picker) => picker ?? "date");
+    }, 250);
+    const highlightTimer = setTimeout(() => setScheduleHighlighted(false), 3200);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(highlightTimer);
+    };
+  }, [focusSchedule, focusRequestId, loading]);
 
   React.useEffect(() => {
     let active = true;
@@ -643,13 +676,26 @@ export default function TaskDetail({
     }
   ];
 
-  const group = (children: React.ReactNode, marginTop = 20) => (
+  const group = (
+    children: React.ReactNode,
+    marginTop = 20,
+    sectionRef?: React.RefObject<View | null> | null,
+    onLayout?: (event: LayoutChangeEvent) => void,
+    highlighted = false
+  ) => (
     <View
+      ref={sectionRef ?? undefined}
+      onLayout={onLayout}
       style={{
         marginTop,
         borderRadius: visual.cardRadius,
         backgroundColor: visual.contentSurface,
-        overflow: "hidden"
+        overflow: "hidden",
+        // A brief, non-modal focus ring for "open the schedule" navigation. It
+        // never opens a picker or changes a value; it only shows where to look.
+        ...(highlighted
+          ? { borderWidth: 2, borderColor: colors.primary.accent }
+          : {})
       }}
     >
       {children}
@@ -934,6 +980,7 @@ export default function TaskDetail({
     <View style={{ flex: 1, backgroundColor: visual.screenBackground }}>
       {header}
       <ScrollView
+        ref={scheduleScroll}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets
         contentContainerStyle={{
@@ -1272,7 +1319,13 @@ export default function TaskDetail({
                 )}
               </View>
             )}
-          </>
+          </>,
+          20,
+          scheduleSection,
+          (event) => {
+            scheduleOffset.current = event.nativeEvent.layout.y;
+          },
+          focusSchedule && scheduleHighlighted
         )}
         {reminderDate && notificationsDenied && (
           <Pressable

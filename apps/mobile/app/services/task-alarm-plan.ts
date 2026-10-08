@@ -27,6 +27,20 @@ import { RRule } from "rrule";
 const MAX_FUTURE_OCCURRENCES = 5;
 
 /**
+ * Bumped whenever the *native* alarm configuration changes shape (tint,
+ * snooze interval, intents, state machine). It is folded into the native
+ * fingerprint so an unchanged occurrence is left alone and a changed one is
+ * recreated -- but only for a strictly future occurrence: the native reconcile
+ * never tears down an alarm that is alerting, snoozing, paused or due now, so a
+ * version bump upgrades future alarms without cancelling a live one.
+ *
+ * Every alarm carries this value and the native side folds it into the alarm
+ * fingerprint (`TaskAlarmModule.parse`), so the two stay in lockstep: bumping
+ * this constant is what makes unchanged occurrences re-create.
+ */
+export const TASK_ALARM_CONFIGURATION_VERSION = "4";
+
+/**
  * How many ongoing overdue surfaces can exist at once. Apple's
  * `ActivityAuthorizationError.globalMaximumExceeded`/`targetMaximumExceeded`
  * bound how many Live Activities may be live, so the newest overdue Tasks win.
@@ -64,10 +78,19 @@ export type DesiredTaskAlarm = {
   title: string;
   updatedAt: number;
   privacyHidden: boolean;
-  /** The Task's List color (hex), used as the alarm's tint. */
-  tint?: string;
+  /**
+   * The native alarm configuration generation. Folded into the native
+   * fingerprint so a configuration change upgrades future alarms only, never a
+   * live one. The alarm is always tinted the fixed VeyraN blue natively; a List
+   * color is deliberately not part of the alarm identity.
+   */
+  configurationVersion: string;
   /** Neutral but useful alarm title under App Lock ("Urgent Task due (13:20)"). */
   redactedTitle?: string;
+  /** The recurring series this occurrence belongs to, when it has one. */
+  seriesId?: string;
+  /** The occurrence's own stable key (`YYYY-MM-DDTHH:MM` or `...Tdate`). */
+  occurrenceKey?: string;
 };
 
 export type OverdueTaskSurface = {
@@ -75,7 +98,93 @@ export type OverdueTaskSurface = {
   /** The overdue occurrence's instant, in milliseconds. */
   timestamp: number;
   title: string;
+  /** The Task revision the surface was planned from, for a strict LA completion. */
+  updatedAt: number;
+  /**
+   * The occurrence's own stable key and the series it belongs to, so the
+   * native side can validate an LA completion against the exact occurrence the
+   * card describes (never a sibling occurrence of the same series).
+   */
+  occurrenceKey?: string;
+  seriesId?: string;
+  /** The per-occurrence alarm key, so a surface never competes with its alarm. */
+  alarmKey: string;
 };
+
+/**
+ * The explicit Urgent-reminder occurrence state machine shared by the planner,
+ * the native alarm report and the Live Activity surface. Every occurrence is in
+ * exactly one of these states; the native observable set (`scheduled`,
+ * `alerting`, `countdown`, `paused`, or absent) maps onto it unambiguously.
+ *
+ * - `SCHEDULED` -- a native alarm is held and not presenting yet.
+ * - `ALERTING` -- the alarm is sounding right now.
+ * - `SNOOZED` -- the person chose Snooze (countdown) or Pause; it re-alerts.
+ * - `STOPPED_BUT_INCOMPLETE` -- the occurrence passed and is not held and the
+ *   Task is not completed: it must never be re-armed on a past instant and it
+ *   owns no second audible delivery.
+ * - `COMPLETED` -- the Task is complete.
+ * - `RESCHEDULED` -- the occurrence moved to a different instant; the old one
+ *   is finished and the new one is scheduled afresh.
+ * - `REMOVED_OR_DISABLED` -- Urgent is off, the reminder was removed, or the
+ *   alarm is gone for a future occurrence.
+ */
+export type TaskAlarmState =
+  | "SCHEDULED"
+  | "ALERTING"
+  | "SNOOZED"
+  | "STOPPED_BUT_INCOMPLETE"
+  | "COMPLETED"
+  | "RESCHEDULED"
+  | "REMOVED_OR_DISABLED";
+
+/** The native `Alarm.State` names the app understands. */
+export type NativeAlarmPresentation = "alerting" | "countdown" | "paused";
+
+/**
+ * Resolves the single state of one occurrence from the *task record* and the
+ * native truth about that occurrence's alarm. Pure and total, so the state can
+ * be asserted per occurrence without a device.
+ */
+export function taskAlarmState(input: {
+  completed?: boolean;
+  urgent?: boolean;
+  hasReminder: boolean;
+  occurrenceTimestamp: number;
+  held: boolean;
+  /**
+   * The alarm is presenting right now. Only meaningful when `held` is true; a
+   * `presentation` of `countdown`/`paused` refines it to `SNOOZED`, `alerting`
+   * is `ALERTING`, and `null`/`undefined` (held but not presenting) is
+   * `SCHEDULED`.
+   */
+  presentation?: NativeAlarmPresentation | null;
+  /** The occurrence's previous instant, when the caller tracked one. */
+  previousTimestamp?: number;
+  now?: number;
+}): TaskAlarmState {
+  if (input.completed) return "COMPLETED";
+  if (!input.urgent || !input.hasReminder) return "REMOVED_OR_DISABLED";
+  if (
+    input.previousTimestamp !== undefined &&
+    input.previousTimestamp !== input.occurrenceTimestamp
+  )
+    return "RESCHEDULED";
+  if (input.held) {
+    // A held alarm with no presentation is *scheduled*, not alerting: the native
+    // report distinguishes "the system holds it" (`scheduledAlarmKeys`) from
+    // "it is presenting right now" (`activeAlarmKeys`), so a held occurrence
+    // that is not presenting must never be reported as if it were already
+    // sounding.
+    if (input.presentation === "countdown" || input.presentation === "paused")
+      return "SNOOZED";
+    if (input.presentation === "alerting") return "ALERTING";
+    return "SCHEDULED";
+  }
+  const now = input.now ?? Date.now();
+  if (input.occurrenceTimestamp <= now) return "STOPPED_BUT_INCOMPLETE";
+  return "REMOVED_OR_DISABLED";
+}
 
 export type TaskReminderOccurrence = {
   date: string;
@@ -177,8 +286,7 @@ export function taskReminderOccurrences(
 export function desiredTaskAlarms(
   tasks: Task[],
   privacyHidden: boolean,
-  now = Date.now(),
-  listTint?: (listId: string) => string | undefined
+  now = Date.now()
 ): DesiredTaskAlarm[] {
   const desired = tasks.flatMap((task) => {
     if (task.completed || !task.urgent) return [];
@@ -192,10 +300,12 @@ export function desiredTaskAlarms(
         title: taskAlertTitle(task.title),
         updatedAt: task.updatedAt,
         privacyHidden,
+        configurationVersion: TASK_ALARM_CONFIGURATION_VERSION,
+        ...(task.recurrenceRule ? { seriesId: task.seriesId || task.id } : {}),
+        occurrenceKey: item.key,
         ...(privacyHidden
           ? { redactedTitle: redactedAlarmTitle(item.timestamp) }
-          : {}),
-        ...(listTint?.(task.listId) ? { tint: listTint(task.listId) } : {})
+          : {})
       })
     );
   });
@@ -244,14 +354,19 @@ export function overdueTaskSurfaces(
       if (!schedule.date || !schedule.time) return [];
       const current = taskReminderOccurrences(task, now)[0];
       if (!current) return [];
-      if (isAlarmPresenting?.(taskAlarmKey(task, current.key))) return [];
+      const alarmKey = taskAlarmKey(task, current.key);
+      if (isAlarmPresenting?.(alarmKey)) return [];
       const age = now - current.timestamp;
       if (age < 0 || age > OVERDUE_SURFACE_LIFETIME_MS) return [];
       return [
         {
           taskId: task.id,
           timestamp: current.timestamp,
-          title: taskAlertTitle(task.title)
+          title: taskAlertTitle(task.title),
+          updatedAt: task.updatedAt,
+          alarmKey,
+          occurrenceKey: current.key,
+          ...(task.recurrenceRule ? { seriesId: task.seriesId || task.id } : {})
         }
       ];
     })

@@ -47,7 +47,13 @@ final class ReminderWidgetModule: NSObject {
       _ = try JSONSerialization.jsonObject(with: data)
       let url = try Self.snapshotURL()
 
-      try data.write(to: url, options: [.atomic])
+      // The snapshot carries Task titles, so its protection class is applied by
+      // the atomic write *itself*: there is no window in which a newly created
+      // snapshot exists with the default protection class. The attribute pass
+      // below stays as a belt-and-braces repair for a file written by an older
+      // build (or a partially written one), never as the primary protection.
+      try data.write(to: url, options: [.atomic,
+        .completeFileProtectionUntilFirstUserAuthentication])
       try FileManager.default.setAttributes(
         [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
         ofItemAtPath: url.path

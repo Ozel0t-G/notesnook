@@ -19,7 +19,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import type { Task } from "@notesnook/core";
 import { db } from "../common/database";
-import { isValidTaskWidgetId } from "../hooks/task-widget-completion-intents";
+import { MMKV } from "../common/database/mmkv";
+import {
+  isValidTaskWidgetId,
+  taskWidgetAccountScope
+} from "../hooks/task-widget-completion-intents";
 import { useSettingStore } from "../stores/use-setting-store";
 import { useUserStore } from "../stores/use-user-store";
 import { ToastManager } from "./event-manager";
@@ -70,7 +74,47 @@ export type TaskNavigationIntent = {
    */
   seriesId?: string;
   source?: TaskNavigationSource;
+  /**
+   * `open` (the default) lands on the Task in its List, highlighted.
+   * `reschedule` additionally opens the Task's schedule for editing. It is a
+   * distinct, explicitly parsed action, never inferred from a plain card tap.
+   */
+  action?: "open" | "reschedule";
+  /**
+   * The widget account-scope token the link was produced with. It is validated
+   * against the signed-in account's current scope before any Task data is
+   * read: a link produced for another account is rejected exactly like a wrong
+   * `accountId`.
+   */
+  scope?: string;
+  /**
+   * The Task revision the link was produced from. When present and different
+   * from the freshly-read record, the payload is stale: the Task is opened
+   * safely (List + highlight) but the schedule editor is NOT opened, because
+   * the schedule it described has changed.
+   */
+  updatedAt?: number;
 };
+
+/**
+ * Whether a widget scope token still names the signed-in account. The token is
+ * the same opaque `taskWidgetAccountScope` the widget snapshot is written with
+ * (never the raw account id), so this check discloses nothing about either
+ * account.
+ */
+export function matchesWidgetAccountScope(
+  token: string | undefined,
+  accountId: string | null
+): boolean {
+  if (token === undefined) return true;
+  try {
+    return taskWidgetAccountScope(MMKV, accountId) === token;
+  } catch {
+    // An unreadable scope store cannot vouch for the link, so it is refused
+    // rather than read as "no claim".
+    return false;
+  }
+}
 
 export type TaskNavigationReadiness = {
   databaseReady: boolean;
@@ -129,6 +173,7 @@ export function decideTaskIntentAccount(
 
 export type TaskNavigationTarget =
   | { kind: "list"; taskId: string; listId: string }
+  | { kind: "reschedule"; taskId: string; listId: string }
   | { kind: "completed"; taskId: string; listId?: string }
   | { kind: "stale"; taskId: string }
   | { kind: "missing"; taskId: string };
@@ -137,6 +182,7 @@ type NavigableTask = Pick<Task, "id" | "listId"> & {
   completed?: boolean;
   occurrenceKey?: string;
   seriesId?: string;
+  updatedAt?: number;
 };
 
 /**
@@ -151,10 +197,15 @@ type NavigableTask = Pick<Task, "id" | "listId"> & {
  *   knew one. A payload that names a different occurrence than the record now
  *   stored is `stale`: the current occurrence is never treated as the tapped one.
  * - A record that no longer exists is `missing`.
+ * - A `reschedule` intent whose revision still matches the record opens the
+ *   schedule; a stale revision degrades to a safe `list` open instead.
  */
 export function resolveTaskNavigationTarget(
   task: NavigableTask | undefined,
-  intent: Pick<TaskNavigationIntent, "taskId" | "occurrenceKey">,
+  intent: Pick<
+    TaskNavigationIntent,
+    "taskId" | "occurrenceKey" | "action" | "updatedAt"
+  >,
   listExists: (listId: string) => boolean
 ): TaskNavigationTarget {
   if (!task) return { kind: "missing", taskId: intent.taskId };
@@ -164,6 +215,8 @@ export function resolveTaskNavigationTarget(
     intent.occurrenceKey !== task.occurrenceKey
   )
     return { kind: "stale", taskId: intent.taskId };
+  const revisionMatches =
+    intent.updatedAt === undefined || task.updatedAt === intent.updatedAt;
   if (task.completed) {
     const canonicalListId =
       task.listId && listExists(task.listId) ? task.listId : undefined;
@@ -171,6 +224,10 @@ export function resolveTaskNavigationTarget(
       ? { kind: "completed", taskId: intent.taskId, listId: canonicalListId }
       : { kind: "completed", taskId: intent.taskId };
   }
+  // Rescheduling needs the exact Task state the card described. A revision the
+  // record has already moved past opens the Task safely but never its schedule.
+  if (intent.action === "reschedule" && revisionMatches)
+    return { kind: "reschedule", taskId: intent.taskId, listId: task.listId };
   return {
     kind: "list",
     taskId: intent.taskId,
@@ -198,10 +255,21 @@ async function resolveNavigationRecord(
   intent: TaskNavigationIntent
 ): Promise<{
   record: NavigableTask | undefined;
-  intent: Pick<TaskNavigationIntent, "taskId" | "occurrenceKey">;
+  intent: Pick<
+    TaskNavigationIntent,
+    "taskId" | "occurrenceKey" | "action" | "updatedAt"
+  >;
 }> {
+  const carried = {
+    action: intent.action,
+    updatedAt: intent.updatedAt,
+    occurrenceKey: intent.occurrenceKey
+  };
   if (!intent.seriesId || !intent.occurrenceKey)
-    return { record: await db.tasks.get(intent.taskId), intent };
+    return {
+      record: await db.tasks.get(intent.taskId),
+      intent: { taskId: intent.taskId, ...carried }
+    };
   const seriesOf = (candidate: NavigableTask) =>
     candidate.seriesId || candidate.id;
   /**
@@ -222,15 +290,29 @@ async function resolveNavigationRecord(
   const matching = series.filter(
     (candidate) => candidate.occurrenceKey === intent.occurrenceKey
   );
+  // The tapped occurrence's own record exists: answer it with that exact record
+  // and keep the request's identity, action and claimed revision.
   const occurrence =
     matching.find((candidate) => !candidate.completed) ?? matching[0];
-  // The series' current occurrence is its earliest still-open record, chosen
-  // deterministically; a future occurrence the series has not rolled forward to
-  // yet is therefore answered by the current state of that Task, never by an
-  // arbitrary sibling record.
-  const record = occurrence ?? series.find((candidate) => !candidate.completed);
+  if (occurrence)
+    return { record: occurrence, intent: { taskId: occurrence.id, ...carried } };
+  // The series has not rolled forward to the tapped occurrence yet: answer the
+  // tap with the series' current still-open record -- the current state of that
+  // Task, chosen deterministically -- as an ordinary open. The record's own
+  // identity replaces the un-materialized occurrence's, so the current record is
+  // not read as a stale sibling, and a reschedule request degrades to a safe
+  // open instead of opening a sibling occurrence's schedule.
+  const record = series.find((candidate) => !candidate.completed);
   if (!record) return { record: undefined, intent };
-  return { record, intent: { taskId: record.id } };
+  return {
+    record,
+    intent: {
+      taskId: record.id,
+      action: intent.action === "reschedule" ? "open" : intent.action,
+      updatedAt: intent.updatedAt,
+      occurrenceKey: record.occurrenceKey
+    }
+  };
 }
 
 /** A unique, monotonically increasing nonce for one focus request. */
@@ -300,6 +382,18 @@ function presentTaskNavigationTarget(target: TaskNavigationTarget) {
         focusRequestId: nextTaskFocusRequestId()
       });
       return;
+    case "reschedule":
+      // The Task's real detail screen, with its schedule section brought into
+      // view. This is the same editor the person would reach by tapping the
+      // Task, so no copied Task and no automatic mutation is involved.
+      Navigation.navigate("Tasks", { listId: target.listId });
+      Navigation.push("TaskDetail", {
+        listId: target.listId,
+        taskId: target.taskId,
+        focusSchedule: true,
+        focusRequestId: nextTaskFocusRequestId()
+      });
+      return;
     case "completed":
       Navigation.navigate(
         "Tasks",
@@ -352,28 +446,52 @@ export async function openTaskInContext(
     return;
   }
   const generation = ++navigationGeneration;
+  const claimsAccount =
+    normalized.accountId !== undefined && normalized.accountId !== null;
+  const claimsIdentity = claimsAccount || normalized.scope !== undefined;
   try {
     let currentAccountId: string | null = null;
-    if (
-      normalized.accountId !== undefined &&
-      normalized.accountId !== null
-    ) {
+    if (claimsIdentity) {
       // Only read the account (a protected-domain value) when the payload
       // actually claims one; accountless payloads resolve against whichever
       // account is signed in without a second read.
       currentAccountId = (await db.user.getUser())?.id || null;
+      // The app can lock, log out or change account while the read is in
+      // flight, so readiness is rechecked after every await before any Task
+      // data is touched.
       if (generation !== navigationGeneration) return;
+      if (!canRouteTaskNavigation()) return;
       if (
+        claimsAccount &&
         decideTaskIntentAccount(normalized.accountId, currentAccountId) ===
-        "mismatch"
+          "mismatch"
       ) {
         // Wrong account: reject before any Task lookup or navigation. Nothing
         // about the other account (or whether the id exists) is revealed.
         return;
       }
+      // Same policy for the widget scope token: a link produced for another
+      // account is refused before any Task data is read.
+      if (!matchesWidgetAccountScope(normalized.scope, currentAccountId)) return;
     }
     const task = await resolveNavigationRecord(normalized);
     if (generation !== navigationGeneration) return;
+    if (!canRouteTaskNavigation()) return;
+    // The captured account must still be the signed-in one: an account change
+    // (or logout) during the lookup invalidates the routing, and the scope has
+    // to still name that account.
+    if (claimsIdentity) {
+      const reread = (await db.user.getUser())?.id || null;
+      if (generation !== navigationGeneration) return;
+      if (!canRouteTaskNavigation()) return;
+      if (reread !== currentAccountId) return;
+      if (
+        claimsAccount &&
+        decideTaskIntentAccount(normalized.accountId, reread) === "mismatch"
+      )
+        return;
+      if (!matchesWidgetAccountScope(normalized.scope, reread)) return;
+    }
     presentTaskNavigationTarget(
       resolveTaskNavigationTarget(task.record, task.intent, (listId) =>
         !!db.taskLists.getSync(listId)
@@ -401,6 +519,9 @@ export function pendingTaskNavigation(): readonly TaskNavigationIntent[] {
 /** Clears the queue on logout or account change. */
 export function clearPendingTaskNavigation() {
   pendingIntents.length = 0;
+  // Invalidate any in-flight open: a logout or account change must never be
+  // answered by a route that started before it.
+  navigationGeneration += 1;
 }
 
 /**

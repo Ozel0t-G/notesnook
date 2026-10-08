@@ -241,20 +241,30 @@ const onAppOpenedFromURL = async (event: {
         // never complete it directly from the URL, and never jump straight
         // into the editor either.
       } else if (
-        reminderWidgetLink.action === "task" &&
+        (reminderWidgetLink.action === "task" ||
+          reminderWidgetLink.action === "reschedule") &&
         !isValidTaskWidgetId(reminderWidgetLink.id)
       ) {
         return;
       }
       if (
         reminderWidgetLink.action === "task" ||
-        reminderWidgetLink.action === "complete"
+        reminderWidgetLink.action === "complete" ||
+        reminderWidgetLink.action === "reschedule"
       ) {
-        // A widget deep link is accountless (it carries only a Task ID), so it
-        // is resolved against the CURRENT account only.
+        // A widget deep link carries only a Task ID (plus, for a modern widget,
+        // an opaque account scope and the revision the link was produced from).
+        // It is resolved against the CURRENT account only, and any claimed
+        // revision/occurrence is validated by the router before it navigates.
         await openTaskInContext({
           taskId: reminderWidgetLink.id,
-          source: "widget"
+          source: "widget",
+          action:
+            reminderWidgetLink.action === "reschedule" ? "reschedule" : "open",
+          scope: reminderWidgetLink.scope,
+          updatedAt: reminderWidgetLink.updatedAt,
+          occurrenceKey: reminderWidgetLink.occurrenceKey,
+          seriesId: reminderWidgetLink.seriesId
         });
       } else if (reminderWidgetLink.action === "create") {
         Navigation.navigate("Tasks");

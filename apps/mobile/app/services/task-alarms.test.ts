@@ -89,6 +89,23 @@ jest.mock("../stores/use-user-store", () => ({
   }
 }));
 
+// The opaque account scope is the widget's random token; here it is fixed so
+// the native call is assertable. The MMKV store is faked so this suite never
+// loads the real native-backed storage.
+jest.mock("../common/database/mmkv", () => ({
+  MMKV: {
+    getString: () => null,
+    setString: () => {},
+    removeItem: () => {}
+  }
+}));
+
+/** Deterministic stand-in for `taskWidgetAccountScope`. */
+const ACCOUNT_SCOPE = "a".repeat(32);
+jest.mock("../hooks/task-widget-completion-intents", () => ({
+  taskWidgetAccountScope: () => "a".repeat(32)
+}));
+
 import { desiredTaskAlarms } from "./task-alarm-plan";
 import {
   endOverdueActivities,
@@ -132,13 +149,15 @@ beforeEach(() => {
   mockCancelScheduledAlarms.mockClear();
   mockCancelAll.mockClear();
   withdrawnAll.withdraw.mockClear();
-  mockReplaceAlarms.mockImplementation(async (_accountId, alarms) => ({
-    status: "authorized",
-    scheduledAlarmKeys: (alarms as { alarmKey: string }[]).map(
-      (alarm) => alarm.alarmKey
-    ),
-    activeAlarmKeys: []
-  }));
+  mockReplaceAlarms.mockImplementation(
+    async (_accountId, _accountScope, alarms) => ({
+      status: "authorized",
+      scheduledAlarmKeys: (alarms as { alarmKey: string }[]).map(
+        (alarm) => alarm.alarmKey
+      ),
+      activeAlarmKeys: []
+    })
+  );
   mockVerifyAlarms.mockResolvedValue({
     status: "authorized",
     scheduledAlarmKeys: [],
@@ -155,7 +174,11 @@ describe("Urgent Task alarm delivery", () => {
   test("keeps the account-scoped desired list and reports which occurrences the system holds", async () => {
     const delivery = await reconcileTaskAlarmDelivery([], false, withdrawnAll);
 
-    expect(mockReplaceAlarms).toHaveBeenCalledWith("account-a", []);
+    expect(mockReplaceAlarms).toHaveBeenCalledWith(
+      "account-a",
+      ACCOUNT_SCOPE,
+      []
+    );
     expect(delivery.status).toBe("authorized");
     expect(delivery.verified).toBe(true);
     expect([...delivery.heldAlarmKeys]).toEqual([]);
@@ -195,7 +218,7 @@ describe("Urgent Task alarm delivery", () => {
 
     expect(withdrawal.withdraw).toHaveBeenCalledWith(wanted);
     // Only the occurrences whose fallback is verifiably gone are introduced.
-    const sent = mockReplaceAlarms.mock.calls[0][1] as {
+    const sent = mockReplaceAlarms.mock.calls[0][2] as {
       alarmKey: string;
     }[];
     expect(sent.map((alarm) => alarm.alarmKey)).toEqual(wanted.slice(1));
@@ -218,7 +241,7 @@ describe("Urgent Task alarm delivery", () => {
 
     const delivery = await reconcileTaskAlarmDelivery([task], false, withdrawal);
 
-    expect(mockReplaceAlarms.mock.calls[0][1]).toEqual([]);
+    expect(mockReplaceAlarms.mock.calls[0][2]).toEqual([]);
     expect([...delivery.absentAlarmKeys]).toEqual(wanted);
   });
 
@@ -485,7 +508,13 @@ describe("independent Task surface cleanup", () => {
 describe("overdue Task Live Activity bridge", () => {
   test("hands the desired surfaces, the account and the App Lock flag to the native side", async () => {
     const surfaces = [
-      { taskId: "task-1", timestamp: 1700000000000, title: "Pay rent" }
+      {
+        taskId: "task-1",
+        timestamp: 1700000000000,
+        title: "Pay rent",
+        updatedAt: 1,
+        alarmKey: "task:task-1"
+      }
     ];
 
     const result = await syncOverdueActivities(surfaces, true);
@@ -493,7 +522,8 @@ describe("overdue Task Live Activity bridge", () => {
     expect(mockSyncOverdueActivities).toHaveBeenCalledWith(
       "account-a",
       surfaces,
-      true
+      true,
+      ACCOUNT_SCOPE
     );
     expect(result).toEqual({
       status: "authorized",
@@ -514,8 +544,20 @@ describe("overdue Task Live Activity bridge", () => {
     });
 
     const result = await syncOverdueActivities([
-      { taskId: "task-1", timestamp: 1, title: "a" },
-      { taskId: "task-2", timestamp: 2, title: "b" }
+      {
+        taskId: "task-1",
+        timestamp: 1,
+        title: "a",
+        updatedAt: 1,
+        alarmKey: "task:task-1"
+      },
+      {
+        taskId: "task-2",
+        timestamp: 2,
+        title: "b",
+        updatedAt: 1,
+        alarmKey: "task:task-2"
+      }
     ]);
 
     expect(result.status).toBe("denied");
@@ -527,7 +569,12 @@ describe("overdue Task Live Activity bridge", () => {
 
     await syncOverdueActivities([]);
 
-    expect(mockSyncOverdueActivities).toHaveBeenCalledWith("local", [], false);
+    expect(mockSyncOverdueActivities).toHaveBeenCalledWith(
+      "local",
+      [],
+      false,
+      ACCOUNT_SCOPE
+    );
   });
 
   test("ends every overdue surface on request", async () => {

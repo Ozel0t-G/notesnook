@@ -21,6 +21,7 @@ import type { Task } from "@notesnook/core";
 import { DatabaseLogger, db } from "../common/database";
 import { useUserStore } from "../stores/use-user-store";
 import SettingsService from "./settings";
+import { taskReminderOccurrences } from "./task-alarm-plan";
 import { decideTaskIntentAccount, taskNotificationIntent } from "./task-navigation";
 
 /** Notification category carrying the Task actions (iOS). */
@@ -46,22 +47,68 @@ export function snoozedSchedule(now: Date, minutes = SNOOZE_MINUTES) {
 }
 
 /**
+ * The Task record fields an occurrence-identity decision is made from. A
+ * notification produced by an older build names an occurrence only through the
+ * record it was planned from, so the record's own schedule fields are what the
+ * domain derivation needs.
+ */
+export type TaskActionTarget = Pick<Task, "id" | "completed" | "updatedAt"> &
+  Partial<
+    Pick<
+      Task,
+      | "occurrenceKey"
+      | "recurrenceRule"
+      | "seriesId"
+      | "seriesStartDate"
+      | "seriesStartTime"
+      | "dueDate"
+      | "dueTime"
+      | "reminderAt"
+      | "reminderDate"
+      | "reminderTime"
+      | "scheduleVersion"
+    >
+  >;
+
+/**
  * Whether an action from a delivered notification may still change `task`:
  * the record is the occurrence and revision the notification was produced for.
  * A Task edited, moved or already completed since then is left alone.
+ *
+ * Occurrence identity is compared strictly, so an action for one occurrence of
+ * a recurring series is never applied to another:
+ *
+ * - A record that stores its own `occurrenceKey` answers only for exactly that
+ *   key.
+ * - A record with **no** stored key is the series' *first* occurrence: core only
+ *   assigns `occurrenceKey` to the occurrences it materializes afterwards
+ *   (`packages/core/src/collections/tasks.ts#ensureNextOccurrence`). That record
+ *   can still be confirmed as the occurrence a legacy notification named, but
+ *   only through the same derivation the notification planner uses
+ *   (`taskReminderOccurrences` -- the domain's own occurrence key). When the
+ *   claimed key is exactly this record's own occurrence, the action applies.
+ * - Any other claim names an occurrence this record does not own -- typically a
+ *   *future* occurrence whose record does not exist yet. There is no record to
+ *   apply it to, so the action is refused instead of silently completing or
+ *   snoozing a different occurrence of the series.
  */
 export function taskActionApplies(
-  task: Pick<Task, "completed" | "updatedAt"> & { occurrenceKey?: string },
+  task: TaskActionTarget,
   payload: { updatedAt?: unknown; occurrenceKey?: unknown }
 ) {
   if (task.completed) return false;
-  if (
-    typeof payload.occurrenceKey === "string" &&
-    payload.occurrenceKey &&
-    task.occurrenceKey &&
-    payload.occurrenceKey !== task.occurrenceKey
-  )
-    return false;
+  const claimed =
+    typeof payload.occurrenceKey === "string" && payload.occurrenceKey
+      ? payload.occurrenceKey
+      : undefined;
+  if (claimed && task.occurrenceKey !== claimed) {
+    // A stored key that disagrees is a sibling occurrence; a record without one
+    // is only ever the series' first occurrence, and only the domain's own
+    // derivation can confirm that the claimed key is that occurrence.
+    if (task.occurrenceKey || !task.recurrenceRule) return false;
+    const own = taskReminderOccurrences(task as Task)[0]?.key;
+    if (!own || own !== claimed) return false;
+  }
   const updatedAt = Number(payload.updatedAt);
   return Number.isFinite(updatedAt) && updatedAt === task.updatedAt;
 }

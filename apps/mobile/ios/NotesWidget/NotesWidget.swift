@@ -25,8 +25,45 @@ private enum WidgetURLs {
   static let reminders = URL(string: "veyran://tasks")!
   static let newReminder = URL(string: "veyran://task/new")!
 
-  static func reminder(id: String) -> URL {
-    URL(string: "veyran://task/\(id)") ?? reminders
+  /// The general "open this Task" URL every card tap uses. It carries the same
+  /// occurrence identity the card shows (account scope, revision, occurrence
+  /// key and series) plus an explicit `action=open`, so the app validates all of
+  /// it before it routes and can refuse a link produced for another account or
+  /// for an occurrence that has since moved on. The identity params are
+  /// optional, so the plain home-widget row keeps working.
+  static func reminder(id: String, scope: String? = nil, updatedAt: Int? = nil,
+                       occurrenceKey: String? = nil, seriesId: String? = nil,
+                       action: String = "open") -> URL {
+    var components = URLComponents()
+    components.scheme = "veyran"
+    components.host = "task"
+    components.path = "/\(id)"
+    var items = [URLQueryItem(name: "action", value: action)]
+    if let scope { items.append(URLQueryItem(name: "scope", value: scope)) }
+    if let updatedAt, updatedAt > 0 {
+      items.append(URLQueryItem(name: "updatedAt", value: String(updatedAt)))
+    }
+    if let occurrenceKey {
+      items.append(URLQueryItem(name: "occurrenceKey", value: occurrenceKey))
+    }
+    if let seriesId { items.append(URLQueryItem(name: "seriesId", value: seriesId)) }
+    components.queryItems = items
+    return components.url ?? reminders
+  }
+
+  /// The one explicit way to open a Task's schedule for editing. It carries the
+  /// same occurrence identity the card shows (account scope, revision,
+  /// occurrence key and series), so the app can validate all of it before it
+  /// opens the picker -- and can refuse a link produced for another account or
+  /// for an occurrence that has since moved on.
+  static func reschedule(id: String, scope: String?, updatedAt: Int?,
+                         occurrenceKey: String?, seriesId: String?) -> URL {
+    // The same own-scheme builder as the general open link, carrying the
+    // explicit `action=reschedule`; the shared ShareMedia scheme must never be
+    // emitted again, because iOS may hand it to the upstream Notesnook app.
+    reminder(id: id, scope: scope, updatedAt: updatedAt,
+             occurrenceKey: occurrenceKey, seriesId: seriesId,
+             action: "reschedule")
   }
 }
 
@@ -885,6 +922,10 @@ private struct TaskAlarmLiveActivity: Widget {
           Label("Resume", systemImage: "play.fill")
         }
       default:
+        // No completion control on the alarm card. An alarm identity names a
+        // presentation, not the occurrence the person means, so completing from
+        // here could apply a future pre-armed recurrence to the original
+        // occurrence. Completing stays a plain, in-app Task action.
         EmptyView()
       }
       // Stop only silences the alert; the Task itself stays incomplete until it
@@ -895,7 +936,7 @@ private struct TaskAlarmLiveActivity: Widget {
     }
     .font(.caption)
     .buttonStyle(.bordered)
-    .tint(.red)
+    .tint(.blue)
   }
 
   private func alarmLockScreenView(
@@ -923,32 +964,103 @@ private struct TaskAlarmLiveActivity: Widget {
 #if canImport(ActivityKit) && !targetEnvironment(macCatalyst)
 @available(iOSApplicationExtension 16.2, *)
 private struct OverdueTaskLiveActivity: Widget {
+  /// One calm accent for the whole card. The surface states a fact -- this Task
+  /// is still open and was due then -- and never warns: no red and no running
+  /// counter. Its only interactive controls are the direct completion circle
+  /// and the Reschedule link.
+  private static let accent = Color.blue
+
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: OverdueTaskActivityAttributes.self) { context in
       overdueLockScreenView(context)
     } dynamicIsland: { context in
       DynamicIsland {
         DynamicIslandExpandedRegion(.leading) {
-          overdueTitle(context)
+          overdueCompletionControl(context)
         }
         DynamicIslandExpandedRegion(.trailing) {
-          overdueElapsed(context, compact: false)
+          overdueDueTime(context)
         }
         DynamicIslandExpandedRegion(.bottom) {
-          Text("Overdue")
-            .font(.caption)
-            .foregroundStyle(.red)
+          HStack(spacing: 8) {
+            overdueTitle(context)
+            Spacer(minLength: 0)
+            overdueRescheduleLink(context)
+            overdueStaticMark(context)
+          }
         }
       } compactLeading: {
-        Image(systemName: "exclamationmark.circle.fill")
-          .foregroundStyle(.red)
+        overdueStaticCircle(compact: true)
       } compactTrailing: {
-        overdueElapsed(context, compact: true)
+        overdueStaticMark(context)
       } minimal: {
-        overdueElapsed(context, compact: true)
+        overdueStaticCircle(compact: true)
       }
-      .keylineTint(.red)
+      .keylineTint(Self.accent)
+      // The general tap opens the Task and carries the full occurrence identity
+      // (scope, revision, occurrence and series): a stale or wrong-account link
+      // is refused by the app instead of being resolved accountlessly.
+      .widgetURL(WidgetURLs.reminder(
+        id: context.attributes.taskId,
+        scope: context.state.scope,
+        updatedAt: context.state.updatedAt,
+        occurrenceKey: context.state.occurrenceKey,
+        seriesId: context.state.seriesId))
     }
+  }
+
+  /// The direct completion control: a native, round, empty circle that completes
+  /// this exact occurrence through the app's own approved `TaskAlarmCompleteIntent`
+  /// pipeline. It is only offered when the card carries a full occurrence
+  /// identity (scope, revision and due) and the system can run the intent
+  /// (iOS 17+); otherwise the circle is a plain static mark and the card's
+  /// general tap opens the Task to unlock -- never a fake completion.
+  @ViewBuilder private func overdueCompletionControl(
+    _ context: ActivityViewContext<OverdueTaskActivityAttributes>
+  ) -> some View {
+    #if canImport(AlarmKit) && !targetEnvironment(macCatalyst)
+    if #available(iOS 17.0, *),
+       let scope = context.state.scope,
+       let updatedAt = context.state.updatedAt, updatedAt > 0 {
+      Button(intent: TaskAlarmCompleteIntent(
+        id: context.attributes.taskId,
+        scope: scope,
+        updatedAt: updatedAt,
+        due: context.state.dueDate.timeIntervalSince1970)) {
+        Self.completionCircle
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel(Text("Complete Task"))
+    } else {
+      Self.completionCircle
+        .accessibilityHidden(true)
+    }
+    #else
+    Self.completionCircle
+      .accessibilityHidden(true)
+    #endif
+  }
+
+  /// A small, static mark for the compact presentation: the occurrence is open.
+  /// It never counts and never shows a pause glyph, so nothing implies a timer
+  /// is running.
+  private func overdueStaticCircle(compact: Bool = false) -> some View {
+    Image(systemName: "circle")
+      .font(compact ? .body : .title3)
+      .foregroundStyle(Self.accent)
+      .widgetAccented()
+      .accessibilityHidden(true)
+  }
+
+  /// The shared, calm, empty completion circle. Its frame is a full 44pt hit
+  /// area so the control is comfortably tappable on the Lock Screen.
+  private static var completionCircle: some View {
+    Image(systemName: "circle")
+      .font(.title3.weight(.regular))
+      .foregroundStyle(accent)
+      .frame(width: 44, height: 44)
+      .contentShape(Rectangle())
+      .widgetAccented()
   }
 
   private func overdueTitle(
@@ -959,38 +1071,79 @@ private struct OverdueTaskLiveActivity: Widget {
       .lineLimit(1)
   }
 
-  /// How long the Task has been overdue, rendered by the system's own timer
-  /// style so it keeps counting without the app running.
-  private func overdueElapsed(
-    _ context: ActivityViewContext<OverdueTaskActivityAttributes>,
-    compact: Bool
+  /// The occurrence's due time, rendered as a plain, static time. It is never a
+  /// `timer` style: nothing on this card counts, so nothing implies the app is
+  /// still watching the occurrence.
+  private func overdueDueTime(
+    _ context: ActivityViewContext<OverdueTaskActivityAttributes>
   ) -> some View {
-    Text(timerInterval: context.state.dueDate ... Date.distantFuture,
-         countsDown: false)
-      .monospacedDigit()
-      .foregroundStyle(.red)
-      .font(compact ? .footnote : .title3)
+    HStack(spacing: 4) {
+      Text("Due")
+      Text(context.state.dueDate, style: .time)
+    }
+    .font(.caption)
+    .foregroundStyle(.secondary)
+    .monospacedDigit()
+  }
+
+  /// An optional tiny static mark: it says the occurrence was explicitly
+  /// stopped, and is simply absent for an ordinary overdue card. It carries no
+  /// countdown and no pause glyph -- nothing here implies a timer is running.
+  @ViewBuilder private func overdueStaticMark(
+    _ context: ActivityViewContext<OverdueTaskActivityAttributes>
+  ) -> some View {
+    if context.state.stopped == true {
+      Image(systemName: "checklist")
+        .font(.caption2)
+        .foregroundStyle(.secondary)
+        .accessibilityLabel(Text("Stopped"))
+    }
+  }
+
+  /// The one explicit action on the card: open this Task's schedule for
+  /// editing. It is a scoped link (Task, account scope, revision, occurrence
+  /// and series), so the app validates the exact occurrence before it opens the
+  /// picker; a general tap on the card stays an ordinary "open the Task".
+  @ViewBuilder private func overdueRescheduleLink(
+    _ context: ActivityViewContext<OverdueTaskActivityAttributes>
+  ) -> some View {
+    Link(destination: WidgetURLs.reschedule(
+      id: context.attributes.taskId,
+      scope: context.state.scope,
+      updatedAt: context.state.updatedAt,
+      occurrenceKey: context.state.occurrenceKey,
+      seriesId: context.state.seriesId)) {
+      Label("Reschedule", systemImage: "calendar")
+    }
+    .font(.caption.weight(.semibold))
+    .foregroundStyle(Self.accent)
+    .widgetAccented()
   }
 
   private func overdueLockScreenView(
     _ context: ActivityViewContext<OverdueTaskActivityAttributes>
   ) -> some View {
     HStack(spacing: 10) {
-      Image(systemName: "exclamationmark.circle.fill")
-        .foregroundStyle(.red)
+      overdueCompletionControl(context)
       VStack(alignment: .leading, spacing: 2) {
         overdueTitle(context)
-        Text("Overdue")
-          .font(.caption)
-          .foregroundStyle(.red)
+        overdueDueTime(context)
       }
       Spacer(minLength: 8)
-      overdueElapsed(context, compact: false)
+      overdueRescheduleLink(context)
+      overdueStaticMark(context)
     }
     .padding(14)
-    // Tapping the surface opens the Task's current List with the Task in view.
-    // It never opens the editor, and it never completes anything by itself.
-    .widgetURL(WidgetURLs.reminder(id: context.attributes.taskId))
+    // Tapping the surface opens the Task's current List with the Task in view,
+    // carrying the full occurrence identity so a stale or wrong-account link is
+    // refused. It never opens the editor, and it never completes anything by
+    // itself -- completion is the explicit control above.
+    .widgetURL(WidgetURLs.reminder(
+      id: context.attributes.taskId,
+      scope: context.state.scope,
+      updatedAt: context.state.updatedAt,
+      occurrenceKey: context.state.occurrenceKey,
+      seriesId: context.state.seriesId))
   }
 }
 #endif

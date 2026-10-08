@@ -1,5 +1,7 @@
 import type { Task } from "@notesnook/core";
 import { NativeModules, Platform } from "react-native";
+import { MMKV } from "../common/database/mmkv";
+import { taskWidgetAccountScope } from "../hooks/task-widget-completion-intents";
 import { useUserStore } from "../stores/use-user-store";
 import {
   desiredTaskAlarms,
@@ -72,6 +74,7 @@ type TaskAlarmNative = {
   requestAuthorization(): Promise<UrgentAlarmStatus>;
   replaceAlarms(
     accountId: string,
+    accountScope: string,
     alarms: DesiredTaskAlarm[]
   ): Promise<AlarmReconcileReport>;
   /** Which of these alarm keys the system currently holds for this account. */
@@ -95,7 +98,8 @@ type TaskAlarmNative = {
   syncOverdueActivities(
     accountId: string,
     activities: OverdueTaskSurface[],
-    privacyHidden: boolean
+    privacyHidden: boolean,
+    accountScope: string
   ): Promise<OverdueActivityResult>;
   endOverdueActivities(): Promise<OverdueActivityResult>;
 };
@@ -130,6 +134,13 @@ export type TaskAlarmDelivery = {
   heldAlarmKeys: Set<string>;
   activeAlarmKeys: Set<string>;
   absentAlarmKeys: Set<string>;
+  /**
+   * Whether `activeAlarmKeys` is an *answer* rather than a default. A failed
+   * native read leaves it empty without saying "nothing is presenting", and an
+   * empty set that means "unknown" must never be used to create a Live
+   * Activity that could compete with an alarm the app cannot see.
+   */
+  activeAlarmKeysKnown: boolean;
   verified: boolean;
   /**
    * Occurrences whose Live alarm presentation still shows the real Task title
@@ -167,6 +178,25 @@ function currentAccountId() {
 }
 
 /**
+ * The same opaque account-scope token the widget snapshot and the overdue Live
+ * Activity are keyed by (`taskWidgetAccountScope`). It is passed to the native
+ * alarm scheduler so a future Stop tap can address the identical identity, and
+ * the native side refuses anything that is not the exact token shape. A storage
+ * failure yields an empty token, which the native side replaces with its
+ * derived digest rather than trusting.
+ */
+function currentAccountScope() {
+  try {
+    return taskWidgetAccountScope(
+      MMKV,
+      useUserStore.getState().user?.id || null
+    );
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Reconciles the Urgent occurrences with stable per-occurrence identities and
  * reports, per occurrence, whether AlarmKit holds it, is presenting it right
  * now, or provably does not hold it.
@@ -198,15 +228,9 @@ function currentAccountId() {
 export async function reconcileTaskAlarmDelivery(
   tasks: Task[],
   privacyHidden: boolean,
-  fallback?: AlarmFallbackWithdrawal,
-  listTint?: (listId: string) => string | undefined
+  fallback?: AlarmFallbackWithdrawal
 ): Promise<TaskAlarmDelivery> {
-  const desired = desiredTaskAlarms(
-    tasks,
-    privacyHidden,
-    Date.now(),
-    listTint
-  );
+  const desired = desiredTaskAlarms(tasks, privacyHidden, Date.now());
   const alarmKeys = desired.map((alarm) => alarm.alarmKey);
   // Every occurrence the caller asked about is provably not alarmed when there
   // is no native alarm path at all (a non-Apple build).
@@ -216,10 +240,12 @@ export async function reconcileTaskAlarmDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: new Set(alarmKeys),
+      activeAlarmKeysKnown: true,
       unredactedAlarmKeys: new Set(),
       verified: true
     };
   const accountId = currentAccountId();
+  const accountScope = currentAccountScope();
   const asKeys = (values: string[] | undefined) =>
     new Set(alarmKeys.filter((key) => (values || []).includes(key)));
   /**
@@ -238,6 +264,7 @@ export async function reconcileTaskAlarmDelivery(
     heldAlarmKeys: held,
     activeAlarmKeys: active,
     absentAlarmKeys: new Set(alarmKeys.filter((key) => !held.has(key))),
+    activeAlarmKeysKnown: true,
     unredactedAlarmKeys: unredacted,
     verified: true,
     error
@@ -260,6 +287,11 @@ export async function reconcileTaskAlarmDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: new Set(),
+      // A failed read says nothing about which occurrences are presenting, so
+      // the empty active set must not be read as "nothing is up". Callers use
+      // this to refuse to create a Live Activity that could conflict with an
+      // alarm they cannot see.
+      activeAlarmKeysKnown: false,
       // Nothing is known about redaction from a failed *read* either; it is not
       // a claim that the titles are hidden, only that this pass learned nothing.
       unredactedAlarmKeys: new Set(),
@@ -300,7 +332,7 @@ export async function reconcileTaskAlarmDelivery(
   // 4. Write, then resolve a failed write by verification instead of guessing.
   let replaceError: unknown;
   try {
-    const report = await Native.replaceAlarms(accountId, toSend);
+    const report = await Native.replaceAlarms(accountId, accountScope, toSend);
     // Authorization can be revoked between the read and the write. Nothing new
     // was scheduled then, and what the read found is cleaned up the same way.
     if (report.status !== "authorized")
@@ -345,6 +377,7 @@ export async function reconcileTaskAlarmDelivery(
       status: cancelled.status,
       heldAlarmKeys: retained,
       activeAlarmKeys: retained,
+      activeAlarmKeysKnown: true,
       unredactedAlarmKeys: new Set<string>(),
       absentAlarmKeys: new Set(
         alarmKeys.filter(
@@ -360,6 +393,7 @@ export async function reconcileTaskAlarmDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: new Set(),
+      activeAlarmKeysKnown: false,
       unredactedAlarmKeys: new Set(),
       verified: false,
       error: cancelError ?? replaceError
@@ -389,6 +423,7 @@ async function cleanupRevokedDelivery(
       heldAlarmKeys: new Set(),
       activeAlarmKeys: new Set(),
       absentAlarmKeys: absent,
+      activeAlarmKeysKnown: true,
       unredactedAlarmKeys: new Set(),
       verified: true
     };
@@ -402,7 +437,12 @@ async function cleanupRevokedDelivery(
     return {
       status,
       heldAlarmKeys: retained,
+      // A revocation cleanup answers which occurrences are still presenting
+      // (`active` from the read) but the cancellation's `retained` set is the
+      // authoritative set that keeps sounding, so it is what the surface
+      // reconciliation must respect. Both are known.
       activeAlarmKeys: retained,
+      activeAlarmKeysKnown: true,
       unredactedAlarmKeys: new Set(),
       absentAlarmKeys: new Set(
         alarmKeys.filter(
@@ -420,6 +460,7 @@ async function cleanupRevokedDelivery(
       status,
       heldAlarmKeys: held,
       activeAlarmKeys: active,
+      activeAlarmKeysKnown: true,
       absentAlarmKeys: absent,
       unredactedAlarmKeys: new Set(),
       verified: true,
@@ -472,7 +513,8 @@ export async function runIndependentCleanup(
  */
 export async function syncOverdueActivities(
   surfaces: OverdueTaskSurface[],
-  privacyHidden = false
+  privacyHidden = false,
+  accountScope = ""
 ): Promise<OverdueActivityResult> {
   if (!Native)
     return {
@@ -480,7 +522,17 @@ export async function syncOverdueActivities(
       failedTaskIds: surfaces.map((surface) => surface.taskId)
     };
   const accountId = currentAccountId();
-  return Native.syncOverdueActivities(accountId, surfaces, privacyHidden);
+  // `accountScope` is the same opaque token the home-screen widget snapshot
+  // uses (`taskWidgetAccountScope`), so a Live Activity and a widget action for
+  // one account share one identity instead of two unrelated digests. When the
+  // caller does not supply one it is read here from the same store, so every
+  // path passes the identical token.
+  return Native.syncOverdueActivities(
+    accountId,
+    surfaces,
+    privacyHidden,
+    accountScope || currentAccountScope()
+  );
 }
 
 /**

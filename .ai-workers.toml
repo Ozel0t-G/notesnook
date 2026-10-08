@@ -1,0 +1,5 @@
+# AI worker settings for this project. No secrets belong here.
+# Docs: ~/.ai-workers/README.md   Change with: /deepseek off|on|force|status|reset
+
+[deepseek]
+mode = "force"   # off | on | force  (set 2026-09-30)

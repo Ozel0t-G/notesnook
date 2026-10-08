@@ -14,6 +14,7 @@
     "Ongoing" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Laufend" } } } },
     "Overdue reminder" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Überfällige Erinnerung" } } } },
     "Overdue" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Überfällig" } } } },
+    "Due" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Fällig" } }, "en" : { "stringUnit" : { "state" : "translated", "value" : "Due" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Forfaller" } } } },
     "Open VeyraN to refresh tasks" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "VeyraN öffnen, um Aufgaben zu aktualisieren" } } } },
     "Quick Note" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Schnelle Notiz" } } } },
     "Reminders" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Erinnerungen" } } } },
@@ -37,7 +38,23 @@
     "Open VeyraN to load tasks" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "VeyraN öffnen, um Aufgaben zu laden" } } } },
     "Retry completion for %@" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Abschließen erneut versuchen: %@" } } } },
     "Scheduled" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Geplant" } } } },
-    "See your Tasks at a glance and check them off." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Deine Aufgaben auf einen Blick – direkt abhaken." } } } }
+    "See your Tasks at a glance and check them off." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Deine Aufgaben auf einen Blick – direkt abhaken." } } } },
+    "Alarm" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Alarm" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Alarm" } } } },
+    "Complete" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Erledigen" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Fullfør" } } } },
+    "Complete an overdue Task." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Eine überfällige Aufgabe erledigen." } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Fullfør en forfalt oppgave." } } } },
+    "Pause" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Pausieren" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Pause" } } } },
+    "Pause a Task alarm countdown." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Einen Aufgabenalarm pausieren." } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Sett nedtellingen for en oppgavealarm på pause." } } } },
+    "Paused" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Pausiert" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "På pause" } } } },
+    "Postpone the next Task alert." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Den nächsten Aufgaben-Alarm verschieben." } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Utsett neste oppgavevarsel." } } } },
+    "Resume" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Fortsetzen" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Fortsett" } } } },
+    "Resume a paused Task alarm." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Einen pausierten Aufgabenalarm fortsetzen." } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Fortsett en oppgavealarm som er satt på pause." } } } },
+    "Reschedule" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Neu planen" } }, "en" : { "stringUnit" : { "state" : "translated", "value" : "Reschedule" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Endre tid" } } } },
+    "Complete Task" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Aufgabe erledigen" } }, "en" : { "stringUnit" : { "state" : "translated", "value" : "Complete Task" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Fullfør oppgave" } } } },
+    "Silence a Task alarm." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Einen Aufgabenalarm stumm schalten." } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Demp en oppgavealarm." } } } },
+    "Snooze" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Schlummern" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Utsett" } } } },
+    "Snoozed" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Schlummert" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Utsatt" } } } },
+    "Stop" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Stopp" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Stopp" } } } },
+    "Stopped" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Gestoppt" } }, "nb" : { "stringUnit" : { "state" : "translated", "value" : "Stoppet" } } } }
   },
   "version" : "1.0"
 }

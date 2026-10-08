@@ -1,332 +1,66 @@
-# Urgent reminder delivery and notification tap routing
+# VeyraN Urgent Reminders — current architecture
 
-> **Status (2026-09-29, later bounded milestone).** This describes the change as it exists on
-> `test` on top of `17def76c1e069a72c4b74e9c035a847ff66c286b`. Three milestones are stacked here:
->
-> 1. The original partial worktree imported from a gzipped patch plus three small Swift fixes
->    (the `due:` label corrections, `TaskAlarmModule.swift:492`/`:535`, and a paused-countdown
->    formatter fix in `NotesWidget/NotesWidget.swift`). Its mobile Jest result — **296/296 tests,
->    33/33 suites**, against tested mobile-source diff `sha256 5502e4bc8e9ed8ac925ba8ed20885f99f8f727f60d43dd2eae355c7713f7dc68`
->    — is recorded here as **PRIOR JS** evidence only.
-> 2. A later bounded milestone that hardens **notification/deep-link Task routing**, the
->    **Tasks-list focus/highlight**, and restricts the **overdue Live Activity to Urgent
->    Tasks**. It adds/changes `task-navigation.ts`, `screens/tasks/task-focus.ts`,
->    `screens/tasks/index.tsx`, the producer payload in `task-notifications.ts`, and the
->    `overdueTaskSurfaces()` filter, with focused unit tests for each.
-> 3. **This** bounded milestone fixes **per-occurrence delivery exclusivity** (one failed
->    recurring occurrence no longer falls a whole Task back to an audible notification while its
->    other alarms also sound), makes an **unknown native reconcile** honest (verify, then cancel
->    only not-yet-alerting alarms, then stay unverified), makes **account-change/logout cleanup
->    independent per mechanism** and **generation-guarded** against stale async passes, and states
->    the real **foreground/cold/background ActivityKit conditions and public-API limits**.
->
-> Because milestones 2–3 are **new** bytes, the prior 296/296 result does **not** cover them; a
-> fresh mobile Jest run, the native Swift build re-run, and interactive/device QA are **pending**
-> and remain the authoritative checks. The product logic of the changed planning/bridge modules
-> **was** executed locally through an ad-hoc Node type-stripping harness on byte-identical copies
-> (27 assertions for this milestone, plus 34 + 21 + 14 for milestone 2) — see
-> `artifacts/urgent-reminders-qa.md` — and the two `TaskAlarm` Swift files were
-> `swiftc -typecheck`ed **clean** against the installed iPhoneOS27 SDK (which ships AlarmKit and
-> ActivityKit, so those bodies were compiled; only `React` was stubbed with the real promise
-> typedefs). That is a module-level type-check, not the full app/target build or the `.m` ObjC
-> expansion. The Jest test files themselves and React/native behaviour are still unverified.
-> Full-app `tsc --noEmit` still has unresolved dependency/setup/baseline errors. No code is
-> committed here.
+Status: 2026-10-08, uncommitted changes on `test`, base `5b39107621b2edaa84f6a543b317bae450829671`. This replaces historical milestone descriptions. Current evidence and unresolved release gates are in `../artifacts/urgent-reminders-qa.md` and `../artifacts/urgent-reminders-parity-report.md`.
 
-## Original regressions and root cause
+## Ownership and platform boundary
 
-Two regressions shipped independently of each other despite the native AlarmKit module
-(`apps/mobile/ios/Notesnook/TaskAlarm/TaskAlarmModule.swift`) and its JS bridge
-(`task-alarms.ts`) already existing in the codebase (`a335a08ac`, 2026-09-24):
+The existing encrypted Core Task collection remains authoritative. This change adds no Task database, schema, sync format, encryption mechanism or background JS timer. Native code owns only delivery/presentation identities. AlarmKit is guarded for iOS/iPadOS 26+, ActivityKit for supported iOS versions; both are excluded from Mac Catalyst. Existing unsupported/denied permission fallbacks remain.
 
-- **Urgent behaved like an ordinary notification.** `task-notifications.ts`'s `reconcileNow()`
-  unconditionally called `cancelAllTaskAlarms()` and always scheduled a Notifee
-  `TimestampTrigger` notification for every Urgent Task, labeled `time-sensitive` but never a
-  real alarm. The reconcile function that actually calls `Native.replaceAlarms()` (then
-  `reconcileTaskAlarms()`, now `reconcileTaskAlarmDelivery()`) was never called from anywhere in
-  the app.
-- **Notification/widget/link taps opened the Task editor.** Every existing entry point
-  (`notifications.ts`'s `PRESS` handler, `use-app-events.tsx`'s cold-start initial-notification
-  handler, the widget deep link, the legacy reminder-migration link) pushed `TaskDetail` — a
-  fully editable form (`autoFocus`, keyboard-submitting `TextInput`s) reused for both creating
-  and "viewing" a Task — with no read-only/list-context alternative.
+`task-alarm-plan.ts` produces per-occurrence alarm keys and the existing RRULE projection. `task-alarms.ts` translates the native availability and held/active/absent/unknown result. `task-notifications.ts` serializes reconciliation, checks account generations, and preserves per-occurrence alarm/notification exclusivity. It withdraws and verifies a competing notification before creating a previously absent alarm. Unknown native state never authorizes a new audible fallback or a competing new Live Activity.
 
-Both were finish-wiring gaps, not missing features: the native alarm module and Task List UI
-already existed; the JS reconciliation loop and the tap handlers simply never used them.
+## State transitions
 
-## Urgent alarm lifecycle (AlarmKit)
+| State | Behavior |
+|---|---|
+| SCHEDULED | One AlarmKit identity per account/occurrence; system-blue tint and nine-minute post-alert countdown. No second audible notification after confirmed scheduling. |
+| ALERTING | Native AlarmKit alert and native Stop slider where supported. The title follows App Lock policy. A separate reminder card is suppressed while the alarm is presenting. |
+| SNOOZED | AlarmKit countdown on the same alarm identity, then re-alert. Task schedule and RRULE remain unchanged. Normal reconciliation preserves countdown/paused state. |
+| STOPPED_BUT_INCOMPLETE | `TaskAlarmStopIntent` silences the alarm, durably records Stop, and requests a separate silent ActivityKit reminder. It never completes the Task. OS request refusal leaves the record eligible for recovery during a later app reconciliation. |
+| COMPLETED | Snapshot identity validation → durable existing widget queue → existing app-process completion host → Core `completeIfUnchanged`. Only a committed Task change is success. Reconcile ends associated surfaces and plans the next recurrence through existing Core behavior. |
+| RESCHEDULED | Scoped link opens the actual Task detail with its date picker expanded. A stale revision falls back to the Task list rather than editing a wrong occurrence. Saving reconciles away the old surfaces and plans the new due instant. |
+| REMOVED_OR_DISABLED | Deletion, completion, reminder removal, Urgent off, logout and account changes invalidate surfaces. Cleanup failures are retained as minimal retry obligations. |
 
-Public APIs used: `AlarmKit` (`import AlarmKit`, `#available(iOS 26.0, *)`), gated behind a
-runtime availability check with a `resolve("unsupported")` fallback on earlier OS versions or
-if the framework can't be imported at all (e.g. simulator runtimes/SDKs that predate it).
+## Native Stop and persistence
 
-- **Authorization**: `AlarmManager.shared.authorizationState` / `requestAuthorization()`,
-  surfaced to JS as `unsupported | notDetermined | denied | authorized`
-  (`task-alarms.ts#urgentStatus`, `#requestUrgentPermission`). Requested only from the Urgent
-  switch (`detail.tsx`, `app-intent-requests.ts`'s Shortcuts path) — never from background
-  reconciliation, matching the existing code comment's intent.
-- **Scheduling**: `reconcileTaskAlarmDelivery(tasks, privacyHidden, withdrawal)` computes the
-  desired alarm set via `desiredTaskAlarms()` (`task-alarm-plan.ts`; current occurrence plus up to
-  5 future RRULE occurrences, deduplicated and identified by `taskAlarmKey()` —
-  `series:<seriesId|taskId>:<occurrenceKey>` for a recurring occurrence, `task:<id>` for a
-  one-off), then:
-  1. **reads the current native state** (`verifyAlarms`), so nothing is written and no fallback is
-     withdrawn while the state is unknown;
-  2. **withdraws the competing fallback before introducing an alarm.** For every desired
-     occurrence the system does *not* hold, `task-notifications.ts#withdrawCompetingFallbacks()`
-     cancels the matching pending notification trigger and re-reads the trigger store to confirm
-     it is gone. An occurrence whose withdrawal cannot be confirmed is **left out of the write
-     entirely**, so it keeps exactly one audible delivery (its notification) instead of gaining a
-     second one;
-  3. calls `Native.replaceAlarms(accountId, desired)` for the rest. The Swift side (`replace()`)
-     fully reconciles: alarms not in the desired set are removed; an alarm already `.alerting` or
-     correctly `.scheduled` (matched by timestamp + a stored fingerprint) is left untouched
-     (**"Stop is a separate user action; never complete or silence the Task here"**); everything
-     else is recreated. It returns `{status, scheduledAlarmKeys, activeAlarmKeys}` — the
-     **per-occurrence** truth: exactly the alarm keys this app holds for the account after the
-     pass, and which of them are presenting right now. An occurrence absent from the list
-     (unsupported/denied, malformed input, or an individual scheduling failure) is simply not
-     scheduled; an alarm that could not be **removed** is reported as held, so JS never adds a
-     duplicate fallback alongside an alarm that still exists. The signed-in account is folded into
-     each native alarm id (`sha256("…:\(accountId):\(alarmKey)")`-derived UUIDv8), so one key is
-     only ever meaningful with the account that reconciled it.
-  4. **resolves a failed write honestly**: `verifyAlarms` first, then a verified cancellation of
-     only the not-yet-alerting alarms. The answer is per occurrence — `held`, `absent` (proven not
-     held, so a fallback is safe and cannot duplicate), or neither (unknown: keep the existing
-     fallback, add none) — never a Task-wide guess.
-  A **lost replacement acknowledgement** (the device applied the pass but the promise was lost)
-  therefore cannot leave an alarm *and* a pending fallback for the same occurrence: the fallback
-  was already withdrawn before the alarm was introduced, and an unknown outcome never re-creates
-  it.
-- **Fallback routing**: `planTaskNotifications()` (`task-notification-plan.ts`) takes an
-  `UrgentAlarmFallback` decision whose `needsFallback(alarmKey)` and `isUnknown(alarmKey)` are
-  asked **per occurrence**, not per Task. `reconcileNow()` wires `needsFallback` to
-  `absentAlarmKeys` and `isUnknown` to "in neither `held` nor `absent`", so in a partially
-  successful recurring series only the occurrences whose own alarm is provably missing get a
-  Notifee notification, the occurrences whose alarm did schedule get **no** duplicate, and a
-  single unknown occurrence does not drag the rest of the plan into the same treatment. Normal
-  (non-Urgent) reminders are unaffected and keep their existing Notifee `TimestampTrigger` path.
-  The fallback notification's body is `strings.tasksUrgentFallbackBody()` ("Alarm unavailable.
-  This is a standard notification."), so a denied/unsupported/individually-failed Urgent
-  occurrence is clearly identified as a fallback rather than mistaken for the alarm.
-- **Denied / unsupported is not "nothing scheduled".** Alarms scheduled while the app *was*
-  authorized can still be held and still sound after authorization is revoked, so a
-  `denied`/`notDetermined`/`unsupported` read is followed by a cleanup of the alarms this app owns
-  (never a presentation the person is engaged with) and a truthful report: `cancelScheduledAlarms`
-  returns `cancelledAlarmKeys` **and** `retainedAlarmKeys`, and the retained/presenting occurrences
-  are kept out of the fallback path so no notification duplicates them. If that cleanup itself
-  fails, the owned alarms are reported as still held and the failure travels with the answer.
-- **Account change / logout cleanup is independent per mechanism and durable.** The signed-in
-  account change and `userLoggedOut` handlers bump a generation counter immediately (so an
-  in-flight pass refuses to write old-account alarms/notifications/surfaces once it differs) and
-  then run `runIndependentCleanup` over the four mechanisms — scheduled Task notifications, native
-  Urgent alarms, overdue Live Activities, and already-displayed unredacted Task notifications. A
-  rejection from one (`Promise.allSettled`) cannot skip the others. **A failure is not just
-  logged:** the failing mechanism labels are persisted as a minimal obligation
-  (`notesnook.taskSurfaces.pendingCleanup.v1` — labels + timestamp, no content, no account id) and
-  retried at the next launch/foreground **before** any new planning, even when the Task domain is
-  not initialized or the app is mid-logout — every mechanism cancels surfaces by ownership rather
-  than by reading the account that created them. The iOS Task widget snapshot is cleared by its own
-  independent `ReminderWidget` logout/account-change subscriptions, and a user-id change now also
-  re-projects the snapshot so the widget cannot sit on the previous account's Tasks.
-- **Stop / Snooze / Complete semantics** (enforced natively, unchanged by this work): Stop
-  silences the alert without completing the Task (state machine stays `OVERDUE_INCOMPLETE`
-  until the user completes it through the normal Task-domain operation). Completion always
-  goes through `db.tasks.complete()` — there is no second Task database, no duplicated
-  recurrence logic, and no parallel crypto implementation; the AlarmKit module only tracks
-  alarm-to-Task identity (`taskId`, `alarmKey`, a UUID fingerprint) in `UserDefaults`, never
-  Task content.
-- **Reconciliation never destroys a live presentation.** Snooze is AlarmKit's countdown
-  secondary button (`TaskAlarmRepeatIntent` + `AlarmPresentation.Countdown`, `postAlert =
-  9 minutes`) and Pause is `TaskAlarmPauseIntent`; both are `LiveActivityIntent`s that only
-  call `AlarmManager.countdown(id:)` / `pause(id:)` / `resume(id:)` with an opaque alarm UUID,
-  so the Task's own reminder occurrence is never modified and no user content is involved.
-  `replace()` explicitly leaves alone any alarm that is `.alerting`, `.countdown` (snoozed) or
-  `.paused` at the wanted occurrence, and never removes a wanted occurrence whose fire time is
-  now or in the past. Without those two guards a background reconcile would cancel a Snooze or
-  Pause the person had just chosen, and a title/App-Lock change in the seconds around the fire
-  time would silently drop the alarm *and* suppress the notification fallback — i.e. a missed
-  alert with no signal. When those guarded alarms are kept they are reported in
-  `scheduledAlarmKeys`, so the notification planner still never duplicates them.
-- **App Lock redaction, alarms included.** A future `.scheduled` alarm's fingerprint includes
-  `privacyHidden`, so enabling App Lock re-creates it with the `"VeyraN Task"` placeholder, and
-  the overdue Live Activity's title is updated in place from `ContentState` on the next
-  reconcile. An already-*displayed* Task notification (Notification Center / Lock Screen) whose
-  payload was not created redacted (`data.privacyHidden !== "1"`) is **withdrawn** on the next
-  reconcile while App Lock is on, so the real title does not linger there. **Honest limit:** once
-  an alarm is already `.alerting`, `.countdown` (snoozed) or
-  `.paused`, AlarmKit exposes no public API to change its presentation attributes in place, and
-  the app never silences a live alarm to redact it — so such an alarm keeps the title it was
-  created with until it ends. No Task title is ever written to `UserDefaults` (the fingerprint
-  is a SHA-256 of `timestamp|privacyHidden|updatedAt`; the overdue index stores only the opaque
-  Task id, due instant and a truncated account hash), so there is no unredacted metadata on disk
-  to preserve; the exposure is limited to an alarm the person is already being shown.
-- **Overdue Live Activity (`OVERDUE_INCOMPLETE` device presentation)**: implemented with
-  public ActivityKit (`Activity<OverdueTaskActivityAttributes>`, `#available(iOS 16.2, *)`,
-  `NSSupportsLiveActivities` in `Info.plist`). `overdueTaskSurfaces()`
-  (`task-alarm-plan.ts`) selects incomplete **Urgent** Tasks with a *timed* reminder that has
-  already fired, within `OVERDUE_SURFACE_LIFETIME_MS` (8h — the system ends a Live Activity
-  after roughly eight hours), newest first, capped at `MAX_OVERDUE_SURFACES` (5, Apple's
-  `ActivityAuthorizationError.globalMaximumExceeded`/`targetMaximumExceeded` bound). These
-  surfaces belong to the Urgent alarm feature: an ordinary (non-Urgent) reminder never owns
-  one, so switching Urgent off — or completing, deleting, removing the reminder from, or
-  rescheduling the Task — makes the desired set empty and the native reconcile ends the
-  associated activity instead of leaving an unsolicited Live Activity behind, and ordinary
-  overdue reminders can never consume the shared five-surface budget ahead of Urgent ones.
-  Normal reminder delivery is unchanged. Rendering is
-  `Text(timerInterval:countsDown:)` in the widget extension, so the elapsed time counts without
-  any JavaScript timer and without the app running. The alarm surface's paused state similarly
-  renders its frozen remainder with a system format style over a `Duration` — never a hand-rolled
-  timer or a JS clock. The app reconciles the set on the same
-  cadence as alarms and notifications; the native side is authoritative (creates, refreshes in
-  place, ends surfaces that no longer apply or belong to another account) and remembers
-  occurrences the person dismissed or that expired, so a ghost is never re-created.
-  **Honest limits:** an alarm firing or a notification arriving cannot start one of these
-  activities — neither can run app code — so the surface appears from the next reconcile
-  (app launch/foreground/sync/settings change) and only for occurrences still inside the
-  system's Live Activity lifetime. Lock Screen and Notification Center are different surfaces;
-  this work only claims the former.
-- **Privacy**: `desiredTaskAlarms()` carries `privacyHidden` per alarm, and the overdue path passes
-  it to `syncOverdueActivities()` (`task-notifications.ts`) alongside the surfaces — the App Lock
-  placeholder (`"VeyraN Task"`) is then chosen in exactly one place per platform —
-  `TaskAlarmModule.swift`'s `parse()` for alarms and `syncOverdueActivities` for activities —
-  so the real title is never what a hidden surface displays. Live-activity bookkeeping stores
-  only an opaque Task id, the due instant and a truncated SHA-256 of the account id (never
-  Task titles, never a raw account id). `Info.plist` gained only `NSSupportsLiveActivities`.
+`AlarmManager.AlarmConfiguration` supplies both `stopIntent` and `secondaryIntent`. The system slider and countdown Stop button use the same `LiveActivityIntent`. Apple runs this intent in the app process without requiring the app UI to open. A shared async operation gate serializes complete Stop/replace/cancel/sync operations across suspension points. A plain actor method alone would permit reentrancy at `await`.
 
-## Notification tap routing (List + highlight, never the editor)
+The intent accepts only this app's alarm UUID namespace. It handles a system Stop whose one-shot alarm has already disappeared, without assuming an unreadable alarm list is empty. It never mutates the encrypted database. A successful Stop claim precedes the Activity request; successful Activity creation marks the attempt. Duplicate taps cannot create duplicate cards. A refused request is not reported as a created card.
 
-The single shared resolver is `task-navigation.ts#openTaskInContext(intent)`. A bare
-`string` is still accepted (an explicit open), but every entry point now passes a **minimal
-intent**: `{ taskId, accountId?, occurrenceKey?, source }` — `source` is one of
-`notification`, `cold-initial-notification`, `widget`, `legacy-link`, `explicit`. The intent
-carries no title, no List ID and no other Task content, so a queued or rejected request can
-never disclose what it addressed.
+`TaskAlarmMetadata` intentionally remains empty: task content is not embedded in AlarmKit metadata. Minimal versioned App Group identity/lifecycle stores supply opaque Task ID, account-scope token, due instant, revision, optional occurrence/series identity, privacy decision and stopped/attempt timestamps. There are no keys, tokens, Note contents or real display titles in these stores. They are bounded, atomically written with first-unlock file protection and excluded from backup. They reuse the existing App Group, without changing entitlements.
 
-Readiness and account policy (enforced before any Task read):
+The immediate Stop card uses the neutral `VeyraN Task` label because a saved snapshot cannot establish the current App Lock decision during an asynchronous privacy transition. A subsequent authorized app reconciliation may supply the permitted display title. App Lock clears/redacts widget projections, blocks completion through the existing host checks, and redacts ordinary reminder cards.
 
-1. **Readiness.** The protected domain is not read until `db.isInitialized && !isAppLoading &&
-   !appLocked && !isLoggingOut` — the same live store/bootstrap signals the widget completion
-   queue already uses (`canRouteTaskNavigation`). A tap that arrives while the app is cold,
-   still hydrating, or App Locked queues the minimal intent (`pendingTaskNavigation`, bounded,
-   last-wins) and `consumePendingTaskNavigation()` consumes it exactly once when App Lock/loading
-   clears (the existing unlock effect in `use-app-events.tsx`). The queue is cleared on logout
-   and on any account change, so it can never be replayed against another account.
-2. **Account.** A payload that claims an account (`notification`/`cold-initial-notification`
-   producers attach the owning account id) is rejected before any Task lookup if a different
-   account is signed in, or if nobody is signed in. An **accountless** payload — the widget deep
-   link and the legacy `open_reminder` migration link, which carry only an ID — is resolved
-   against the **current** account's data only, and can never open another account, because no
-   other account is ever opened (`decideTaskIntentAccount`). There is no silent account switch.
-3. **Target.** The Task is re-read fresh (`db.tasks.get(taskId)`); a stale List ID in old payload
-   data is never trusted.
-   - moved → opens the Task's **current** canonical List.
-   - completed → stays visible **in its current List** (`includeCompleted`) when that List still
-     exists (its real context, without resurrecting it); otherwise the `completed` smart list.
-   - missing/deleted → a safe `Tasks` destination plus a deliberately generic, non-identifying
-     notice (`TASK_UNAVAILABLE_MESSAGE`).
-   - a payload whose occurrence identity (`occurrenceKey`) disagrees with the stored record is
-     `stale`: it is never treated as the following occurrence. The router never completes, edits
-     or reopens a Task, so a stale recurring occurrence can never be applied to the next one.
-4. **Ordering.** A generation counter makes the **last accepted tap win** even when the async
-   lookups resolve out of order; each delivered request carries a **unique `focusRequestId`
-   nonce**, so re-focusing the same Task after the highlight expired re-arms it instead of being
-   ignored by a stable `highlightTaskId`.
+App Lock during an active unredacted alarm requires replacement because AlarmKit exposes no in-place title update. The code reads the public countdown fire date or paused remainder before removal, verifies that the old presentation is gone, and re-arms the same alarm identity with a neutral title. A due/alerting replacement uses a short positive countdown; a paused replacement is paused immediately. If the remaining time cannot be read, a bounded full Snooze interval is used: this can delay the previous re-alert and is a documented approximation. A removal failure stays reported as held/unredacted, so it cannot create a duplicate fallback or falsely promise privacy. Failure to create the replacement after successful removal remains a native failure path requiring physical QA; no immediate past-due notification is fabricated.
 
-The Tasks screen (`screens/tasks/index.tsx`) resolves the row index from the loaded list and
-drives a `TaskFocusSession` (`screens/tasks/task-focus.ts`), which:
+The lifecycle merge preserves markers only for the same Task, due instant and compatible scope/occurrence/series identity. Revision/title-only changes preserve Stop; a new due instant clears the old markers even when a one-off alarm reuses its UUID. A marker dating from before its own due instant is repaired during merge to recover the intermediate-build corruption found in simulator QA.
 
-- Scrolls the target row into view (`scrollToIndex`, `viewPosition: 0.4`) as soon as the screen
-  is not loading, with a bounded (max 5), increasing-backoff retry via `onScrollToIndexFailed`
-  for the unmeasured-row case — never an unbounded loop and no arbitrary initial delay. A new
-  intent, a list change, or unmount cancels every pending timer and any running highlight, so an
-  old target is never scrolled or highlighted after a newer tap, and no stale captured index is
-  reused.
-- Starts the restrained, temporary (2.2s) background highlight **only from the FlatList
-  viewability callback** once the row is actually on screen, with a bounded deadline that
-  releases a target that never becomes viewable. It never re-arms the highlight from mere
-  visibility after it ended.
-- Never opens `TaskDetail`, never focuses a `TextInput`. It dismisses any keyboard on arrival so
-  a notification tap cannot land on a focused input, and touches no editor internals (unsaved
-  Notes state is preserved).
+## Presentation and actions
 
-Wired into all "open an existing Task" entry points: `notifications.ts`'s `PRESS` handler
-(warm), `use-app-events.tsx`'s cold-start initial-notification handler, the widget
-`"task"`/`"complete"` deep-link actions, and the legacy `open_reminder` migration link. The
-`task-notifications.ts` producer attaches the owning account id and the occurrence key to every
-Task notification so the tap can be validated. The widget `"complete"` action specifically still
-requires an explicit in-app action (per its existing comment, since a URL can be invoked by
-another app) — it now opens the List with the existing completion checkbox available, instead of
-opening the editor. "Create a new Task" flows (widget `"create"`, `new_reminder` link, the App
-Intent Shortcuts "task" target) are unchanged and still open `TaskDetail` with no `taskId`,
-since there is no existing Task to view.
+The historical `OverdueTaskActivityAttributes` type is retained for decoding compatibility. New optional content fields add identity and state without rewriting Tasks. Lock Screen and expanded Island contain a round completion control, truncated Task title, static localized due time and Reschedule link. Compact/minimal Island uses small blue symbols. There is no red overdue timer, elapsed counter or post-Stop pause/resume/stop control. AlarmKit's own Snooze countdown remains a system-rendered timer.
 
-## ActivityKit / AlarmKit conditions and public-API limits
+The localization catalog is shared by the widget and app targets, with English, German and Bokmål labels. SwiftUI semantic fonts/colors, text truncation and accessibility labels provide the implementation basis for Dynamic Type and VoiceOver; these do not replace device accessibility QA.
 
-These are the actual platform conditions, not a promise of more than the public API allows:
+Completion validates the current approved snapshot's scope, revision and due instant before enqueuing. The existing host rechecks account, App Lock, database readiness and the current revision before the Core write. Core revisions are monotonic and recurrence materializes a new stable Task ID. Queued or failed actions do not cause an optimistic checkmark or removal. If background execution cannot commit, the existing card tap provides an app/open/unlock path.
 
-- **Foreground / `active`.** `reconcileNow()` runs on app launch, on `AppState` returning to
-  `active`, on a completed sync, and on an App Lock / settings change. Only then can the app
-  create, refresh or end an overdue Live Activity or schedule an alarm. The system executes the
-  SwiftUI timer in the activity's own view, so the card's elapsed time updates with the app
-  suspended.
-- **Background / suspended.** A suspended app runs no JavaScript: it cannot start, update or end
-  a Live Activity, and cannot schedule or reconcile an alarm. An already-started Live Activity
-  keeps rendering (system-owned) until the person dismisses it or it expires; an already-
-  scheduled alarm still fires because AlarmKit owns it. Nothing here claims a background wake-up.
-- **Cold start.** `Activity<…>.activities` is readable once the app process is running, so the
-  first reconcile after the database is initialized (and, when App Lock is on, after unlock)
-  adopts the current truth: it creates missing surfaces, refreshes existing ones and ends ones
-  that no longer apply. There is **no** cold-start automatic Live Activity and **no** "an alarm
-  or a notification starts one" behaviour — neither an alarm firing nor a notification arriving
-  can run app code, so neither can start a surface.
-- **Public-API limits.** ActivityKit is iOS 16.2+ (`#available(iOS 16.2, *)`) and AlarmKit is
-  iOS 26+ (`#available(iOS 26.0, *)`); older OSes (or a build whose SDK can't import the
-  framework) report `unsupported` and Android reports `unsupported` for alarms. Live Activities
-  are capped (this app keeps 5 concurrent overdue surfaces and the system enforces
-  `globalMaximumExceeded`/`targetMaximumExceeded`) and the system ends one after roughly eight
-  hours (`OVERDUE_SURFACE_LIFETIME_MS`). There is no public API to update an AlarmKit alarm's
-  presentation attributes in place, and none to run app code from an alarm or a notification.
-- **Snooze / Pause / Stop are system intents, not app callbacks.** `TaskAlarmRepeatIntent`,
-  `TaskAlarmPauseIntent`, `TaskAlarmResumeIntent` and `TaskAlarmStopIntent` are
-  `LiveActivityIntent`s the system runs; each only calls `AlarmManager.countdown/pause/resume/stop`
-  with the alarm's opaque UUID. Stop silences the alert and never completes the Task; Snooze is
-  AlarmKit's `postAlert` countdown and never edits the Task's reminder occurrence, so recurrence
-  is preserved. No "alarm callback" runs application logic.
+General card taps use the current Task list plus highlight. Reschedule uses VeyraN's own URL scheme, carries the scoped occurrence/revision context and expands the existing in-app picker. It is not an out-of-process native picker. Legacy inbound widget links remain supported; malformed, ambiguous and duplicate identity parameters are rejected. Unmaterialized future occurrences can open the current series but cannot edit/complete a different sibling.
 
-## What this explicitly did not change
+## Lifetime, migration and public API limits
 
-No second Task database, no duplicated recurrence/crypto, no Notes editor changes (schema,
-bridge, initialization, save lifecycle, WebView), no App Lock behavior changes beyond what
-already existed, no Widget snapshot/completion-queue changes, no account/backend/theme work.
+The native reconcile reconstructs activities by identity, refreshes matching cards, ends stale/account-mismatched ones, and preserves dismissal/attempt markers so opening the app cannot endlessly resurrect dismissed activities. The app selects at most five recent urgent surfaces; iOS may impose a lower concurrent limit. The current eligibility window is eight hours from due time, not eight hours newly granted after every Stop. Apple allows a normal Live Activity up to eight active hours, and may retain its ended Lock Screen content for up to four additional hours. Visibility and Island prominence are controlled by iOS, and user dismissal/disabled Live Activities are respected.
 
-## Known limitations (honest, not yet closed)
+Configuration version 4 refreshes future scheduled alarms to install the new intents/tint/Snooze duration. Existing active Snooze is preserved; an already-active legacy alarm may retain its old duration/configuration until it ends. Existing activities decode through the retained type with optional fields; no bulk Task migration occurs. A dismissed or system-removed legacy activity is not forcibly recreated just to demonstrate an upgrade.
 
-- The overdue Live Activity is **app-reconciled, not guaranteed**. An alarm firing and a
-  notification arriving each cannot run app code, so neither can *start* one of these surfaces;
-  the surface appears only on the next reconcile (app launch, foreground return, a completed
-  sync, or an App Lock setting change) and only while the occurrence is still inside the
-  system's ~8-hour Live Activity lifetime. A Task that becomes overdue entirely in the
-  background with the app cold is therefore not surfaced until the app next runs. This is the
-  Lock Screen / Dynamic Island surface only — it is not the Notification Center and it is not a
-  second notification.
-- Live Activities are capped at 5 concurrent surfaces (`MAX_OVERDUE_SURFACES` /
-  `OverdueActivity.maxConcurrent`), newest overdue first; older overdue Tasks beyond the cap get
-  no surface (they are reported in `failedTaskIds`, not assumed shown).
-- Alarm delivery is answered **per occurrence**, not per failure reason: `scheduledAlarmKeys`
-  says *which* occurrence is or is not scheduled (and `status` says whether the device is
-  authorized at all), but not *why* one occurrence failed (simulator vs. real denial vs. an
-  individual scheduling error). `verifyAlarms`/`cancelScheduledAlarms` make the unknown path
-  honest; they do not add finer failure diagnostics than that.
-- Snooze is an AlarmKit countdown (`postAlert` = 10 minutes) driven by the alarm's own
-  `secondaryIntent`; it never edits the Task's reminder occurrence and never persists as Task
-  state. Stop only silences the alert through `AlarmManager.stop(id:)` — it never completes the
-  Task; completion stays a separate Task-domain action.
-- Interactive simulator QA (visually confirming the highlight/scroll and the Urgent
-  authorization prompt) and physical device QA (real sound/haptics/locked-device alarm
-  behavior) had not been performed as of this document's last update — see
-  `artifacts/urgent-reminders-qa.md` for current status.
-- Swift compilation of this worktree has **not** been re-run after the 2026-09-29 label fix
-  (Xcode cannot run inside the worker sandbox); the *only* errors a prior host type-check
-  reported were the two `occurrenceKey` labels fixed here, but that is not a substitute for a
-  fresh host build.
+Scheduled ActivityKit APIs were inspected in the installed SDK. Starting a card at the due instant would compete with the alarm and does not solve an unpredictable Stop event. No scheduled-activity workaround, recurring background loop or private entitlement is used. There is no promised indefinitely persistent card or automatic silent notification reissue after Activity expiry: the Task remains overdue in the app. Existing standard notification fallback applies to future occurrences whose AlarmKit delivery is confirmed absent.
+
+Before first device unlock, protected data can be unavailable. Native intent/store reads fail safely, and encrypted completion must wait for allowed authentication/database availability. Actual AlarmKit delivery, sound, Focus, haptics and before-first-unlock behavior remain physical-device test obligations.
+
+## Public references
+
+- [AlarmKit](https://developer.apple.com/documentation/alarmkit/)
+- [Scheduling an alarm](https://developer.apple.com/documentation/alarmkit/scheduling-an-alarm-with-alarmkit)
+- [WWDC25 AlarmKit](https://developer.apple.com/videos/play/wwdc2025/230/)
+- [LiveActivityIntent](https://developer.apple.com/documentation/appintents/liveactivityintent)
+- [Displaying live data](https://developer.apple.com/documentation/activitykit/displaying-live-data-with-live-activities)
+- [Live Activity design](https://developer.apple.com/design/human-interface-guidelines/live-activities)
+
+Signatures were checked against the installed release Xcode 27A266a SDK. In particular, the native alert initializer that leaves Stop presentation to the system is availability-gated for iOS 26.1; AlarmKit configuration intents are supported from iOS 26.0. An actual iOS 26.2 runtime was not available in this test session.

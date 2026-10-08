@@ -9,6 +9,7 @@ RCT_EXTERN_METHOD(requestAuthorization:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(replaceAlarms:(NSString *)accountId
+                  accountScope:(NSString *)accountScope
                   alarms:(NSArray *)alarms
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
@@ -29,6 +30,7 @@ RCT_EXTERN_METHOD(cancelAll:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(syncOverdueActivities:(NSString *)accountId
                   activities:(NSArray *)activities
                   privacyHidden:(BOOL)privacyHidden
+                  accountScope:(NSString *)accountScope
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 

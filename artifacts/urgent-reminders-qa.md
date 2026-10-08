@@ -1,223 +1,153 @@
-# Urgent reminders + notification routing — QA report
+# Urgent Reminders QA — 2026-10-08
 
-Current milestone: **review-round fixes** — per-occurrence delivery exclusivity that withdraws a
-competing fallback *before* an alarm is introduced, truthful denied/unsupported handling, App Lock
-privacy transitions for alarms that are already presenting, durable device-cleanup obligations,
-occurrence-accurate notification tap identity, and the review's TypeScript errors. Stacked on the
-earlier **bounded alarm-correctness** and **routing/focus hardening + Urgent-only overdue cleanup**
-milestones.
+This report supersedes historical milestone results for this task. Worktree: branch `test`, HEAD `5b39107621b2edaa84f6a543b317bae450829671`. Nothing committed, pushed, released or uploaded. Only synthetic local tasks were used for screenshots.
 
-Source base: `17def76c1e069a72c4b74e9c035a847ff66c286b` (branch `test`). `packages/core` is
-**unchanged** by this pass (byte-identical to the base; verified with
-`git diff --stat -- packages/core`).
+## Environment
 
-See `docs/urgent-reminders-architecture.md` for the behavior and the recorded ActivityKit/AlarmKit
-limits; `artifacts/urgent-reminders-qa/` holds the re-run commands.
+macOS with Xcode release `/Applications/Xcode.app` (27A266a); commands explicitly select this SDK. The globally selected Xcode is beta 27A5252f. Simulator runtime: iOS/iPadOS 27.0 (24A5408d). Fresh dedicated devices:
 
-## What this round changed
+- iPhone 17 Pro: `ABB51741-44A1-4EC2-8527-27C5B17ADE8F`, `VeyraN Urgent Parity QA 20261008`.
+- iPad Pro 13-inch M5: `8FCF02D0-86DE-45C3-B29E-0C24EE200AA4`, `VeyraN Urgent Parity iPad QA 20261008`.
 
-| Area | Change | Focused tests |
+The listed physical iPhone was unavailable. **PHYSICAL_QA_PENDING** applies to every real-device scenario. iOS 26.2 execution was not available; SDK availability guards were compiled, not runtime-tested there.
+
+## Automated checks
+
+Coordinator-run final candidate13 results:
+
+| Check | Result | Evidence |
 |---|---|---|
-| Exclusivity gate (`services/task-alarms.ts`, `services/task-notifications.ts`) | `reconcileTaskAlarmDelivery()` now **reads first** (`verifyAlarms`), then requires the competing notification fallback of every *missing* occurrence to be withdrawn **and the withdrawal re-verified** before that occurrence may gain an alarm; a failed read writes nothing and withdraws nothing. The per-occurrence answer is now `held` / `active` / `absent` / unverified, so an unknown occurrence keeps its existing fallback and gains none — instead of a lost replace acknowledgement leaving a new alarm **and** the old fallback for the same occurrence. | `task-alarms.test.ts` (withdrawal gate, unwithdrawn key, nothing written on an unreadable state), `task-notifications.test.ts` (lost ack, partial cancellation, no duplicate) |
-| Denied / unsupported truthfulness (native + bridge) | A revoked/denied authorization is no longer reported as "nothing scheduled": alarms scheduled while the app *was* authorized are queried, the not-yet-alerting ones it owns are cancelled, and the ones still presenting (`alerting`/`countdown`/`paused`) are reported as held so no fallback duplicates them. `cancelScheduledAlarms` now reports `retainedAlarmKeys` as well as `cancelledAlarmKeys`; `verifyAlarms`/`replaceAlarms` report `activeAlarmKeys`. | `task-alarms.test.ts`, `task-notifications.test.ts` (denied-after-authorization) |
-| App Lock privacy (native) | A held presentation created with the real Task title is removed with the supported `stop`/`cancel` calls when App Lock is on, then re-scheduled from the redacted placeholder (including for an occurrence that is already due, so removing the leak cannot also drop the alert). Per-alarm redaction is persisted as **ids only** (`notesnook.taskAlarms.redactedIds.v1`); no title, account or other content enters `UserDefaults`. | Swift type-check (host) + review; the JS side is covered by `task-notifications.test.ts` (redaction, displayed-notification withdrawal) |
-| Redaction source | `taskSurfacesPrivacyHidden()` = persisted `SettingsService.get().appLockEnabled` **or** the hydrated store, so a headless/not-yet-hydrated process can never default to "not hidden". | `task-notifications.test.ts` (persisted-on/store-off) |
-| Durable cleanup (JS) | A cleanup that fails is persisted as a minimal obligation (`notesnook.taskSurfaces.pendingCleanup.v1`: mechanism labels + timestamp, no content, no account id) and retried at the next launch/foreground **before** any new planning — including when the Task domain is not initialized or the app is mid-logout, because every mechanism cancels surfaces by ownership, not by reading the old account. | `task-notifications.test.ts` (#3 cleanup obligations) |
-| Occurrence-accurate taps | A notification now stamps its **own** occurrence (`occurrenceKey` + `seriesId`), and the router resolves the authoritative record through the domain (`db.tasks.list()` by `seriesId`+`occurrenceKey`), falling back to the series' current record for a future occurrence whose record does not exist yet. The tapped occurrence is never answered with the next one, and nothing is mutated. | `task-navigation.test.ts` (occurrence identity), `task-notifications.test.ts` (stamped payload) |
-| Subscription (verification) | The "settings-only subscription" critique is a **false positive**: core stores Task records in the settings collection (`TaskRecordStore.save` → `db.settings.collection.upsert`), and `SQLCollection.upsert` publishes `databaseUpdated` with `collection: this.type` (`"settings"`) — see `packages/core/src/collections/tasks.ts`, `packages/core/src/database/sql-collection.ts:108`, `packages/core/src/collections/settings.ts:104`. | `task-notifications.test.ts` (settings-collection write re-plans) |
-| Duplicate surface | An occurrence whose alarm is *presenting* is excluded from the overdue Live Activity (`overdueTaskSurfaces(..., isAlarmPresenting)`), so one occurrence never owns two Lock Screen surfaces. | `task-alarm-plan.test.ts` |
-| Widget account change | A user-id change now clears **and** re-projects the widget snapshot instead of leaving the widget empty (or the previous account's state) until an unrelated event. Availability fix only; the completion queue/auth paths are untouched. | `reminder-widget.test.ts`, `reminder-widget-writer.test.ts`, `reminder-widget-completion.test.ts` (all pass, unchanged) |
-| Review's TypeScript errors | `screens/tasks/index.tsx` `useRef<TaskFocusSession>()` → `useRef<TaskFocusSession \| undefined>(undefined)`; the logout/account-change cleanup chain no longer returns `Promise<string[]>` where `Promise<void>` is expected. | full `tsc --noEmit` below |
+| Focused Urgent suites | PASS: 8 suites, 130 tests | `/tmp/veyran-urgent-final13-focus-jest.log` |
+| Entire mobile Jest run | 49 suites / 501 tests PASS; 2 existing suite-load failures, command exit 1 | `/tmp/veyran-urgent-final13-jest.log` |
+| Mobile TypeScript | PASS, exit 0 | `/tmp/veyran-urgent-final13-tsc.log` |
+| Swift lifecycle harness | PASS: 28 checks against final Surface source | `/tmp/veyran-urgent-lifecycle-final.log` |
+| Core regressions | PASS: 54 files, 849 tests, 1 TODO; Core unchanged afterward | `/tmp/veyran-urgent-core.log` |
+| iPhone/iPad Simulator build | PASS, exit 0 | `/tmp/veyran-urgent-final13-simulator-build.log` |
+| iPhone/iPad device SDK build | PASS, exit 0; unsigned | `/tmp/veyran-urgent-final13-device-build.log` |
+| Mac Catalyst build | PASS, exit 0 | `/tmp/veyran-urgent-final13-catalyst-build.log` |
+| Final translation catalog | PASS: Apple xcstringstool emitted EN/DE/NB, exit 0 | `/tmp/veyran-urgent-final-catalog.log` |
+| Whitespace / patch integrity | PASS | `git diff --check` |
 
-## Evidence (this round, executed in this checkout)
+After the candidate13 native builds, candidate14 changed only 15 translation-catalog lines (Bokmål coverage and German wording). That exact final catalog passed Apple `xcstringstool compile`; the full native builds were not repeated for text-only changes. The prior built app and widget both contain `en.lproj`, `de.lproj`, and `nb.lproj`, disproving a reviewer concern about `knownRegions` suppressing those resources. Runtime translated layout QA is still pending.
 
-| Check | Result | Notes |
+The full Jest command is deliberately reported as a failure overall, even though no new failing suite/test was introduced. Final native failure-recovery guards were code-reviewed and compiled; AlarmKit silent-cancel fault injection was not performed.
+
+Baseline before implementation: mobile TypeScript passed; 48 mobile Jest suites passed and 2 failed to load (466 tests passed). The existing failures are `logout.test.ts` (RNDeviceInfo undefined) and `account-section.test.tsx` (FingerprintScanner/dependency parse). Core: 54 files passed, 849 tests passed, 1 TODO. Core code is unchanged by this task.
+
+### Exact commands
+
+From `apps/mobile`:
+
+```sh
+BROWSERSLIST='node 20' ./node_modules/.bin/jest app/ --runInBand \
+  --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}'
+./node_modules/.bin/tsc --noEmit
+```
+
+Focused command from `apps/mobile`:
+
+```sh
+BROWSERSLIST='node 20' ./node_modules/.bin/jest \
+  app/services/task-alarm-plan.test.ts app/services/task-alarms.test.ts \
+  app/services/task-notifications.test.ts app/services/task-notification-actions.test.ts \
+  app/services/task-navigation.test.ts app/services/reminder-widget-links.test.ts \
+  app/services/reminder-widget-completion.test.ts app/services/reminder-widget-writer.test.ts \
+  --runInBand \
+  --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}'
+```
+
+From `packages/core`:
+
+```sh
+npm test -- --reporter=dot
+```
+
+From repository root (app plus widget extension):
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme NotesnookRelease \
+  -configuration Release -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath /tmp/VeyraNUrgentParitySimulator \
+  CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- ARCHS=arm64 build
+
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme NotesnookRelease \
+  -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' \
+  -derivedDataPath /tmp/VeyraNUrgentParityDevice \
+  CODE_SIGNING_ALLOWED=NO ARCHS=arm64 build
+
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild \
+  -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme NotesnookRelease \
+  -configuration Release -destination 'generic/platform=macOS,variant=Mac Catalyst' \
+  -derivedDataPath /tmp/VeyraNUrgentParityCatalyst \
+  CODE_SIGNING_ALLOWED=NO ARCHS=arm64 build
+
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer swiftc \
+  -sdk /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk \
+  -target arm64-apple-ios18.0-macabi \
+  apps/mobile/ios/Notesnook/TaskAlarm/TaskAlarmSurface.swift \
+  apps/mobile/ios/Notesnook/TaskAlarm/Tests/TaskAlarmLifecycleStoreHarness.swift \
+  -o /tmp/veyran-urgent-lifecycle-final
+/tmp/veyran-urgent-lifecycle-final
+
+mkdir -p /tmp/veyran-urgent-final-catalog
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcrun xcstringstool compile \
+  apps/mobile/ios/NotesWidget/Localizable.xcstrings \
+  --output-directory /tmp/veyran-urgent-final-catalog
+
+git diff --check
+```
+
+The unsigned iPhoneOS build covers iPhone/iPad target compilation; it is not an installation or physical validation. Catalyst is a build smoke test, not a new account/editor runtime certification. Existing local dependencies were reused; do not reinstall packages merely to reproduce these commands.
+
+## Observed simulator behavior
+
+Baseline synthetic `Urgent Parity Migration`: 08:00 native alarm while locked; Snooze displayed 9:59 (old ten minutes); re-alert observed 08:11; system Stop dismissed alarm without completing Task. Opening app afterward produced the old red incrementing overdue Island. This confirms the reported defect. The baseline list already happened to be blue: no claim that every old alarm was green/red.
+
+Candidate6, before final review fixes:
+
+- Native blue full-screen alarm delivered at 08:35.
+- Stop invoked `TaskAlarmStopIntent` in the app process. Before separate Live Activity authorization, `liveactivitiesd` refused the request for lack of an activity request assertion/foreground state. The durable Stop was saved, no successful-attempt marker was fabricated.
+- Foreground reconciliation recovered the calm card; compact Island showed only blue symbols and no overdue timer. Separate Live Activity Allow prompt was accepted at 08:40.
+- Reschedule from the card opened the correct existing Task and expanded its date picker. Saving 08:49 removed the prior card and kept the same Task.
+- A real regression was found in this subsequent Stop: a one-off alarm's stable UUID caused the old occurrence's lifecycle markers to be reused after changing its due time. The candidate12 correction and successful retest are recorded below; this failed candidate6 attempt is not evidence of a system API limitation.
+- Fresh `Urgent Snooze QA` delivered at 08:54. Snooze showed 9:00 then counted down normally. At 08:56 Stop from its countdown card ran in the background and created the calm reminder card without opening VeyraN.
+- At 08:57 the card's checkbox invoked `TaskAlarmCompleteIntent`; the card disappeared. Opening the app showed 2 instead of 3 open Tasks, with the tested Task removed from the open list. The intent finished after the existing completion host ran. There were 0 pending/delivered standard notifications in the native logs for this test.
+- iPad fresh local onboarding and two-pane Task-screen launch passed.
+
+Installing the candidate preserved the existing synthetic Tasks. iOS removed the previously active red Activity during app replacement; the app did not forcibly resurrect it. Therefore this session does **not** prove an uninterrupted in-place legacy-Activity visual migration.
+
+Candidate12, after the lifecycle/security corrections:
+
+- Installed the newly built app over the synthetic data at 09:30. Three existing open Tasks remained; the earlier completed Snooze Task stayed completed.
+- Rescheduled the same `Urgent Stop QA` from 08:49 to 09:35. Read-only inspection of its minimal lifecycle record confirmed the new due/occurrence and absence of old Stop/attempt markers.
+- Native blue alarm delivered at 09:35; Snooze displayed 8:57 after the initial nine-minute interval began.
+- Countdown Stop at 09:35:46 immediately created the calm generic `VeyraN Task` card without foregrounding the app. The persisted stoppedAt and attemptedAt now belong to the new due time. This directly retests the previously observed regression.
+- Checkbox at 09:36 completed the Task and removed the card. Unlocking showed `2 open, 2 overdue`, with only Migration and Slider fixtures remaining; the rescheduled Task was absent from the open list.
+- Evidence: `veyran-candidate12-rescheduled-alarm.png`, `veyran-candidate12-stop-after-reschedule.png`; native logs `/tmp/veyran-urgent-candidate12-reschedule-stop.log` and `/tmp/veyran-urgent-candidate12-completion.log`.
+
+Independent system-slider check on candidate6 after Live Activity permission: fresh `Urgent Slider QA` delivered at 09:06; slider Stop at 09:07:27 invoked the app intent but ActivityKit rejected the request. Foreground recovery at 09:08 created the card. This test is independent of the repaired occurrence-marker defect. Light/Dark captures and general-card tap to the Task list passed. Candidate13 only hardens failure-recovery/sanitization and completion retry reporting. Its final simulator binary was installed and launched successfully on both dedicated iPhone and iPad simulators at 09:41–09:42. The iPhone was returned to its initial Light appearance. Repeat the complete alarm workflow with this final binary on a physical device before release.
+
+## Visual evidence and reference limit
+
+Actual simulator screenshots are in `../../qa/urgent-parity-20261008/` (outside the repository root), with local paths listed in the final report. No generated mockup is used as proof.
+
+| Surface | VeyraN evidence | Apple reference |
 |---|---|---|
-| Mobile Jest suite | **356/356 tests, 35/35 suites, 0 failed, 0 pending** | `BROWSERSLIST="node 20" npx --no-install jest app/ --runInBand --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}'` from `apps/mobile`. The module mapper is required because metro/rspack alias `@notifee/react-native` → `@ammarahmed/notifee-react-native` (`apps/mobile/metro.config.js:26`, `apps/mobile/rspack.config.js:90`) and the repository contains no Jest config. New in this round: `task-notifications.test.ts` (15 production-orchestrator tests over the real pass). |
-| Mobile TypeScript, full app (`tsc --noEmit`) | **0 errors** | `BROWSERSLIST="node 20" npx --no-install tsc --noEmit` from `apps/mobile`, after building the workspace packages and running `patch-package` (see setup below). Without `patch-package` the pre-existing dependency errors reappear (`clipboard.setHTML`, `react-native-swiper-flatlist` null ref) — those are setup artifacts, not source errors. The `use-editor.ts` implicit-`any` reported by an earlier QA tree did **not** reproduce once the workspace packages were built here; it is not claimed as fixed, only as not observed. |
-| Core sources | **unchanged** | `git diff --stat -- packages/core` is empty. |
-| Native Swift | **NOT re-run here** | Xcode/SDK writes are blocked in this sandbox. `TaskAlarmModule.swift` changed (privacy transition, `activeAlarmKeys`, `retainedAlarmKeys`, revoked-authorization cleanup), so the host type-check/build is required and remains the authoritative check. |
-| Native iOS build (host, ARM64 iPhone + iPad) | **NOT re-run for this milestone** | The prior `78c04436d` builds predate the new native methods and the actual candidate bytes; they must not be quoted as current evidence. |
-| Physical device QA | **`PHYSICAL_QA_PENDING`** | No physical phone available; no sound/haptics/locked-device claims are made. |
-| Interactive simulator QA | **not performed** (Codex/computer-use step, specified below) | Highlight-only-when-viewable, warm/cold/locked taps, App Group and notification delivery need a real run. |
+| Alarm full screen | Native blue Snooze and system Stop slider observed | Pending exact same-version comparison |
+| Snooze | Blue countdown; new nine-minute configuration observed | Apple nine-minute behavior not independently confirmed |
+| Lock Screen after Stop | Calm title/static due/round checkbox/Reschedule observed from countdown Stop and foreground recovery | Pending |
+| Compact Island | Blue circle/checklist, no red elapsed counter observed | Pending |
+| Expanded Island | Implemented in SwiftUI | Runtime/reference capture pending |
+| Light/Dark | Semantic styles implemented; actual captures distinguished in final log | Exact reference comparison pending |
+| AOD / Dynamic Type / VoiceOver | Implementation uses system styles and labels | Physical/accessibility QA pending |
 
-### Deterministic setup (host, once per fresh tree)
+Fresh Apple Reminders without an iCloud account did not expose Urgent. No private account was used to obtain a reference. **VISUAL_REFERENCE_QA_PENDING**: pixel-level parity, exact spacing/font comparison and Apple Snooze duration are unverified. The large clock, slider, alarm sound/haptics and overall system alert are controlled by Apple; VeyraN retains its own identity.
 
-```bash
-# from the repository root, with a writable npm cache
-npm install --ignore-scripts --legacy-peer-deps --cache "$TMPDIR/npm-cache"
-for p in core logger crypto theme common intl editor; do
-  npm install --prefix "packages/$p" --ignore-scripts --legacy-peer-deps --cache "$TMPDIR/npm-cache"
-  npm run build --prefix "packages/$p"
-done
-(cd apps/mobile && npx --no-install patch-package)     # applies apps/mobile/patches (clipboard, swiper, ...)
-```
+## Physical and integration release gates
 
-Notes for the host run:
+Still required on a real iPhone: locked/unlocked alarm, Focus, Silent Mode, sound/haptics, airplane mode, force quit, cold intent launch, App Lock toggled while alerting/counting/paused, completion when DB unavailable, before first unlock after reboot, multi-account switching/logout, simultaneous urgent tasks, recurring-task completion/next occurrence, and Activity expiry/user dismissal after the allowed lifetime. Verify no duplicate sounds, retained unredacted title, ghost card or stale-account mutation.
 
-- `packages/intl`'s `npm run build` runs a Lingui extract step and a Vite build. In the worker
-  sandbox the Vite step aborted with `EPERM` while PostCSS searched parent directories above the
-  checkout; building the same package from a copy under `$TMPDIR` succeeded and its `dist/` was
-  used here. On the host, run the documented `npm run build --prefix packages/intl`; if the extract
-  step fails, `npx vite build` from `packages/intl` still produces `dist/index.js|mjs|d.ts`.
-- `BROWSERSLIST` is only needed for the sandbox (browserslist walks to an unreadable parent
-  directory); on the host the plain commands work.
-
-### Exact re-run commands
-
-```bash
-cd apps/mobile
-BROWSERSLIST="node 20" npx --no-install jest app/ --runInBand \
-  --moduleNameMapper '{"^@notifee/react-native$":"<rootDir>/node_modules/@ammarahmed/notifee-react-native"}' \
-  --json --outputFile="$TMPDIR/veyran-tests.json"
-BROWSERSLIST="node 20" npx --no-install tsc --noEmit
-```
-
-```bash
-# native (host, authoritative): widget target included
-xcodebuild -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme Notesnook \
-  -configuration Debug -sdk iphoneos -destination 'generic/platform=iOS' \
-  -derivedDataPath "$TMPDIR/DerivedData" build
-```
-
-## Bytes under test (this round; recompute in the host tree)
-
-`sha256` of the changed product/test files, and the combined recipe used for the milestone digest:
-
-```bash
-{ git diff HEAD -- apps/mobile/app packages/core; \
-  for f in $(git ls-files -o --exclude-standard -- apps/mobile/app); do cat "$f"; done; } | shasum -a 256
-# -> 6c411dd505c673223bdf18489d8d06d022aa0372476ff5d69dd3286232a62fff
-```
-
-| File | sha256 |
-|---|---|
-| `apps/mobile/app/services/task-alarms.ts` | `51e80e236d7e822d67547ff2fc56341590dcab78e07ff5a18da3cc473addafa6` |
-| `apps/mobile/app/services/task-alarms.test.ts` | `e4fd13ef5fe9e6a33ba55c105678090da61d8e4fb0146cd87f1f7edb51f069d7` |
-| `apps/mobile/app/services/task-alarm-plan.ts` | `0e467a302e40545cf1a3353ddcc050fc6f7ccab765df0d4a059bd36f26da5893` |
-| `apps/mobile/app/services/task-notification-plan.ts` | `c3f8271766078f0a4c417a3758fb1c052bbd36bd900aa8d2e7e3d5a0a8409e25` |
-| `apps/mobile/app/services/task-notifications.ts` | `02b312a6e30517c6faeb89ff735feed92257b2bbb134c62a4514b5c84cb830f5` |
-| `apps/mobile/app/services/task-notifications.test.ts` | `f33c8c5457858491eabca4072d8d45967c17d73dc6cbeabf5af491fa22550b40` |
-| `apps/mobile/app/services/task-navigation.ts` | `c4244637e332d531532712aadd2e616c7daeb4ae051f757954618b646d5235a0` |
-| `apps/mobile/app/services/task-navigation.test.ts` | `65502e2b54995ad034fa4fb5fe4690a65a017608ee1f01e73129827b25014307` |
-| `apps/mobile/app/services/reminder-widget.ts` | `ce72988128ac785d923aa64f1a0f3e050c17bf377589eea4fe32a6e94c37c665` |
-| `apps/mobile/app/screens/tasks/index.tsx` | `b9f2a86ca776ef3c8ba08e1fa462d40135ac11f3a802fb722f36f794b4da4b05` |
-| `apps/mobile/ios/Notesnook/TaskAlarm/TaskAlarmModule.swift` | `d8b63925b57754d66c90c6b8665a13120562eef3e32d64ea77fb6fedb3bdb6dd` |
-
-## Host QA actions for Codex (mechanical, no feature code)
-
-1. **Build + install on the fresh dedicated simulators** (never the protected account profiles):
-   iPhone 27 `2A3460BC-0244-47CC-88C4-C96D53172B29`, iPad 27
-   `4E76B6BB-AD17-4222-BE8D-464077DE7621`.
-   ```bash
-   xcrun simctl boot 2A3460BC-0244-47CC-88C4-C96D53172B29   # and the iPad one
-   xcodebuild -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme Notesnook \
-     -configuration Debug -sdk iphonesimulator \
-     -destination 'platform=iOS Simulator,id=2A3460BC-0244-47CC-88C4-C96D53172B29' \
-     -derivedDataPath "$TMPDIR/DerivedData" ENABLE_DEBUG_DYLIB=NO build
-   xcrun simctl install 2A3460BC-0244-47CC-88C4-C96D53172B29 <built Notesnook.app>
-   xcrun simctl launch 2A3460BC-0244-47CC-88C4-C96D53172B29 com.streetwriters.notesnook
-   ```
-   Ad-hoc signing of the widget/app-group entitlements is required for the widget + AlarmKit
-   surfaces; it is unchanged from the prior build recipe.
-2. **New Note → visible editor → type → Save → Back → reopen the note**: the text is retained.
-3. **Canonical Task tap**: from a Task notification (warm and cold start), from the widget link, and
-   while App Lock is on; expect the Tasks list at the Task's **current** List with the row briefly
-   highlighted, no editor, no keyboard. A tap for an occurrence that no longer exists must show the
-   generic "no longer available" message and land on Tasks.
-4. **Settings / login / logout**: sign in, sign out, sign in again; Task notifications, alarms and
-   the overdue surface of the previous account must disappear, and the widget must not show the
-   previous account's Tasks after the sign-out.
-5. **Widget check**: complete a Task from the widget (iOS 27 `CompleteTaskWidgetIntent`), confirm
-   the completion lands and the snapshot re-projects; switch accounts and confirm the widget is
-   re-projected rather than left empty or stale.
-6. **Sound/haptics/locked-device**: **not claimed** — `PHYSICAL_QA_PENDING`. A simulator cannot
-   validate the audible AlarmKit presentation, Snooze/Pause/Stop semantics or Lock Screen behavior.
-
-## Current gaps and scope limits
-
-- Engineering is **NOT ACCEPTED**; the release is **NOT AUTHORIZED**. The implementation range will
-  be independently re-reviewed after these fixes, and the native build + simulator QA above are
-  still outstanding.
-- The revoked-authorization cleanup, the privacy transition and `activeAlarmKeys` are **new native
-  behavior**: they are reviewed and type-check only once the host builds them. AlarmKit exposes no
-  in-place presentation update, so enabling App Lock while an alarm is alerting/snoozed removes that
-  presentation and does not re-present it as an alarm; the redacted overdue surface keeps the Task
-  visible. That is a deliberate, documented limitation, not a claim of full privacy coverage.
-- The overdue Live Activity still depends on the app running to reconcile it: no guaranteed cold
-  background start, no undismissable alarm, no volume-behavior guarantee, no silent-switch or
-  critical-alert tricks, and no JavaScript keepalive timer.
-- `reminder-widget.ts`'s account-change re-projection is wired in the widget's own subscription;
-  the focused subscription assertion lives in `reminder-widget-writer.test.ts`, which is outside
-  this bounded change's allowed paths (it passes unchanged).
-- No screenshots, no fabricated counts, no model-subagent review claims. All of this round's
-  engineering was DeepSeek Flash; Codex only supervises/builds/tests mechanically.
-
-## HISTORICAL — prior `5dc366a0` candidate pass (superseded; not current evidence)
-
-Kept verbatim as history. Its claims — including "tsc 0 errors", the simulator builds, and the
-independent `urgent-specialist` (claude-sonnet-5) review — describe that older candidate on branch
-`agent/claude-urgent-reminders` and must not be read as current status.
-
-> Candidate commit: `5dc366a0531315f2646b4fd1a059027d8cba7dd5` (base
-> `17def76c1e069a72c4b74e9c035a847ff66c286b`, branch `agent/claude-urgent-reminders`)
->
-> - `tsc --noEmit` (apps/mobile, full app): 0 errors (required building `@notesnook/core`, `theme`,
->   `intl`, `common`, `crypto`, `logger`, `editor` from source first — this worktree had no
->   committed `dist`/workspace-linking).
-> - `npx jest app/`: 255/262 pass. Every Task/notification suite passed
->   (`task-notification-plan.test.ts`, `task-alarm-plan.test.ts`, `app-intent-requests.test.ts`,
->   `keyboard-dock.test.ts`). The 7 failures were in `account-logout.test.ts`/`account-session.test.ts`
->   — treated as unrelated to that change; ad-hoc `npx jest` invocation because the worktree had no
->   committed mobile jest config.
-> - iPhone ARM64 Debug simulator build (`iPhone 17 Pro`) and iPad ARM64 Debug simulator build
->   (`iPad Pro 13-inch (M5)`): BUILD SUCCEEDED, after one `pod install` and prior builds of
->   `@notesnook/ui` and `packages/editor-mobile`'s `build.bundle` WebView artifact.
-> - Independent read-only review of the committed diff by `urgent-specialist` (claude-sonnet-5):
->   no blocking findings; one non-blocking line-length nit in `task-notification-plan.ts`.
-> - Not performed then either: interactive simulator QA, account Settings/login/logout regression
->   re-verification, physical device QA (`PHYSICAL_QA_PENDING`), and ActivityKit/Dynamic Island/Lock
->   Screen overdue presentation (out of scope, nothing built yet). No screenshots were taken; the
->   legacy navigation reference images at
->   `/Users/ozel0t/Notesnook/qa/veyran-navigation-2026-09-26/` were not consulted.
-
-## Status summary (kept distinct per policy)
-
-- **Engineering**: partial — mobile Jest **356/356 (35 suites)** and `tsc --noEmit` **0 errors** were
-  executed here on the current bytes; the native build and the host re-run are outstanding.
-  The scoped implementation is accepted for engineering integration; the remaining
-  TypeScript diagnostic is in unchanged editor dependency resolution.
-- **Physical QA**: `PHYSICAL_QA_PENDING`.
-- **Release**: `NOT AUTHORIZED` — local implementation/tests/QA only. No push, no `main` merge, no
- TestFlight/App Store submission, no production deployment.
-
-## Final urgent-reminder candidate — 2026-09-29
-
-Integration branch `test` now contains signed commits through `9f1243c87` (base `17def76c1`). The final focused regression run passed **35/35 tests in 2 suites**: `task-alarms.test.ts` and `task-notifications.test.ts`. The candidate also has the earlier **357/357 mobile tests in 35 suites** and iPhone/iPad ARM64 simulator build evidence. The latest native corrections close App-Lock redaction failure reporting and post-cancellation bookkeeping pruning; no past-due alarm is rescheduled. Physical device and interactive simulator QA remain `PHYSICAL_QA_PENDING`. Full mobile TypeScript still has one unchanged editor dependency diagnostic at `use-editor.ts:133`; no editor source was changed. Luna Reserve hit its account usage limit before editing; the final correction was completed under the user's explicit “egal wie” instruction. No push, main merge, upload, or deployment occurred.
-
-## Claude verification pass — 2026-09-29 (after `8e1002068`)
-
-Executed on `test` with release Xcode 27.0 (27A266a), each native build in its own fresh DerivedData.
-
-| Check | Result |
-| --- | --- |
-| iPhone ARM64 simulator build (fresh DerivedData) | **BUILD SUCCEEDED** |
-| iPad ARM64 simulator build (fresh DerivedData, sequential) | **BUILD SUCCEEDED** |
-| Focused Jest (`task-alarms`, `task-notifications`) | **35/35, 2 suites** |
-| Mobile Jest `app/` (with the notifee module mapper above) | **360/360, 35 suites** (`__tests__/App-test.js`, an unchanged 2023 upstream smoke test outside `app/`, does not parse) |
-| `tsc --noEmit` (mobile) | **0 errors** after `224c21c41` (test-local mock types lacked `unredactedAlarmKeys` / `notFoundAlarmKeys`); the `use-editor.ts:133` diagnostic no longer reproduces |
-| Simulator launch | launched normally; launchd error 163 did **not** reproduce |
-
-Interactive simulator QA (debug build, "VeyraN Urgent QA iPhone 20260929", no account):
-
-- New note save → reopen: content intact.
-- Notification tap, warm (app backgrounded on Library): opens the Task's list, row highlighted and the highlight clears after ~2 s; no editor, no keyboard.
-- Cold start (app terminated) on stale notifications: completed Task → current list with the Task shown completed; moved Task → its **new** list, not the payload's; deleted Task → safe Tasks destination.
-- Widget deep link `ShareMedia://TaskWidget?id=<unknown>` → "This Task is no longer available." toast, stays on Tasks.
-- App Lock (simulated Face ID): enabling works; the Urgent alarm fired at the due minute as an AlarmKit alarm titled **"VeyraN Task"** (real title redacted) with Stop / Snooze; after unlock the Task is still open.
-- AlarmKit permission prompt appears only when toggling Urgent.
-- Found and fixed (`3fe6065c7`): Task editor showed "?" boxes for Date / Urgent / Repeat / Priority because the committed icon-font subset lacked those glyphs.
-
-Not verifiable in the simulator: synthetic taps do not reach the system alarm platter (Stop/Snooze), widget installation/completion, Live Activity/Dynamic Island, sound/haptics/silent mode. These stay on the physical checklist.
-
-Observations (not changed): granting a system permission prompt with App Lock set to "Immediately" locks the app once (form state survives); the new-list name field dropped characters under very fast synthetic typing (re-check by hand).
+Also finish exact Apple reference capture, expanded Island, accessibility sizes/VoiceOver, long titles and German/Bokmål runtime text checks. Compilation/localization catalog checks are not visual acceptance. The unavailable physical QA must be completed before treating this as a reliable TestFlight candidate. No TestFlight upload is authorized by this work.

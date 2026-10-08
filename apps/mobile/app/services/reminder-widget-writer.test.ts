@@ -108,6 +108,13 @@ jest.mock("./settings", () => ({
     getProperty: () => true
   }
 }));
+// The writer's lifecycle calls `TaskNotifications.reconcile()` after a write.
+// The real module pulls in notifee (and the native alarm bridge), which this
+// snapshot-only suite deliberately does not fake: the same lightweight mock the
+// completion suite uses keeps the writer's own behavior under test.
+jest.mock("./task-notifications", () => ({
+  TaskNotifications: { reconcile: jest.fn(async () => {}) }
+}));
 
 import { ReminderWidget } from "./reminder-widget";
 

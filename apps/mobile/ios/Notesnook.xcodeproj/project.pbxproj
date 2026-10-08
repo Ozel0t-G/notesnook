@@ -58,6 +58,7 @@
 		D10000000000000000000002 /* ReminderWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* ReminderWidgetModule.m */; };
 		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
 		D10000000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
+		D10000000000000000000042 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
 		D10000000000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* PrivacyInfo.xcprivacy */; };
 		D10000000000000000000006 /* TaskAlarmModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000006 /* TaskAlarmModule.swift */; };
 		D10000000000000000000007 /* TaskAlarmModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000007 /* TaskAlarmModule.m */; };
@@ -502,29 +503,6 @@
 			path = Notesnook/VeyraNTabBar;
 			sourceTree = "<group>";
 		};
-		D30000000000000000000080 /* Glass */ = {
-			isa = PBXGroup;
-			children = (
-				D20000000000000000000080 /* VeyraNGlassView.swift */,
-				D20000000000000000000081 /* VeyraNGlassViewManager.m */,
-			);
-			name = Glass;
-			path = Notesnook/Glass;
-			sourceTree = "<group>";
-		};
-		D30000000000000000000070 /* MacMenu */ = {
-			isa = PBXGroup;
-			children = (
-				D20000000000000000000070 /* VeyraNMacMenu.m */,
-				D20000000000000000000071 /* VeyraNMacMenu.h */,
-				D20000000000000000000072 /* VeyraNMacToolbar.m */,
-				D20000000000000000000073 /* VeyraNMacToolbar.h */,
-				D20000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m */,
-			);
-			name = MacMenu;
-			path = Notesnook/MacMenu;
-			sourceTree = "<group>";
-		};
 		D30000000000000000000020 /* AppIntents */ = {
 			isa = PBXGroup;
 			children = (
@@ -545,6 +523,29 @@
 			);
 			name = NotificationSettings;
 			path = Notesnook/NotificationSettings;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000070 /* MacMenu */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000070 /* VeyraNMacMenu.m */,
+				D20000000000000000000071 /* VeyraNMacMenu.h */,
+				D20000000000000000000072 /* VeyraNMacToolbar.m */,
+				D20000000000000000000073 /* VeyraNMacToolbar.h */,
+				D20000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m */,
+			);
+			name = MacMenu;
+			path = Notesnook/MacMenu;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000080 /* Glass */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000080 /* VeyraNGlassView.swift */,
+				D20000000000000000000081 /* VeyraNGlassViewManager.m */,
+			);
+			name = Glass;
+			path = Notesnook/Glass;
 			sourceTree = "<group>";
 		};
 		DA84645424CFBF19A44D64B3 /* Pods */ = {
@@ -768,6 +769,7 @@
 				6510E6D72877215700DACAA9 /* build.bundle in Resources */,
 				659BE46725E11A5100E05671 /* notesnook-text.png in Resources */,
 				E7F9D56665C2F19F4A97BF49 /* PrivacyInfo.xcprivacy in Resources */,
+				D10000000000000000000042 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

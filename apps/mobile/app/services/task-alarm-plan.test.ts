@@ -4,7 +4,9 @@ import {
   MAX_OVERDUE_SURFACES,
   OVERDUE_SURFACE_LIFETIME_MS,
   overdueTaskSurfaces,
+  TASK_ALARM_CONFIGURATION_VERSION,
   taskAlarmKey,
+  taskAlarmState,
   taskReminderOccurrences
 } from "./task-alarm-plan";
 import { planTaskNotifications } from "./task-notification-plan";
@@ -68,7 +70,12 @@ describe("Urgent Task alarm planning", () => {
         timestamp: new Date(`${date}T14:00:00`).getTime(),
         title: "one",
         updatedAt: 42,
-        privacyHidden: false
+        privacyHidden: false,
+        // The generation and the occurrence's own key are part of every planned
+        // alarm, so a config bump or a sibling occurrence can never be confused
+        // with this one.
+        configurationVersion: TASK_ALARM_CONFIGURATION_VERSION,
+        occurrenceKey: `${date}Tdate`
       }
     ]);
     expect(
@@ -245,7 +252,10 @@ describe("ongoing overdue surfaces", () => {
       {
         taskId: "fired",
         timestamp: new Date(`${item.reminderDate}T${item.reminderTime}:00`).getTime(),
-        title: "fired"
+        title: "fired",
+        updatedAt: 42,
+        alarmKey: "task:fired",
+        occurrenceKey: `${item.reminderDate}Tdate`
       }
     ]);
   });
@@ -348,4 +358,69 @@ describe("ongoing overdue surfaces", () => {
     expect(overdueTaskSurfaces([item], now)[0].title).toBe("Therapy at 5");
   });
 
+});
+
+describe("per-occurrence state machine", () => {
+  const now = Date.now();
+  const base = {
+    hasReminder: true,
+    urgent: true,
+    occurrenceTimestamp: now + 60 * 60 * 1000,
+    now
+  };
+
+  test("a held alarm that is not presenting is SCHEDULED, never ALERTING", () => {
+    // The native report distinguishes "the system holds it" from "it is
+    // presenting now"; a held-but-silent occurrence must not read as alerting.
+    expect(taskAlarmState({ ...base, held: true })).toBe("SCHEDULED");
+    expect(taskAlarmState({ ...base, held: true, presentation: null })).toBe(
+      "SCHEDULED"
+    );
+  });
+
+  test("only a presenting alarm is ALERTING or SNOOZED", () => {
+    expect(
+      taskAlarmState({ ...base, held: true, presentation: "alerting" })
+    ).toBe("ALERTING");
+    expect(
+      taskAlarmState({ ...base, held: true, presentation: "countdown" })
+    ).toBe("SNOOZED");
+    expect(taskAlarmState({ ...base, held: true, presentation: "paused" })).toBe(
+      "SNOOZED"
+    );
+  });
+
+  test("an occurrence that is over and not held is STOPPED_BUT_INCOMPLETE", () => {
+    expect(
+      taskAlarmState({
+        ...base,
+        occurrenceTimestamp: now - 60 * 1000,
+        held: false
+      })
+    ).toBe("STOPPED_BUT_INCOMPLETE");
+    // A future occurrence the system does not hold is simply not armed.
+    expect(taskAlarmState({ ...base, held: false })).toBe(
+      "REMOVED_OR_DISABLED"
+    );
+  });
+
+  test("completion, a removed reminder/Urgent and a move each win outright", () => {
+    expect(taskAlarmState({ ...base, completed: true, held: true })).toBe(
+      "COMPLETED"
+    );
+    expect(taskAlarmState({ ...base, held: false, urgent: false })).toBe(
+      "REMOVED_OR_DISABLED"
+    );
+    expect(taskAlarmState({ ...base, held: false, hasReminder: false })).toBe(
+      "REMOVED_OR_DISABLED"
+    );
+    expect(
+      taskAlarmState({
+        ...base,
+        previousTimestamp: base.occurrenceTimestamp - 1000,
+        held: true,
+        presentation: "alerting"
+      })
+    ).toBe("RESCHEDULED");
+  });
 });

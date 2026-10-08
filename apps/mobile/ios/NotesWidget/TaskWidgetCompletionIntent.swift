@@ -127,7 +127,11 @@ enum WidgetCompletionQueue {
   static func enqueue(id: String, scope: String, updatedAt: Int) throws {
     let directory = try directory()
     let manager = FileManager.default
-    try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+    // The directory is created protected first, so the action file never
+    // exists for even an instant with the default protection class.
+    try manager.createDirectory(
+      at: directory, withIntermediateDirectories: true,
+      attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
     let name = filename(id: id, scope: scope, updatedAt: updatedAt)
     let url = directory.appendingPathComponent(name)
     let current = status(id: id, scope: scope, updatedAt: updatedAt)
@@ -143,14 +147,14 @@ enum WidgetCompletionQueue {
       updatedAt: updatedAt, enqueuedAt: Int(Date().timeIntervalSince1970 * 1000))
     let data = try JSONEncoder().encode(action)
     do {
-      try data.write(to: url, options: .atomic)
-      try manager.setAttributes(
-        [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
-        ofItemAtPath: url.path)
+      // Protection is applied by the atomic write itself: there is no window
+      // in which the file exists unprotected.
+      try data.write(to: url, options: [.atomic,
+        .completeFileProtectionUntilFirstUserAuthentication])
       var resourceValues = URLResourceValues()
       resourceValues.isExcludedFromBackup = true
       var mutableURL = url
-      try mutableURL.setResourceValues(resourceValues)
+      try? mutableURL.setResourceValues(resourceValues)
     } catch {
       try? manager.removeItem(at: url)
       throw error
@@ -205,17 +209,58 @@ enum TaskWidgetCompletionFailure: LocalizedError {
 }
 
 /// Any list can show a ring, so snapshot membership, not the Today-only filter, validates a tap.
-private func snapshotListsTask(id: String, scope: String, updatedAt: Int, at now: Date) -> Bool {
+///
+/// `due`, when supplied, additionally requires the snapshot's own due instant
+/// for that Task to agree: a completion is only ever accepted for the exact
+/// occurrence the caller described, never for whichever occurrence the Task
+/// happens to be on now (or for a future one that is not materialized yet).
+/// (Internal, not private: the alarm card's completion control validates the
+/// same approved snapshot, and both files are compiled into both targets.)
+func snapshotListsTask(id: String, scope: String, updatedAt: Int,
+                       due: TimeInterval? = nil, at now: Date) -> Bool {
+  matchingSnapshotTask(id: id, scope: scope, updatedAt: updatedAt,
+                       due: due, at: now) != nil
+}
+
+/// The app's own approved record of the exact occurrence, read from the
+/// protected widget snapshot. Strict: the snapshot must be unredacted and agree
+/// on account scope, Task id, revision and (when given) due instant, so a
+/// sibling occurrence or another account's Task can never match.
+func matchingSnapshotTask(id: String, scope: String, updatedAt: Int,
+                          due: TimeInterval? = nil,
+                          at now: Date) -> ReminderSnapshotItem? {
   guard id.range(of: "^(?:[0-9a-f]{24}|[0-9a-f]{32})$",
                  options: .regularExpression) != nil,
         scope.range(of: "^[0-9a-f]{32}$", options: .regularExpression) != nil,
         updatedAt > 0,
         case let .available(snapshot) = ReminderSnapshotStore.load(at: now),
         snapshot.privacyHidden != true,
-        snapshot.accountScope == scope else { return false }
-  return snapshot.tasks.contains(where: {
-    $0.id == id && $0.updatedAt.flatMap { Int(exactly: $0) } == updatedAt
+        snapshot.accountScope == scope else { return nil }
+  return snapshot.tasks.first(where: { task in
+    guard task.id == id,
+          task.updatedAt.flatMap({ Int(exactly: $0) }) == updatedAt else {
+      return false
+    }
+    guard let due else { return true }
+    guard let instant = TaskWidgetClock.dueInstant(task) else { return false }
+    return abs(instant.timeIntervalSince1970 - due) < 0.5
   })
+}
+
+/// The display title the app may show for the exact occurrence a card
+/// describes, or `nil` when the snapshot does not agree (or privacy hides it).
+/// It is never written to the identity/lifecycle stores.
+///
+/// Deliberately **not** used by the Stop card any more: a Stop tap runs without
+/// the host, so the snapshot it could read is a stale projection and cannot
+/// prove the *current* App Lock state. A card that must decide between a real
+/// title and the placeholder needs the live, hydrated App Lock state, which only
+/// the app's own reconciliation has. Callers must therefore be able to vouch for
+/// "unlocked right now" beyond a plan-time flag plus a snapshot age check.
+func snapshotApprovedTitle(id: String, scope: String, updatedAt: Int,
+                           due: TimeInterval? = nil, at now: Date) -> String? {
+  matchingSnapshotTask(id: id, scope: scope, updatedAt: updatedAt,
+                       due: due, at: now)?.title
 }
 
 @available(iOS 17.0, iOSApplicationExtension 17.0, *)

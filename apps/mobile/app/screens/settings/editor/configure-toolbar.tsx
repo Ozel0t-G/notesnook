@@ -86,8 +86,7 @@ export const ConfigureToolbar = () => {
               },
               {
                 id: "custom",
-                name: strings.custom(),
-                pro: true
+                name: strings.custom()
               }
             ].map((item) => (
               <Button
@@ -97,7 +96,6 @@ export const ConfigureToolbar = () => {
                   marginRight: 10,
                   paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL
                 }}
-                proTag={item.pro}
                 onPress={async () => {
                   if (item.id === "custom") {
                     const customToolbarPresetFeature = await isFeatureAvailable(

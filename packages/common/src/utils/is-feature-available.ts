@@ -555,10 +555,51 @@ export async function isFeatureAvailable<TId extends FeatureId>(
   };
 }
 
+/**
+ * A feature whose VeyraN limit is decided by policy alone (see
+ * `veyran-feature-policy.ts`) — client-supported, service-managed and
+ * backend-dependent features never depend on the account's plan.
+ *
+ * This matters because reading the account goes through the database's KV
+ * store: for a signed-out local database `db.user.getUser()` has no `user`
+ * row to return, so it can reject, and before `db.init()` resolves it can
+ * remain pending. Awaiting it *before* applying the policy could therefore
+ * make a gated Settings row wait on an account that may never arrive in
+ * local/offline (unauthenticated) mode, so a client-supported row such as
+ * App lock could resolve late or not at all — the row looked enabled but its
+ * tap was dropped (see
+ * `apps/mobile/app/screens/settings/feature-gate.ts`). Short-circuiting the
+ * policy avoids that; the precise pending-vs-reject behavior of the KV
+ * lookup is platform/init-order dependent and is not asserted here.
+ */
+function isPlanIndependent(id: FeatureId) {
+  return (
+    isVeyranServiceManaged(id) ||
+    isVeyranClientSupported(id) ||
+    isVeyranBackendDependent(id)
+  );
+}
+
+/**
+ * Resolves the account's plan for the legacy plan-dependent fallback only.
+ * Plan-independent VeyraN policies short-circuit without ever touching the
+ * user record, so a signed-out or not-yet-initialized local database cannot
+ * hold them back. Every known feature is currently plan-independent; the
+ * fallback is kept for a future feature that is not classified yet. If a
+ * lookup that does reach `getUserPlan` fails (e.g. a signed-out local
+ * database with no `user` row), that failure is treated as FREE — see
+ * `getUserPlan`; a lookup that never settles is not handled by that fallback,
+ * which is part of why classified features short-circuit above.
+ */
+async function getPlanFor(ids: FeatureId[]): Promise<SubscriptionPlan> {
+  if (ids.every(isPlanIndependent)) return SubscriptionPlan.FREE;
+  return getUserPlan();
+}
+
 export async function getFeatureLimit<TId extends FeatureId>(
   feature: Feature<TId>
 ) {
-  const plan = await getUserPlan();
+  const plan = await getPlanFor([feature.id as FeatureId]);
   return getFeatureLimitFromPlan(feature, plan);
 }
 
@@ -568,7 +609,7 @@ export async function areFeaturesAvailable<TIds extends FeatureId[]>(
 ): Promise<{
   [K in TIds[number]]: FeatureResult<K>;
 }> {
-  const plan = await getUserPlan();
+  const plan = await getPlanFor(ids);
   const results = {} as {
     [K in TIds[number]]: FeatureResult<K>;
   };
@@ -595,10 +636,22 @@ export async function areFeaturesAvailable<TIds extends FeatureId[]>(
   return results;
 }
 
+/**
+ * The account's plan, for the legacy plan-dependent fallback only. A local,
+ * unauthenticated (or not-yet-initialized) database may have no user record,
+ * so a failed lookup means FREE — the most restrictive plan — never a grant.
+ * This keeps the fallback fail-closed instead of rejecting out of
+ * `isFeatureAvailable` (which Settings surfaces as a dropped row tap). A
+ * lookup that never settles is not handled here.
+ */
 async function getUserPlan() {
-  const user = await db.user.getUser();
-  const plan = user?.subscription?.plan || SubscriptionPlan.FREE;
-  return plan;
+  try {
+    const user = await db.user.getUser();
+    const plan = user?.subscription?.plan || SubscriptionPlan.FREE;
+    return plan;
+  } catch {
+    return SubscriptionPlan.FREE;
+  }
 }
 
 async function availableOn(id: FeatureId, value?: number) {
@@ -651,7 +704,7 @@ export type FeatureUsage = {
   used: number;
 };
 export async function getFeaturesUsage(): Promise<FeatureUsage[]> {
-  const plan = await getUserPlan();
+  const plan = await getPlanFor(Object.keys(features) as FeatureId[]);
   const usage: FeatureUsage[] = [];
   for (const key in features) {
     const feature = getFeature(key as FeatureId);
@@ -685,6 +738,9 @@ function getFeatureLimitFromPlan<TId extends FeatureId>(
   // - Service limits (storage/fileSize) are not inferred from a legacy plan.
   //   Let the upload reach the configured service, which owns the real limit.
   //   This does not claim unlimited server capacity.
+  // The `plan` argument is therefore only consulted by the fallback below
+  // (a feature that is not classified yet); callers resolve it lazily through
+  // `getPlanFor` so a signed-out local database is never read needlessly.
   if (isVeyranServiceManaged(feature.id as FeatureId))
     return createLimit("Service-managed", true) as unknown as Limit<
       Caption<TId>

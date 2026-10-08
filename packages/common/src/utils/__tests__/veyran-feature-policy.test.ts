@@ -33,15 +33,26 @@ import {
   isVeyranBackendDependent
 } from "../veyran-feature-policy.js";
 
-// The VeyraN policy resolves a feature's limit through `db.user.getUser()`.
-// `mockUser` is mutable so individual tests below can simulate a real
-// pre-existing paid or legacy Notesnook account signed into this app,
-// instead of always asserting the (also real) case of a brand-new FREE
-// account. vitest hoists `vi.mock` above these imports automatically.
+// `mockUser` simulates a real pre-existing paid or legacy Notesnook account
+// signed into this app. Current features are all classified by the VeyraN
+// policy, so `getPlanFor` short-circuits and does not actually read the
+// account; these tests still guard the policy branches (a backend-dependent
+// feature must resolve at the FREE tier even if the plan were consulted).
+// vitest hoists `vi.mock` above these imports automatically.
 let mockUser: { subscription?: { plan: number } } | undefined;
+// Overrides the user lookup for the signed-out cases below (a pending or
+// failing local database read). Left undefined everywhere else so the other
+// tests keep reading `mockUser`.
+let mockUserLookup:
+  | (() => Promise<{ subscription?: { plan: number } } | undefined>)
+  | undefined;
 vi.mock("../../database.js", () => ({
   database: {
-    user: { getUser: vi.fn(() => Promise.resolve(mockUser)) },
+    user: {
+      getUser: vi.fn(() =>
+        mockUserLookup ? mockUserLookup() : Promise.resolve(mockUser)
+      )
+    },
     colors: { all: { count: vi.fn().mockResolvedValue(0) } },
     tags: { all: { count: vi.fn().mockResolvedValue(0) } },
     notebooks: { all: { count: vi.fn().mockResolvedValue(0) } },
@@ -70,7 +81,33 @@ vi.mock("@notesnook/core", () => ({
 
 afterEach(() => {
   mockUser = undefined;
+  mockUserLookup = undefined;
 });
+
+/** Fails the test instead of hanging the whole run when a promise that must
+ * resolve immediately (a plan-independent feature) never settles. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const clear = () => {
+    if (timer) clearTimeout(timer);
+  };
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      clear();
+      reject(new Error(`did not resolve within ${ms}ms`));
+    }, ms);
+  });
+  return Promise.race([promise, timeout]).then(
+    (value) => {
+      clear();
+      return value;
+    },
+    (error) => {
+      clear();
+      throw error;
+    }
+  );
+}
 
 describe("VeyraN feature policy classification", () => {
   it("classifies every known feature into exactly one of the three buckets (no gaps, no overlap)", () => {
@@ -261,5 +298,62 @@ describe("VeyraN feature policy: actual UI-facing outcomes (isFeatureAvailable)"
   it("a client-supported feature is allowed with no error, for a brand-new FREE account", async () => {
     const result = await isFeatureAvailable("taskList");
     expect(result.isAllowed).toBe(true);
+  });
+});
+
+describe("VeyraN feature policy: local/unauthenticated (signed-out) mode", () => {
+  /**
+   * Regression: a fresh local/offline install has no account. Reading the
+   * account goes through the database KV store (`db.user.getUser()`), which
+   * for a signed-out local database has no `user` row to return: it can
+   * reject, and before `db.init()` resolves it can remain pending.
+   *
+   * `getFeatureLimit` used to await that lookup *before* applying the VeyraN
+   * policy, so a client-supported feature such as App lock — which never
+   * consults the account at all — could resolve late or never, depending on
+   * what the KV lookup did. On the iPad Settings popover this showed Passcode
+   * Lock enabled and crown-free, yet tapping it did nothing, because the
+   * action-time gate awaited the same unresolved check (see feature-gate.ts).
+   * App lock must resolve from the policy alone, without an account, whether
+   * the lookup rejects or never settles.
+   */
+  const signedOutLookup = () => Promise.reject(new Error("no such table: kv"));
+
+  it("resolves a client-supported feature even when the user record never arrives", async () => {
+    mockUserLookup = () =>
+      new Promise<{ subscription?: { plan: number } } | undefined>(() => {});
+    const result = await withTimeout(isFeatureAvailable("appLock"), 1000);
+    expect(result.isAllowed).toBe(true);
+    // Allowed: nothing to upgrade to, so no "available on plan X" upsell.
+    expect(result.availableOn).toBeUndefined();
+  });
+
+  it("resolves a client-supported feature when the user lookup fails", async () => {
+    mockUserLookup = signedOutLookup;
+    const result = await isFeatureAvailable("appLock");
+    expect(result.isAllowed).toBe(true);
+  });
+
+  it("still denies every backend-dependent feature when the user lookup fails", async () => {
+    mockUserLookup = signedOutLookup;
+    for (const id of VEYRAN_BACKEND_DEPENDENT_FEATURES) {
+      const result = await isFeatureAvailable(id);
+      expect(result.isAllowed).toBe(false);
+    }
+  });
+
+  it("keeps sms2FA fail-closed with no upsell wording when the user lookup fails", async () => {
+    mockUserLookup = signedOutLookup;
+    const result = await isFeatureAvailable("sms2FA");
+    expect(result.isAllowed).toBe(false);
+    expect(result.error).toBe("SMS-based 2FA isn't available in this app.");
+    expect(result.error.toLowerCase()).not.toContain("plan");
+  });
+
+  it("does not invent a paid plan for an absent (signed-out) user record", async () => {
+    mockUser = undefined;
+    const result = await isFeatureAvailable("monographAnalytics");
+    expect(result.isAllowed).toBe(false);
+    expect(result.caption).toBe(false);
   });
 });

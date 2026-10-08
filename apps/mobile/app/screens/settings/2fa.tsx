@@ -17,7 +17,11 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { sanitizeFilename, useIsFeatureAvailable } from "@notesnook/common";
+import {
+  isFeatureAvailable as checkFeatureAvailability,
+  sanitizeFilename,
+  useIsFeatureAvailable
+} from "@notesnook/common";
 import { strings } from "@notesnook/intl";
 import { useThemeColors, VariantsWithStaticColors } from "@notesnook/theme";
 import Clipboard from "@react-native-clipboard/clipboard";
@@ -64,6 +68,7 @@ import { eCloseSheet } from "../../utils/events";
 import { AppFontSize } from "../../utils/size";
 import { sleep } from "../../utils/time";
 import { DefaultAppStyles } from "../../utils/styles";
+import { resolveFeatureGate } from "./feature-gate";
 const mfaMethods: MFAMethod[] = [
   {
     id: "app",
@@ -126,24 +131,34 @@ export const MFAMethodsPickerStep = ({ recovery, onSuccess }: MFAStepProps) => {
       {getMethods().map((item) => (
         <Pressable
           key={item.title}
-          onPress={() => {
-            if (
-              item.id === "sms" &&
-              featureAvailable &&
-              !featureAvailable?.isAllowed
-            ) {
+          onPress={async () => {
+            if (item.id === "sms") {
               // VeyraN does not operate SMS delivery for two-factor
               // authentication (see @notesnook/common's
               // veyran-feature-policy.ts), so this is reported honestly
               // instead of offering an "Upgrade" action that would not
               // enable it. See
               // artifacts/veyran-brand-entitlement-audit.md.
-              ToastManager.show({
-                message: featureAvailable?.error,
-                type: "info",
-                context: "local"
-              });
-              return;
+              //
+              // Resolve at action time so a fast tap while
+              // `useIsFeatureAvailable` is still pending cannot fail open
+              // into SMS setup: `resolveFeatureGate` awaits the same fresh
+              // check the hook uses and fails closed on rejection.
+              const resolution = await resolveFeatureGate(
+                featureAvailable,
+                () => checkFeatureAvailability("sms2FA")
+              );
+              if (resolution.gate === "denied") {
+                ToastManager.show({
+                  message:
+                    resolution.error ||
+                    featureAvailable?.error ||
+                    strings.mfaSmsDesc(),
+                  type: "info",
+                  context: "local"
+                });
+                return;
+              }
             }
             onSuccess && onSuccess(item);
           }}

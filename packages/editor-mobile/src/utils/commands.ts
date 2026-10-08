@@ -175,8 +175,8 @@ globalThis.commands = {
    */
   insertTemplate: (html: string, tabId: number) => {
     const editor = editors[tabId];
-    if (!editor) return;
-    insertTemplateContent(editor, html);
+    if (!editor) return false;
+    return insertTemplateContent(editor, html);
   },
 
   insertImage: (

@@ -32,6 +32,7 @@ import { DraggableItem, useDragState } from "./state";
 import ToolSheet from "./tool-sheet";
 
 import { isFeatureAvailable, useIsFeatureAvailable } from "@notesnook/common";
+import { isFeatureDenied } from "../feature-gate";
 import type { ToolId } from "@notesnook/editor";
 import { strings } from "@notesnook/intl";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -66,10 +67,15 @@ export const Group = ({
 
   const onDrop = React.useCallback(
     (data: DraxDragWithReceiverEventData) => {
-      if (!featureAvailable?.isAllowed) {
+      // A pending check must not reorder the toolbar, and must not flash "not
+      // available" for a client-supported preset. `onReceiveDragDrop` must stay
+      // synchronous (its return value positions the drop), so an unresolved
+      // check blocks silently instead of being awaited.
+      if (!featureAvailable) return;
+      if (isFeatureDenied(featureAvailable)) {
         ToastManager.show({
           type: "info",
-          message: featureAvailable?.error || strings.featureNotAvailable()
+          message: featureAvailable.error || strings.featureNotAvailable()
         });
         return;
       }

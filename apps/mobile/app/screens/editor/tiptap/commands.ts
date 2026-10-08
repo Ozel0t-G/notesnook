@@ -35,6 +35,23 @@ import { getResponse, randId, textInput } from "./utils";
 
 type Action = { job: string; id: string };
 
+/**
+ * Serializes a command argument into a valid JavaScript literal so it can be
+ * interpolated into the injected WebView script. `JSON.stringify` is used for
+ * every argument so strings with quotes, newlines and backslashes survive
+ * intact. `undefined` (which `JSON.stringify` turns into `undefined`, not a
+ * string) becomes the bare `undefined` token, and the line/paragraph
+ * separators U+2028/U+2029 - not escaped by `JSON.stringify` but invalid in
+ * older JS string literals - are escaped explicitly.
+ */
+function serializeCommandArg(arg: unknown) {
+  const json = JSON.stringify(arg);
+  if (json === undefined) return "undefined";
+  return json.replace(/[\u2028\u2029]/g, (ch) =>
+    ch === "\u2028" ? "\\u2028" : "\\u2029"
+  );
+}
+
 async function call(
   webview: RefObject<WebView | undefined | null>,
   action?: Action
@@ -80,9 +97,7 @@ class Commands {
   async sendCommand<T>(command: string, ...args: any[]) {
     return this.doAsync(
       `response = globalThis.commands.${command}(${args
-        .map((arg) =>
-          typeof arg === "string" ? `"${arg}"` : JSON.stringify(arg)
-        )
+        .map(serializeCommandArg)
         .join(",")})`,
       command
     );
@@ -208,7 +223,7 @@ class Commands {
   };
 
   insertTemplate = async (html: string, tabId: string) => {
-    await this.sendCommand("insertTemplate", html, tabId);
+    return (await this.sendCommand("insertTemplate", html, tabId)) === true;
   };
 
   handleBack = async () => {

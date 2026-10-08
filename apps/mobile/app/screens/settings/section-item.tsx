@@ -38,7 +38,12 @@ import { SymbolTile } from "../../components/ui/symbol-tile";
 import { isMacCatalyst } from "../../utils/constants";
 import { systemColor } from "../../utils/ios-system-colors";
 import { iosSettingSymbol, useSettingsFooter } from "./ios-appearance";
-import { FeatureResult, useIsFeatureAvailable } from "@notesnook/common";
+import {
+  isFeatureAvailable as checkFeatureAvailability,
+  useIsFeatureAvailable
+} from "@notesnook/common";
+import { strings } from "@notesnook/intl";
+import { isFeatureDenied, resolveFeatureGate } from "./feature-gate";
 //@ts-ignore
 import ToggleSwitch from "toggle-switch-react-native";
 import AppIcon from "../../components/ui/AppIcon";
@@ -131,9 +136,14 @@ const _SectionItem = ({
   const isFeatureAvailable = item.featureId
     ? // eslint-disable-next-line react-hooks/rules-of-hooks
       useIsFeatureAvailable(item.featureId)
-    : ({
-        isAllowed: true
-      } as FeatureResult);
+    : undefined;
+  /**
+   * `undefined` here means the async check has not resolved yet, which must
+   * NOT be presented as denied (see feature-gate.ts): otherwise a
+   * client-supported row flashes a crown/disabled state and drops its first
+   * tap. Only a resolved "not allowed" disables the row or shows the crown.
+   */
+  const featureDenied = isFeatureDenied(isFeatureAvailable);
   const [settings, itemProperty] = useSettingStore((state) => [
     state.settings,
     item.property ? state.settings[item.property] : null
@@ -148,16 +158,21 @@ const _SectionItem = ({
   );
   const inputRef = useRef<TextInput>(null);
   const [loading, setLoading] = useState(false);
+  /**
+   * Serializes gated actions so a double tap landing while the feature check is
+   * still awaiting cannot toggle twice or push the same screen twice.
+   */
+  const actionInFlight = useRef(false);
 
-  const onChangeSettings = async () => {
-    if (isDisabled) return;
-    if (!checkIsFeatureAvailable()) return;
-    if (loading) return;
+  const applyToggle = async () => {
     if (item.onVerify && !(await item.onVerify())) return;
     if (item.modifer) {
       setLoading(true);
-      await item.modifer(item.property || current);
-      setLoading(false);
+      try {
+        await item.modifer(item.property || current);
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     if (!item.property) return;
@@ -173,6 +188,27 @@ const _SectionItem = ({
         setIsDisabled(item.disabled && item.disabled(item.property || current));
     });
   };
+
+  /**
+   * Runs a gated action only once the feature gate has *resolved* as allowed.
+   * `checkIsFeatureAvailable` awaits a fresh check while the hook result is
+   * still pending (see feature-gate.ts), so a quick tap can never enter an
+   * unsupported backend feature before the check settles.
+   */
+  const runGatedAction = async (action: () => void | Promise<void>) => {
+    if (actionInFlight.current) return;
+    actionInFlight.current = true;
+    try {
+      if (!(await checkIsFeatureAvailable())) return;
+      if (isDisabled) return;
+      if (loading) return;
+      await action();
+    } finally {
+      actionInFlight.current = false;
+    }
+  };
+
+  const onChangeSettings = () => runGatedAction(applyToggle);
 
   const styles =
     item.type === "danger" && !visual.ios
@@ -224,10 +260,10 @@ const _SectionItem = ({
   useEffect(() => {
     setIsHidden(item.hidden && item.hidden(item.property || current));
     setIsDisabled(
-      !isFeatureAvailable?.isAllowed ||
+      featureDenied ||
         (item.disabled && item.disabled(item.property || current))
     );
-  }, [current, item, itemProperty, isFeatureAvailable?.isAllowed]);
+  }, [current, item, itemProperty, featureDenied]);
 
   const inlineDescription =
     !visual.ios ||
@@ -250,21 +286,29 @@ const _SectionItem = ({
     return () => registerFooter(item.id, undefined);
   }, [registerFooter, inlineDescription, isHidden, descriptionText, item]);
 
-  const checkIsFeatureAvailable = React.useCallback(() => {
-    if (!isFeatureAvailable) return false;
-    if (isFeatureAvailable && !isFeatureAvailable?.isAllowed) {
-      // VeyraN does not sell or manage a Notesnook subscription, so this is
-      // reported honestly instead of opening the purchase sheet — see
-      // artifacts/veyran-brand-entitlement-audit.md.
+  /**
+   * Resolves the row's feature gate at action time. While the hook result is
+   * still pending this awaits a fresh check instead of failing open, so a quick
+   * tap can never enter an unsupported backend feature before the check
+   * settles. A resolved denial is refused with an honest toast: VeyraN does not
+   * sell or manage a Notesnook subscription, so we never open the purchase
+   * sheet — see artifacts/veyran-brand-entitlement-audit.md.
+   */
+  const checkIsFeatureAvailable = async () => {
+    const featureId = item.featureId;
+    if (!featureId) return true;
+    const resolution = await resolveFeatureGate(isFeatureAvailable, () =>
+      checkFeatureAvailability(featureId)
+    );
+    if (resolution.gate === "denied") {
       ToastManager.show({
-        message: isFeatureAvailable.error,
+        message: resolution.error || strings.featureNotAvailable(),
         type: "info"
       });
       return false;
     }
-
     return true;
-  }, [isFeatureAvailable]);
+  };
 
   return isHidden ? null : (
     <Pressable
@@ -296,42 +340,41 @@ const _SectionItem = ({
           : {}),
         ...styles
       }}
-      onPress={async () => {
-        if (!checkIsFeatureAvailable()) return;
-        if (isDisabled) return;
-        if (loading) return;
-        switch (item.type) {
-          case "screen":
-            {
-              if (item.onVerify && !(await item.onVerify())) return;
-              navigation.dispatch(StackActions.push("SettingsGroup", item));
-              useNavigationStore.getState().update("Settings");
-            }
-            break;
-          case "switch":
-            {
-              onChangeSettings();
-            }
-            break;
-          default:
-            {
-              if (item.onVerify && !(await item.onVerify())) return;
-              if (item.modifer && item.showActionProgress) {
-                setLoading(true);
-                try {
-                  await item.modifer(current);
-                } finally {
-                  setLoading(false);
-                }
-              } else {
-                item.modifer?.(current);
+      onPress={() =>
+        runGatedAction(async () => {
+          switch (item.type) {
+            case "screen":
+              {
+                if (item.onVerify && !(await item.onVerify())) return;
+                navigation.dispatch(StackActions.push("SettingsGroup", item));
+                useNavigationStore.getState().update("Settings");
               }
-            }
-            break;
-        }
-      }}
+              break;
+            case "switch":
+              {
+                await applyToggle();
+              }
+              break;
+            default:
+              {
+                if (item.onVerify && !(await item.onVerify())) return;
+                if (item.modifer && item.showActionProgress) {
+                  setLoading(true);
+                  try {
+                    await item.modifer(current);
+                  } finally {
+                    setLoading(false);
+                  }
+                } else {
+                  item.modifer?.(current);
+                }
+              }
+              break;
+          }
+        })
+      }
     >
-      {!isFeatureAvailable?.isAllowed ? (
+      {featureDenied ? (
         <View
           style={{
             width: 35,
@@ -490,23 +533,23 @@ const _SectionItem = ({
               <IconButton
                 name="minus"
                 color={colors.primary.icon}
-                onPress={() => {
-                  if (!checkIsFeatureAvailable()) return;
-                  if (isDisabled) return;
-                  const rawValue = SettingsService.get()[
-                    item.property as keyof SettingStore["settings"]
-                  ] as string;
-                  if (rawValue) {
-                    const currentValue = parseInt(rawValue);
-                    const minValue = item.minInputValue || 0;
-                    if (currentValue <= minValue) return;
-                    const nextValue = currentValue - 1;
-                    SettingsService.set({
-                      [item.property as string]: nextValue
-                    });
-                    updateInput(nextValue);
-                  }
-                }}
+                onPress={() =>
+                  runGatedAction(() => {
+                    const rawValue = SettingsService.get()[
+                      item.property as keyof SettingStore["settings"]
+                    ] as string;
+                    if (rawValue) {
+                      const currentValue = parseInt(rawValue);
+                      const minValue = item.minInputValue || 0;
+                      if (currentValue <= minValue) return;
+                      const nextValue = currentValue - 1;
+                      SettingsService.set({
+                        [item.property as string]: nextValue
+                      });
+                      updateInput(nextValue);
+                    }
+                  })
+                }
                 size={AppFontSize.xl}
               />
               <Input
@@ -545,23 +588,23 @@ const _SectionItem = ({
               <IconButton
                 name="plus"
                 color={colors.primary.icon}
-                onPress={() => {
-                  if (!checkIsFeatureAvailable()) return;
-                  if (isDisabled) return;
-                  const rawValue = SettingsService.get()[
-                    item.property as keyof SettingStore["settings"]
-                  ] as string;
-                  if (rawValue) {
-                    const currentValue = parseInt(rawValue);
-                    const max = item.maxInputValue || 0;
-                    if (currentValue >= max) return;
-                    const nextValue = currentValue + 1;
-                    SettingsService.set({
-                      [item.property as string]: nextValue
-                    });
-                    updateInput(nextValue);
-                  }
-                }}
+                onPress={() =>
+                  runGatedAction(() => {
+                    const rawValue = SettingsService.get()[
+                      item.property as keyof SettingStore["settings"]
+                    ] as string;
+                    if (rawValue) {
+                      const currentValue = parseInt(rawValue);
+                      const max = item.maxInputValue || 0;
+                      if (currentValue >= max) return;
+                      const nextValue = currentValue + 1;
+                      SettingsService.set({
+                        [item.property as string]: nextValue
+                      });
+                      updateInput(nextValue);
+                    }
+                  })
+                }
                 size={AppFontSize.xl}
               />
             </View>

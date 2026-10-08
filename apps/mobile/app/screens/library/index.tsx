@@ -39,8 +39,12 @@ import {
   hasBottomTabBar
 } from "../../components/apple-tab-bar";
 import { AddNotebookSheet } from "../../components/sheets/add-notebook";
+import { UserSheet } from "../../components/sheets/user";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isMacCatalyst } from "../../utils/constants";
+import { getObfuscatedEmail } from "../../utils/functions";
+import { useSettingStore } from "../../stores/use-setting-store";
+import { SyncStatus, useUserStore } from "../../stores/use-user-store";
 import { useLibrarySourceList } from "../../hooks/use-library-source-list";
 import {
   useMacSidebarSectionCollapsed,
@@ -79,6 +83,30 @@ export default function Library({
   const [allNotes, allNotesLoading, refreshAllNotes] = useNotes();
   const [inboxNotes, inboxLoading, refreshInbox] = useInboxNotes();
   const isMac = isMacCatalyst();
+  const deviceMode = useSettingStore((state) => state.deviceMode);
+  const user = useUserStore((state) => state.user);
+  const userProfile = useUserStore((state) => state.profile);
+  const lastSyncStatus = useUserStore((state) => state.lastSyncStatus);
+  /**
+   * iPad landscape large: FluidPanelsView removes the fixed left sidebar (see
+   * `hideTabletSidebar` there), so the account/login-status affordance the
+   * sidebar used to carry moves into this list's navigation bar. Gated on the
+   * same predicate — `!isMacCatalyst()` because Mac also reports
+   * `deviceMode === "tablet"` (and historically `Platform.isPad`).
+   */
+  const noSidebarIPadLandscape =
+    Platform.OS === "ios" &&
+    Platform.isPad === true &&
+    !isMac &&
+    deviceMode === "tablet";
+  const signedIn = !!user;
+  const accountText = signedIn
+    ? userProfile?.fullName || getObfuscatedEmail(user?.email || "")
+    : strings.notLoggedIn();
+  const accountDotColor =
+    !signedIn || lastSyncStatus === SyncStatus.Failed
+      ? colors.error.icon
+      : colors.success.icon;
   const { notebooks, tags, counts, notebookCounts, tagCounts } =
     useLibrarySourceList(navigation, { countsByNotebookAndTag: true });
   const notebooksCollapsed = useMacSidebarSectionCollapsed("notebooks");
@@ -363,6 +391,63 @@ export default function Library({
       })
   }));
 
+  /**
+   * The compact account/login-status affordance that stands in for the removed
+   * sidebar on iPad landscape: the signed-in name (or obfuscated e-mail), a
+   * sync/login dot, and `notLoggedIn` when signed out. It is a bar item, not a
+   * card: pressing it opens the existing UserSheet for login/sync/account, so
+   * no Library content moves or grows. Only the leading slot is used, next to
+   * the unchanged Settings gear and compose buttons.
+   */
+  const accountAffordance = noSidebarIPadLandscape ? (
+    <Pressable
+      testID="library-account"
+      accessibilityRole="button"
+      accessibilityLabel={accountText}
+      onPress={() => UserSheet.present()}
+      hitSlop={6}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        // The leading slot shares the bar with the trailing buttons; keep the
+        // label shrinkable so a long name/e-mail can never push them out.
+        flexShrink: 1,
+        maxWidth: "100%",
+        minHeight: 44,
+        paddingRight: 8,
+        opacity: pressed ? 0.4 : 1
+      })}
+    >
+      <TaskSymbolView
+        name={signedIn ? "person.crop.circle.fill" : "person.crop.circle"}
+        size={22}
+        color={colors.primary.accent}
+      />
+      <Text
+        numberOfLines={1}
+        ellipsizeMode="tail"
+        style={{
+          flexShrink: 1,
+          color: visual.primaryText,
+          fontSize: 15,
+          marginLeft: 6
+        }}
+      >
+        {accountText}
+      </Text>
+      <View
+        testID="library-account-status"
+        style={{
+          width: 9,
+          height: 9,
+          borderRadius: 4.5,
+          marginLeft: 6,
+          backgroundColor: accountDotColor
+        }}
+      />
+    </Pressable>
+  ) : undefined;
+
   return (
     <View style={{ flex: 1, backgroundColor: visual.screenBackground }}>
       <ScrollView
@@ -380,6 +465,7 @@ export default function Library({
           sidebar pane and its chrome is the window's native toolbar.
         */}
         <IosNavBar
+          leading={accountAffordance}
           trailing={
             <>
               <IosBarButton

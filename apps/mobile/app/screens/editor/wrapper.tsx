@@ -23,6 +23,7 @@ import {
   AppState,
   AppStateStatus,
   KeyboardAvoidingView,
+  Platform,
   TextInput,
   View
 } from "react-native";
@@ -69,6 +70,20 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
   const prevState = useRef<AppStateStatus>(undefined);
   const isFullscreen = useSettingStore((state) => state.fullscreen);
   const dimensions = useSettingStore((state) => state.dimensions);
+
+  /**
+   * iPad's full-screen editor is the note and nothing else: the wrapper is
+   * already `dimensions.width` wide there, so the 15% side padding iPhone
+   * uses to keep a comfortable reading column only painted this view's own
+   * background as a dark strip down each edge (reported as black bars on both
+   * sides of the iPad landscape editor). iPad therefore takes no side padding.
+   * Mac Catalyst and Android's large tablet also report `deviceMode ===
+   * "tablet"` but are not iPads, and `smallTablet` already had none, so this
+   * is scoped to iPad alone - iPhone, Android, Mac Catalyst and the safe
+   * area/toolbar behaviour are unchanged.
+   */
+  const isIPad =
+    Platform.OS === "ios" && Platform.isPad === true && !isMacCatalyst();
 
   const onAppStateChanged = async (state: AppStateStatus) => {
     if (!prevState.current) {
@@ -122,12 +137,12 @@ export const EditorWrapper = ({ widths }: { widths: PaneWidths }) => {
             ? visual.editorSurround
             : toolBarColors.primary.background,
           paddingLeft: isFullscreen
-            ? deviceMode === "smallTablet"
+            ? isIPad || deviceMode === "smallTablet"
               ? 0
               : dimensions.width * 0.15
             : null,
           paddingRight: isFullscreen
-            ? deviceMode === "smallTablet"
+            ? isIPad || deviceMode === "smallTablet"
               ? 0
               : dimensions.width * 0.15
             : insets.right,

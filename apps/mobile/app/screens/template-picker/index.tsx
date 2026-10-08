@@ -49,6 +49,7 @@ import {
 } from "./utils";
 
 const EMPTY_MESSAGE = "No templates yet. Create one under Library › Templates.";
+const INSERT_FAILED_MESSAGE = "Failed to insert template. Please try again.";
 
 const TemplatePicker = (props: NavigationProps<"TemplatePicker">) => {
   const { colors } = useThemeColors();
@@ -82,21 +83,29 @@ const TemplatePicker = (props: NavigationProps<"TemplatePicker">) => {
           title: currentTitle
         });
 
-        editorController.current?.commands.insertTemplate(html, tabId);
+        const editor = editorController.current;
+        const inserted = editor
+          ? await editor.commands.insertTemplate(html, tabId)
+          : false;
+
+        // Without an editor (e.g. a locked or stale tab) or when the editor
+        // refused the insertion, keep the picker open so the user can retry
+        // and don't touch the note's title.
+        if (!editor || !inserted) {
+          ToastManager.error(new Error(INSERT_FAILED_MESSAGE));
+          return;
+        }
 
         // An untitled note takes its name from the template it was created
         // from, through the same path the editor's title input saves.
         if (noteId && shouldAdoptTemplateTitle(currentTitle)) {
-          const editor = editorController.current;
-          if (editor) {
-            await editor.postMessage(NativeEvents.title, title, tabId);
-            editor.saveContent({
-              type: EditorEvents.title,
-              title,
-              noteId,
-              tabId
-            });
-          }
+          await editor.postMessage(NativeEvents.title, title, tabId);
+          editor.saveContent({
+            type: EditorEvents.title,
+            title,
+            noteId,
+            tabId
+          });
         }
 
         Navigation.goBack();

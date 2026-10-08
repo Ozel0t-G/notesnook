@@ -128,16 +128,29 @@ export const FluidPanelsView = React.memo(
     );
     const [isLoading, setIsLoading] = useState(false);
     /**
-     * The drawer is an iPad-only affordance now. On iPhone the bottom bar is
-     * the only top-level navigation, so the sidebar pane and the
-     * swipe-to-open gesture are both gone.
+     * iPad in landscape (a large tablet in `tablet` mode) lays out like a
+     * two-pane Notes: the fixed left source-list sidebar is removed entirely
+     * (0 width, not mounted, drawer off) so the note list keeps its ~30% and
+     * the editor absorbs the freed width, filling the window. The account/sync
+     * affordance that the sidebar used to carry moves to the Library's nav bar
+     * (see screens/library/index.tsx). `!isMacCatalyst()` is required: Mac also
+     * reports `deviceMode === "tablet"` (and historically answered
+     * `Platform.isPad`), and Android's large tablet keeps its sidebar.
      *
-     * Mac has no drawer either: its sections live in the section control at the
-     * top of the list column, so the sidebar pane (and the sliver of it that
-     * used to peek in at x 0) is not mounted at all.
+     * Outside that mode the drawer stays the iPad/Android affordance it was:
+     * iPhone (bottom bar only) and Mac (sections in the list column) never
+     * mount the sidebar pane.
      */
+    const hideTabletSidebar =
+      Platform.OS === "ios" &&
+      Platform.isPad === true &&
+      !isMacCatalyst() &&
+      deviceMode === "tablet";
+
     const drawerEnabled =
-      !isMacCatalyst() && (Platform.OS !== "ios" || deviceMode !== "mobile");
+      !isMacCatalyst() &&
+      !hideTabletSidebar &&
+      (Platform.OS !== "ios" || deviceMode !== "mobile");
 
     const toggleView = useCallback(
       (show: boolean) => {
@@ -306,9 +319,15 @@ export const FluidPanelsView = React.memo(
             dimensions.width - valueLimiter(dimensions.width * 0.4, 300, 450)
         },
         tablet: {
-          sidebar: dimensions.width * 0.22,
+          // iPad landscape large: no sidebar, so the list keeps its ~30% and
+          // the editor takes the freed 22%, filling the window (the three
+          // widths still add up to the window width). Android's large tablet
+          // keeps the 22% sidebar; Mac overrides below.
+          sidebar: hideTabletSidebar ? 0 : dimensions.width * 0.22,
           list: dimensions.width * 0.3,
-          editor: dimensions.width * 0.48
+          editor: hideTabletSidebar
+            ? dimensions.width * 0.7
+            : dimensions.width * 0.48
         }
       };
 
@@ -334,7 +353,7 @@ export const FluidPanelsView = React.memo(
       }
 
       return panes;
-    }, [dimensions.width, macSidebarVisible]);
+    }, [dimensions.width, macSidebarVisible, hideTabletSidebar]);
 
     const onScroll = React.useCallback(
       (scrollOffset: number) => {

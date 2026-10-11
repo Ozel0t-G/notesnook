@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { SubscriptionPlan } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { Platform } from "react-native";
-import { getVersion } from "react-native-device-info";
+import { getVersion, isEmulatorSync } from "react-native-device-info";
 
 export const IOS_APPGROUPID = "group.com.ozel0t.note.notesnookpencil";
 export const FILE_SIZE_LIMIT = 500 * 1024 * 1024;
@@ -67,9 +67,31 @@ export function getKeychainAccessGroup(): string {
  * False on Mac Catalyst: the Mac App ID is provisioned without an App Group, so
  * code that touches the shared container must fall back to the app's own
  * sandbox there instead of throwing (see getAppGroupPath).
+ *
+ * Also false on the iOS Simulator: a local Simulator build is signed ad hoc
+ * without a provisioning profile and is installed with empty entitlements, so
+ * it has no App Group container and `pathForAppGroup` is unavailable there too.
+ * Physical iPhone/iPad are unaffected.
  */
 export function hasAppGroupContainer(): boolean {
-  return !isMacCatalyst();
+  return !isMacCatalyst() && !isIosSimulator();
+}
+
+/**
+ * Whether this process is an iOS Simulator build.
+ *
+ * A local Simulator build is signed ad hoc (`CODE_SIGN_IDENTITY=-`) without a
+ * provisioning profile, so it is installed with empty entitlements: there is no
+ * App Group container and no Keychain access group at all, and every SecItem
+ * call rejects with errSecMissingEntitlement (-34018). That is why the database
+ * key is kept outside the Keychain there (see encryption.ts).
+ *
+ * Mac Catalyst is excluded even when it reports itself as an emulated OS: it is
+ * signed normally and its team-prefixed access group does work (see
+ * getKeychainAccessGroup), so it must keep the real Keychain.
+ */
+export function isIosSimulator(): boolean {
+  return Platform.OS === "ios" && !isMacCatalyst() && isEmulatorSync();
 }
 
 /**

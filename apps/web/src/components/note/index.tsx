@@ -24,6 +24,7 @@ import {
   formatDate,
   getFormattedReminderTime
 } from "@notesnook/common";
+import { NoteThumbnail as MacNoteThumbnail } from "./note-thumbnail";
 import {
   Color,
   Note as NoteType,
@@ -90,7 +91,6 @@ import {
   Readonly,
   Reminder,
   RemoveShortcutLink,
-  SpellCheck,
   Star,
   StarOutline,
   Sync,
@@ -121,6 +121,7 @@ function Note(props: NoteProps) {
     color,
     notebooks,
     attachments,
+    thumbnail,
     locked,
     item,
     date,
@@ -134,6 +135,7 @@ function Note(props: NoteProps) {
   const primary: SchemeColors = color ? color.colorCode : "accent-selected";
   const dateFormat = useSettingStore((store) => store.dateFormat);
   const isMacNotes = IS_DESKTOP_APP && isMac();
+  const showThumbnail = isMacNotes && !compact && !!thumbnail;
 
   return (
     <ListItem
@@ -163,7 +165,7 @@ function Note(props: NoteProps) {
             : {
                 borderLeft: "none",
                 pl: 3,
-                pr: 3
+                pr: showThumbnail ? "72px" : 3
               }
           : {
               borderLeft: isOpened ? "4px solid" : "none",
@@ -308,6 +310,15 @@ function Note(props: NoteProps) {
           )}
         </Flex>
       }
+      trailing={
+        showThumbnail ? (
+          <MacNoteThumbnail
+            noteId={note.id}
+            thumbnail={thumbnail}
+            locked={locked}
+          />
+        ) : undefined
+      }
     />
   );
 }
@@ -316,6 +327,7 @@ export default React.memo(Note, function (prevProps, nextProps) {
   const prevItem = prevProps.item;
   const nextItem = nextProps.item;
   return (
+    prevItem.id === nextItem.id &&
     prevProps.compact === nextProps.compact &&
     prevProps.date === nextProps.date &&
     prevItem.dateModified === nextItem.dateModified &&
@@ -324,6 +336,8 @@ export default React.memo(Note, function (prevProps, nextProps) {
     prevProps.reminder?.dateModified === nextProps.reminder?.dateModified &&
     prevProps.attachments?.failed === nextProps.attachments?.failed &&
     prevProps.attachments?.total === nextProps.attachments?.total &&
+    prevProps.thumbnail?.hash === nextProps.thumbnail?.hash &&
+    prevProps.thumbnail?.mimeType === nextProps.thumbnail?.mimeType &&
     prevProps.locked === nextProps.locked &&
     prevProps.color?.id === nextProps.color?.id &&
     prevItem.expiryDate?.value === nextItem.expiryDate?.value

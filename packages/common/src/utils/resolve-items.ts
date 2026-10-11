@@ -26,6 +26,8 @@ import {
   getUpcomingReminder
 } from "@notesnook/core";
 import { database as db } from "../database.js";
+import { getFirstRasterImageThumbnail } from "./note-thumbnail.js";
+import type { NoteThumbnail } from "./note-thumbnail.js";
 
 type WithDateEdited<T> = { items: T[]; dateEdited: number };
 export type NotebooksWithDateEdited = WithDateEdited<Notebook>;
@@ -67,6 +69,12 @@ export type NoteResolvedData = {
     failed: number;
     total: number;
   };
+  /**
+   * First raster image attachment of the note (Apple note-list thumbnail).
+   * Optional so existing consumers that only read attachments/locked keep
+   * working with the previous shape.
+   */
+  thumbnail?: NoteThumbnail;
   locked?: boolean;
 };
 
@@ -191,6 +199,9 @@ async function resolveNotes(ids: string[]) {
         group.notebooks.map((id) => resolved.notebooks[id]).filter(Boolean)
       ),
       locked: group.locked,
+      thumbnail: getFirstRasterImageThumbnail(
+        group.attachments.map((id) => resolved.attachments[id])
+      ),
       attachments: {
         total: group.attachments.length,
         failed: group.attachments.filter(

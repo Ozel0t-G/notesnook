@@ -33,11 +33,12 @@ import {
   useAppleNavigationStore
 } from "../stores/use-apple-navigation-store";
 import { notesnook } from "../../e2e/test.ids";
+import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
 
 type NativeTabBarProps = {
   selectedSection: AppleTabBarSelection;
-  itemTitles: Record<"library" | "tasks" | "search", string>;
+  itemTitles: Record<"library" | "tasks" | "settings", string>;
   tint: string;
   onSelect: (event: { nativeEvent: { section: AppleTabBarSelection } }) => void;
   style: ViewStyle;
@@ -82,8 +83,18 @@ export function AppleTabBar({
   onSelect: (selection: AppleTabBarSelection) => void;
 }) {
   const section = useAppleNavigationStore((state) => state.section);
+  const settingsVisible = useAppleNavigationStore(
+    (state) => state.settingsVisible
+  );
   const insets = useSafeAreaInsets();
-  const { colors } = useThemeColors();
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+
+  // While the Settings sheet is open the Settings item is the selected one;
+  // `section` underneath is untouched so dismissing returns to it.
+  const selectedSection: AppleTabBarSelection = settingsVisible
+    ? "settings"
+    : section;
 
   if (!NativeTabBar) return null;
   if (isTopTabBar()) {
@@ -96,16 +107,16 @@ export function AppleTabBar({
           paddingTop: insets.top + 4,
           paddingBottom: 4,
           alignItems: "center",
-          backgroundColor: colors.primary.background
+          backgroundColor: visual.screenBackground
         }}
       >
         <View style={{ width: IPAD_TAB_BAR_WIDTH, height: APPLE_TAB_BAR_HEIGHT }}>
           <NativeTabBar
-            selectedSection={section}
+            selectedSection={selectedSection}
             itemTitles={{
               library: strings.routes.Library(),
               tasks: strings.tasksTitle(),
-              search: strings.routes.Search()
+              settings: strings.routes.Settings()
             }}
             tint={colors.primary.accent}
             onSelect={({ nativeEvent }) => onSelect(nativeEvent.section)}
@@ -128,11 +139,11 @@ export function AppleTabBar({
       ]}
     >
       <NativeTabBar
-        selectedSection={section}
+        selectedSection={selectedSection}
         itemTitles={{
           library: strings.routes.Library(),
           tasks: strings.tasksTitle(),
-          search: strings.routes.Search()
+          settings: strings.routes.Settings()
         }}
         tint={colors.primary.accent}
         onSelect={({ nativeEvent }) => onSelect(nativeEvent.section)}

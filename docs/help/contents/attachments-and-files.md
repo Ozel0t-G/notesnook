@@ -100,17 +100,28 @@ Open an attachment's menu — right click desktop and web, tap the item on mobil
 | `{{fileCheck}}`                                  | Verifies the uploaded file is intact and decryptable                          |
 | `{{rename}}`                                     | Changes the filename                                                          |
 | `Download`                                       | Saves the file to your device                                                 |
-| `Reupload`                                       | Replaces a broken upload — you must pick the same file, the hash has to match |
+| `Reupload`                                       | Replaces a broken upload — you must pick the same file, the hash has to match. On Apple devices Notesnook keeps the old copy until the replacement is saved, and never deletes the server copy first |
 | `{{deletePermanently}}` (`{{delete}}` on mobile) | Removes the file from your account and from the notes that use it             |
 
 `Download`, `{{fileCheck}}` and `{{delete}}` also work on a multi-selection from the toolbar at the top of the desktop and web list.
 
 ::: tip Fix a failed attachment
-A file that shows an error usually needs `{{fileCheck}}` first. If the check reports a problem, `Reupload` with the original file repairs it.
+A file that shows an error usually needs `{{fileCheck}}` first. If the check reports a problem, `Reupload` with the original file repairs it. On Apple devices an empty or damaged local copy is often repaired automatically from the verified server copy.
 
 :::
 
 <!-- TODO: screenshot — the attachment manager with the type sidebar and the toolbar actions -->
+
+### Recover a file on iPhone, iPad and Mac
+
+On Apple devices, open the attachment — the ones that need attention are listed under `Errors` — and use its menu:
+
+- `{{fileCheck}}` re-downloads the file from the server, decrypts it on your device and compares it with the file's expected size and hash. It never changes or deletes the local copy. If the check fails, the file stays flagged. The check needs a connection: if you are offline it tells you so instead of running, and leaves the file as it was.
+- If a file's local copy is empty or damaged, Notesnook can repair it on its own: it downloads the copy from the server, verifies it against the file's size and hash, and only then replaces the broken local copy. Your previous local bytes are kept aside in a protected cache file rather than deleted, and a local copy that is still valid is never overwritten. If the automatic repair cannot finish, the file stays flagged and Notesnook backs off before trying again, so it does not retry in a loop; `{{retry}}` or `Reupload` clears the flag sooner. `{{fileCheck}}` itself never changes anything on your device.
+- `{{retry}}` appears only on a flagged file; it clears the flag and asks Notesnook to upload the file again on the next sync.
+- `Reupload` replaces the file — you must pick the same file, its hash has to match. It does not delete the server copy first: the old local copy is kept until the new one is saved, so an interrupted Reupload can be recovered.
+
+On Apple devices, `{{clearCache}}` keeps any local copy that Notesnook could not verify against the server, so a file that has not been confirmed intact is not deleted when you clear the cache.
 
 ### Download every attachment
 

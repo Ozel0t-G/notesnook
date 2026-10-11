@@ -240,20 +240,20 @@ export const settingsGroups: SettingSection[] = [
             modifer: async () => {
               presentDialog({
                 title: strings.clearCacheConfirm(),
-                paragraph: strings.clearCacheConfirmDesc(),
+                paragraph: strings.clearMobileCacheConfirmDesc(),
                 positiveText: strings.clear(),
                 positivePress: async () => {
-                  filesystem.clearCache();
+                  await filesystem.clearCache();
                   ToastManager.show({
                     heading: strings.cacheCleared(),
-                    message: strings.cacheClearedDesc(),
+                    message: strings.mobileCacheClearedDesc(),
                     type: "success"
                   });
                 }
               });
             },
             description(current) {
-              return strings.clearCacheDesc(current as number);
+              return strings.clearMobileCacheDesc(current as number);
             },
             useHook: () => {
               const [cacheSize, setCacheSize] = React.useState(0);
@@ -265,7 +265,15 @@ export const settingsGroups: SettingSection[] = [
                     /* empty */
                   });
                 const sub = eSubscribeEvent("cache-cleared", () => {
-                  setCacheSize(0);
+                  // Pending-upload ciphertext is intentionally kept by
+                  // clearCache, so recompute the real remaining size instead of
+                  // assuming the cache is empty.
+                  filesystem
+                    .getCacheSize()
+                    .then(setCacheSize)
+                    .catch(() => {
+                      /* empty */
+                    });
                 });
                 return () => {
                   sub?.unsubscribe();
@@ -599,6 +607,14 @@ export const settingsGroups: SettingSection[] = [
             type: "component",
             component: "time-format-selector",
             icon: "clock-digital"
+          },
+          {
+            id: "notebook-date-grouping",
+            type: "screen",
+            name: strings.notebooks(),
+            description: strings.groupBy(),
+            component: "notebook-date-grouping",
+            icon: "calendar"
           },
           {
             id: "clear-trash-interval",

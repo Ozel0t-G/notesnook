@@ -58,6 +58,7 @@ import Paragraph from "../ui/typography/paragraph";
 import { strings } from "@notesnook/intl";
 import { DefaultAppStyles } from "../../utils/styles";
 import Navigation from "../../services/navigation";
+import Sync from "../../services/sync";
 import { createFormRef, validators } from "../ui/input/form-input";
 
 const Actions = ({
@@ -113,35 +114,75 @@ const Actions = ({
         setLoading({
           name: strings.fileCheck()
         });
-        const result = await filesystem.checkAttachment(attachment.hash);
-        if (!result) return;
+        try {
+          const result = await filesystem.checkAttachment(attachment.hash);
+          if (!result) {
+            // No result means the check could not run (offline, or NetInfo
+            // threw). Surface it instead of silently leaving the spinner on.
+            ToastManager.show({
+              heading: strings.offline(),
+              type: "error",
+              context: "local"
+            });
+            return;
+          }
 
-        if (result.failed) {
-          db.attachments.markAsFailed(attachment.id, result.failed);
-          setFailed(result.failed);
-          ToastManager.show({
-            heading: strings.fileCheckFailed(result.failed),
-            type: "error",
-            context: "local"
-          });
-        } else {
-          setFailed(undefined);
-          db.attachments.markAsFailed(attachment.id);
-          eSendEvent(eDBItemUpdate, attachment.id);
-          ToastManager.show({
-            heading: strings.fileCheckPassed(),
-            type: "success",
-            context: "local"
+          if (result.failed) {
+            db.attachments.markAsFailed(attachment.id, result.failed);
+            setFailed(result.failed);
+            ToastManager.show({
+              heading: strings.fileCheckFailed(result.failed),
+              type: "error",
+              context: "local"
+            });
+          } else {
+            setFailed(undefined);
+            db.attachments.markAsFailed(attachment.id);
+            eSendEvent(eDBItemUpdate, attachment.id);
+            ToastManager.show({
+              heading: strings.fileCheckPassed(),
+              type: "success",
+              context: "local"
+            });
+          }
+
+          setAttachments();
+        } finally {
+          // Always clear the spinner, even when `checkAttachment` rejects
+          // (NetInfo.fetch is outside its own try) or returns no result.
+          setLoading({
+            name: undefined
           });
         }
-
-        setAttachments();
-        setLoading({
-          name: undefined
-        });
       },
       icon: "file-check"
     },
+    ...(failed
+      ? [
+          {
+            name: strings.retry(),
+            onPress: async () => {
+              // Only clear a failure that actually exists; never touch
+              // attachments without a failure marker.
+              if (!failed) return;
+
+              setLoading({
+                name: strings.retry()
+              });
+              await db.attachments.markAsFailed(attachment.id);
+              setFailed(undefined);
+              setAttachments();
+              eSendEvent(eDBItemUpdate, attachment.id);
+              Sync.run("global", true, "send");
+              setLoading({
+                name: undefined
+              });
+              fwdRef.current?.hide();
+            },
+            icon: "reload"
+          }
+        ]
+      : []),
     {
       name: strings.rename(),
       onPress: () => {

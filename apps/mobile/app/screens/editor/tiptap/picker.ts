@@ -31,9 +31,11 @@ import { Platform } from "react-native";
 import RNFetchBlob from "react-native-blob-util";
 import { Image, openCamera, openPicker } from "react-native-image-crop-picker";
 import { DatabaseLogger, db } from "../../../common/database";
-import filesystem from "../../../common/filesystem";
 import { compressToFile } from "../../../common/filesystem/compress";
-import { createCacheDir } from "../../../common/filesystem/io";
+import {
+  createCacheDir,
+  performAppleReupload
+} from "../../../common/filesystem/io";
 import {
   cacheDir,
   getRandomId,
@@ -378,18 +380,34 @@ export async function attachFile(
       return false;
     }
 
-    if (!options.reupload && exists) {
-      options.reupload = (await filesystem.getUploadedFileSize(hash)) === 0;
+    // Reupload only when the caller explicitly asks for it. Never infer it from
+    // the remote object size: a transient/malformed HEAD response reporting size
+    // 0 would otherwise trigger a destructive remote + local deletion.
+    const reupload = !!options.reupload;
+
+    // Apple platforms use the safe staging/backup protocol: the old ciphertext
+    // is preserved until the new row commits, the new ciphertext is verified,
+    // and the server copy is never deleted first. Android keeps its previous
+    // delete-first behavior unchanged.
+    if (reupload && Platform.OS === "ios") {
+      encryptionInfo = await performAppleReupload(
+        hash,
+        uri,
+        type,
+        filename,
+        options.outputType || "url"
+      );
+      return true;
     }
 
-    if (options.reupload) {
+    if (reupload) {
       DatabaseLogger.log(`Deleting file before reupload. ${hash}`);
       const deleted = await db.fs().deleteFile(hash, false);
       if (!deleted)
         throw new Error(`Failed to delete file before reupload. ${hash}`);
     }
 
-    if (!exists || options?.reupload) {
+    if (!exists || reupload) {
       const key = await db.attachments.generateKey();
       encryptionInfo = await Sodium.encryptFile(key, {
         uri: uri,
@@ -400,12 +418,17 @@ export async function attachFile(
       encryptionInfo.filename = filename;
       encryptionInfo.alg = "xcha-stream";
       encryptionInfo.key = key;
-      if (options?.reupload && exists) {
-        const attachment = await db.attachments.attachment(hash);
-        if (attachment) await db.attachments.reset(attachment?.id);
-      }
     } else {
       encryptionInfo = { hash: hash };
+    }
+
+    // On explicit reupload, reset the existing row now that the old ciphertext is
+    // gone and the new metadata has been created. Doing this here (rather than
+    // before deleteFile) avoids exposing stale local bytes under a pending row to
+    // a concurrent sync/upload; add() then reuses the same reset row.
+    if (reupload && exists) {
+      const attachment = await db.attachments.attachment(hash);
+      if (attachment) await db.attachments.reset(attachment.id);
     }
 
     await db.attachments.add(encryptionInfo);

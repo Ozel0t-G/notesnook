@@ -17,30 +17,71 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { ThemeDefinition } from "@notesnook/theme";
+import {
+  ThemeDefinition,
+  ThemeVeyranDark,
+  ThemeVeyranLight
+} from "@notesnook/theme";
 import { Appearance, StatusBar } from "react-native";
 import { create } from "zustand";
 import SettingsService from "../services/settings";
 import switchTheme from "react-native-theme-switch-animation";
 
 import changeNavigationBarColor from "react-native-navigation-bar-color";
+import {
+  applyAccentChoice,
+  normalizeAccentChoiceId
+} from "../utils/accent-theme";
+
 export interface ThemeStore {
+  /**
+   * The themes the app renders. These are the user's own theme definitions with
+   * the accent palette applied (`utils/accent-theme`), so every consumer --
+   * the theme engine, the widget snapshot writer -- sees the effective colors.
+   * The user's untouched definitions live in `baseLightTheme`/`baseDarkTheme`
+   * and are what gets persisted.
+   */
   lightTheme: ThemeDefinition;
   darkTheme: ThemeDefinition;
+  /** The user's own light theme, exactly as chosen/imported. */
+  baseLightTheme: ThemeDefinition;
+  /** The user's own dark theme, exactly as chosen/imported. */
+  baseDarkTheme: ThemeDefinition;
+  /**
+   * The accent palette selection. `undefined` means automatic: the mint default
+   * on the built-in VeyraN appearance, and the theme's own accent otherwise.
+   */
+  accentColor?: string;
   colorScheme: "dark" | "light";
   setDarkTheme: (theme: ThemeDefinition) => void;
   setLightTheme: (theme: ThemeDefinition) => void;
+  setAccentColor: (accentColor?: string) => void;
   setColorScheme: (colorScheme?: "dark" | "light") => void;
 }
 
+/**
+ * The currently active, accent-applied theme. Used by anything that needs the
+ * effective colors outside of React, e.g. the widget snapshot writer.
+ */
+export function getEffectiveTheme(state?: ThemeStore): ThemeDefinition {
+  const current = state ?? useThemeStore.getState();
+  return current.colorScheme === "dark" ? current.darkTheme : current.lightTheme;
+}
+
+const initialSettings = SettingsService.get();
+// A settings blob from before theming (or with a corrupt entry) must still
+// boot: fall back to the shipped appearances rather than reading `scopes` off
+// `undefined`.
+const initialBaseLightTheme = initialSettings.lighTheme ?? ThemeVeyranLight;
+const initialBaseDarkTheme = initialSettings.darkTheme ?? ThemeVeyranDark;
+
 export function changeSystemBarColors() {
   const change = () => {
-    const currTheme =
-      useThemeStore.getState().colorScheme === "dark"
-        ? SettingsService.getProperty("darkTheme")
-        : SettingsService.getProperty("lighTheme");
-
-    const isDark = useThemeStore.getState().colorScheme === "dark";
+    const state = useThemeStore.getState();
+    const isDark = state.colorScheme === "dark";
+    // Read the store so a settings blob from before theming still resolves to
+    // a real theme instead of `undefined.scopes`.
+    const currTheme = getEffectiveTheme(state);
     changeNavigationBarColor(
       currTheme.scopes.base.primary.background,
       !isDark,
@@ -70,20 +111,47 @@ function switchThemeWithAnimation(fn: () => void) {
 }
 
 export const useThemeStore = create<ThemeStore>((set, get) => ({
-  lightTheme: SettingsService.get().lighTheme,
-  darkTheme: SettingsService.get().darkTheme,
-  colorScheme: SettingsService.get().useSystemTheme
+  baseLightTheme: initialBaseLightTheme,
+  baseDarkTheme: initialBaseDarkTheme,
+  lightTheme: applyAccentChoice(
+    initialBaseLightTheme,
+    initialSettings.accentColor
+  ),
+  darkTheme: applyAccentChoice(
+    initialBaseDarkTheme,
+    initialSettings.accentColor
+  ),
+  accentColor: normalizeAccentChoiceId(initialSettings.accentColor),
+  colorScheme: initialSettings.useSystemTheme
     ? (Appearance.getColorScheme() as "dark" | "light")
-    : SettingsService.get().colorScheme,
+    : initialSettings.colorScheme,
   setDarkTheme: (darkTheme) => {
-    set({ darkTheme });
+    // The store keeps the effective, accent-applied theme so every consumer
+    // recolors, while the untouched definition is what gets persisted.
+    set((state) => ({
+      baseDarkTheme: darkTheme,
+      darkTheme: applyAccentChoice(darkTheme, state.accentColor)
+    }));
     changeSystemBarColors();
     SettingsService.setProperty("darkTheme", darkTheme);
   },
   setLightTheme: (lightTheme) => {
-    set({ lightTheme });
+    set((state) => ({
+      baseLightTheme: lightTheme,
+      lightTheme: applyAccentChoice(lightTheme, state.accentColor)
+    }));
     changeSystemBarColors();
     SettingsService.setProperty("lighTheme", lightTheme);
+  },
+  setAccentColor: (accentColor) => {
+    const normalized = normalizeAccentChoiceId(accentColor);
+    set((state) => ({
+      accentColor: normalized,
+      lightTheme: applyAccentChoice(state.baseLightTheme, normalized),
+      darkTheme: applyAccentChoice(state.baseDarkTheme, normalized)
+    }));
+    changeSystemBarColors();
+    SettingsService.setProperty("accentColor", normalized);
   },
   setColorScheme: (colorScheme) => {
     switchThemeWithAnimation(() => {

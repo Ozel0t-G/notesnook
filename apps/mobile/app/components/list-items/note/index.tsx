@@ -41,6 +41,7 @@ import {
   NotebooksWithDateEdited,
   TagsWithDateEdited
 } from "@notesnook/common";
+import type { NoteThumbnail as NoteThumbnailInfo } from "@notesnook/common";
 import { strings } from "@notesnook/intl";
 import { notesnook } from "../../../../e2e/test.ids";
 import useIsSelected from "../../../hooks/use-selected";
@@ -51,6 +52,7 @@ import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../../utils/constants";
 import { formatMacNoteDate } from "../../../utils/mac-note-date";
 import { systemColor } from "../../../utils/ios-system-colors";
+import { NoteThumbnail } from "./note-thumbnail";
 import { Properties } from "../../properties";
 import AppIcon from "../../ui/AppIcon";
 import { IconButton } from "../../ui/icon-button";
@@ -79,14 +81,19 @@ type NoteItemProps = {
   attachmentsCount: number;
   date: number;
   isTrash?: boolean;
+  /** Rendered inside an action sheet (keeps the sheet's own row layout). */
+  isSheet?: boolean;
   noOpen?: boolean;
   locked?: boolean;
   renderedInRoute?: keyof RouteParams;
+  /** First raster image attachment of the note (Apple list thumbnail). */
+  thumbnail?: NoteThumbnailInfo;
 };
 
 const NoteItem = ({
   item,
   isTrash,
+  isSheet = false,
   date,
   color,
   notebooks,
@@ -94,7 +101,8 @@ const NoteItem = ({
   attachmentsCount,
   locked,
   noOpen = false,
-  renderedInRoute
+  renderedInRoute,
+  thumbnail
 }: NoteItemProps) => {
   const isEditingNote = useTabStore(
     (state) =>
@@ -107,14 +115,28 @@ const NoteItem = ({
   // Mac's source list rows are compact: a 13.5 pt semibold title with a 12 pt
   // secondary preview/date underneath.
   const isMac = isMacCatalyst();
+  // iPhone/iPad note rows (outside trash and action sheets) use the approved
+  // simple layout: a readable title, one line of preview and 11 pt metadata.
+  const isIOSListRow = visual.ios && !isMac && !isTrash && !isSheet;
   // The first line is the title, everywhere (list, editor, search).
-  const displayTitle =
+  const rawTitle =
     visual.ios && !isTrash ? homeNoteDisplayTitle(item as Note) : item.title;
+  // A blank/whitespace title is shown as the localized "Untitled" - display
+  // only, the stored note (and its title) is never changed.
+  const displayTitle =
+    visual.ios && !isTrash && !(rawTitle || "").trim()
+      ? strings.untitledNote()
+      : rawTitle;
   const displayHeadline = item.headline
     ? decode(item.headline, { level: EntityLevel.HTML })
     : "";
   // R5: the Mac row's second line is one line of "date · first text line".
   const macPreview = isMac ? displayHeadline.replace(/\s+/g, " ").trim() : "";
+  // iOS: one line of body text under the title. When the title is generated
+  // from the headline the first line *is* the title, so it is skipped.
+  const iosPreview = isIOSListRow ? homeNoteDisplaySnippet(item as Note) : "";
+  // The home snippet is still used by the legacy date line (e.g. a home-route
+  // list rendered inside an action sheet, which keeps the sheet layout).
   const homeSnippet = isHomeIOS ? homeNoteDisplaySnippet(item as Note) : "";
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
@@ -123,6 +145,10 @@ const NoteItem = ({
   const primaryColors = isEditingNote ? colors.selected : colors.primary;
   const selectionMode = useSelectionStore((state) => state.selectionMode);
   const [selected] = useIsSelected(item);
+  const isSelecting = selectionMode === "note" || selectionMode === "trash";
+  // Apple (iPhone/iPad/Mac Catalyst) trailing 52 pt image. Hidden while
+  // selecting (the checkbox then takes the trailing slot) and in trash rows.
+  const showThumbnail = visual.ios && !isTrash && !compactMode && !isSelecting;
   return (
     <>
       <View
@@ -161,7 +187,7 @@ const NoteItem = ({
           <Heading
             numberOfLines={1}
             color={color?.colorCode || primaryColors.heading}
-            size={isHomeIOS ? AppFontSize.md : AppFontSize.sm}
+            size={isHomeIOS || isIOSListRow ? AppFontSize.md : AppFontSize.sm}
             style={{
               paddingRight: 10,
               // 13 pt semibold: Heading already carries the 600 weight.
@@ -172,7 +198,25 @@ const NoteItem = ({
           </Heading>
         )}
 
-        {item.headline && !compactMode && !isHomeIOS && !isMac ? (
+        {isIOSListRow && !compactMode && iosPreview ? (
+          <Paragraph
+            numberOfLines={1}
+            color={visual.secondaryText}
+            style={{
+              fontSize: AppFontSize.xs,
+              color: visual.secondaryText,
+              marginTop: 4
+            }}
+          >
+            {iosPreview}
+          </Paragraph>
+        ) : null}
+
+        {item.headline &&
+          !compactMode &&
+          !isHomeIOS &&
+          !isMac &&
+          !isIOSListRow ? (
           <Paragraph
             style={{
               flexWrap: "wrap",
@@ -186,7 +230,7 @@ const NoteItem = ({
           </Paragraph>
         ) : null}
 
-        {compactMode || !visual.ios ? null : (
+        {compactMode || !visual.ios || isIOSListRow ? null : (
           <Paragraph
             numberOfLines={isMac || isHomeIOS ? 1 : undefined}
             style={{
@@ -237,6 +281,25 @@ const NoteItem = ({
           >
             {!isTrash ? (
               <>
+                {/* Flat iPhone/iPad rows carry the date in the metadata line
+                    instead of a paragraph of its own. */}
+                {isIOSListRow ? (
+                  <Paragraph
+                    numberOfLines={1}
+                    style={{
+                      fontSize: AppFontSize.xxxs,
+                      color: visual.secondaryText
+                    }}
+                  >
+                    {getFormattedDate(
+                      date,
+                      dayjs(date).isBefore(dayjs().subtract(1, "day").hour(23))
+                        ? "date"
+                        : "time"
+                    )}
+                  </Paragraph>
+                ) : null}
+
                 {item.conflicted ? (
                   <Icon
                     name="alert-circle"
@@ -278,7 +341,7 @@ const NoteItem = ({
                     />
                     <Paragraph
                       color={colors.secondary.paragraph}
-                      size={AppFontSize.xxs}
+                      size={isIOSListRow ? AppFontSize.xxxs : AppFontSize.xxs}
                     >
                       {attachmentsCount}
                     </Paragraph>
@@ -330,6 +393,7 @@ const NoteItem = ({
                 ) : null}
 
                 {!isHomeIOS &&
+                  !isIOSListRow &&
                   notebooks?.items
                     ?.filter(
                       (item) =>
@@ -364,7 +428,7 @@ const NoteItem = ({
                       </View>
                     ))}
 
-                {!isHomeIOS && !isTrash && !compactMode && tags
+                {!isHomeIOS && !isIOSListRow && !isTrash && !compactMode && tags
                   ? tags.items?.map((item) =>
                       item.id ? (
                         <View
@@ -508,6 +572,15 @@ const NoteItem = ({
             }}
           />
         )}
+
+        {showThumbnail ? (
+          <NoteThumbnail
+            noteId={item.id}
+            thumbnail={thumbnail}
+            locked={locked}
+            enabled={showThumbnail}
+          />
+        ) : null}
       </View>
     </>
   );

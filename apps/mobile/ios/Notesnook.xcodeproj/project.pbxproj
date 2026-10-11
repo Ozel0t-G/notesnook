@@ -58,7 +58,6 @@
 		D10000000000000000000002 /* ReminderWidgetModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000002 /* ReminderWidgetModule.m */; };
 		D10000000000000000000003 /* icon.png in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000003 /* icon.png */; };
 		D10000000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
-		D10000000000000000000042 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
 		D10000000000000000000005 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* PrivacyInfo.xcprivacy */; };
 		D10000000000000000000006 /* TaskAlarmModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000006 /* TaskAlarmModule.swift */; };
 		D10000000000000000000007 /* TaskAlarmModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000007 /* TaskAlarmModule.m */; };
@@ -81,6 +80,7 @@
 		D10000000000000000000036 /* TaskWidgetSnapshotCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000010 /* TaskWidgetSnapshotCodec.swift */; };
 		D10000000000000000000040 /* NotificationSettingsModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000040 /* NotificationSettingsModule.swift */; };
 		D10000000000000000000041 /* NotificationSettingsModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000041 /* NotificationSettingsModule.m */; };
+		D10000000000000000000042 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000004 /* Localizable.xcstrings */; };
 		D10000000000000000000050 /* TaskAlarmSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000050 /* TaskAlarmSurface.swift */; };
 		D10000000000000000000051 /* TaskAlarmSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000050 /* TaskAlarmSurface.swift */; };
 		D10000000000000000000060 /* CatalystOpenPGPStubs.c in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000060 /* CatalystOpenPGPStubs.c */; };
@@ -1430,6 +1430,7 @@
 				PRESERVE_DEAD_CODE_INITS_AND_TERMS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(IOS_MAIN_BUNDLE_ID)";
 				PRODUCT_NAME = Notesnook;
+				"PRODUCT_NAME[sdk=macosx*]" = "$(APP_DISPLAY_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTS_MACCATALYST = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Notesnook-Bridging-Header.h";
@@ -1550,6 +1551,7 @@
 				PRESERVE_DEAD_CODE_INITS_AND_TERMS = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(IOS_MAIN_BUNDLE_ID)";
 				PRODUCT_NAME = Notesnook;
+				"PRODUCT_NAME[sdk=macosx*]" = "$(APP_DISPLAY_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTS_MACCATALYST = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "Notesnook-Bridging-Header.h";

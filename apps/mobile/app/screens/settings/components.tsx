@@ -54,6 +54,7 @@ import {
   SetupInboxKeys
 } from "./manage-inbox-keys";
 import { FailedInboxItems } from "./failed-inbox-items";
+import { NotebookDateGrouping } from "./notebook-date-grouping";
 
 export const components: { [name: string]: ReactElement } = {
   homeselector: <HomePicker />,
@@ -89,5 +90,6 @@ export const components: { [name: string]: ReactElement } = {
   "manage-inbox-keys": <ManageInboxKeys />,
   "inbox-keys": <InboxKeysList />,
   "failed-inbox-items": <FailedInboxItems />,
-  "setup-inbox-keys": <SetupInboxKeys />
+  "setup-inbox-keys": <SetupInboxKeys />,
+  "notebook-date-grouping": <NotebookDateGrouping />
 };

@@ -34,6 +34,7 @@ import { fluidTabsRef } from "../../../utils/global-refs";
 import { isHomeNoteRoute } from "../../../utils/home-note-presentation";
 
 import { NotebooksWithDateEdited, TagsWithDateEdited } from "@notesnook/common";
+import type { NoteThumbnail as NoteThumbnailInfo } from "@notesnook/common";
 import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
 import { editorController } from "../../../screens/editor/tiptap/utils";
 import { RouteParams } from "../../../stores/use-navigation-store";
@@ -96,6 +97,8 @@ type NoteWrapperProps = {
   isRenderedInActionSheet: boolean;
   locked?: boolean;
   renderedInRoute?: keyof RouteParams;
+  /** First raster image attachment of the note (Apple list thumbnail). */
+  thumbnail?: NoteThumbnailInfo;
 };
 
 export const NoteWrapper = React.memo<
@@ -121,7 +124,13 @@ export const NoteWrapper = React.memo<
           Platform.OS === "ios" && isHomeNoteRoute(restProps.renderedInRoute)
         }
       >
-        <NoteItem {...restProps} item={item} index={index} isTrash={isTrash} />
+        <NoteItem
+          {...restProps}
+          item={item}
+          index={index}
+          isTrash={isTrash}
+          isSheet={isRenderedInActionSheet}
+        />
       </SelectionWrapper>
     );
   },
@@ -145,6 +154,11 @@ export const NoteWrapper = React.memo<
     if (prev.color !== next.color) return false;
     if (prev.reminder?.id !== next.reminder?.id) return false;
     if (prev.attachmentsCount !== next.attachmentsCount) return false;
+    // The thumbnail is resolved from the row's data; a recycled row must pick
+    // up the new note's image (and drop the old one) immediately.
+    if (prev.thumbnail?.hash !== next.thumbnail?.hash) return false;
+    if (prev.thumbnail?.mimeType !== next.thumbnail?.mimeType) return false;
+    if (prev.locked !== next.locked) return false;
     if (prev.item?.dateModified !== next.item?.dateModified) {
       return false;
     }

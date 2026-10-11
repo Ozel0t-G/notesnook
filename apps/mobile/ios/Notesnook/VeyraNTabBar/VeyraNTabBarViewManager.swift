@@ -17,7 +17,10 @@ final class VeyraNTabBarViewManager: RCTViewManager {
 final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
   private let tabBar = UITabBar()
   /// Index-aligned with `tabBar.items`. `compose` is an action, not a section.
-  private let sections = ["library", "tasks", "search", "compose"]
+  /// The third item opens Settings; it is an action too (the bar highlights
+  /// Settings while the sheet is up, and the section underneath is restored on
+  /// dismissal), so it is not a persistent section either.
+  private let sections = ["library", "tasks", "settings", "compose"]
   private static let composeSection = "compose"
 
   @objc var selectedSection: String = "library" { didSet { updateSelection() } }
@@ -42,18 +45,18 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
       image: UIImage(systemName: "checklist"),
       tag: 1
     )
-    let searchItem = UITabBarItem(
-      title: NSLocalizedString("Search", comment: "Search tab"),
-      image: UIImage(systemName: "magnifyingglass"),
+    let settingsItem = UITabBarItem(
+      title: NSLocalizedString("Settings", comment: "Settings tab"),
+      image: UIImage(systemName: "gearshape"),
       tag: 2
     )
     libraryItem.accessibilityIdentifier = "veyran-tab-library"
     tasksItem.accessibilityIdentifier = "veyran-tab-tasks"
-    searchItem.accessibilityIdentifier = "veyran-tab-search"
+    settingsItem.accessibilityIdentifier = "veyran-tab-settings"
 
     // Tabs are places, not actions: "New Note" lives in the toolbar
     // (square.and.pencil) like in Notes.
-    tabBar.items = [libraryItem, tasksItem, searchItem]
+    tabBar.items = [libraryItem, tasksItem, settingsItem]
     addSubview(tabBar)
     NSLayoutConstraint.activate([
       tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),

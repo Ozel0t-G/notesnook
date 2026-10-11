@@ -25,7 +25,6 @@ import CryptoKit
 @objc(ReminderWidgetModule)
 final class ReminderWidgetModule: NSObject {
   private static let snapshotFilename = "reminder-widget-snapshot.json"
-  private static let widgetKind = "ReminderWidget"
   private static let maximumSnapshotSize = 256 * 1024
   private static let actionFolder = "task-widget-actions-v1"
 
@@ -63,7 +62,10 @@ final class ReminderWidgetModule: NSObject {
       var mutableURL = url
       try mutableURL.setResourceValues(resourceValues)
 
-      WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+      // Reloads the Overview and Focus cards together: this path also writes the
+      // App Lock redacted snapshot, so a missed Focus reload would leave a
+      // previously rendered, unredacted Focus card on the Home Screen.
+      WidgetCenter.shared.reloadTaskWidgets()
       resolve(nil)
     } catch {
       reject("reminder_widget_write_failed", error.localizedDescription, error)
@@ -80,7 +82,9 @@ final class ReminderWidgetModule: NSObject {
       if FileManager.default.fileExists(atPath: url.path) {
         try FileManager.default.removeItem(at: url)
       }
-      WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+      // Cleared on logout and when App Lock hides Tasks: both cards must drop
+      // their rows with it.
+      WidgetCenter.shared.reloadTaskWidgets()
       resolve(nil)
     } catch {
       reject("reminder_widget_clear_failed", error.localizedDescription, error)
@@ -145,7 +149,7 @@ final class ReminderWidgetModule: NSObject {
       if FileManager.default.fileExists(atPath: url.path) {
         try FileManager.default.removeItem(at: url)
       }
-      WidgetCenter.shared.reloadTimelines(ofKind: Self.widgetKind)
+      WidgetCenter.shared.reloadTaskWidgets()
       resolve(nil)
     } catch {
       reject("reminder_widget_action_ack_failed", error.localizedDescription, error)

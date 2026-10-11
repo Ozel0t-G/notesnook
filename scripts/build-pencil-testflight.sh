@@ -93,6 +93,20 @@ MAC_INSTALLER_CERT="${PENCIL_MAC_INSTALLER_CERT:-3rd Party Mac Developer Install
 # Editor bundle (embedded in the app)
 ( cd "$ROOT" && npm run tx editor-mobile:build )
 
+# Mac Catalyst only: @ammarahmed/react-native-sodium ships libsodium.xcframework
+# without a Mac Catalyst slice, so on a clean checkout the Catalyst build cannot
+# link libsodium. Extend the vendored framework before CocoaPods reads its
+# podspec. The helper is idempotent (no-op once the maccatalyst slice exists), so
+# it is safe to run on every --mac build. iOS behavior is untouched.
+if [[ $MAC -eq 1 ]]; then
+  LIBSODIUM_CATALYST="$IOS/scripts/libsodium-catalyst.sh"
+  if [[ ! -f "$LIBSODIUM_CATALYST" ]]; then
+    echo "error: missing $LIBSODIUM_CATALYST (required for the Mac Catalyst build)." >&2
+    exit 1
+  fi
+  bash "$LIBSODIUM_CATALYST"
+fi
+
 ( cd "$IOS" && pod install )
 
 if [[ $MAC -eq 1 ]]; then

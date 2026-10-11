@@ -90,15 +90,55 @@ describe("Mac window background", () => {
     jest.resetModules();
   });
 
-  const colors = { primary: { background: "#101012" } };
+  const colors = { primary: { background: "#101012", accent: "#0A84FF" } };
 
-  test("dark keeps the theme's primary background", () => {
+  test("dark tints the theme's primary background with the accent", () => {
     const {
       macWindowBackground,
-      macGlassPanelBackground
+      macGlassPanelBackground,
+      MAC_DARK_WINDOW_ACCENT_TINT,
+      mixHex
     } = loadMacLayout(undefined);
-    expect(macWindowBackground(colors, true)).toBe("#101012");
-    expect(macGlassPanelBackground(colors, true)).toBe("#101012");
+    const window = mixHex(
+      colors.primary.background,
+      colors.primary.accent,
+      MAC_DARK_WINDOW_ACCENT_TINT
+    );
+
+    expect(macWindowBackground(colors, true)).toBe(window);
+    // The theme's base colour still shows through: only a few percent moved.
+    expect(macWindowBackground(colors, true)).not.toBe(
+      colors.primary.background
+    );
+    // The glass panel is documented as the dark window background, so it
+    // follows the tint instead of drifting away from the surface it floats on.
+    expect(macGlassPanelBackground(colors, true)).toBe(window);
+  });
+
+  test("a different accent re-tints the dark window but not the light one", () => {
+    const {
+      macWindowBackground,
+      MAC_LIGHT_WINDOW_BACKGROUND
+    } = loadMacLayout(undefined);
+    const blue = { primary: { background: "#101012", accent: "#0A84FF" } };
+    const orange = { primary: { background: "#101012", accent: "#FF9500" } };
+
+    expect(macWindowBackground(blue, true)).not.toBe(
+      macWindowBackground(orange, true)
+    );
+    // Light mode is a fixed off-white: the accent never reaches it.
+    expect(macWindowBackground(blue, false)).toBe(MAC_LIGHT_WINDOW_BACKGROUND);
+    expect(macWindowBackground(orange, false)).toBe(
+      macWindowBackground(blue, false)
+    );
+  });
+
+  test("falls back to the plain theme background when there is no accent", () => {
+    const { macWindowBackground } = loadMacLayout(undefined);
+
+    expect(
+      macWindowBackground({ primary: { background: "#101012" } }, true)
+    ).toBe("#101012");
   });
 
   test("light uses the soft off-white window, never pure white", () => {
@@ -117,6 +157,49 @@ describe("Mac window background", () => {
       MAC_LIGHT_SIDEBAR_BACKGROUND
     );
     expect(macGlassPanelBackground(colors, false)).toBe("#E9E9EC");
+  });
+});
+
+describe("mixHex", () => {
+  afterEach(() => {
+    jest.dontMock("react-native");
+    jest.resetModules();
+  });
+
+  test("blends the requested percentage of one colour into another", () => {
+    const { mixHex } = loadMacLayout(undefined);
+
+    // The design mockup's Sky dark surfaces: the charcoal bases with 5-6% of
+    // the accent blended in.
+    expect(mixHex("#121517", "#73CEFF", 0.06)).toBe("#182025");
+    expect(mixHex("#252A2C", "#73CEFF", 0.05)).toBe("#293237");
+    expect(mixHex("#fff", "#000", 0.5)).toBe("#808080");
+  });
+
+  test("returns the base colour at both ends of the range", () => {
+    const { mixHex } = loadMacLayout(undefined);
+
+    expect(mixHex("#112233", "#445566", 0)).toBe("#112233");
+    expect(mixHex("#112233", "#445566", 1)).toBe("#445566");
+    // Out-of-range amounts are clamped, not extrapolated.
+    expect(mixHex("#112233", "#FFFFFF", -1)).toBe("#112233");
+    expect(mixHex("#000000", "#FFFFFF", 2)).toBe("#FFFFFF");
+  });
+
+  test("drops alpha and normalises the output case", () => {
+    const { mixHex } = loadMacLayout(undefined);
+
+    expect(mixHex("#11223344", "#000000", 0.5)).toBe("#09111A");
+    expect(mixHex("#aabbcc", "#aabbcc", 0.5)).toBe("#AABBCC");
+  });
+
+  test("returns the base unchanged when a colour cannot be parsed", () => {
+    const { mixHex } = loadMacLayout(undefined);
+
+    // The dark Mac separator is an rgba() string: it must survive untouched.
+    expect(mixHex("#112233", "rgba(1,2,3,0.5)", 0.5)).toBe("#112233");
+    expect(mixHex("#112233", "not-a-colour", 0.5)).toBe("#112233");
+    expect(mixHex("rgba(1,2,3,0.5)", "#112233", 0.5)).toBe("rgba(1,2,3,0.5)");
   });
 });
 

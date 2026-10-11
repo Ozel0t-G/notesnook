@@ -41,6 +41,30 @@ const NOTESNOOK = {
   auth: "https://auth.streetwriters.co"
 };
 
+/**
+ * The exact settings rows `resetFeatures()` persists on a fresh Web profile
+ * before anyone signs in: the feature-gated defaults for the toolbar preset,
+ * trash cleanup interval, default notebook and default tag, plus the
+ * device-format/title-format adoption rows. Values mirror what the settings
+ * collection writes into the `text` columns.
+ */
+const RESET_FEATURES_DEFAULT_SETTINGS = [
+  {
+    key: "toolbarConfig:desktop",
+    value: JSON.stringify({
+      version: 3,
+      preset: "default",
+      config: [{ id: "bold" }]
+    })
+  },
+  { key: "trashCleanupInterval", value: "7" },
+  { key: "defaultNotebook", value: null },
+  { key: "defaultTag", value: null },
+  { key: "dateFormat", value: "DD-MM-YYYY" },
+  { key: "timeFormat", value: "12-hour" },
+  { key: "titleFormat", value: "Note $date$ $time$" }
+];
+
 function record(api: string, auth: string): StoredAffinity {
   return { v: 1, api, auth, recordedAt: 1 };
 }
@@ -54,14 +78,16 @@ function fakeDb(options: {
   affinity?: StoredAffinity | string;
   recoveryRequired?: boolean;
   localRow?: string;
-  /** Keys present in the `settings` table. Defaults to the app's own startup
+  /** Rows present in the `settings` table. Defaults to the app's own startup
    * defaults, which a fresh profile always has. */
-  settingsKeys?: string[];
+  settings?: { key: string; value?: unknown; deleted?: boolean | number }[];
   legacySettings?: boolean;
 }) {
   const kv = new Map<string, unknown>();
   if (options.affinity !== undefined)
     kv.set("backendAffinity", options.affinity);
+  const settingsRows =
+    options.settings ?? APP_DEFAULT_SETTING_KEYS.map((key) => ({ key }));
   return {
     db: {
       kv: () => ({
@@ -80,22 +106,17 @@ function fakeDb(options: {
       }),
       sql: () => ({
         selectFrom: (table: string) => {
-          let excludedKeys: readonly string[] = [];
           const query: any = {
             select: () => query,
-            where: (_column: string, _op: string, value: readonly string[]) => {
-              excludedKeys = value || [];
-              return query;
-            },
+            where: () => query,
             limit: () => query,
-            executeTakeFirst: async () => {
-              if (table !== "settings")
-                return options.localRow === table ? { id: "local" } : undefined;
-              const keys =
-                options.settingsKeys ?? [...APP_DEFAULT_SETTING_KEYS];
-              const key = keys.find((k) => !excludedKeys.includes(k));
-              return key ? { id: "local", key } : undefined;
-            }
+            execute: async () => (table === "settings" ? settingsRows : []),
+            executeTakeFirst: async () =>
+              table === "settings"
+                ? settingsRows[0]
+                : options.localRow === table
+                ? { id: "local" }
+                : undefined
           };
           return query;
         }
@@ -246,7 +267,7 @@ describe("check", () => {
    * signing in can never succeed after a fresh install or a wipe.
    */
   test("app-default settings rows do not block a fresh profile", async () => {
-    const { db, kv } = fakeDb({ settingsKeys: [...APP_DEFAULT_SETTING_KEYS] });
+    const { db, kv } = fakeDb({});
     const boundary = new BackendAffinity(db);
     expect((await boundary.check()).status).toBe("no-user");
     const outcome = await boundary.record();
@@ -258,8 +279,129 @@ describe("check", () => {
     });
   });
 
+  /**
+   * The fresh-Web-profile defect this fixes: `resetFeatures()` persists the
+   * feature-gated defaults above (toolbar preset, trash interval, empty
+   * default notebook/tag) before `initUser`, which made every new profile look
+   * like an orphaned account and blocked the first email step.
+   */
+  test("resetFeatures startup settings do not block a fresh profile", async () => {
+    const { db, kv } = fakeDb({ settings: RESET_FEATURES_DEFAULT_SETTINGS });
+    const boundary = new BackendAffinity(db);
+    expect(await boundary.hasLocalAccountRecords()).toBe(false);
+    expect((await boundary.check()).status).toBe("no-user");
+    const outcome = await boundary.record();
+    expect(outcome.ok).toBe(true);
+    expect(kv.get("backendAffinity")).toMatchObject({
+      v: 1,
+      api: VEYRAN.api,
+      auth: VEYRAN.auth
+    });
+  });
+
+  test("empty default notebook and tag values are startup defaults", async () => {
+    for (const value of [null, undefined, "", "  ", "null"]) {
+      const { db } = fakeDb({
+        settings: [
+          { key: "defaultNotebook", value },
+          { key: "defaultTag", value }
+        ]
+      });
+      expect(
+        (await new BackendAffinity(db).check()).status,
+        `value: ${JSON.stringify(value)}`
+      ).toBe("no-user");
+    }
+  });
+
+  test.each([
+    [
+      "a non-empty default notebook",
+      { key: "defaultNotebook", value: "some-notebook" }
+    ],
+    ["a non-empty default tag", { key: "defaultTag", value: "some-tag" }],
+    [
+      "a customized toolbar preset",
+      {
+        key: "toolbarConfig:desktop",
+        value: JSON.stringify({ version: 3, preset: "custom", config: [] })
+      }
+    ],
+    [
+      "a minimal toolbar preset",
+      {
+        key: "toolbarConfig:desktop",
+        value: JSON.stringify({ version: 3, preset: "minimal", config: [] })
+      }
+    ],
+    // `resetFeatures()` only auto-writes `toolbarConfig:desktop`; a `default`
+    // preset on any other platform is a real user choice (mobile preset picker)
+    // or imported account data, so it must stay protected.
+    [
+      "a default toolbar preset on another platform",
+      {
+        key: "toolbarConfig:mobile",
+        value: JSON.stringify({ version: 3, preset: "default", config: [] })
+      }
+    ],
+    [
+      "a default toolbar preset on a second non-desktop platform",
+      {
+        key: "toolbarConfig:smallTablet",
+        value: JSON.stringify({ version: 3, preset: "default", config: [] })
+      }
+    ],
+    // Strict equality: a key that merely starts with the startup key is not the
+    // row startup writes.
+    [
+      "a default toolbar preset on a lookalike key",
+      {
+        key: "toolbarConfig:desktopExtra",
+        value: JSON.stringify({ version: 3, preset: "default", config: [] })
+      }
+    ],
+    // An object that claims the shipped preset but was not shaped by a writer.
+    [
+      "a default toolbar preset whose config is not a tools array",
+      {
+        key: "toolbarConfig:desktop",
+        value: JSON.stringify({
+          version: 3,
+          preset: "default",
+          config: { preset: "default" }
+        })
+      }
+    ],
+    [
+      "a default toolbar preset without a numeric version",
+      {
+        key: "toolbarConfig:desktop",
+        value: JSON.stringify({ preset: "default", config: [] })
+      }
+    ],
+    ["a non-default trash cleanup interval", { key: "trashCleanupInterval", value: "30" }],
+    ["an unparseable toolbar config", { key: "toolbarConfig:desktop", value: "custom" }]
+  ])("%s still blocks direct affinity recording", async (_label, row) => {
+    const { db, kv } = fakeDb({ settings: [row] });
+    const boundary = new BackendAffinity(db);
+    expect((await boundary.check()).status).toBe("unknown");
+    expect((await boundary.record()).ok).toBe(false);
+    expect(kv.get("backendAffinity")).toBeUndefined();
+  });
+
+  // A tombstone records something the user had, even when it names a key the
+  // app otherwise writes by itself.
+  test("a tombstone on a startup-default key stays protected", async () => {
+    const { db } = fakeDb({
+      settings: [{ key: "dateFormat", value: "DD-MM-YYYY", deleted: true }]
+    });
+    expect((await new BackendAffinity(db).check()).status).toBe("unknown");
+  });
+
   test("a user-authored settings row still blocks direct affinity recording", async () => {
-    const { db, kv } = fakeDb({ settingsKeys: ["defaultNotebook"] });
+    const { db, kv } = fakeDb({
+      settings: [{ key: "defaultNotebook", value: "some-notebook" }]
+    });
     const boundary = new BackendAffinity(db);
     expect((await boundary.check()).status).toBe("unknown");
     expect((await boundary.record()).ok).toBe(false);
@@ -320,7 +462,9 @@ describe("check", () => {
 
   test("matching saved server configuration cannot claim orphaned settings", async () => {
     setPersistedHostOverrides({ API_HOST: VEYRAN.api, AUTH_HOST: VEYRAN.auth });
-    const { db, kv } = fakeDb({ settingsKeys: ["defaultNotebook"] });
+    const { db, kv } = fakeDb({
+      settings: [{ key: "defaultNotebook", value: "some-notebook" }]
+    });
     const boundary = new BackendAffinity(db);
     expect((await boundary.check()).status).toBe("unknown");
     expect((await boundary.record()).ok).toBe(false);

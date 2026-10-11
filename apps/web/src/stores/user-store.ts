@@ -36,26 +36,38 @@ class UserStore extends BaseStore<UserStore> {
   user?: User = undefined;
   counter = 0;
 
-  init = () => {
+  init = async () => {
     db.eventManager.subscribe(EVENTS.userSessionExpired, async () => {
       Config.set("sessionExpired", true);
       window.location.replace("/sessionexpired");
     });
 
-    db.user.getUser().then((user) => {
-      if (!user?.email) {
-        this.set({ isLoggedIn: false });
-        return;
-      }
-      this.set({
-        user,
-        isLoggedIn: true
-      });
-      if (Config.get("sessionExpired"))
-        db.eventManager.publish(EVENTS.userSessionExpired);
+    // Read the cached account before touching the network.
+    //
+    // Backend affinity deliberately blocks account fetches for a profile whose
+    // local data cannot be attributed to a backend — e.g. an offline/no-account
+    // profile that already holds a local note. Calling fetchUser() when there is
+    // no cached authenticated user therefore turns ordinary offline startup into
+    // a fatal BackendMismatchError page. Skip the fetch entirely in that case.
+    //
+    // When a cached user *does* exist the fetch still runs, and its result is
+    // deliberately not caught: a genuine affinity mismatch must stay visible.
+    const cachedUser = await db.user.getUser();
+
+    if (!cachedUser?.email) {
+      this.set({ isLoggedIn: false });
+      return false;
+    }
+
+    this.set({
+      user: cachedUser,
+      isLoggedIn: true
     });
 
-    if (Config.get("sessionExpired")) return;
+    if (Config.get("sessionExpired")) {
+      db.eventManager.publish(EVENTS.userSessionExpired);
+      return false;
+    }
 
     db.eventManager.subscribe(
       EVENTS.userSubscriptionUpdated,

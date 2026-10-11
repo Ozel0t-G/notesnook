@@ -34,9 +34,16 @@ jest.mock("./constants", () => ({
 import {
   getAppleVisualTokens,
   IOS_DARK,
+  IOS_DARK_ACCENT_TINT,
   MAC_DARK,
+  MAC_DARK_ACCENT_TINT,
   MAC_LIGHT
 } from "./apple-visual-tokens";
+import {
+  MAC_DARK_WINDOW_ACCENT_TINT,
+  macWindowBackground,
+  mixHex
+} from "./mac-layout";
 
 type ThemeColors = Parameters<typeof getAppleVisualTokens>[0];
 
@@ -66,6 +73,52 @@ const theme = (isDark: boolean) =>
     }
   } as unknown as ThemeColors);
 
+/**
+ * The same theme with only the accent replaced, so a case can prove the dark
+ * tokens follow `primary.accent` on their own - the rest of the palette
+ * (including `primary.background`) is untouched.
+ */
+const withAccent = (colors: ThemeColors, accent: string): ThemeColors =>
+  ({
+    ...colors,
+    primary: { ...colors.primary, accent },
+    selected: { ...colors.selected, accent }
+  } as ThemeColors);
+
+/** The dark iOS tokens that are supposed to follow the accent. */
+const IOS_ACCENT_TINTED_KEYS = [
+  "screenBackground",
+  "sidebarBackground",
+  "navigationSurface",
+  "toolbarSurface",
+  "editorSurround",
+  "contentSurface",
+  "secondarySurface",
+  "elevatedSurface",
+  "surface",
+  "separator",
+  "selectedSurface",
+  "selectionBackground"
+] as const;
+
+/**
+ * The dark Mac tokens that follow the accent. `separator` is the one exception:
+ * the dark Mac hairline is an `rgba()` string, so there is no hex to tint.
+ */
+const MAC_ACCENT_TINTED_KEYS = [
+  "screenBackground",
+  "sidebarBackground",
+  "navigationSurface",
+  "toolbarSurface",
+  "editorSurround",
+  "contentSurface",
+  "secondarySurface",
+  "elevatedSurface",
+  "surface",
+  "selectedSurface",
+  "selectionBackground"
+] as const;
+
 /** Every string anywhere in the token object, lower-cased for comparison. */
 function collectStrings(value: unknown, out: string[] = []): string[] {
   if (typeof value === "string") out.push(value.toLowerCase());
@@ -80,29 +133,65 @@ describe("Mac Catalyst visual tokens", () => {
     mockIsMacCatalyst = true;
   });
 
-  test("uses the theme's primary background for the whole window (dark)", () => {
+  test("tints the theme's primary background for the whole window (dark)", () => {
     const themeColors = theme(true);
     const tokens = getAppleVisualTokens(themeColors, true);
+    const accent = themeColors.primary.accent;
+    const windowBackground = macWindowBackground(themeColors, true);
 
     // Catalyst is still an iOS build: the layout branches keyed off `ios`
     // (radii, insets, three-column reach) must not move.
     expect(tokens.ios).toBe(true);
     // One background across the window: the root, the note list, the editor
     // and the band behind the toolbar all resolve to the theme's primary
-    // background (macOS 26 Notes), not to a fixed macOS grey.
-    expect(tokens.screenBackground).toBe(themeColors.primary.background);
-    expect(tokens.sidebarBackground).toBe(themeColors.primary.background);
-    expect(tokens.navigationSurface).toBe(themeColors.primary.background);
-    expect(tokens.toolbarSurface).toBe(themeColors.primary.background);
-    expect(tokens.editorSurround).toBe(themeColors.primary.background);
-    // Elevated surfaces keep their macOS semantic greys: they are supposed to
-    // float above the window, not merge with it.
-    expect(tokens.contentSurface).toBe("#1E1E1E");
-    expect(tokens.secondarySurface).toBe("#2A2A2C");
+    // background with the accent blended in (macOS 26 Notes), not to a fixed
+    // macOS grey.
+    expect(windowBackground).toBe(
+      mixHex(
+        themeColors.primary.background,
+        accent,
+        MAC_DARK_WINDOW_ACCENT_TINT
+      )
+    );
+    expect(tokens.screenBackground).toBe(windowBackground);
+    expect(tokens.sidebarBackground).toBe(windowBackground);
+    expect(tokens.navigationSurface).toBe(windowBackground);
+    expect(tokens.toolbarSurface).toBe(windowBackground);
+    expect(tokens.editorSurround).toBe(windowBackground);
+    // The theme's base colour is only nudged, never replaced.
+    expect(tokens.screenBackground).not.toBe(themeColors.primary.background);
+    // Elevated surfaces are the macOS semantic greys with the same accent tint:
+    // they float above the window, so they keep their own value.
+    expect(tokens.contentSurface).toBe(
+      mixHex(MAC_DARK.content, accent, MAC_DARK_ACCENT_TINT)
+    );
+    expect(tokens.secondarySurface).toBe(
+      mixHex(MAC_DARK.secondarySurface, accent, MAC_DARK_ACCENT_TINT)
+    );
+    expect(tokens.elevatedSurface).toBe(tokens.contentSurface);
+    expect(tokens.surface).toBe(tokens.contentSurface);
+    // The dark Mac hairline is an rgba() string: nothing to tint.
     expect(tokens.separator).toBe("rgba(255,255,255,0.1)");
-    expect(tokens.selectedSurface).toBe("#3A3A3D");
-    expect(tokens.selectionBackground).toBe("#3A3A3D");
-    expect(tokens.surface).toBe(MAC_DARK.content);
+    expect(tokens.selectedSurface).toBe(
+      mixHex(MAC_DARK.selected, accent, MAC_DARK_ACCENT_TINT)
+    );
+    expect(tokens.selectionBackground).toBe(tokens.selectedSurface);
+  });
+
+  test("a different accent re-tints the dark Mac surfaces only", () => {
+    const blueTokens = getAppleVisualTokens(theme(true), true);
+    const orangeTokens = getAppleVisualTokens(
+      withAccent(theme(true), "#FF9500"),
+      true
+    );
+
+    for (const key of MAC_ACCENT_TINTED_KEYS)
+      expect(orangeTokens[key]).not.toBe(blueTokens[key]);
+
+    // The light Mac window is a fixed off-white: the accent never reaches it.
+    expect(
+      getAppleVisualTokens(withAccent(theme(false), "#FF9500"), false)
+    ).toEqual(getAppleVisualTokens(theme(false), false));
   });
 
   test("never uses pure white for the light Mac window", () => {
@@ -173,27 +262,66 @@ describe("Mac Catalyst visual tokens", () => {
   });
 });
 
-describe("iOS visual tokens (unchanged)", () => {
+describe("iOS visual tokens", () => {
   beforeEach(() => {
     mockIsMacCatalyst = false;
   });
 
-  test("keeps the UIKit grouped colors in the dark appearance", () => {
-    const tokens = getAppleVisualTokens(theme(true), true);
+  test("tints the dark Apple surfaces with the theme accent", () => {
+    const themeColors = theme(true);
+    const tokens = getAppleVisualTokens(themeColors, true);
+    const accent = themeColors.primary.accent;
 
     expect(tokens.ios).toBe(true);
-    expect(tokens.screenBackground).toBe("#000000");
-    expect(tokens.sidebarBackground).toBe("#000000");
-    expect(tokens.contentSurface).toBe("#1C1C1E");
-    expect(tokens.secondarySurface).toBe("#1C1C1E");
-    expect(tokens.elevatedSurface).toBe("#1C1C1E");
-    expect(tokens.toolbarSurface).toBe("#1C1C1E");
-    expect(tokens.navigationSurface).toBe("#000000");
-    expect(tokens.editorSurround).toBe("#000000");
-    expect(tokens.surface).toBe("#1C1C1E");
-    expect(tokens.separator).toBe("#38383A");
-    expect(tokens.selectedSurface).toBe("#3A3A3C");
-    expect(tokens.selectionBackground).toBe("#3A3A3C");
+    const windowSurface = mixHex(
+      IOS_DARK.grouped,
+      accent,
+      IOS_DARK_ACCENT_TINT.window
+    );
+    const contentSurface = mixHex(
+      IOS_DARK.card,
+      accent,
+      IOS_DARK_ACCENT_TINT.content
+    );
+    const selectionSurface = mixHex(
+      IOS_DARK.selected,
+      accent,
+      IOS_DARK_ACCENT_TINT.selected
+    );
+
+    expect(tokens.screenBackground).toBe(windowSurface);
+    expect(tokens.sidebarBackground).toBe(windowSurface);
+    expect(tokens.navigationSurface).toBe(windowSurface);
+    expect(tokens.editorSurround).toBe(windowSurface);
+    expect(tokens.contentSurface).toBe(contentSurface);
+    expect(tokens.secondarySurface).toBe(contentSurface);
+    expect(tokens.elevatedSurface).toBe(contentSurface);
+    expect(tokens.toolbarSurface).toBe(contentSurface);
+    expect(tokens.surface).toBe(contentSurface);
+    expect(tokens.separator).toBe(
+      mixHex(IOS_DARK.separator, accent, IOS_DARK_ACCENT_TINT.separator)
+    );
+    expect(tokens.selectedSurface).toBe(selectionSurface);
+    expect(tokens.selectionBackground).toBe(selectionSurface);
+    // The charcoal bases, not the old flat UIKit greys.
+    expect(tokens.screenBackground).not.toBe(IOS_DARK.grouped);
+    expect(tokens.contentSurface).not.toBe(IOS_DARK.card);
+  });
+
+  test("a different accent re-tints every dark iOS surface", () => {
+    const blueTokens = getAppleVisualTokens(theme(true), true);
+    const orangeTokens = getAppleVisualTokens(
+      withAccent(theme(true), "#FF9500"),
+      true
+    );
+
+    for (const key of IOS_ACCENT_TINTED_KEYS)
+      expect(orangeTokens[key]).not.toBe(blueTokens[key]);
+
+    // Light iOS stays theme-driven and ignores the accent entirely.
+    expect(
+      getAppleVisualTokens(withAccent(theme(false), "#FF9500"), false)
+    ).toEqual(getAppleVisualTokens(theme(false), false));
   });
 
   test("keeps the light appearance theme-driven", () => {

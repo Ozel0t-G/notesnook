@@ -22,6 +22,7 @@ import {
   isNoteResolvedData,
   resolveItems
 } from "@notesnook/common";
+import type { NoteThumbnail as NoteThumbnailInfo } from "@notesnook/common";
 import {
   Color,
   GroupHeader,
@@ -88,6 +89,7 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
   const refreshTimeout = useRef<NodeJS.Timeout>(undefined);
   const currentItemId = useRef<string>(undefined);
   const locked = useRef(false);
+  const thumbnail = useRef<NoteThumbnailInfo>(undefined);
   const compactMode = useIsCompactModeEnabled(props.dataType as ItemType);
 
   const refreshItem = useCallback((resolvedItem: any) => {
@@ -99,6 +101,7 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
       attachmentsCount.current = 0;
       totalNotes.current = 0;
       locked.current = false;
+      thumbnail.current = undefined;
     }
 
     if (resolvedItem && resolvedItem.item) {
@@ -110,6 +113,9 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
         color.current = data.color;
         attachmentsCount.current = data.attachments?.total || 0;
         locked.current = data.locked || false;
+        // Keyed to the resolved item, so a recycled row never keeps the
+        // previous note's image.
+        thumbnail.current = data.thumbnail;
       } else if (
         resolvedItem.item.type === "note" &&
         !isNoteResolvedData(data)
@@ -121,6 +127,7 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
         attachmentsCount.current = 0;
         totalNotes.current = 0;
         locked.current = false;
+        thumbnail.current = undefined;
       } else if (
         resolvedItem.item.type === "notebook" &&
         typeof data === "number"
@@ -219,6 +226,7 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
             index={index}
             locked={locked.current}
             renderedInRoute={props.renderedInRoute}
+            thumbnail={thumbnail.current}
           />
         </>
       );

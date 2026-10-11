@@ -134,6 +134,13 @@ const SelectionWrapper = ({
    * (grey while the window is not key) instead of the iPad's 5 pt side bar.
    */
   const macRow = isMacCatalyst() && isNoteItem && !isSheet;
+  /**
+   * iPhone/iPad note rows outside sheets are the approved flat, continuous
+   * list: transparent on the screen background, square corners, no gap and a
+   * hairline separator between rows. Scoped to note rows so this shared
+   * wrapper keeps the notebook/tag/reminder (and Mac/sheet) looks untouched.
+   */
+  const flatIosRow = visual.ios && isNoteItem && !isSheet && !macRow;
   const macHighlighted = macRow && (showEditing || isSelected);
   const systemAccent = useMacSystemStore((state) => state.accent);
   const windowActive = useMacSystemStore((state) => state.active);
@@ -169,7 +176,9 @@ const SelectionWrapper = ({
             ? visual.selectionBackground
             : isSheet
               ? colors.primary.hover
-              : visual.elevatedSurface
+              : flatIosRow
+                ? "transparent"
+                : visual.elevatedSurface
       }
       testID={testID}
       onLongPress={nativeMenus && !selectionMode ? undefined : onLongPress}
@@ -212,18 +221,22 @@ const SelectionWrapper = ({
             ? visual.ios
               ? 8
               : 6
-            : homeNote
-              ? 15
-              : visual.rowPadding,
+            : flatIosRow
+              ? 14
+              : homeNote
+                ? 15
+                : visual.rowPadding,
         borderRadius: macRow
           ? MAC_NOTE_ROW_RADIUS
-          : visual.ios && isTabletPane && !isSheet
+          : flatIosRow
             ? 0
-            : visual.ios && !isSheet
-              ? homeNote
-                ? 17
-                : 10
-              : visual.cardRadius,
+            : visual.ios && isTabletPane && !isSheet
+              ? 0
+              : visual.ios && !isSheet
+                ? homeNote
+                  ? 17
+                  : 10
+                : visual.cardRadius,
         // Mac rows sit in the source list's 10 pt margin: without it the row
         // runs edge to edge and its rounded highlight touches the window.
         marginHorizontal: isSheet
@@ -235,18 +248,21 @@ const SelectionWrapper = ({
           ? MAC_NOTE_ROW_GAP
           : isSheet
             ? DefaultAppStyles.GAP_VERTICAL
-            : visual.ios
-              ? isTabletPane
-                ? 0
-                : homeNote
-                  ? 7
-                  : 2
-              : visual.rowSpacing,
+            : flatIosRow
+              ? 0
+              : visual.ios
+                ? isTabletPane
+                  ? 0
+                  : homeNote
+                    ? 7
+                    : 2
+                : visual.rowSpacing,
         borderWidth: macRow ? 0 : isSheet || visual.ios ? 0 : 0.5,
-        // No hairline between Mac rows: the gap above is the separation.
+        // No hairline between Mac rows: the gap above is the separation. Flat
+        // iPhone/iPad note rows are separated by a hairline instead of a gap.
         borderBottomWidth: macRow
           ? 0
-          : visual.ios && isTabletPane && !isSheet
+          : flatIosRow || (visual.ios && isTabletPane && !isSheet)
             ? 0.5
             : 0,
         borderColor: visual.separator,

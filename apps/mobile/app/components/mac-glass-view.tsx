@@ -134,9 +134,14 @@ export function MacGlassView({
    * subtle lift. The shade itself is applied by the native view as the glass's
    * `tintColor` (see VeyraNGlassView.swift).
    */
-  const themeTint = React.useMemo(
-    () => getColorLinearShade(macWindowBackground(colors, isDark), 0.05, isDark),
-    [colors.primary.background, isDark]
+  // `macWindowBackground` also reads `primary.accent` in dark mode, so this is
+  // computed directly each render rather than memoized: the calculation is
+  // cheap and a memo keyed on individual color fields would miss an
+  // accent-only change.
+  const themeTint = getColorLinearShade(
+    macWindowBackground(colors, isDark),
+    0.05,
+    isDark
   );
 
   if (!isMacCatalyst() || !NativeGlassView)

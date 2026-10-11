@@ -30,13 +30,43 @@ import EventManager from "../utils/event-manager.js";
 import { assertCredentialDestination } from "../utils/credential-host-binding.js";
 
 export type FileStorageAccessor = () => FileStorage;
+
+/**
+ * Snapshot of the attachment crypto columns that identify one ciphertext
+ * *generation* of an attachment row.
+ *
+ * An explicit Apple Reupload reuses the same attachment row id and hash but
+ * writes fresh `iv`/`salt`/`size`/`chunkSize` metadata for the newly encrypted
+ * ciphertext. Carrying this snapshot from the upload's pending snapshot through
+ * `queueUploads` to `Attachments.fileUploaded` lets the status write be guarded
+ * atomically (SQL `WHERE` clause) against the row's *current* crypto, so a late
+ * result of a pre-reupload upload can never mark the new generation uploaded or
+ * failed.
+ *
+ * Every field is nullable because legacy rows/sync merges may not carry all of
+ * them; a null snapshot value matches SQL `IS NULL`.
+ */
+export type AttachmentGeneration = {
+  iv: string | null;
+  salt: string | null;
+  size: number | null;
+  chunkSize: number | null;
+};
+
 export type DownloadableFile = {
   filename: string;
   chunkSize: number;
+  /**
+   * Uploads only: the crypto generation the upload was queued for. `undefined`
+   * (legacy/manual producers) means no generation guard is applied and the
+   * completion behaves exactly as before.
+   */
+  generation?: AttachmentGeneration;
 };
 export type QueueItem = DownloadableFile & {
   cancel?: (reason?: string) => Promise<void>;
   operation?: Promise<boolean>;
+  error?: unknown;
 };
 
 export class FileStorage {
@@ -195,11 +225,26 @@ export class FileStorage {
             filename: file.filename,
             groupId
           });
-          await file.operation;
+          const operation = upload.operation;
+          const result = await operation;
+          await this.eventManager.publishWithResult(EVENTS.fileUploaded, {
+            error: upload.error,
+            success: result,
+            total,
+            current: ++current,
+            groupId,
+            filename: file.filename,
+            // The bytes this operation uploaded are the ones it read when it
+            // started, described by the *in-flight* queue item's generation —
+            // not this duplicate request's, which may already describe a newer
+            // generation (e.g. an Apple Reupload committed while the earlier
+            // upload was running).
+            generation: upload.generation
+          });
           continue;
         }
 
-        const { filename, chunkSize } = file;
+        const { filename, chunkSize, generation } = file;
         let error = null;
         const url = `${hosts.API_HOST}/s3?name=${filename}`;
         assertCredentialDestination(token, url);
@@ -212,7 +257,12 @@ export class FileStorage {
         file.operation = execute()
           .catch((e) => {
             logger.error(e, "failed to upload attachment", { hash: filename });
-            error = e;
+            // Normalize the thrown value into a string so consumers (e.g.
+            // `Attachments.fileUploaded`) can persist a stable reason and the
+            // duplicate group below republishes the exact same reason.
+            const reason = e instanceof Error ? e.message : String(e);
+            error = reason;
+            file.error = reason;
             return false;
           })
           .finally(() => {
@@ -229,13 +279,17 @@ export class FileStorage {
 
         this.uploads.set(filename, file);
         const result = await file.operation;
-        this.eventManager.publish(EVENTS.fileUploaded, {
+        await this.eventManager.publishWithResult(EVENTS.fileUploaded, {
           error,
           success: result,
           total,
           current: ++current,
           groupId,
-          filename
+          filename,
+          // The generation this upload was queued for. Consumers guard the
+          // status write with it so a late result of a pre-reupload upload
+          // cannot touch the row once its crypto has been replaced.
+          generation
         });
       }
     } finally {

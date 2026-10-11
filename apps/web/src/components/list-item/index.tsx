@@ -57,6 +57,7 @@ type ListItemProps<TItem extends Item, TContext> = {
   header?: JSX.Element;
   body?: JSX.Element | string;
   footer?: JSX.Element;
+  trailing?: JSX.Element;
 
   context?: TContext;
   menuItems?: (
@@ -246,6 +247,7 @@ function ListItem<TItem extends Item, TContext>(
         </Text>
       )}
       {props.footer ? <>{props.footer}</> : null}
+      {props.trailing}
     </Flex>
   );
 }

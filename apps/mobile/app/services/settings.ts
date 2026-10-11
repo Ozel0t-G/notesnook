@@ -30,6 +30,7 @@ import { useUserStore } from "../stores/use-user-store";
 import ScreenGuardModule from "react-native-screenguard";
 import { migrateSettingsVersions } from "./settings-migrations";
 import { normalizeCorsProxy } from "../utils/cors-proxy";
+import { sanitizePersistedAccentChoiceId } from "../utils/accent-theme";
 
 let isScreenGuardModuleReady = false;
 async function callScreenGuard(callback: () => void) {
@@ -61,6 +62,10 @@ function resetSettings() {
     lighTheme: get().lighTheme,
     useSystemTheme: get().useSystemTheme,
     colorScheme: get().colorScheme,
+    // The accent palette is the user's own appearance choice, exactly like the
+    // themes and light/dark preference above: "reset settings" must not throw
+    // it away.
+    accentColor: get().accentColor,
     defaultSnoozeTime: get().defaultSnoozeTime,
     defaultFontFamily: get().defaultFontFamily,
     defaultFontSize: get().defaultFontSize,
@@ -134,6 +139,17 @@ function init() {
       settings.corsProxy = corsProxy;
       MMKV.setString("appSettings", JSON.stringify(settings));
     }
+    // A palette id written by another build (including one this build does
+    // not know) must round-trip byte-for-byte, so a downgrade + re-upgrade
+    // keeps it. Only genuinely corrupt values (a non-string or an empty
+    // string) fall back to absent/automatic; unknown ids are normalized later,
+    // at the render boundary, by `useThemeStore`. Absent stays absent, which
+    // JSON.stringify already drops.
+    const accentColor = sanitizePersistedAccentChoiceId(settings.accentColor);
+    if (settings.accentColor !== accentColor) {
+      settings.accentColor = accentColor;
+      MMKV.setString("appSettings", JSON.stringify(settings));
+    }
   }
   if (settings.fontScale) {
     scale.fontScale = settings.fontScale;
@@ -177,7 +193,15 @@ function set(next: Partial<SettingStore["settings"]>) {
   };
 
   useSettingStore.getState().setSettings(settings);
-  setTimeout(() => MMKV.setString("appSettings", JSON.stringify(settings)), 1);
+  // An accent pick is the user's own appearance choice; persist it immediately
+  // so it survives an immediate process death instead of waiting out the
+  // deferred write below.
+  if ("accentColor" in next) {
+    MMKV.setString("appSettings", JSON.stringify(settings));
+  }
+  // The deferred write re-reads the CURRENT settings when it fires, so an older
+  // queued write can never clobber a newer accent with a stale snapshot.
+  setTimeout(() => MMKV.setString("appSettings", JSON.stringify(get())), 1);
 }
 
 function toggle(id: keyof SettingStore["settings"]) {

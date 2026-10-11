@@ -95,6 +95,12 @@ export type Settings = {
   colorScheme: "dark" | "light";
   lighTheme: ThemeDefinition;
   darkTheme: ThemeDefinition;
+  /**
+   * The accent palette selection from Settings > Themes. One of the ids in
+   * `utils/accent-theme`'s `ACCENT_CHOICES`, or absent for automatic (mint on
+   * the built-in VeyraN appearance, the theme's own accent otherwise).
+   */
+  accentColor?: string;
   markdownShortcuts?: boolean;
   appLockHasPasswordSecurity?: boolean;
   biometricsAuthEnabled?: boolean;

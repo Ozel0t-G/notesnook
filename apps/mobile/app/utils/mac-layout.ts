@@ -154,33 +154,107 @@ export const MAC_LIGHT_WINDOW_BACKGROUND = "#F3F3F5";
  */
 export const MAC_LIGHT_SIDEBAR_BACKGROUND = "#E9E9EC";
 
-/** Anything with a primary background colour; keeps this helper theme-agnostic. */
-type MacWindowColors = { primary: { background: string } };
+/**
+ * Blends `amount` (0..1) of the `over` colour into the `base` colour and
+ * returns an opaque `#RRGGBB` string.
+ *
+ * Plain string maths, no React Native and no `hexToRGBA`: this is what the
+ * surface tokens use to tint a neutral base with the theme's accent, and the
+ * callers (`apple-visual-tokens.ts`, tests under the `react-native` Jest mock)
+ * must be able to run it anywhere. `#RGB`, `#RGBA`, `#RRGGBB` and `#RRGGBBAA`
+ * are accepted; any alpha is dropped, because every token it feeds is opaque.
+ * Anything it cannot parse returns `base` unchanged, so an exotic theme colour
+ * degrades to the previous flat surface instead of throwing.
+ */
+export const mixHex = (base: string, over: string, amount: number): string => {
+  const from = parseHexChannels(base);
+  const to = parseHexChannels(over);
+  if (!from || !to) return base;
+  const ratio = amount < 0 ? 0 : amount > 1 ? 1 : amount;
+  const channel = (index: number) =>
+    Math.round(from[index] + (to[index] - from[index]) * ratio)
+      .toString(16)
+      .padStart(2, "0");
+  return `#${channel(0)}${channel(1)}${channel(2)}`.toUpperCase();
+};
+
+/** `#RGB`/`#RGBA`/`#RRGGBB`/`#RRGGBBAA` -> three 0-255 channels, else undefined. */
+function parseHexChannels(color: string): [number, number, number] | undefined {
+  if (typeof color !== "string") return undefined;
+  const hex = color.trim().replace(/^#/, "");
+  if (!/^([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex))
+    return undefined;
+  const expanded =
+    hex.length <= 4
+      ? hex
+          .split("")
+          .map((digit) => digit + digit)
+          .join("")
+      : hex;
+  return [
+    parseInt(expanded.slice(0, 2), 16),
+    parseInt(expanded.slice(2, 4), 16),
+    parseInt(expanded.slice(4, 6), 16)
+  ];
+}
+
+/**
+ * How much of the theme's `primary.accent` is blended into the dark Mac window
+ * background. Deliberately low (6%): the window keeps the theme's own base
+ * colour and only picks up the accent's hue, so a blue-accent theme gets a cool
+ * window and an orange-accent theme a warm one, neither reading as a coloured
+ * wash.
+ */
+export const MAC_DARK_WINDOW_ACCENT_TINT = 0.06;
+
+/**
+ * The two theme colours the Mac window surface needs: the base it is derived
+ * from and the accent it is tinted with. `accent` stays optional so callers
+ * that only carry a background keep compiling; without it the window is the
+ * plain base colour, exactly as before.
+ */
+type MacWindowColors = { primary: { background: string; accent?: string } };
 
 /**
  * The one Mac window background used by every window-level surface (window,
  * note list, editor, toolbar band and the strip around the floating sidebar).
  *
- * Dark: the active theme's `primary.background`, so switching themes re-tints
- * the whole window. Light: a fixed soft off-white (`MAC_LIGHT_WINDOW_BACKGROUND`)
- * instead of the theme's pure white, which is too bright for a full window.
+ * Dark: the active theme's `primary.background` with a few percent of the
+ * theme's `primary.accent` blended in (`MAC_DARK_WINDOW_ACCENT_TINT`), so
+ * switching either the theme or just the accent re-tints the whole window while
+ * the theme's base colour still shows through. Light: a fixed soft off-white
+ * (`MAC_LIGHT_WINDOW_BACKGROUND`) instead of the theme's pure white, which is
+ * too bright for a full window; the accent is deliberately ignored there.
  * iPhone/iPad never call this.
  */
 export const macWindowBackground = (
   colors: MacWindowColors,
   isDark: boolean
-): string => (isDark ? colors.primary.background : MAC_LIGHT_WINDOW_BACKGROUND);
+): string =>
+  isDark
+    ? colors.primary.accent
+      ? mixHex(
+          colors.primary.background,
+          colors.primary.accent,
+          MAC_DARK_WINDOW_ACCENT_TINT
+        )
+      : colors.primary.background
+    : MAC_LIGHT_WINDOW_BACKGROUND;
 
 /**
  * The colour the floating glass sidebar panel (and its account card) is dimmed
  * to: the window background in dark mode, the slightly darker sidebar grey in
  * light mode (see components/mac-glass-view.tsx).
+ *
+ * Dark mode goes through `macWindowBackground`, not straight to the theme
+ * background, so the panel always matches the accent-tinted window it floats
+ * over (the two values are documented as the same colour).
  */
 export const macGlassPanelBackground = (
   colors: MacWindowColors,
   isDark: boolean
 ): string =>
-  isDark ? colors.primary.background : MAC_LIGHT_SIDEBAR_BACKGROUND;
+  isDark ? macWindowBackground(colors, true) : MAC_LIGHT_SIDEBAR_BACKGROUND;
 
 /**
  * A manual View > Toggle Sidebar choice, remembered together with which side of

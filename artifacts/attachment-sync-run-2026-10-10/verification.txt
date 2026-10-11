@@ -1,0 +1,52 @@
+APPLE ATTACHMENT SYNC - FINAL VERIFICATION
+Date: 2026-10-10 / Europe Oslo
+Repository: /Users/ozel0t/Notesnook/notesnook
+Branch: test
+
+RESULTS ALREADY EXECUTED IN THE CODING RUN
+Core Vitest: 5 suites / 84 tests passed (23:19:27 local start).
+Mobile Jest: 4 suites / 153 tests passed.
+Core and Mobile TypeScript: exit 0.
+Core npm run build: exit 0; all three transpilation/declaration processes succeeded.
+git diff --check: exit 0.
+iOS arm64 simulator Release build: exit 0 / BUILD SUCCEEDED.
+Mac Catalyst arm64 Release build: exit 0 / BUILD SUCCEEDED.
+Final independent review: approve, no concrete blocking defects.
+
+EXACT TEST COMMANDS
+(cd packages/core)
+./node_modules/.bin/vitest run src/api/sync/__tests__/collector.test.js src/api/sync/__tests__/merger.test.js __tests__/fs.test.ts src/database/fs-recovery-cancel.test.ts src/api/__tests__/missing-local-ciphertext.test.ts
+(cd apps/mobile)
+./node_modules/.bin/jest app/common/filesystem/io.test.ts app/common/filesystem/download.test.ts app/common/filesystem/upload.test.ts app/common/filesystem/reupload.test.ts --runInBand --silent
+(cd repository root)
+./node_modules/.bin/tsc -p packages/core/tsconfig.json --noEmit
+(cd packages/core)
+npm run build
+(cd apps/mobile)
+./node_modules/.bin/tsc -p tsconfig.json --noEmit
+(cd repository root)
+git diff --check
+
+EXACT FINAL BUILD COMMANDS (from repository root)
+xcodebuild -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme NotesnookRelease -configuration Release -sdk iphonesimulator -destination id=B8F91363-D1F1-4073-AC73-045B0A016C50 -derivedDataPath /tmp/codex-notesnook-sync-simulator ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+xcodebuild -workspace apps/mobile/ios/Notesnook.xcworkspace -scheme NotesnookRelease -configuration Release -destination 'platform=macOS,arch=arm64,variant=Mac Catalyst' -derivedDataPath /tmp/codex-notesnook-sync-catalyst ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO build
+
+ORIGINAL LOG PATHS
+/tmp/codex-notesnook-sync-simulator-FINAL-verified.log
+/tmp/codex-notesnook-sync-catalyst-FINAL-verified.log
+Final success markers: iOS line 15887; Mac Catalyst line 6630.
+
+SMOKE SCREENSHOTS (EARLIER SNAPSHOT, NOT FINAL SYNC EVIDENCE)
+/tmp/codex-notesnook-sync-iphone17pro.png (20:12 local): iPhone 17 Pro onboarding, not signed in.
+/tmp/codex-notesnook-sync-ipad-loaded.png (20:22 local): iPad Library with no notes.
+They predate later review corrections. They prove app launch, not network attachment integrity.
+
+WHAT WAS NOT VERIFIED OR RELEASED
+No authenticated live attachment transfer against the server in this round.
+No physical iPhone/iPad test of App Group/background process races.
+No Intel/x86_64 simulator success (libsodium lacks that slice).
+No TestFlight upload, no commit, no Git push in this run.
+The installed TestFlight app used for Coding_Doku was not replaced by local builds.
+
+LIMITS OF EVIDENCE
+Focused unit/regression tests use mocked native filesystem/network dependencies. Native Release builds verify packaging/compilation, not real server transfer. The runtime runbook contains all known residual concurrency/recovery limits.

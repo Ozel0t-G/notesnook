@@ -23,7 +23,8 @@ import React from "react";
 import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { TaskSymbolView } from "../../components/task-symbol-view";
 import { db } from "../../common/database";
-import Navigation, { NavigationProps } from "../../services/navigation";
+import { NavigationProps } from "../../services/navigation";
+import { selectAppleSection } from "../../navigation/navigation-stack";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { useNotes } from "../../stores/use-notes-store";
 import { useInboxNotes } from "../../stores/use-inbox-store";
@@ -397,7 +398,7 @@ export default function Library({
    * sync/login dot, and `notLoggedIn` when signed out. It is a bar item, not a
    * card: pressing it opens the existing UserSheet for login/sync/account, so
    * no Library content moves or grows. Only the leading slot is used, next to
-   * the unchanged Settings gear and compose buttons.
+   * the Search and compose buttons.
    */
   const accountAffordance = noSidebarIPadLandscape ? (
     <Pressable
@@ -459,7 +460,7 @@ export default function Library({
         }}
       >
         {/*
-          Settings and compose live in the navigation bar, as in Notes; the
+          Search and compose live in the navigation bar, as in Notes; the
           "Notebooks" section header's "+" (see `sectionTitle`) adds a notebook.
           Mac renders neither this list nor this bar: its source list is the
           sidebar pane and its chrome is the window's native toolbar.
@@ -469,10 +470,10 @@ export default function Library({
           trailing={
             <>
               <IosBarButton
-                symbol="gearshape"
-                accessibilityLabel={strings.routes.Settings()}
-                testID="library-settings"
-                onPress={() => Navigation.push("Settings", {})}
+                symbol="magnifyingglass"
+                accessibilityLabel={strings.search()}
+                testID="library-search"
+                onPress={() => selectAppleSection("search")}
               />
               <IosBarButton
                 symbol="square.and.pencil"

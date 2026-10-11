@@ -46,6 +46,7 @@ import {
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { AppleTabBar, isTopTabBar } from "../components/apple-tab-bar";
+import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
 import { macToolbarInset, macWindowBackground } from "../utils/mac-layout";
 import {
@@ -124,6 +125,19 @@ export const selectAppleSection = (selection: AppleTabBarSelection) => {
       setTimeout(() => eSendEvent(eOpenFullscreenEditor), 100);
     }
     openEditor();
+    return;
+  }
+
+  if (selection === "settings") {
+    // The bar's third item is an action like "New Note", not a section: it
+    // opens the existing Settings sheet over whatever section is showing.
+    // That section stays selected underneath, and the bar highlights Settings
+    // while the sheet is up (see `settingsVisible`). Mac has no tab bar - its
+    // Settings entry point is the app menu / the Mac sidebar - so it never
+    // reaches here.
+    if (isMacCatalyst()) return;
+    useAppleNavigationStore.getState().setSettingsVisible(true);
+    rootNavigatorRef.current?.navigate("Settings" as any);
     return;
   }
 
@@ -438,10 +452,11 @@ const AppNavigation = React.memo(
           animation: "none",
           contentStyle: {
             // Mac's note list column is the Mac window background; iPhone/iPad
-            // keep the theme's primary background.
+            // use the shared Apple visual tokens so the screen surface matches
+            // the root navigation background (Android keeps primary.background).
             backgroundColor: isMacCatalyst()
               ? macWindowBackground(colors, isDark)
-              : colors.primary.background
+              : getAppleVisualTokens(colors, isDark).screenBackground
           }
         }}
       >
@@ -590,6 +605,7 @@ let TaskDetail: any = null;
 let GlobalSearch: any = null;
 export const RootNavigation = () => {
   const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
   const introCompleted = useSettingStore(
     (state) => state.settings.introCompleted
   );
@@ -639,17 +655,27 @@ export const RootNavigation = () => {
       const focused = state?.routes?.[state.index];
       if (focused?.name) {
         setRootRoute(focused.name);
-        if (focused.name === "Tasks")
-          useAppleNavigationStore.getState().setSection("tasks");
-        else if (focused.name === "GlobalSearch")
-          useAppleNavigationStore.getState().setSection("search");
-        else if (
-          focused.name === "FluidPanelsView" &&
-          !composeReturnSection.current
-        ) {
-          // Every route the content pane can show lives under Library now,
-          // including the legacy Notes route (Library > All Notes).
-          useAppleNavigationStore.getState().setSection("library");
+        if (focused.name === "Settings") {
+          // Settings is an overlay: the section underneath stays selected (and
+          // is what the sheet returns to on dismissal), and the bar highlights
+          // Settings while it is open. Never derive a section from this route.
+          useAppleNavigationStore.getState().setSettingsVisible(true);
+        } else {
+          // Any other focused route means the sheet is gone (or was never up).
+          if (useAppleNavigationStore.getState().settingsVisible)
+            useAppleNavigationStore.getState().setSettingsVisible(false);
+          if (focused.name === "Tasks")
+            useAppleNavigationStore.getState().setSection("tasks");
+          else if (focused.name === "GlobalSearch")
+            useAppleNavigationStore.getState().setSection("search");
+          else if (
+            focused.name === "FluidPanelsView" &&
+            !composeReturnSection.current
+          ) {
+            // Every route the content pane can show lives under Library now,
+            // including the legacy Notes route (Library > All Notes).
+            useAppleNavigationStore.getState().setSection("library");
+          }
         }
       }
       if (useSelectionStore.getState().selectionMode) {
@@ -733,10 +759,11 @@ export const RootNavigation = () => {
       style={{
         flex: 1,
         // The opaque root behind every route: the Mac window background on
-        // Mac (soft off-white in light), the theme's primary elsewhere.
+        // Mac (soft off-white in light), the accent-tinted screen background
+        // on iOS/iPad, the theme's primary elsewhere (Android).
         backgroundColor: isMacCatalyst()
           ? macWindowBackground(colors, isDark)
-          : colors.primary.background
+          : visual.screenBackground
       }}
     >
       {topTabBar && <AppleTabBar onSelect={selectAppleSection} />}

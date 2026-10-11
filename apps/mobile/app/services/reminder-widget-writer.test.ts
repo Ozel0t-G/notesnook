@@ -30,6 +30,19 @@ let mockSettingsChanged:
   | ((state: unknown, previous: unknown) => void)
   | undefined;
 let mockUserChanged: ((state: unknown, previous: unknown) => void) | undefined;
+let mockThemeChanged:
+  | ((state: unknown, previous: unknown) => void)
+  | undefined;
+// Mirrors the real store: `lightTheme`/`darkTheme` are already the
+// accent-applied (effective) themes, so the widget's accent fields follow the
+// Settings > Themes palette. The mint default is a contrast-safe pair, so the
+// two snapshot accents are deliberately different hexes, not one repeated tone.
+let mockThemeState: Record<string, unknown> = {
+  colorScheme: "light",
+  accentColor: "mint",
+  lightTheme: { scopes: { base: { primary: { accent: "#087C3E" } } } },
+  darkTheme: { scopes: { base: { primary: { accent: "#73DFA0" } } } }
+};
 
 jest.mock("react-native", () => ({
   Platform: { OS: "ios" },
@@ -93,12 +106,11 @@ jest.mock("../stores/use-user-store", () => ({
 }));
 jest.mock("../stores/use-theme-store", () => ({
   useThemeStore: {
-    getState: () => ({
-      colorScheme: "light",
-      lightTheme: { scopes: { base: { primary: { accent: "#123ABC" } } } },
-      darkTheme: { scopes: { base: { primary: { accent: "#456DEF" } } } }
-    }),
-    subscribe: () => jest.fn()
+    getState: () => mockThemeState,
+    subscribe: (callback: (state: unknown, previous: unknown) => void) => {
+      mockThemeChanged = callback;
+      return jest.fn();
+    }
   }
 }));
 jest.mock("./settings", () => ({
@@ -159,6 +171,13 @@ describe("Task snapshot writer lifecycle", () => {
         dueTime: "14:00"
       }
     );
+    // The widget's brand accent comes from the two existing snapshot v3 fields,
+    // which carry the app's effective (palette-applied) accents: the mint
+    // default's light and dark halves, each legible on its own surface.
+    expect(JSON.parse(mockNativeWrite.mock.calls[0][0])).toMatchObject({
+      accentLight: "#087C3E",
+      accentDark: "#73DFA0"
+    });
 
     mockTasks = [{ ...item, title: "Edited Task", listId: "another-list" }];
     mockCallbacks.get(EVENTS.databaseUpdated)?.({ collection: "settings" });
@@ -211,6 +230,12 @@ describe("Task snapshot writer lifecycle", () => {
       tasks: []
     });
     expect(privateBytes).not.toContain(item.title);
+    // The locked card still carries the accent: it is a brand color, not the
+    // redacted data, so the locked widget keeps the person's appearance.
+    expect(JSON.parse(privateBytes)).toMatchObject({
+      accentLight: "#087C3E",
+      accentDark: "#73DFA0"
+    });
 
     mockAppLocked = true;
     mockUserChanged?.(
@@ -223,6 +248,55 @@ describe("Task snapshot writer lifecycle", () => {
       mockNativeWrite.mock.calls[mockNativeWrite.mock.calls.length - 1]?.[0] ||
       "";
     expect(lockedBytes).not.toContain(item.title);
+    stop();
+  });
+
+  test("a Settings > Themes palette change rewrites the widget's accent", async () => {
+    const stop = ReminderWidget.start();
+    await ReminderWidget.waitForUpdate();
+    mockNativeWrite.mockClear();
+
+    const now = new Date();
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(now.getDate()).padStart(2, "0")}`;
+    mockTasks = [
+      {
+        id: "palette-task",
+        title: "Palette task",
+        listId: "default",
+        completed: false,
+        reminderDate: today,
+        reminderTime: "09:00",
+        scheduleVersion: 2,
+        priority: "none",
+        flagged: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        schemaVersion: 1
+      } as Task
+    ];
+
+    const previousThemeState = mockThemeState;
+    mockThemeState = {
+      colorScheme: "light",
+      accentColor: "violet",
+      lightTheme: { scopes: { base: { primary: { accent: "#6B46C1" } } } },
+      darkTheme: { scopes: { base: { primary: { accent: "#B9A2FF" } } } }
+    };
+    mockThemeChanged?.(mockThemeState, previousThemeState);
+    await ReminderWidget.waitForUpdate();
+
+    expect(mockNativeWrite).toHaveBeenCalled();
+    const written =
+      mockNativeWrite.mock.calls[mockNativeWrite.mock.calls.length - 1][0];
+    expect(JSON.parse(written)).toMatchObject({
+      accentLight: "#6B46C1",
+      accentDark: "#B9A2FF"
+    });
+    // The palette never edits the theme definition or the schema version.
+    expect(JSON.parse(written).schemaVersion).toBe(3);
     stop();
   });
 });

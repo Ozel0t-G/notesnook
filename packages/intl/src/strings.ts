@@ -2119,6 +2119,23 @@ All attachments will be downloaded & cached again on access.
 ---
 
 **Only use this for troubleshooting purposes. If problems continue, preserve a local backup and diagnostic logs before retrying.**`,
+  clearMobileCacheDesc: (cacheSize: number) =>
+    t`Clear downloaded cached attachments. Pending uploads are kept. Current cache size: ${cacheSize}`,
+  clearMobileCacheConfirmDesc:
+    () => t`Clearing attachments cache will perform the following actions:
+
+- Downloaded images & files: **cleared**
+- Pending uploads: **kept**
+- Uploaded images & files: _unaffected_
+- Attachments that can't be verified as re-downloadable: **kept**
+
+Cleared attachments will be downloaded & cached again on access.
+
+---
+
+**Only use this for troubleshooting purposes. If problems continue, preserve a local backup and diagnostic logs before retrying.**`,
+  mobileCacheClearedDesc: () =>
+    t`Downloaded cached attachments have been cleared. Pending uploads have been kept.`,
   cacheCleared: () => t`Attachments cache cleared!`,
   gettingEncryptionKey: () => t`Getting encryption key...`,
   keyBackedUp: () => t`I have saved my key`,

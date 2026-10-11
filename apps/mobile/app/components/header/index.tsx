@@ -31,8 +31,12 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import {
   eSubscribeEvent,
-  eUnSubscribeEvent
+  eUnSubscribeEvent,
+  presentSheet
 } from "../../services/event-manager";
+import SettingsService from "../../services/settings";
+import { useIsCompactModeEnabled } from "../../hooks/use-is-compact-mode-enabled";
+import { useGroupOptions } from "../../hooks/use-group-options";
 import { RouteName } from "../../stores/use-navigation-store";
 import { useSelectionStore } from "../../stores/use-selection-store";
 import { eScrollEvent } from "../../utils/events";
@@ -40,7 +44,7 @@ import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { hexToRGBA } from "../../utils/colors";
-import { IconButtonProps } from "../ui/icon-button";
+import { IconButton, IconButtonProps } from "../ui/icon-button";
 import { Pressable } from "../ui/pressable";
 import Heading from "../ui/typography/heading";
 import Paragraph from "../ui/typography/paragraph";
@@ -54,6 +58,7 @@ import {
   IosSearchField
 } from "../ios-nav-bar";
 import { ListViewMenuConfig, useListViewMenu } from "../list-view-menu";
+import Sort from "../sheets/sort";
 import { isMacCatalyst } from "../../utils/constants";
 import { useMacListTitleStore } from "../../utils/mac-window-title";
 import { useMacWindowStore } from "../../stores/use-mac-window-store";
@@ -151,6 +156,17 @@ export const Header = ({
   const HeaderWrapper = hasSearch ? Pressable : View;
   const listMenu = useListViewMenu(menu);
   const clearSelection = useSelectionStore((state) => state.clearSelection);
+  // The iPhone/iPad note-list action row below reads the same two pieces of
+  // state its "…" menu and the Home note list's own header do: the list's
+  // compact/normal style and the current sort direction (for the arrow glyph).
+  // Both hooks are called unconditionally so the hook order never changes
+  // between the note-list and the other header variants.
+  const notesCompact = useIsCompactModeEnabled(menu?.dataType || "note");
+  const groupOptions = useGroupOptions(
+    menu?.group || "home",
+    menu?.groupId,
+    menu?.groupType
+  );
 
   /**
    * Mac's window toolbar owns the list column's chrome: the list's name (the
@@ -161,6 +177,17 @@ export const Header = ({
    * effects below are inert on iPhone/iPad.
    */
   const isMac = isMacCatalyst();
+  /**
+   * iPhone/iPad note lists (Notes/Inbox, Favorites, Archive, a notebook, ...)
+   * show the note count and the sort/view/search actions as a row under the
+   * large title, instead of the rounded search field. It is the same trio the
+   * Home note list draws in its own header, so those lists now share one
+   * affordance. Mac's note list draws its chrome in the window toolbar and its
+   * header returns null below; every other list (Trash, Search, Reminders,
+   * Tags, the notebooks list, ...) keeps the rounded `IosSearchField`.
+   */
+  const noteListMenu =
+    !isMac && !!hasSearch && menu?.dataType === "note" ? menu : undefined;
   const hasListMenu = !!listMenu;
   const listMenuSignature = listMenu
     ? listMenu.items
@@ -408,7 +435,85 @@ export const Header = ({
             {title && !isMac ? (
               <IosLargeTitle title={title} testID="header-large-title" />
             ) : null}
-            {hasSearch ? (
+            {noteListMenu ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  // Lines the count up with the large title's 34 pt text
+                  // (IosLargeTitle pads itself 20 pt) and keeps the action
+                  // glyphs in the same column as the "…" bar button above.
+                  paddingHorizontal: 20,
+                  marginBottom: 10
+                }}
+              >
+                <Paragraph color={visual.secondaryText}>
+                  {strings.notes(count ?? 0)}
+                </Paragraph>
+                <View style={{ flexDirection: "row", alignItems: "center" }}>
+                  <IconButton
+                    name={
+                      groupOptions?.sortDirection === "asc"
+                        ? "sort-ascending"
+                        : "sort-descending"
+                    }
+                    size={23}
+                    color={visual.secondaryText}
+                    accessibilityLabel={strings.sortBy()}
+                    // Same testID the section header's sort button used: this
+                    // is the same affordance, moved into the top header, so
+                    // existing e2e taps ("icon-sort") keep finding it.
+                    testID="icon-sort"
+                    // 44 pt hit target like a UIBarButtonItem; the default
+                    // hitSlop widens it further on the touch edges.
+                    style={{ width: 44, height: 44 }}
+                    onPress={() =>
+                      presentSheet({
+                        component: (
+                          <Sort
+                            screen={renderedInRoute}
+                            dataType={noteListMenu.dataType}
+                            type={noteListMenu.groupType}
+                            group={noteListMenu.group}
+                            groupId={noteListMenu.groupId}
+                            hideGroupOptions={noteListMenu.hideGroupOptions}
+                          />
+                        )
+                      })
+                    }
+                  />
+                  <IconButton
+                    name={notesCompact ? "view-list" : "view-list-outline"}
+                    size={22}
+                    color={visual.secondaryText}
+                    accessibilityLabel={
+                      notesCompact
+                        ? strings.listViewAsCards()
+                        : strings.listViewAsCompact()
+                    }
+                    testID="icon-compact-mode"
+                    style={{ width: 44, height: 44 }}
+                    onPress={() =>
+                      SettingsService.set({
+                        notesListMode: notesCompact ? "normal" : "compact"
+                      })
+                    }
+                  />
+                  <IconButton
+                    name="magnify"
+                    size={24}
+                    color={visual.secondaryText}
+                    accessibilityLabel={
+                      title ? strings.searchInRoute(title) : strings.search()
+                    }
+                    testID="search-header"
+                    style={{ width: 44, height: 44 }}
+                    onPress={() => onSearch?.()}
+                  />
+                </View>
+              </View>
+            ) : hasSearch ? (
               <IosSearchField
                 testID="search-header"
                 placeholder={strings.search()}

@@ -31,8 +31,14 @@ import { Output } from "../interfaces.js";
 import { Attachment } from "../types.js";
 import Database from "../api/index.js";
 import { FilteredSelector, SQLCollection } from "../database/sql-collection.js";
-import { isFalse } from "../database/index.js";
-import { sql } from "@streetwriters/kysely";
+import { DatabaseSchema, isFalse } from "../database/index.js";
+import {
+  ExpressionBuilder,
+  ExpressionOrFactory,
+  SqlBool,
+  sql
+} from "@streetwriters/kysely";
+import { AttachmentGeneration } from "../database/fs.js";
 import { logger } from "../logger.js";
 
 export class Attachments implements ICollection {
@@ -82,20 +88,46 @@ export class Attachments implements ICollection {
       async ({
         success,
         error,
-        filename
+        filename,
+        generation
       }: {
         success: boolean;
         filename: string;
-        error: string;
+        error: unknown;
+        /**
+         * Crypto generation the upload was queued for. When present the status
+         * write is guarded atomically against the row's *current* crypto so a
+         * stale result of a pre-reupload upload cannot mark the new ciphertext
+         * uploaded/failed. Absent on legacy/manual events → unguarded as before.
+         */
+        generation?: AttachmentGeneration;
       }) => {
         const attachment = await this.attachment(filename);
         if (!attachment) return;
-        if (success) await this.markAsUploaded(attachment.id);
-        else
-          await this.markAsFailed(
-            attachment.id,
-            error || "Failed to upload attachment."
-          );
+        if (success) await this.markAsUploaded(attachment.id, generation);
+        else {
+          // The upload failure reason arrives as a normalized string, but
+          // other producers may still emit an Error object; persist a stable
+          // string either way. `markAsFailed` only sets `failed`, never
+          // `dateUploaded`, so the attachment stays pending and can be
+          // retried/revived later.
+          const reason =
+            typeof error === "string"
+              ? error
+              : error instanceof Error
+              ? error.message
+              : "";
+          // A falsy reason means the upload did not reject but resolved
+          // `false` — a transient deferral (an explicit reupload in flight, an
+          // unavailable App Group path, a gated feature, a failed post-upload
+          // verification). There is nothing durable to record, so leave the
+          // row alone: an existing bounded marker (e.g.
+          // `MISSING_LOCAL_CIPHERTEXT_ERROR`) and its 30-minute backoff must
+          // survive instead of being clobbered by a generic failure that would
+          // hot-loop the attachment on every sync.
+          if (!reason) return;
+          await this.markAsFailed(attachment.id, reason, generation);
+        }
       }
     );
   }
@@ -377,11 +409,21 @@ export class Attachments implements ICollection {
     return attachment;
   }
 
-  markAsUploaded(id: string) {
-    return this.collection.update([id], {
-      dateUploaded: Date.now(),
-      failed: null
-    });
+  /**
+   * Mark an attachment uploaded. When `generation` is given the update is
+   * guarded (in the SQL `WHERE`) against the row's current `iv`/`salt`/`size`/
+   * `chunkSize`, so a late result of a pre-reupload upload matches no row and
+   * cannot mark the new ciphertext uploaded.
+   */
+  markAsUploaded(id: string, generation?: AttachmentGeneration) {
+    return this.collection.update(
+      [id],
+      {
+        dateUploaded: Date.now(),
+        failed: null
+      },
+      { condition: generationCondition(generation) }
+    );
   }
 
   reset(id: string) {
@@ -390,9 +432,33 @@ export class Attachments implements ICollection {
     });
   }
 
-  markAsFailed(id: string, reason?: string) {
+  /**
+   * Record an upload failure reason. When `generation` is given the update is
+   * guarded the same way as {@link markAsUploaded}, so a stale failure cannot
+   * overwrite the status of a row whose crypto has since been replaced.
+   */
+  markAsFailed(id: string, reason?: string, generation?: AttachmentGeneration) {
+    return this.collection.update(
+      [id],
+      {
+        failed: !reason ? null : reason
+      },
+      { condition: generationCondition(generation) }
+    );
+  }
+
+  /**
+   * Reconcile the row after an Apple explicit reupload's new ciphertext metadata
+   * has been confirmed committed: queue it as a normal pending upload by
+   * clearing `dateUploaded` and `failed`. Touches only those two status columns
+   * — never the crypto columns — so a concurrent upload that wrote a status
+   * between the reupload's `add()` and its read-back cannot split the committed
+   * new metadata from the new ciphertext.
+   */
+  markReuploadConfirmed(id: string) {
     return this.collection.update([id], {
-      failed: !reason ? null : reason
+      dateUploaded: null,
+      failed: null
     });
   }
 
@@ -620,6 +686,31 @@ export class Attachments implements ICollection {
     });
     await this.bulkRemove(orphaned, false);
   }
+}
+
+/**
+ * SQL condition matching an attachment row's crypto columns against an upload's
+ * generation snapshot, or `undefined` when there is no snapshot (legacy/manual
+ * events) so `SQLCollection.update` runs unguarded exactly as before.
+ *
+ * Null snapshot fields compare with `IS NULL` (`eb(col, "is", null)`) rather
+ * than `== null`: SQL `= NULL` never matches, so a row whose crypto column is
+ * genuinely null would otherwise never be updated.
+ */
+function generationCondition(
+  generation?: AttachmentGeneration
+): ExpressionOrFactory<DatabaseSchema, keyof DatabaseSchema, SqlBool> | undefined {
+  if (!generation) return undefined;
+  const { iv, salt, size, chunkSize } = generation;
+  return (eb: ExpressionBuilder<DatabaseSchema, keyof DatabaseSchema>) =>
+    eb.and([
+      iv == null ? eb("iv", "is", null) : eb("iv", "==", iv),
+      salt == null ? eb("salt", "is", null) : eb("salt", "==", salt),
+      size == null ? eb("size", "is", null) : eb("size", "==", size),
+      chunkSize == null
+        ? eb("chunkSize", "is", null)
+        : eb("chunkSize", "==", chunkSize)
+    ]);
 }
 
 export function getOutputType(attachment: Attachment): DataFormat {

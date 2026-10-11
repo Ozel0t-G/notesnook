@@ -72,6 +72,72 @@ export function sendMigrationProgressEvent(
 
 export const CLIENT_ID = "notesnook";
 
+/**
+ * Stable, human-readable error message used when the local encrypted
+ * ciphertext for an attachment is confirmed to be missing and cannot be
+ * recovered from this device.
+ *
+ * Clients (e.g. mobile) throw `new Error(MISSING_LOCAL_CIPHERTEXT_ERROR)`
+ * from their file upload implementation. Core normalizes that error into this
+ * exact string, persists it in `attachments.failed`, and later sync runs skip
+ * re-queueing such attachments unless the local ciphertext reappears.
+ *
+ * This string is persisted verbatim and matched by strict equality, so it
+ * must never change once shipped.
+ */
+export const MISSING_LOCAL_CIPHERTEXT_ERROR =
+  "Attachment data is missing on this device and cannot be uploaded.";
+
+/**
+ * Returns true when the given value represents the terminal
+ * {@link MISSING_LOCAL_CIPHERTEXT_ERROR} condition. Accepts both the raw
+ * message string (as published/persisted by core) and an `Error` carrying it.
+ */
+export function isMissingLocalCiphertextError(error: unknown): boolean {
+  if (typeof error === "string")
+    return error === MISSING_LOCAL_CIPHERTEXT_ERROR;
+  if (error instanceof Error)
+    return error.message === MISSING_LOCAL_CIPHERTEXT_ERROR;
+  return false;
+}
+
+/**
+ * Stable, human-readable error message used when the local encrypted
+ * ciphertext for an attachment is *present but invalid* (zero bytes, or it
+ * fails the upload preflight) and the authenticated remote repair could not
+ * produce a usable copy on this device.
+ *
+ * This is distinct from {@link MISSING_LOCAL_CIPHERTEXT_ERROR}: the bytes are
+ * still on disk, so a raw presence check (`fs().exists()`) reports them as
+ * present even though they cannot be used. Core therefore backs off this
+ * marker purely from `dateModified` (a bounded retry window) and must **not**
+ * clear it merely because the file exists, which would otherwise re-run the
+ * (network-bound) repair download on every sync.
+ *
+ * Clients (e.g. mobile) throw `new Error(LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR)`
+ * from their file upload implementation. Core normalizes that error into this
+ * exact string and persists it in `attachments.failed`. A successful upload, a
+ * manual Retry or a Reupload clears it exactly like the missing marker.
+ *
+ * This string is persisted verbatim and matched by strict equality, so it
+ * must never change once shipped.
+ */
+export const LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR =
+  "Attachment data on this device is damaged and could not be repaired automatically.";
+
+/**
+ * Returns true when the given value represents the terminal
+ * {@link LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR} condition. Accepts both the raw
+ * message string (as published/persisted by core) and an `Error` carrying it.
+ */
+export function isLocalCiphertextRepairFailedError(error: unknown): boolean {
+  if (typeof error === "string")
+    return error === LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR;
+  if (error instanceof Error)
+    return error.message === LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR;
+  return false;
+}
+
 export const EVENTS = {
   userSubscriptionUpdated: "user:subscriptionUpdated",
   userEmailConfirmed: "user:emailConfirmed",

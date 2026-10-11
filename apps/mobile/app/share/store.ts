@@ -29,6 +29,7 @@ import { db, setupDatabase } from "../common/database";
 import { MMKV } from "../common/database/mmkv";
 import { SettingStore } from "../stores/use-setting-store";
 import { migrateLegacyDefaultTheme } from "../utils/veyran-theme-migration";
+import { applyAccentChoice } from "../utils/accent-theme";
 import { normalizeCorsProxy } from "../utils/cors-proxy";
 
 export async function initDatabase() {
@@ -56,7 +57,10 @@ const appColorScheme = appSettings?.colorScheme;
 const useSystemTheme = appSettings?.useSystemTheme;
 const currentColorScheme = useSystemTheme ? systemColorScheme : appColorScheme;
 
-const theme =
+// Migrate a legacy shipped default to its VeyraN equivalent first, so the
+// accent derivation below can recognise the built-in appearance; an imported or
+// hand-edited theme is returned unchanged and keeps its own accent.
+const migratedTheme =
   currentColorScheme === "dark"
     ? migrateLegacyDefaultTheme(
         appSettings?.darkTheme,
@@ -69,8 +73,15 @@ const theme =
         ThemeVeyranLight
       );
 
-const currentTheme =
-  theme || (currentColorScheme === "dark" ? ThemeVeyranDark : ThemeVeyranLight);
+const baseTheme =
+  migratedTheme ||
+  (currentColorScheme === "dark" ? ThemeVeyranDark : ThemeVeyranLight);
+
+// The main app folds the persisted accent choice into the effective theme
+// (`use-theme-store.ts`); the share extension has to derive the same theme or
+// shared content renders with the base theme's accent instead of the person's
+// chosen one.
+const currentTheme = applyAccentChoice(baseTheme, appSettings?.accentColor);
 
 useThemeEngineStore.getState().setTheme(currentTheme);
 

@@ -24,7 +24,11 @@ import "react-native-get-random-values";
 import * as Keychain from "react-native-keychain";
 import { MMKVLoader, ProcessingModes } from "react-native-mmkv-storage";
 import { generateSecureRandom } from "react-native-securerandom";
-import { getKeychainAccessGroup } from "../../utils/constants";
+import {
+  getKeychainAccessGroup,
+  hasAppGroupContainer,
+  isIosSimulator
+} from "../../utils/constants";
 import { DatabaseLogger } from ".";
 import { MMKV } from "./mmkv";
 
@@ -34,7 +38,7 @@ import { MMKV } from "./mmkv";
 export const CipherStorage = new MMKVLoader()
   .withInstanceID("cipher_storage")
   .setProcessingMode(
-    Platform.OS === "ios"
+    Platform.OS === "ios" && hasAppGroupContainer()
       ? ProcessingModes.MULTI_PROCESS
       : ProcessingModes.SINGLE_PROCESS
   )
@@ -64,6 +68,136 @@ const KEYSTORE_CONFIG = Platform.select({
   android: {}
 });
 
+/**
+ * The legacy user-key Keychain entry (the database key uses
+ * KEYCHAIN_SERVER_DBKEY above). Every Keychain read/write in this file now goes
+ * through the storage helpers below, so the Simulator has a single place to
+ * substitute (see getSimulatorKeyStore).
+ */
+const KEYCHAIN_SERVER_USERKEY = "notesnook";
+
+const SIMULATOR_KEY_STORE_ID = "simulator_key_store";
+
+type StoredCredentials = { username: string; password: string };
+
+let simulatorKeyStore: ReturnType<MMKVLoader["initialize"]> | undefined;
+
+/**
+ * Storage for the database key on the iOS Simulator.
+ *
+ * A local Simulator build is ad-hoc signed with no provisioning profile, so it
+ * has empty entitlements and therefore no Keychain access group: every SecItem
+ * call — including the access-group-less `hasInternetCredentials` probe that
+ * getDatabaseKey starts with — rejects with errSecMissingEntitlement (-34018).
+ * No service or access group can change that from JavaScript, because the
+ * process holds no keychain entitlement at all.
+ *
+ * So on the Simulator, and only there, the database key is kept in a dedicated
+ * MMKV instance inside the app sandbox. This is a local test surface for the
+ * dedicated simulator account: physical iOS/iPadOS and Mac Catalyst builds keep
+ * using the Keychain, with the same services, options and accessibility class
+ * as before.
+ */
+function getSimulatorKeyStore() {
+  if (!simulatorKeyStore) {
+    simulatorKeyStore = new MMKVLoader()
+      .withInstanceID(SIMULATOR_KEY_STORE_ID)
+      .setProcessingMode(ProcessingModes.SINGLE_PROCESS)
+      .disableIndexing()
+      .initialize();
+  }
+  return simulatorKeyStore;
+}
+
+async function hasStoredCredentials(server: string) {
+  if (isIosSimulator()) {
+    const stored = getSimulatorKeyStore().getString(server);
+    // Absence (null/undefined) is the only case that means the credentials do
+    // not exist yet. A present-but-empty entry is a corrupt record that must be
+    // fatal, never silently treated as absent.
+    if (stored == null) return false;
+    if (!stored) {
+      const error = new Error(
+        `Simulator credentials for ${server} are unreadable`
+      );
+      DatabaseLogger.error(error, "Simulator database key is unreadable");
+      throw error;
+    }
+    return true;
+  }
+  return await Keychain.hasInternetCredentials(server);
+}
+
+async function getStoredCredentials(server: string) {
+  if (!isIosSimulator()) return await Keychain.getInternetCredentials(server);
+
+  const stored = getSimulatorKeyStore().getString(server);
+  // No entry at all means the credentials genuinely do not exist yet, which is
+  // the only case callers treat as "absent" (and may then mint a new key).
+  if (stored == null) return false;
+
+  // A present-but-unreadable entry must be fatal, never "absent". Returning
+  // false here would make getDatabaseKey fall through to the mint branch and
+  // overwrite a corrupt record with a brand-new key — silently opening an empty
+  // database on top of an existing encrypted one.
+  let credentials: unknown;
+  try {
+    credentials = JSON.parse(stored);
+  } catch {
+    // Never log or rethrow the raw SyntaxError: its message can embed stored
+    // key bytes. Only a fixed, sanitized error leaves this function.
+    const error = new Error(
+      `Simulator credentials for ${server} are unreadable`
+    );
+    DatabaseLogger.error(error, "Simulator database key is unreadable");
+    throw error;
+  }
+
+  if (
+    typeof credentials !== "object" ||
+    credentials === null ||
+    typeof (credentials as StoredCredentials).username !== "string" ||
+    typeof (credentials as StoredCredentials).password !== "string" ||
+    !(credentials as StoredCredentials).password
+  ) {
+    const error = new Error(
+      `Simulator credentials for ${server} have an invalid shape`
+    );
+    DatabaseLogger.error(error, "Simulator database key is unreadable");
+    throw error;
+  }
+
+  return credentials as StoredCredentials;
+}
+
+async function setStoredCredentials(
+  server: string,
+  username: string,
+  password: string
+) {
+  if (isIosSimulator()) {
+    getSimulatorKeyStore().setString(
+      server,
+      JSON.stringify({ username, password })
+    );
+    return;
+  }
+  return await Keychain.setInternetCredentials(
+    server,
+    username,
+    password,
+    KEYSTORE_CONFIG
+  );
+}
+
+async function resetStoredCredentials(server: string) {
+  if (isIosSimulator()) {
+    getSimulatorKeyStore().removeItem(server);
+    return;
+  }
+  return await Keychain.resetInternetCredentials(server);
+}
+
 function generatePassword() {
   const length = 80;
   //@ts-ignore
@@ -92,7 +226,7 @@ export async function encryptDatabaseKeyWithPassword(appLockPassword: string) {
   const databaseKeyCipher = (await encrypt(appLockCredentials, key)) as Cipher;
   MMKV.setMap(DB_KEY_CIPHER, databaseKeyCipher);
   // We reset the database key from keychain once app lock password is set.
-  await Keychain.resetInternetCredentials(KEYCHAIN_SERVER_DBKEY);
+  await resetStoredCredentials(KEYCHAIN_SERVER_DBKEY);
   return true;
 }
 
@@ -105,12 +239,7 @@ export async function restoreDatabaseKeyToKeyChain(appLockPassword: string) {
     databaseKeyCipher
   )) as string;
 
-  await Keychain.setInternetCredentials(
-    KEYCHAIN_SERVER_DBKEY,
-    "notesnook",
-    databaseKey,
-    KEYSTORE_CONFIG
-  );
+  await setStoredCredentials(KEYCHAIN_SERVER_DBKEY, "notesnook", databaseKey);
   MMKV.removeItem(DB_KEY_CIPHER);
   return true;
 }
@@ -204,14 +333,24 @@ export async function getDatabaseKey(
   }
 
   if (!DB_KEY) {
-    const hasKey = await Keychain.hasInternetCredentials(KEYCHAIN_SERVER_DBKEY);
+    const hasKey = await hasStoredCredentials(KEYCHAIN_SERVER_DBKEY);
     if (hasKey) {
-      const credentials = await Keychain.getInternetCredentials(
-        KEYCHAIN_SERVER_DBKEY
-      );
+      const credentials = await getStoredCredentials(KEYCHAIN_SERVER_DBKEY);
+
+      // The probe said the credentials exist, so a missing password here is a
+      // corrupt/inconsistent record. Fail instead of dereferencing it: leaving
+      // DB_KEY undefined would fall through to the mint branch below and
+      // overwrite the stored key.
+      if (!credentials || !credentials.password) {
+        const error = new Error(
+          `Stored credentials for ${KEYCHAIN_SERVER_DBKEY} are unreadable`
+        );
+        DatabaseLogger.error(error, "Simulator database key is unreadable");
+        throw error;
+      }
 
       DatabaseLogger.info("Getting database key from Keychain");
-      DB_KEY = (credentials as Keychain.UserCredentials).password;
+      DB_KEY = credentials.password;
     }
   }
 
@@ -232,17 +371,12 @@ export async function getDatabaseKey(
 
     DB_KEY = derivedDatabaseKey.key as string;
 
-    await Keychain.setInternetCredentials(
-      KEYCHAIN_SERVER_DBKEY,
-      "notesnook",
-      DB_KEY,
-      KEYSTORE_CONFIG
-    );
+    await setStoredCredentials(KEYCHAIN_SERVER_DBKEY, "notesnook", DB_KEY);
   }
 
-  if (await Keychain.hasInternetCredentials("notesnook")) {
-    const userKeyCredentials = await Keychain.getInternetCredentials(
-      "notesnook"
+  if (await hasStoredCredentials(KEYCHAIN_SERVER_USERKEY)) {
+    const userKeyCredentials = await getStoredCredentials(
+      KEYCHAIN_SERVER_USERKEY
     );
 
     if (userKeyCredentials) {
@@ -255,14 +389,14 @@ export async function getDatabaseKey(
       )) as Cipher;
       // Store encrypted user key in MMKV
       MMKV.setMap(USER_KEY_CIPHER, userKeyCipher);
-      await Keychain.resetInternetCredentials("notesnook");
+      await resetStoredCredentials(KEYCHAIN_SERVER_USERKEY);
     }
     DatabaseLogger.info("Migrated user credentials to cipher storage");
   }
 
   if (!DB_KEY) {
     throw new Error(
-      `Failed to get database key, ${await Keychain.hasInternetCredentials(
+      `Failed to get database key, ${await hasStoredCredentials(
         KEYCHAIN_SERVER_DBKEY
       )}`
     );
@@ -369,7 +503,7 @@ export async function getCryptoKey() {
 export async function removeCryptoKey() {
   try {
     MMKV.removeItem(USER_KEY_CIPHER);
-    await Keychain.resetInternetCredentials("notesnook");
+    await resetStoredCredentials(KEYCHAIN_SERVER_USERKEY);
     return true;
   } catch (e) {
     DatabaseLogger.error(e);

@@ -27,6 +27,32 @@ import WidgetKit
 // it in. Everything here is Foundation and WidgetKit only: the encrypted Task
 // domain belongs to the host's React Native code and is never opened natively.
 
+/// Every home screen widget kind that renders the shared Task snapshot.
+///
+/// They all read the same App Group snapshot and the same completion queue, so
+/// anything that changes either one must reload all of them together. Otherwise
+/// the Overview and Focus cards can show different Tasks, and -- worse -- a
+/// Focus card can keep showing titles after App Lock has redacted them.
+enum TaskWidgetKinds {
+  /// The installed "Tasks" widget, renamed "Overview" in the gallery only. The
+  /// kind string is the persistence key for every placed widget, so it must
+  /// never change.
+  static let overview = "ReminderWidget"
+  /// The Focus card: one lead Task and what comes after it.
+  static let focus = "Focus"
+  static let all = [overview, focus]
+}
+
+extension WidgetCenter {
+  /// Reloads every Task widget surface. The app and the widget extension both
+  /// call this, so a redaction or a completion can never leave one card stale.
+  func reloadTaskWidgets() {
+    for kind in TaskWidgetKinds.all {
+      reloadTimelines(ofKind: kind)
+    }
+  }
+}
+
 struct WidgetCompletionAction: Codable {
   let id: String
   let scope: String
@@ -306,7 +332,7 @@ struct CompleteTaskWidgetIntent: AppIntent {
     // crash anywhere after this point leaves an action the host will still
     // finish, so the completion is never silently lost or applied twice.
     try WidgetCompletionQueue.enqueue(id: id, scope: scope, updatedAt: updatedAt)
-    WidgetCenter.shared.reloadTimelines(ofKind: "ReminderWidget")
+    WidgetCenter.shared.reloadTaskWidgets()
 
     guard let host = NSClassFromString("TaskWidgetCompletionBridge")
             as? TaskWidgetCompletionCommitting.Type else {
@@ -354,7 +380,7 @@ struct QueueTaskCompletionWidgetIntent: AppIntent {
       throw CocoaError(.fileReadUnknown)
     }
     try WidgetCompletionQueue.enqueue(id: id, scope: scope, updatedAt: updatedAt)
-    WidgetCenter.shared.reloadTimelines(ofKind: "ReminderWidget")
+    WidgetCenter.shared.reloadTaskWidgets()
     // The app can be active before this runs, so its own drain may have missed the new file.
     await MainActor.run {
       NotificationCenter.default.post(name: .taskWidgetActionQueued, object: nil)

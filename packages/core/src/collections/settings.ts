@@ -40,7 +40,9 @@ import { SQLCachedCollection } from "../database/sql-cached-collection.js";
 
 const DEFAULT_GROUP_OPTIONS = (key: GroupingKey) =>
   ({
-    groupBy: key === "search" ? "none" : "default",
+    groupBy: ["home", "notebooks", "tags", "reminders"].includes(key)
+      ? "default"
+      : "none",
     sortBy:
       key === "search"
         ? "relevance"
@@ -167,12 +169,17 @@ export class Settings implements ICollection {
         ? "groupOptions:notes:tags"
         : "groupOptions:notes:colors";
 
-    const groupOptionsMap = this.get(groupOptionsKey);
-    groupOptionsMap[id] = groupOptions;
+    // Build a fresh map so a failed upsert cannot mutate the cached map or the
+    // shared default. The computed key is created as an own property, which
+    // keeps ids like "__proto__" safe from prototype pollution.
+    const groupOptionsMap = {
+      ...this.get(groupOptionsKey),
+      [id]: groupOptions
+    };
     return this.set(groupOptionsKey, groupOptionsMap);
   }
 
-  getGroupOptionsById(id: string, type: GroupingByIdKey) {
+  getGroupOptionsById(id: string, type: GroupingByIdKey): GroupOptions {
     const groupOptions = this.get(
       type === "notebook"
         ? "groupOptions:notes:notebooks"
@@ -180,7 +187,14 @@ export class Settings implements ICollection {
         ? "groupOptions:notes:tags"
         : "groupOptions:notes:colors"
     );
-    return groupOptions[id] || this.get("groupOptions:notes");
+    if (Object.prototype.hasOwnProperty.call(groupOptions, id))
+      return groupOptions[id];
+    // Unsaved notebook note lists default to an ungrouped list while still
+    // inheriting the generic note sort (sortBy/sortDirection) and honoring any
+    // saved per-notebook override. Tags/colors keep the plain notes fallback.
+    if (type === "notebook")
+      return { ...this.get("groupOptions:notes"), groupBy: "none" };
+    return this.get("groupOptions:notes");
   }
 
   setToolbarConfig(platform: ToolbarConfigPlatforms, config: ToolbarConfig) {

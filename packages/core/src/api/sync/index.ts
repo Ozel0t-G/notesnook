@@ -21,6 +21,8 @@ import {
   checkSyncStatus,
   CURRENT_DATABASE_VERSION,
   EVENTS,
+  LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR,
+  MISSING_LOCAL_CIPHERTEXT_ERROR,
   sendSyncProgressEvent,
   SYNC_CHECK_IDS
 } from "../../common.js";
@@ -55,7 +57,7 @@ import {
   SyncInboxItem,
   SyncTransferItem
 } from "./types.js";
-import { DownloadableFile } from "../../database/fs.js";
+import { AttachmentGeneration, DownloadableFile } from "../../database/fs.js";
 import { SyncDevices } from "./devices.js";
 import { DefaultColors } from "../../collections/colors.js";
 
@@ -94,6 +96,82 @@ export type SyncOptions = {
   force?: boolean;
   offlineMode?: boolean;
 };
+
+/**
+ * How long a device-local local-ciphertext failure marker
+ * (`MISSING_LOCAL_CIPHERTEXT_ERROR` or `LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR`)
+ * must be untouched before `Sync.uploadAttachments` will queue the attachment
+ * again. `markAsFailed` bumps `dateModified` on every failed attempt, so this
+ * effectively throttles automatic retries to one per window without adding any
+ * schema or synced field.
+ */
+const LOCAL_CIPHERTEXT_RETRY_AFTER_MS = 30 * 60 * 1000;
+
+/**
+ * Timestamps that are ahead of the local clock by at most this much are
+ * treated as normal clock skew (and therefore fresh), so a just-marked row
+ * whose clock is slightly ahead is not retried immediately. Anything further
+ * ahead is considered a corrupt/invalid clock and retried.
+ */
+const LOCAL_CIPHERTEXT_FUTURE_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * Whether a bounded automatic retry is due for an attachment carrying a
+ * device-local local-ciphertext failure marker (`MISSING_LOCAL_CIPHERTEXT_ERROR`
+ * or `LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR`).
+ *
+ * A missing, non-finite or non-positive `dateModified` is treated as due so a
+ * corrupted timestamp cannot block retries forever. Future timestamps within
+ * {@link LOCAL_CIPHERTEXT_FUTURE_SKEW_MS} are treated as fresh; clearly
+ * invalid far-future timestamps are treated as due.
+ */
+function isLocalCiphertextRetryDue(
+  dateModified: number | null | undefined,
+  now = Date.now()
+): boolean {
+  if (
+    typeof dateModified !== "number" ||
+    !Number.isFinite(dateModified) ||
+    dateModified <= 0
+  )
+    return true;
+
+  const age = now - dateModified;
+  if (age >= LOCAL_CIPHERTEXT_RETRY_AFTER_MS) return true;
+  // Negative age means the timestamp is in the future.
+  return -age > LOCAL_CIPHERTEXT_FUTURE_SKEW_MS;
+}
+
+/**
+ * The ciphertext generation of a pending attachment row.
+ *
+ * `iv`/`salt`/`size`/`chunkSize` are nullable at runtime (legacy rows, partial
+ * sync merges) even though the typed `Attachment` model declares them non-null.
+ * Each value is therefore normalized to `null` when absent instead of dropping
+ * the whole snapshot: a Sync-produced upload *always* carries a generation, so
+ * the later status write in `Attachments.fileUploaded` is guarded even for an
+ * incomplete row. A missing column becomes `IS NULL` in the guard
+ * (`generationCondition` in `collections/attachments.ts`), which still matches
+ * only the row it was snapshotted from — so a late result of a pre-reupload
+ * upload cannot mark a *newly* reuploaded generation uploaded/failed even when
+ * the row it was queued for was missing some crypto columns.
+ *
+ * Only non-Sync/manual producers that omit `generation` from the queue payload
+ * (legacy direct `queueUploads` callers) keep the previous unguarded behavior.
+ */
+function attachmentGeneration(attachment: Attachment): AttachmentGeneration {
+  // The typed `Attachment` model declares these columns non-null, but runtime
+  // (legacy/sync-merged) rows may omit or null them; read them through the
+  // nullable generation shape and normalize each absent value to `null`.
+  const { iv, salt, size, chunkSize }: Partial<AttachmentGeneration> =
+    attachment;
+  return {
+    iv: iv ?? null,
+    salt: salt ?? null,
+    size: size ?? null,
+    chunkSize: chunkSize ?? null
+  };
+}
 
 export default class SyncManager {
   sync;
@@ -434,13 +512,92 @@ export class Sync {
     await this.assertBackendAllowed();
     this.logger.info("Uploading attachments...", { total: attachments.length });
 
-    await this.db.fs().queueUploads(
-      attachments.map<DownloadableFile>((a) => ({
-        filename: a.hash,
-        chunkSize: a.chunkSize
-      })),
-      "sync-uploads"
-    );
+    const files: DownloadableFile[] = [];
+    for (const attachment of attachments) {
+      // A terminal "local ciphertext is missing" marker means a previous
+      // upload attempt confirmed the bytes are gone from this device. Skip it
+      // so sync startup does not fail in a loop, unless either the ciphertext
+      // has since reappeared (a download/copy restored it), in which case
+      // clear the marker and upload it again, or the marker has aged enough
+      // that a bounded automatic retry is due.
+      if (attachment.failed === MISSING_LOCAL_CIPHERTEXT_ERROR) {
+        let exists: boolean | undefined;
+        try {
+          exists = await this.db.fs().exists(attachment.hash);
+        } catch (error) {
+          // If we cannot check, fail open and let the upload attempt run
+          // rather than silently dropping the attachment from sync. The
+          // terminal marker is left intact so a still-missing ciphertext is
+          // re-marked by the failed upload.
+          this.logger.warn(
+            `Could not check local ciphertext for attachment. Queueing upload anyway.`,
+            { hash: attachment.hash, error }
+          );
+        }
+
+        if (exists === false) {
+          if (isLocalCiphertextRetryDue(attachment.dateModified)) {
+            // The marker has aged past the retry window: queue the upload
+            // again *without* clearing the marker. Mobile's uploadFile
+            // attempts authenticated remote recovery before re-marking it
+            // missing, and a successful upload clears it via fileUploaded.
+            this.logger.warn(
+              `Retrying attachment upload because its local ciphertext is still missing and the marker has aged.`,
+              { hash: attachment.hash }
+            );
+          } else {
+            this.logger.warn(
+              `Skipping attachment upload because its local ciphertext is missing.`,
+              { hash: attachment.hash }
+            );
+            continue;
+          }
+        }
+
+        if (exists === true) {
+          // Ciphertext is back: clear the terminal marker (this leaves
+          // `dateUploaded` untouched, so the row is queued as a normal pending
+          // upload) and fall through to upload it.
+          await this.db.attachments.markAsFailed(attachment.id);
+        }
+      } else if (attachment.failed === LOCAL_CIPHERTEXT_REPAIR_FAILED_ERROR) {
+        // Present-but-invalid local ciphertext whose authenticated remote
+        // repair already failed. The bytes are still on disk, so `exists()`
+        // would (wrongly) report `true`; this marker must therefore be honoured
+        // *without* any raw presence check, or core would clear it and re-run
+        // the network-bound repair on every sync (a hot loop). Back off purely
+        // from `dateModified`: queue again only once the retry window has aged,
+        // and never clear the marker here so a still-unrepairable ciphertext is
+        // simply re-marked.
+        if (isLocalCiphertextRetryDue(attachment.dateModified)) {
+          this.logger.warn(
+            `Retrying attachment upload because its local ciphertext is damaged and the repair-failed marker has aged.`,
+            { hash: attachment.hash }
+          );
+        } else {
+          this.logger.warn(
+            `Skipping attachment upload because its local ciphertext is damaged and the repair-failed marker is fresh.`,
+            { hash: attachment.hash }
+          );
+          continue;
+        }
+      }
+
+      // Carry the pending row's crypto generation into the upload queue so a
+      // result that arrives after an Apple Reupload replaced the row's
+      // `iv`/`salt`/`size`/`chunkSize` can be dropped instead of marking the
+      // new ciphertext uploaded/failed. Every Sync-produced upload carries a
+      // generation: an incomplete row snapshots its absent columns as `null`
+      // (guarded with `IS NULL`) rather than omitting the field, so a late
+      // result for an incomplete old row still cannot touch the new generation.
+      files.push({
+        filename: attachment.hash,
+        chunkSize: attachment.chunkSize,
+        generation: attachmentGeneration(attachment)
+      });
+    }
+
+    await this.db.fs().queueUploads(files, "sync-uploads");
     await this.assertBackendAllowed();
   }
 

@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { resolveItems } from "@notesnook/common";
 import { Note, Notebook, VirtualizedGrouping } from "@notesnook/core";
+import type { GroupOptions } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import React, { useEffect, useRef, useState } from "react";
 import { db } from "../../common/database";
@@ -42,6 +43,7 @@ import { Notebooks } from "../../components/sheets/notebooks";
 import { useSettingStore } from "../../stores/use-setting-store";
 import { rootNavigatorRef } from "../../utils/global-refs";
 import { getGroupOptions } from "../../hooks/use-group-options";
+import { homeNoteDateGroup } from "../../utils/home-note-presentation";
 
 const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
   const [notes, setNotes] = useState<VirtualizedGrouping<Note>>();
@@ -119,11 +121,29 @@ const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
           const breadcrumbs = await db.notebooks.breadcrumbs(notebook.id);
           setBreadcrumbs(breadcrumbs.slice(0, breadcrumbs.length - 1));
           params.current.id = notebook.id;
-          const notes = await db.relations
-            .from(notebook, "note")
-            .selector.grouped(
-              getGroupOptions("notes", notebook.id, "notebook")
-            );
+          // Match the home list's date sections when the notebook explicitly
+          // uses the default grouping on iOS. Other user-chosen groupings and
+          // other platforms keep the plain grouped() behavior.
+          const options =
+            getGroupOptions("notes", notebook.id, "notebook") ??
+            db.settings.getGroupOptions("notes");
+          const useDateGroups =
+            Platform.OS === "ios" &&
+            options.groupBy === "default" &&
+            (options.sortBy === "dateEdited" ||
+              options.sortBy === "dateCreated");
+          const selector = db.relations.from(notebook, "note").selector;
+          const grouped = selector.grouped as unknown as (
+            options: GroupOptions,
+            groupKeySelector?: (note: Note) => string
+          ) => ReturnType<typeof selector.grouped>;
+          const notes = await grouped.call(
+            selector,
+            options,
+            useDateGroups
+              ? (note: Note) => homeNoteDateGroup(note, options)
+              : undefined
+          );
           setNotes(notes);
           await notes.item(0, resolveItems);
           syncWithNavigation();

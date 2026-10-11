@@ -21,20 +21,35 @@ import { create } from "zustand";
 /** Persistent bottom bar sections. "New Note" is an action, not a section. */
 export type AppleSection = "library" | "tasks" | "search";
 
-/** What the native bar can report: a section, or the compose action. */
-export type AppleTabBarSelection = AppleSection | "compose";
+/**
+ * What the native bar can report or highlight: a persistent section, the
+ * compose action, or the Settings action. "settings" is deliberately not part
+ * of `AppleSection`: it is not a place the app stays in, it opens the Settings
+ * sheet over the section underneath, which stays selected (Mac's section
+ * maps/consumers stay keyed by `AppleSection`).
+ */
+export type AppleTabBarSelection = AppleSection | "compose" | "settings";
 
 type AppleNavigationState = {
   section: AppleSection;
+  /**
+   * The Settings sheet is open. While it is, the bar highlights Settings (see
+   * `apple-tab-bar.tsx`) and `section` keeps the value the sheet was opened
+   * over, so dismissing it returns there.
+   */
+  settingsVisible: boolean;
   editorVisible: boolean;
   setSection: (section: AppleSection) => void;
+  setSettingsVisible: (visible: boolean) => void;
   setEditorVisible: (visible: boolean) => void;
 };
 
 /** Presentation state only. React Navigation and the editor pane remain authoritative. */
 export const useAppleNavigationStore = create<AppleNavigationState>((set) => ({
   section: "library",
+  settingsVisible: false,
   editorVisible: false,
   setSection: (section) => set({ section }),
+  setSettingsVisible: (settingsVisible) => set({ settingsVisible }),
   setEditorVisible: (editorVisible) => set({ editorVisible })
 }));

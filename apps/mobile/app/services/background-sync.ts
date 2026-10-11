@@ -25,6 +25,7 @@ import {
 } from "react-native-begin-background-task";
 import { DatabaseLogger, db, initializeDatabaseOnce } from "../common/database";
 import { deleteDCacheFiles } from "../common/filesystem/io";
+import { purgeNoteThumbnailCache } from "../hooks/use-note-thumbnail";
 import { useUserStore } from "../stores/use-user-store";
 import { NotePreviewWidget } from "./note-preview-widget";
 import Notifications from "./notifications";
@@ -116,6 +117,9 @@ async function onBackgroundSyncStarted() {
     Notifications.restorePinnedNotes();
     NotePreviewWidget.updateNotes();
     deleteDCacheFiles();
+    // Background sync is an app-exit-like moment: plaintext thumbnails are
+    // dropped and rebuilt by the next foreground render.
+    purgeNoteThumbnailCache();
     DatabaseLogger.info("BACKGROUND SYNC COMPLETE");
   } catch (e) {
     useUserStore.getState().setSyncing(false);

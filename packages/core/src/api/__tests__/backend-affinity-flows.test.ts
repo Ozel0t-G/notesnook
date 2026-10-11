@@ -91,6 +91,8 @@ function harness(options: {
   cryptoKey?: string;
   syncActivity?: { autoSyncActive: boolean; connectionActive: boolean };
   localContent?: boolean;
+  /** Rows present in the `settings` table (the fake models key/value/deleted). */
+  settings?: { key: string; value?: unknown; deleted?: boolean | number }[];
 }) {
   const kv = new Map<string, unknown>();
   if (options.storedUser) kv.set("user", options.storedUser);
@@ -193,8 +195,14 @@ function harness(options: {
       query.select = () => query;
       query.where = () => query;
       query.limit = () => query;
+      // The settings check reads every row and classifies it in JS, so the
+      // fake must return them rather than short-circuit on a key filter.
+      query.execute = async () =>
+        table === "settings" ? options.settings ?? [] : [];
       query.executeTakeFirst = async () =>
-        options.localContent && table === "notes"
+        table === "settings"
+          ? (options.settings ?? [])[0]
+          : options.localContent && table === "notes"
           ? { id: "local" }
           : undefined;
       return query;
@@ -2789,4 +2797,98 @@ describe("uncached local data cannot be silently bound by signup or login", () =
     expect(profile.kv.get("backendAffinity")).toBeUndefined();
     expect(mockPost).not.toHaveBeenCalled();
   });
+});
+
+describe("fresh Web profile startup settings do not block the first email step", () => {
+  /**
+   * `resetFeatures()` runs on Web startup before `initUser` and persists the
+   * feature-gated defaults plus device/title format adoption. None of these is
+   * account data, so the first sign-in step must reach the identity server
+   * instead of tripping backend affinity.
+   */
+  const startupSettings = [
+    {
+      key: "toolbarConfig:desktop",
+      value: JSON.stringify({
+        version: 3,
+        preset: "default",
+        config: [{ id: "bold" }]
+      })
+    },
+    { key: "trashCleanupInterval", value: "7" },
+    { key: "defaultNotebook", value: null },
+    { key: "defaultTag", value: null },
+    { key: "dateFormat", value: "DD-MM-YYYY" },
+    { key: "timeFormat", value: "12-hour" },
+    { key: "titleFormat", value: "Note $date$ $time$" }
+  ];
+
+  test("authenticateEmail reaches the identity server instead of failing backend affinity", async () => {
+    const { user, kv } = harness({ settings: startupSettings });
+    mockPost.mockResolvedValueOnce({
+      access_token: "email-stage",
+      scope: "auth:grant_types:mfa"
+    });
+
+    await expect(
+      user.authenticateEmail("someone@example.test")
+    ).resolves.toBeUndefined();
+
+    expect(mockPost).toHaveBeenCalledWith(`${VEYRAN.auth}/connect/token`, {
+      email: "someone@example.test",
+      grant_type: "email",
+      client_id: "notesnook"
+    });
+    // The interim grant must not be persisted, and the boundary was not tripped.
+    expect(kv.get("backendAffinity")).toBeUndefined();
+    expect(kv.get("token")).toBeUndefined();
+  });
+
+  test.each([
+    [
+      "a non-empty default notebook",
+      { key: "defaultNotebook", value: "some-notebook" }
+    ],
+    ["a non-empty default tag", { key: "defaultTag", value: "some-tag" }],
+    [
+      "a customized toolbar preset",
+      {
+        key: "toolbarConfig:desktop",
+        value: JSON.stringify({ version: 3, preset: "custom", config: [] })
+      }
+    ],
+    // Only `toolbarConfig:desktop` is auto-written by `resetFeatures()`.
+    [
+      "a default toolbar preset on another platform",
+      {
+        key: "toolbarConfig:mobile",
+        value: JSON.stringify({ version: 3, preset: "default", config: [] })
+      }
+    ],
+    [
+      "a default toolbar preset whose config is not a tools array",
+      {
+        key: "toolbarConfig:desktop",
+        value: JSON.stringify({
+          version: 3,
+          preset: "default",
+          config: { preset: "default" }
+        })
+      }
+    ],
+    [
+      "a non-default trash cleanup interval",
+      { key: "trashCleanupInterval", value: "30" }
+    ]
+  ])(
+    "a profile with %s still refuses the first email step before the network",
+    async (_label, row) => {
+      const { user, kv } = harness({ settings: [row] });
+      await expect(
+        user.authenticateEmail("someone@example.test")
+      ).rejects.toThrow(/cannot be attributed/);
+      expect(mockPost).not.toHaveBeenCalled();
+      expect(kv.get("backendAffinity")).toBeUndefined();
+    }
+  );
 });

@@ -24,6 +24,7 @@ export * from "./debounce.js";
 export * from "./random.js";
 export * from "./string.js";
 export * from "./resolve-items.js";
+export * from "./note-thumbnail.js";
 export * from "./migrate-toolbar.js";
 export * from "./export-notes.js";
 export * from "./dataurl.js";

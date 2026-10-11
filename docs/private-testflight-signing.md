@@ -37,6 +37,26 @@ Files: `app/utils/constants.ts` (`IOS_APPGROUPID`), `app/common/database/encrypt
 | In-App Purchases | official product ids (`com.streetwriters.notesnook.sub.*`) do not exist for the private app; premium purchase is unavailable in the beta (sign in with an existing account) |
 | Extensions | share extension + widget are embedded and need their own app ids (created by automatic signing) |
 
+## macOS (Mac Catalyst)
+
+The macOS platform of the VeyraN record `6813860928` ships the **native Mac
+Catalyst** build of this project (same bundle ID `com.ozel0t.note.notesnookpencil`
+and targets above), not the Electron desktop app. Build it with the canonical
+`scripts/build-pencil-testflight.sh --mac [--upload]` (`--bump` is iOS-only and
+must not be passed for a Mac build); the old
+`scripts/build-macos-testflight.sh` (Electron) and `scripts/build-catalyst-testflight.sh`
+scripts are fenced and must not be used for this record.
+
+- The Mac build number is a Unix-seconds timestamp passed as
+  `CURRENT_PROJECT_VERSION`, independent of the iOS build number.
+- Export pins `signingCertificate` to a locally installed **Apple Distribution**
+  identity and `installerSigningCertificate` to `3rd Party Mac Developer
+  Installer` (override via `PENCIL_MAC_SIGNING_CERT` / `PENCIL_MAC_INSTALLER_CERT`
+  only when needed). The legacy `3rd Party Mac Developer Application` identity is
+  rejected by Mac App Store profiles (Transporter error 90284).
+- libsodium is extended with a Mac Catalyst slice by
+  `apps/mobile/ios/scripts/libsodium-catalyst.sh` before `pod install`.
+
 ## Toolchain workarounds also on this branch
 
 - `ios/Podfile`: raises pod deployment targets below 15.0 (Xcode 27 SDK rejects them).

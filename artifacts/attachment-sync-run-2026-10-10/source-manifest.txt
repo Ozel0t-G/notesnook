@@ -1,0 +1,72 @@
+APPLE ATTACHMENT SYNC - SOURCE MANIFEST
+Repository: /Users/ozel0t/Notesnook/notesnook
+Branch: test
+HEAD: 0dcbdf0d6958cba730d6a5e33a38e89c3c567f0a
+Generated: 2026-10-10T23:32:23.193720
+These are final relevant source and test files. Existing diffs may include preceding attachment fixes. SHA256 fingerprints record current bytes, not a separate commit.
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/common/filesystem/io.ts
+SHA256 50064894fbb3f97e7ff799a1511f5d1aa92f471354ca0b31e4577e916726a349
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/common/filesystem/upload.ts
+SHA256 5d08792274816088f055fd13e8bad6d5d61d6b0b99c5460fd0e7601a91803a39
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/common/filesystem/download.ts
+SHA256 7afa4fa4b5f4db6745286cd6164f7b023d1c65fa3892572043a63fe977c93e46
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/common/filesystem/io.test.ts
+SHA256 04558e3be3b5eb3336203db6c44a4ed6c8140ec3db07c87dafb72a06436ba05b
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/common/filesystem/upload.test.ts
+SHA256 51747e6ab5ca96246bc3c02d80bd3d9502ceeff7293a8d241b3fc408893fc25c
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/common/filesystem/download.test.ts
+SHA256 151fc693117df85f096b7cc629cb63cdbf6d61f2cd11db49180ce0788a89c879
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/common/filesystem/reupload.test.ts
+SHA256 06d3c6071a7d3c136e859f95462ec9e9ef6040dda8a93c1f05324475c23bcdb5
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/components/attachments/actions.tsx
+SHA256 2477edda83a0d3b46a973d1269df8edc1fe36e0db1fc921b16ce82c484d60686
+
+/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/screens/editor/tiptap/picker.ts
+SHA256 fc9e8034f280cfb232d94b652450099c6dddcc76842605a8f83454a69ca89bea
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/api/sync/index.ts
+SHA256 40d7efb32888ab48bb426c4dea50a942c9cc56c6760c22aad5eb61856e7b56be
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/api/sync/collector.ts
+SHA256 645745833dcb8a858c3756491be4bcd8bbabd2f6abedf494186986347a3d3a22
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/api/sync/merger.ts
+SHA256 9eb199ce334e96f80df9fead2cb3d2ea5b54903e692af8d4b495c6d1b3297306
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/collections/attachments.ts
+SHA256 c08041f24bfc5ad1c6bab1975ad3229993e14909c2a181607c0fec31f06427c8
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/database/fs.ts
+SHA256 386cc2e5309f860556483b3c7cb720915263d24fd56eb988680c01b27f796b6a
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/database/fs-recovery-cancel.test.ts
+SHA256 a853dfc8e147342905120432af4e0e3b0618bc5db9a57798d5c87f5b09b23f06
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/common.ts
+SHA256 232595b992f538ee37682f75094b16261b608c883e62255e46eafc73561806c2
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/__tests__/fs.test.ts
+SHA256 4773aa66b9924ad890d5c33121eb3f9da37d895a7b192f0d05fc06077061abb3
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/api/__tests__/missing-local-ciphertext.test.ts
+SHA256 8729cdd13b2d6eecc5d8c64c9adbf507658274adcc157132221cddd9c80b85a4
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/api/sync/__tests__/collector.test.js
+SHA256 0dccb3143c359658b0d89dbb377871804642917cd0e9396680c14f6c014943e5
+
+/Users/ozel0t/Notesnook/notesnook/packages/core/src/api/sync/__tests__/merger.test.js
+SHA256 02b22a70eba8f0b645948762e81f78f8164270a41b26b252e031ba51c1646437
+
+/Users/ozel0t/Notesnook/notesnook/docs/attachment-sync-recovery-apple.md
+SHA256 af9eaca4eaf90c5fe9c28a878e62ebf0d60bb04c7f667cda4aa1d09b2e7fd5bb
+
+/Users/ozel0t/Notesnook/notesnook/docs/help/contents/attachments-and-files.md
+SHA256 71b6e2e266f4e62f05e0666f068f35af9ebfcf0181b1b0df5d88cffba76fc340

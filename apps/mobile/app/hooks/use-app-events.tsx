@@ -114,6 +114,7 @@ import {
 import { fluidTabsRef } from "../utils/global-refs";
 import { sleep } from "../utils/time";
 import useFeatureManager from "./use-feature-manager";
+import { purgeNoteThumbnailCache } from "./use-note-thumbnail";
 
 const pendingTaskCompletions = new PendingTaskCompletions(MMKV);
 let replayingTaskCompletions = false;
@@ -565,6 +566,9 @@ const initializeDatabase = async (password?: string) => {
     void adoptDeviceDateFormats().then(() => migrateGeneratedNoteTitles());
     expiringNotesTimer();
     deleteDCacheFiles();
+    // Plaintext note thumbnails must not survive a restart: drop them on
+    // startup and let the visible rows rebuild the ones still on screen.
+    purgeNoteThumbnailCache();
   }
   Walkthrough.init();
 };
@@ -843,6 +847,15 @@ export const useAppEvents = () => {
       db.eventManager.subscribe(EVENTS.syncAborted, onSyncAborted),
       db.eventManager.subscribe(EVENTS.appRefreshRequested, onSyncComplete),
       db.eventManager.subscribe(EVENTS.userLoggedOut, onLogout),
+      // The cache can outlive a note list after navigating elsewhere. Purge it
+      // from the app-wide listener as well as hiding any mounted row images.
+      db.eventManager.subscribeMulti(
+        [EVENTS.vaultLocked, EVENTS.vaultAutoLocked, EVENTS.userLoggedOut],
+        () => {
+          void purgeNoteThumbnailCache();
+        },
+        undefined
+      ),
       db.eventManager.subscribe(EVENTS.userEmailConfirmed, onUserEmailVerified),
       db.eventManager.subscribe(
         EVENTS.userSessionExpired,
@@ -971,6 +984,7 @@ export const useAppEvents = () => {
     };
 
     const onAppStateChanged = async (state: AppStateStatus) => {
+      if (state !== "active") void purgeNoteThumbnailCache();
       if (state === "active") {
         notifee.setBadgeCount(0);
         updateStatusBarColor();

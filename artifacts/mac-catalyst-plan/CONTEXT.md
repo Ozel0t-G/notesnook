@@ -47,7 +47,7 @@ cd /Users/ozel0t/Notesnook/notesnook/apps/mobile/ios && xcodebuild -workspace No
 - Nur arm64 (react-native-screens scheitert an x86_64 auf Catalyst). Falls x86_64 mitgebaut wird: `ARCHS=arm64` anhängen.
 - Nach jedem `npm install`: `apps/mobile/ios/scripts/libsodium-catalyst.sh` (libsodium hat keine Catalyst-Slice), danach `pod install`.
 - Fehler aus der Planungsphase erscheinen nur ohne `-IDEBuildingContinueBuildingAfterErrors`.
-- TestFlight-Archiv: `scripts/build-catalyst-testflight.sh` (nur auf ausdrücklichen Wunsch).
+- TestFlight-Archiv: `scripts/build-pencil-testflight.sh --mac` (Upload mit `--mac --upload`; nur auf ausdrücklichen Wunsch).
 - JS-Logs der laufenden App: `/usr/bin/log stream --predicate 'subsystem == "com.facebook.react.log"'` (das zsh-Builtin `log` überdeckt `/usr/bin/log`).
 
 ## Prüfen ohne Computer Use

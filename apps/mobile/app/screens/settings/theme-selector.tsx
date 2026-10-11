@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import { LegendList } from "@legendapp/list";
+import { i18n } from "@lingui/core";
 import { strings } from "@notesnook/intl";
 import {
   ThemeDefinition,
@@ -30,8 +31,14 @@ import type {
   ThemeMetadata
 } from "@notesnook/themes-server";
 import { keepLocalCopy, pick } from "@react-native-documents/picker";
-import React, { useState } from "react";
-import { Linking, TouchableOpacity, View } from "react-native";
+import React, { useRef, useState } from "react";
+import {
+  Linking,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  useWindowDimensions
+} from "react-native";
 import ReactNativeBlobUtil from "react-native-blob-util";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { DatabaseLogger } from "../../common/database";
@@ -55,11 +62,299 @@ import {
   BUILT_IN_THEMES_BY_ID,
   visibleLocalThemes
 } from "../../utils/veyran-theme-migration";
+import {
+  ACCENT_CHOICES,
+  accentChoiceAccessibilityLabel,
+  accentPaletteHeading,
+  accentSwatchColor,
+  contrastForeground,
+  currentLocale,
+  resolveAccentChoiceId
+} from "../../utils/accent-theme";
+
+/**
+ * The locale the palette renders in.
+ *
+ * The app's own translation locale wins whenever a catalogue is actually
+ * loaded. The bundled catalogue ships English only, so the device locale (the
+ * same source the Mac note dates use) is what makes a German person see German
+ * instead of the untranslated source string.
+ */
+function paletteLocale(): string {
+  const active = i18n.locale;
+  if (active && !active.toLowerCase().startsWith("en")) return active;
+  return currentLocale();
+}
+
+/**
+ * The accent palette.
+ *
+ * It is deliberately separate from the theme list below: the theme is *what*
+ * the app looks like, the accent is the one brand color layered on top of it.
+ * A pick here recolors the entire app through the theme engine and is written
+ * to the existing settings blob, so it survives relaunch, a reset and a
+ * light/dark or theme switch. The theme definition itself is never edited, so
+ * "Theme color" (and an imported theme's own colors) stay exactly as authored.
+ */
+const SWATCH_SIZE = 30;
+const SWATCH_PADDING = DefaultAppStyles.GAP_SMALL;
+
+/**
+ * Where the popover hangs, measured against the Themes screen itself.
+ *
+ * The screen is presented inside an iOS Settings sheet. There `measureInWindow`
+ * reports coordinates in the presented screen's own space, while a React
+ * Native `Modal` renders into a separate window-rooted, full-screen hierarchy;
+ * the difference between the two -- the sheet's top inset -- is exactly what
+ * used to place the popover above its trigger. Nothing below ever leaves the
+ * screen's view tree, so there is only one coordinate space and the popover
+ * lands directly under the trigger on iPhone and iPad, portrait or landscape.
+ */
+type AccentAnchor = { x: number; y: number; width: number; height: number };
+
+const COLLAPSED_ACCENT_ANCHOR: AccentAnchor = {
+  x: 0,
+  y: 0,
+  width: 0,
+  height: 0
+};
+
+/**
+ * The popover's width: seven 30pt color-only swatches, their gaps and the
+ * surrounding padding.
+ */
+const ACCENT_POPOVER_WIDTH =
+  ACCENT_CHOICES.length * SWATCH_SIZE +
+  (ACCENT_CHOICES.length - 1) * DefaultAppStyles.GAP_SMALL +
+  SWATCH_PADDING * 2;
+
+/**
+ * The palette trigger: the color currently in effect, with a chevron.
+ *
+ * It is deliberately small. The seven swatches live in `AccentSwatchPopover`,
+ * which the screen renders as its own last child so it can hang over the theme
+ * search without taking any layout space. The trigger keeps none of that
+ * state: it publishes its view through `triggerRef` and toggles through
+ * `onToggle`.
+ */
+function AccentPalette({
+  open,
+  triggerRef,
+  onToggle
+}: {
+  open: boolean;
+  triggerRef: React.RefObject<View | null>;
+  onToggle: () => void;
+}) {
+  const accentColor = useThemeStore((state) => state.accentColor);
+  const baseDarkTheme = useThemeStore((state) => state.baseDarkTheme);
+  const baseLightTheme = useThemeStore((state) => state.baseLightTheme);
+  const scheme = useThemeStore((state) => state.colorScheme);
+  const { colors } = useThemeColors();
+
+  const activeTheme = scheme === "dark" ? baseDarkTheme : baseLightTheme;
+  const resolved = resolveAccentChoiceId(accentColor, activeTheme);
+  const locale = paletteLocale();
+
+  const selectedChoice =
+    ACCENT_CHOICES.find((choice) => choice.id === resolved) ??
+    ACCENT_CHOICES[0];
+  const currentSwatch = accentSwatchColor(selectedChoice, activeTheme);
+
+  return (
+    <View
+      style={{
+        marginBottom: DefaultAppStyles.GAP_VERTICAL,
+        paddingHorizontal: DefaultAppStyles.GAP,
+        marginTop: DefaultAppStyles.GAP_VERTICAL
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between"
+        }}
+      >
+        <Paragraph size={AppFontSize.xs} color={colors.secondary.paragraph}>
+          {accentPaletteHeading(locale)}
+        </Paragraph>
+        <View ref={triggerRef} collapsable={false}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={onToggle}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            accessibilityLabel={accentChoiceAccessibilityLabel(
+              resolved,
+              activeTheme,
+              locale
+            )}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: DefaultAppStyles.GAP_VERTICAL_SMALL,
+              paddingLeft: 5,
+              paddingRight: DefaultAppStyles.GAP_VERTICAL_SMALL,
+              paddingVertical: 3,
+              borderRadius: 100,
+              borderWidth: 1,
+              borderColor: colors.primary.border,
+              backgroundColor: colors.secondary.background
+            }}
+          >
+            <View
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                backgroundColor: currentSwatch,
+                borderWidth: 1,
+                borderColor: colors.primary.border
+              }}
+            />
+            <Icon
+              name="chevron-down"
+              size={16}
+              color={colors.secondary.paragraph}
+            />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+/**
+ * The accent popover: an outside-tap backdrop plus the seven swatches, hung
+ * under the trigger.
+ *
+ * It is rendered inside the Themes screen -- never inside a `Modal` -- so the
+ * `anchor` the screen measured with `measureLayout` is already in this view's
+ * coordinate space. No color names are drawn; the localized names survive as
+ * accessibility labels only. Picking a swatch writes through the theme store,
+ * so the choice persists exactly as before.
+ */
+function AccentSwatchPopover({
+  anchor,
+  onDismiss
+}: {
+  anchor: AccentAnchor;
+  onDismiss: () => void;
+}) {
+  const accentColor = useThemeStore((state) => state.accentColor);
+  const baseDarkTheme = useThemeStore((state) => state.baseDarkTheme);
+  const baseLightTheme = useThemeStore((state) => state.baseLightTheme);
+  const scheme = useThemeStore((state) => state.colorScheme);
+  const { colors } = useThemeColors();
+  const windowWidth = useWindowDimensions().width;
+
+  const activeTheme = scheme === "dark" ? baseDarkTheme : baseLightTheme;
+  const resolved = resolveAccentChoiceId(accentColor, activeTheme);
+  const locale = paletteLocale();
+
+  /**
+   * The popover is right-aligned under the trigger (which itself is right
+   * aligned), clamped to the screen so the seven swatches still fit on a
+   * narrow iPhone without running off the edge.
+   */
+  const popoverLeft = Math.max(
+    SWATCH_PADDING,
+    Math.min(
+      anchor.x + anchor.width - ACCENT_POPOVER_WIDTH,
+      windowWidth - ACCENT_POPOVER_WIDTH - SWATCH_PADDING
+    )
+  );
+
+  return (
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
+      <TouchableOpacity
+        accessible={false}
+        activeOpacity={1}
+        onPress={onDismiss}
+        style={StyleSheet.absoluteFill}
+      />
+      <View
+        style={{
+          position: "absolute",
+          left: popoverLeft,
+          // Directly below the trigger, with a small gap: both numbers come
+          // from the same measurement, so this holds whatever the presenting
+          // sheet does.
+          top: anchor.y + anchor.height + DefaultAppStyles.GAP_SMALL,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: DefaultAppStyles.GAP_SMALL,
+          paddingHorizontal: SWATCH_PADDING,
+          paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL,
+          borderRadius: defaultBorderRadius,
+          borderWidth: 1,
+          borderColor: colors.primary.border,
+          backgroundColor: colors.secondary.background,
+          ...getElevationStyle(4)
+        }}
+      >
+        {ACCENT_CHOICES.map((choice) => {
+          const isSelected = resolved === choice.id;
+          const swatch = accentSwatchColor(choice, activeTheme);
+          return (
+            <TouchableOpacity
+              key={choice.id}
+              onPress={() => {
+                useThemeStore.getState().setAccentColor(choice.id);
+                onDismiss();
+              }}
+              hitSlop={4}
+              accessibilityRole="button"
+              accessibilityState={{ selected: isSelected }}
+              accessibilityLabel={accentChoiceAccessibilityLabel(
+                choice.id,
+                activeTheme,
+                locale
+              )}
+              style={{
+                width: SWATCH_SIZE,
+                height: SWATCH_SIZE,
+                alignItems: "center",
+                justifyContent: "center"
+              }}
+            >
+              <View
+                style={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: 13,
+                  backgroundColor: swatch,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: isSelected ? 2 : 0,
+                  borderColor: colors.primary.heading
+                }}
+              >
+                {isSelected ? (
+                  <Icon
+                    name="check"
+                    size={15}
+                    color={contrastForeground(swatch)}
+                  />
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
 function ThemeSelector() {
-  const [darkTheme, lightTheme] = useThemeStore((state) => [
-    state.darkTheme,
-    state.lightTheme
+  // The list and the "applied" checks use the user's own theme definitions,
+  // never the accent-applied copies, so re-applying a theme can never bake the
+  // current palette color into what gets persisted.
+  const [baseDarkTheme, baseLightTheme] = useThemeStore((state) => [
+    state.baseDarkTheme,
+    state.baseLightTheme
   ]);
 
   const { colors } = useThemeColors();
@@ -68,6 +363,51 @@ function ThemeSelector() {
   const [colorScheme, setColorScheme] = useState<"all" | "dark" | "light">(
     "all"
   );
+
+  /**
+   * The accent popover is positioned and rendered by this screen, not by the
+   * trigger's own subtree: the screen is the common ancestor of the trigger and
+   * of the overlay, which is what lets the two share a coordinate space (see
+   * `AccentAnchor`).
+   */
+  const screenRef = useRef<View | null>(null);
+  const accentTriggerRef = useRef<View | null>(null);
+  const [accentPopover, setAccentPopover] = useState<{
+    open: boolean;
+    anchor: AccentAnchor;
+  }>({ open: false, anchor: COLLAPSED_ACCENT_ANCHOR });
+
+  const closeAccentPopover = () => {
+    setAccentPopover((state) => ({ ...state, open: false }));
+  };
+
+  /**
+   * Measures the trigger against the screen with `measureLayout` and opens the
+   * popover from that rect. Both the trigger and the popover live in the
+   * screen's view tree, so there is exactly one coordinate space, and the
+   * popover lands with a small gap under the trigger on iPhone and iPad,
+   * portrait or landscape, regardless of how the OS presents Settings.
+   */
+  const toggleAccentPopover = () => {
+    if (accentPopover.open) {
+      closeAccentPopover();
+      return;
+    }
+    const screen = screenRef.current;
+    const trigger = accentTriggerRef.current;
+    if (!screen || !trigger) return;
+    trigger.measureLayout(
+      screen,
+      (x, y, width, height) => {
+        setAccentPopover({ open: true, anchor: { x, y, width, height } });
+      },
+      () => {
+        // Not expected: the trigger is a non-collapsed native view. Keep the
+        // popover reachable rather than swallowing the tap.
+        setAccentPopover((state) => ({ ...state, open: true }));
+      }
+    );
+  };
 
   const select = (item: Partial<ThemeMetadata>) => {
     presentSheet({
@@ -217,7 +557,8 @@ function ThemeSelector() {
                   gap: 10
                 }}
               >
-                {darkTheme.id === item.id || lightTheme.id === item.id ? (
+                {baseDarkTheme.id === item.id ||
+                baseLightTheme.id === item.id ? (
                   <IconButton
                     name="check"
                     type="plain"
@@ -275,8 +616,8 @@ function ThemeSelector() {
       );
     },
     [
-      darkTheme.id,
-      lightTheme.id,
+      baseDarkTheme.id,
+      baseLightTheme.id,
       themeColors.primary.heading,
       themeColors.secondary?.paragraph
     ]
@@ -294,10 +635,17 @@ function ThemeSelector() {
     <>
       <SheetProvider context="theme-details" />
       <View
+        ref={screenRef}
+        collapsable={false}
         style={{
           flex: 1
         }}
       >
+        <AccentPalette
+          open={accentPopover.open}
+          triggerRef={accentTriggerRef}
+          onToggle={toggleAccentPopover}
+        />
         <View
           style={{
             paddingHorizontal: DefaultAppStyles.GAP,
@@ -451,8 +799,8 @@ function ThemeSelector() {
           numColumns={2}
           data={
             visibleLocalThemes(
-              darkTheme,
-              lightTheme,
+              baseDarkTheme,
+              baseLightTheme,
               searchQuery,
               colorScheme
             ) as unknown as ThemeMetadata[]
@@ -478,6 +826,12 @@ function ThemeSelector() {
           estimatedItemSize={200}
           renderItem={renderItem}
         />
+        {accentPopover.open ? (
+          <AccentSwatchPopover
+            anchor={accentPopover.anchor}
+            onDismiss={closeAccentPopover}
+          />
+        ) : null}
       </View>
     </>
   );
@@ -496,9 +850,9 @@ const ThemeSetter = ({
 }) => {
   const presentation = getThemePresentation(theme);
   const homepage = presentation.homepage;
-  const [darkTheme, lightTheme] = useThemeStore((state) => [
-    state.darkTheme,
-    state.lightTheme
+  const [baseDarkTheme, baseLightTheme] = useThemeStore((state) => [
+    state.baseDarkTheme,
+    state.baseLightTheme
   ]);
   const themeColors = useThemeColors();
 
@@ -729,7 +1083,7 @@ const ThemeSetter = ({
           </View>
         </View>
 
-        {darkTheme.id === theme.id || lightTheme.id === theme.id ? (
+        {baseDarkTheme.id === theme.id || baseLightTheme.id === theme.id ? (
           <Pressable
             onPress={applyTheme}
             type="accent"
@@ -738,7 +1092,7 @@ const ThemeSetter = ({
             }}
           >
             <Heading color={colors.accentForeground} size={AppFontSize.md}>
-              {darkTheme.id === theme.id
+              {baseDarkTheme.id === theme.id
                 ? strings.appliedDark()
                 : strings.appliedLight()}
             </Heading>

@@ -223,14 +223,107 @@ export class BackendMismatchError extends Error {
  * profile that has never signed in: device date/time format adoption and the
  * generated-title format migration. Their presence therefore cannot
  * distinguish an orphaned account's data from a genuinely fresh profile, so
- * they must not be treated as account data. Any other settings key (including
- * a task tombstone) is still account data.
+ * they must not be treated as account data. Any other settings key, any
+ * non-default value (see isAppDefaultSettingRow) and every tombstone is still
+ * account data.
  */
 export const APP_DEFAULT_SETTING_KEYS = [
   "dateFormat",
   "timeFormat",
   "titleFormat"
 ] as const;
+
+/**
+ * The application also resets a handful of settings to shipped defaults during
+ * feature gating on every fresh Web profile (`resetFeatures`), before anyone
+ * can sign in. Unlike the keys above, presence alone is not enough evidence:
+ * the same key holds account data the moment its value differs from the
+ * shipped default. A row is startup noise only while it still holds that
+ * default value; anything else is a real user preference and stays protected.
+ *
+ * Only `toolbarConfig:desktop` qualifies: `resetFeatures()` writes exactly that
+ * key on fresh Web profiles. The other platform rows are written only by a user
+ * choosing a preset or reordering tools (or by a legacy import), so they stay
+ * account data even when they hold the shipped `default` preset.
+ */
+const DEFAULT_TRASH_CLEANUP_INTERVAL = 7;
+const DEFAULT_TOOLBAR_PRESET = "default";
+/** The only toolbar row `resetFeatures()` writes on a fresh Web profile. */
+const AUTO_RESET_TOOLBAR_CONFIG_KEY = "toolbarConfig:desktop";
+/** Keys the app writes with an empty value to clear a feature-gated default. */
+const EMPTY_BY_DEFAULT_SETTING_KEYS = [
+  "defaultNotebook",
+  "defaultTag"
+] as const;
+
+/** An absent, empty, or serialized-empty value carries no account data. */
+function isEmptySettingValue(value: unknown) {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  return trimmed === "" || trimmed === "null" || trimmed === "undefined";
+}
+
+function isDefaultTrashCleanupInterval(value: unknown) {
+  if (value === undefined || value === null) return false;
+  const interval = Number(value);
+  return (
+    Number.isFinite(interval) && interval === DEFAULT_TRASH_CLEANUP_INTERVAL
+  );
+}
+
+function isDefaultToolbarConfig(value: unknown) {
+  if (isEmptySettingValue(value)) return true;
+  let parsed: unknown = value;
+  if (typeof value === "string") {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      // Unparseable input is not a recognisable default, so protect it.
+      return false;
+    }
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed))
+    return false;
+  const { preset, config, version } = parsed as {
+    preset?: unknown;
+    config?: unknown;
+    version?: unknown;
+  };
+  if (preset !== DEFAULT_TOOLBAR_PRESET) return false;
+  // Every writer that emits the shipped `default` preset (`resetFeatures` on
+  // Web and the mobile preset picker) stores the preset's tools as an array
+  // alongside a numeric toolbar version. An object that merely claims
+  // `preset: "default"` but carries another shape was not written by startup,
+  // so it stays account data.
+  return Array.isArray(config) && typeof version === "number";
+}
+
+/**
+ * True only for a settings row the application writes for itself while
+ * starting up on every profile, including ones that have never signed in.
+ *
+ * Everything else is account data: any other key, any non-default value, and
+ * every tombstone (a tombstone records something the user had, so it is
+ * protected whichever key it names).
+ */
+export function isAppDefaultSettingRow(row: {
+  key: string | null | undefined;
+  value?: unknown;
+  deleted?: unknown;
+}): boolean {
+  if (row.deleted) return false;
+  const key = row.key;
+  if (typeof key !== "string" || !key) return false;
+  if ((APP_DEFAULT_SETTING_KEYS as readonly string[]).includes(key)) return true;
+  if ((EMPTY_BY_DEFAULT_SETTING_KEYS as readonly string[]).includes(key))
+    return isEmptySettingValue(row.value);
+  if (key === "trashCleanupInterval")
+    return isDefaultTrashCleanupInterval(row.value);
+  if (key === AUTO_RESET_TOOLBAR_CONFIG_KEY)
+    return isDefaultToolbarConfig(row.value);
+  return false;
+}
 
 export class BackendAffinity {
   private logger = logger.scope("BackendAffinity");
@@ -368,17 +461,14 @@ export class BackendAffinity {
     // app creates its own default settings rows on first launch (see
     // APP_DEFAULT_SETTING_KEYS), which would otherwise make every fresh profile
     // indistinguishable from an orphaned one. Only a settings row the app does
-    // not write by itself counts as account data.
-    if (
-      await this.db
-        .sql()
-        .selectFrom("settings")
-        .select("key")
-        .where("key", "not in", [...APP_DEFAULT_SETTING_KEYS])
-        .limit(1)
-        .executeTakeFirst()
-    )
-      return true;
+    // not write by itself counts as account data. The value matters too, so
+    // rows are read and classified rather than filtered by key alone.
+    const settingsRows = await this.db
+      .sql()
+      .selectFrom("settings")
+      .select(["key", "value", "deleted"])
+      .execute();
+    if (settingsRows.some((row) => !isAppDefaultSettingRow(row))) return true;
     return (
       this.db.legacyNotes.count() > 0 ||
       this.db.legacyTags.count() > 0 ||

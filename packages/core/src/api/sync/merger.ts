@@ -148,7 +148,14 @@ class Merger {
       !remoteItem.dateUploaded ||
       localItem.dateUploaded === remoteItem.dateUploaded
     ) {
-      return this.mergeItem(remoteItem, localItem);
+      const merged = this.mergeItem(
+        remoteItem,
+        localItem
+      ) as MaybeDeletedItem<Attachment> | undefined;
+      // `mergeItem` returns the remote item when it should replace the local
+      // row; only that path can carry an inbound `failed` marker.
+      if (merged !== remoteItem) return merged;
+      return mergeAttachmentFailedMarker(remoteItem, localItem);
     }
 
     if (localItem.dateUploaded > remoteItem.dateUploaded) return;
@@ -161,10 +168,30 @@ class Merger {
       throw new Error(
         "Conflict could not be resolved in one of the attachments."
       );
-    return remoteItem;
+    return mergeAttachmentFailedMarker(remoteItem, localItem);
   }
 }
 export default Merger;
+
+/**
+ * `failed` is a device-local attachment upload marker and must never be
+ * adopted from another device. Older clients still uploaded it, so strip it
+ * off the inbound item before it replaces the local row. When the remote item
+ * wins, carry this device's own marker (if any) forward instead so an inbound
+ * sync cannot erase the local failure state.
+ */
+function mergeAttachmentFailedMarker(
+  remoteItem: MaybeDeletedItem<Attachment>,
+  localItem: MaybeDeletedItem<Attachment> | undefined
+): MaybeDeletedItem<Attachment> {
+  if (isDeleted(remoteItem)) return remoteItem;
+  const { failed: _remoteFailed, ...withoutRemoteFailed } = remoteItem;
+  const localFailed =
+    localItem && !isDeleted(localItem) ? localItem.failed : undefined;
+  return localFailed !== undefined
+    ? { ...withoutRemoteFailed, failed: localFailed }
+    : withoutRemoteFailed;
+}
 
 export function isContentConflicted(
   localItem: ContentItem,

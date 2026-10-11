@@ -129,7 +129,6 @@ function filterSyncableItems(items: MaybeDeletedItem<Item>[]): {
   const syncableItems = [];
   for (const item of items) {
     ids.push(item.id);
-    const { synced: _synced, ...withoutSyncFlag } = item;
     syncableItems.push(
       JSON.stringify(
         "localOnly" in item && item.localOnly
@@ -138,9 +137,31 @@ function filterSyncableItems(items: MaybeDeletedItem<Item>[]): {
               deleted: true,
               dateModified: item.dateModified
             }
-          : withoutSyncFlag
+          : stripLocalSyncFlags(item)
       )
     );
   }
   return { items: syncableItems, ids };
+}
+
+/**
+ * Removes the flags that must never leave the device before an item is
+ * serialized for outbound sync:
+ *
+ * - `synced` is purely local bookkeeping.
+ * - `failed` is a device-local attachment upload marker. Uploading it would
+ *   expose one device's local upload failure as shared attachment state on
+ *   every other device, so it is stripped from the outbound attachment JSON
+ *   only.
+ *
+ * Every other field is preserved as-is; the sync item version (`v`) is added
+ * later in `toSyncItem`.
+ */
+function stripLocalSyncFlags(item: MaybeDeletedItem<Item>) {
+  if ("type" in item && item.type === "attachment") {
+    const { synced: _synced, failed: _failed, ...withoutFailed } = item;
+    return withoutFailed;
+  }
+  const { synced: _synced, ...withoutSyncFlag } = item;
+  return withoutSyncFlag;
 }

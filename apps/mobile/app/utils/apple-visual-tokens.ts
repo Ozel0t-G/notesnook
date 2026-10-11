@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { VariantsWithStaticColors } from "@notesnook/theme";
 import { Platform } from "react-native";
 import { isMacCatalyst } from "./constants";
-import { macWindowBackground } from "./mac-layout";
+import { macWindowBackground, mixHex } from "./mac-layout";
 
 /*
  * Presentation-only tokens for the iOS/iPadOS visual layer.
@@ -28,13 +28,48 @@ import { macWindowBackground } from "./mac-layout";
  * Values intentionally resolve from the active Notesnook theme so custom
  * themes, dark mode, and the user-selected accent remain authoritative.
  */
-/** UIKit dark grouped colors (systemGroupedBackground and friends). */
+
+/**
+ * Dark Apple surface *bases*, before the active accent is blended in.
+ *
+ * These used to be the plain UIKit grouped greys - pure black grouped
+ * background with `#1C1C1E` cards - which made the dark layer react to nothing
+ * but the appearance. The dark layer is now a soft charcoal (the design
+ * mockup's `#121517` window and `#252A2C` cards) and every token built from it
+ * is tinted with the theme's `primary.accent` (see `IOS_DARK_ACCENT_TINT`), so
+ * changing the accent re-tints the whole dark app while the base stays a
+ * neutral Apple surface rather than a coloured one.
+ *
+ * Still exported (and still named IOS_DARK) because the Mac guard test asserts
+ * that none of these values ever reaches the Mac branch below.
+ */
 export const IOS_DARK = {
-  grouped: "#000000",
-  card: "#1C1C1E",
+  grouped: "#121517",
+  card: "#252A2C",
   selected: "#3A3A3C",
   separator: "#38383A"
 } as const;
+
+/**
+ * How much of the active accent is blended into each dark iOS surface base.
+ *
+ * Kept in the 4-8% band: enough that changing `primary.accent` visibly
+ * re-tints the dark layer, small enough that the surfaces still read as
+ * Apple's neutral dark greys.
+ */
+export const IOS_DARK_ACCENT_TINT = {
+  /** Window-level surfaces: screen, sidebar, navigation and editor surround. */
+  window: 0.06,
+  /** Cards, sheets, fields and the toolbar band. */
+  content: 0.05,
+  /** Hairlines. */
+  separator: 0.06,
+  /** Selection/hover fills. */
+  selected: 0.08
+} as const;
+
+/** How much accent is blended into the dark Mac *elevated* surfaces. */
+export const MAC_DARK_ACCENT_TINT = 0.05;
 
 /**
  * macOS semantic surface colors for the dark appearance (F2, R8), used only for
@@ -46,6 +81,11 @@ export const IOS_DARK = {
  * that background is the active theme's `primary.background`, not a semantic
  * grey - see `withMacSemanticColors` below. No value here may repeat an
  * IOS_DARK value.
+ *
+ * The elevated values below are bases too: in the dark appearance each one is
+ * blended with a few percent of the theme's `primary.accent` before it is
+ * returned (see `MAC_DARK_ACCENT_TINT`), so the cards pick up the accent as
+ * well instead of staying a fixed grey.
  */
 export const MAC_DARK = {
   content: "#1E1E1E",
@@ -79,9 +119,11 @@ export const getAppleVisualTokens = (
   // that key off it (card radii, insets, the three-column reach) must not
   // change. Only the *colors* get a Mac branch below.
   const mac = isMacCatalyst();
-  // iOS dark mode layers get *lighter* towards the front: black grouped
-  // background, cards one step up (secondarySystemGroupedBackground). The
-  // theme's dark colors are the other way round and made cards look like holes.
+  // iOS dark mode layers get *lighter* towards the front: a charcoal window,
+  // cards one step up (secondarySystemGroupedBackground). The theme's dark
+  // colors are the other way round and made cards look like holes. Both layers
+  // are then tinted with the active accent, so the dark app follows the theme's
+  // accent without giving up the neutral Apple surfaces.
   const iosDark = ios && isDark;
   const base = {
     ios,
@@ -151,20 +193,40 @@ export const getAppleVisualTokens = (
   };
   if (mac) return withMacSemanticColors(base, isDark, colors);
   if (!iosDark) return base;
+  const accent = colors.primary.accent;
+  const windowSurface = mixHex(
+    IOS_DARK.grouped,
+    accent,
+    IOS_DARK_ACCENT_TINT.window
+  );
+  const contentSurface = mixHex(
+    IOS_DARK.card,
+    accent,
+    IOS_DARK_ACCENT_TINT.content
+  );
+  const selectionSurface = mixHex(
+    IOS_DARK.selected,
+    accent,
+    IOS_DARK_ACCENT_TINT.selected
+  );
   return {
     ...base,
-    screenBackground: IOS_DARK.grouped,
-    sidebarBackground: IOS_DARK.grouped,
-    contentSurface: IOS_DARK.card,
-    secondarySurface: IOS_DARK.card,
-    elevatedSurface: IOS_DARK.card,
-    toolbarSurface: IOS_DARK.card,
-    navigationSurface: IOS_DARK.grouped,
-    editorSurround: IOS_DARK.grouped,
-    surface: IOS_DARK.card,
-    separator: IOS_DARK.separator,
-    selectedSurface: IOS_DARK.selected,
-    selectionBackground: IOS_DARK.selected
+    screenBackground: windowSurface,
+    sidebarBackground: windowSurface,
+    contentSurface,
+    secondarySurface: contentSurface,
+    elevatedSurface: contentSurface,
+    toolbarSurface: contentSurface,
+    navigationSurface: windowSurface,
+    editorSurround: windowSurface,
+    surface: contentSurface,
+    separator: mixHex(
+      IOS_DARK.separator,
+      accent,
+      IOS_DARK_ACCENT_TINT.separator
+    ),
+    selectedSurface: selectionSurface,
+    selectionBackground: selectionSurface
   };
 };
 
@@ -176,10 +238,15 @@ export const getAppleVisualTokens = (
  * The window-level surfaces are theme-driven, not grey. The Mac window is one
  * background from edge to edge (macOS 26 Notes): the note list column, the
  * editor pane and the band behind the native toolbar all use the active theme's
- * `primary.background`, so switching themes re-tints the whole window instead
- * of leaving a fixed grey. `contentSurface`, `secondarySurface` and `surface`
- * keep their macOS greys: those are elevated cards, sheets and fields that are
- * supposed to float above the window, not the window itself.
+ * `primary.background` tinted with its accent (`macWindowBackground`), so
+ * switching themes - or just the accent - re-tints the whole window instead of
+ * leaving a fixed grey. All window-level surfaces stay the one colour, so the
+ * panes never drift apart.
+ *
+ * `contentSurface`, `secondarySurface` and `surface` keep their macOS greys:
+ * those are elevated cards, sheets and fields that are supposed to float above
+ * the window, not the window itself. In the dark appearance they carry the same
+ * accent tint (`MAC_DARK_ACCENT_TINT`); the light set is returned untouched.
  */
 function withMacSemanticColors<T extends object>(
   base: T,
@@ -187,22 +254,32 @@ function withMacSemanticColors<T extends object>(
   colors: VariantsWithStaticColors<true>
 ) {
   const tokens = isDark ? MAC_DARK : MAC_LIGHT;
-  // Dark: the theme's own primary background. Light: the soft off-white Mac
-  // window surface (`macWindowBackground`), never the theme's pure white.
+  // Dark: the theme's own primary background, accent-tinted. Light: the soft
+  // off-white Mac window surface (`macWindowBackground`), never the theme's
+  // pure white.
   const windowBackground = macWindowBackground(colors, isDark);
+  // Dark elevated surfaces are the macOS semantic greys tinted with the accent;
+  // in light mode this is the identity, so MAC_LIGHT comes back byte for byte.
+  const elevatedSurface = (value: string) =>
+    isDark ? mixHex(value, colors.primary.accent, MAC_DARK_ACCENT_TINT) : value;
+  const contentSurface = elevatedSurface(tokens.content);
+  const secondarySurface = elevatedSurface(tokens.secondarySurface);
+  const selectedSurface = elevatedSurface(tokens.selected);
   return {
     ...base,
     screenBackground: windowBackground,
     sidebarBackground: windowBackground,
-    contentSurface: tokens.content,
-    secondarySurface: tokens.secondarySurface,
-    elevatedSurface: tokens.content,
+    contentSurface,
+    secondarySurface,
+    elevatedSurface: contentSurface,
     toolbarSurface: windowBackground,
     navigationSurface: windowBackground,
     editorSurround: windowBackground,
-    surface: tokens.content,
-    separator: tokens.separator,
-    selectedSurface: tokens.selected,
-    selectionBackground: tokens.selected
+    surface: contentSurface,
+    // `rgba()` in the dark set, so the tint is a no-op there; the light hairline
+    // is returned as-is.
+    separator: elevatedSurface(tokens.separator),
+    selectedSurface,
+    selectionBackground: selectedSurface
   };
 }

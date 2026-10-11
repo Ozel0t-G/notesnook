@@ -7,6 +7,13 @@ bundle ID is `com.ozel0t.note.notesnookpencil`. The visible app name is VeyraN.
 Do not use the upstream `org.streetwriters.notesnook` signing identity or the
 upstream Apple ID `1544027013` for this build.
 
+This record ships the **native Mac Catalyst** build of the VeyraN app (the same
+three-column Notesnook UI as iOS/iPadOS), built from `apps/mobile/ios`. It is
+**not** the Electron desktop app. `scripts/build-macos-testflight.sh` (the old
+Electron path) is disabled and must not be used for this record — it once
+re-uploaded Electron over the native Catalyst build. There is exactly one
+canonical Mac release path: `scripts/build-pencil-testflight.sh --mac`.
+
 ## Signing prerequisites
 
 Before uploading, add the macOS platform to the existing VeyraN app record
@@ -24,67 +31,61 @@ The platform has already been added for the current private beta.
 3. Keep any App Store Connect API key outside the repository. Never commit
    certificates, private keys, or provisioning profiles.
 
-The account also contains cloud-managed distribution certificates. The local
-Electron build requires signing identities with private keys in this Mac's
-keychain, so the cloud-managed entries do not satisfy step 1. Do not revoke
-the existing team-wide Apple Distribution certificate to make this build.
+The account also contains cloud-managed distribution certificates. The Mac
+Catalyst export requires a locally installed **Apple Distribution** signing
+identity with its private key in this Mac's keychain — the legacy local
+`3rd Party Mac Developer Application` identity is rejected by Mac App Store
+provisioning profiles. The build script pins `signingCertificate` (and
+`installerSigningCertificate`) in the export options and fails fast if no
+matching `Apple Distribution` identity is found; set `PENCIL_MAC_SIGNING_CERT`
+to an explicit SHA-1 only if auto-detection is ambiguous. Do not revoke the
+existing team-wide Apple Distribution certificate to make this build.
 
 ## Build and upload
 
-Build the desktop web app when source files have changed:
+The canonical Mac Catalyst command is:
 
 ```bash
-npm run tx @notesnook/web:build:desktop
+scripts/build-pencil-testflight.sh --mac --upload
 ```
 
-Then build the Apple Silicon Mac App Store package:
+`--mac` builds the Mac Catalyst variant of the shared iOS app (the macOS platform
+of the same App Store Connect record). Do **not** pass `--bump` on a Mac-only
+run: it increments the **iOS** build number, which this build does not need. The
+Mac build number is always a fresh Unix-seconds timestamp (`date +%s`) passed to
+`xcodebuild` as `CURRENT_PROJECT_VERSION`, which is monotonic and ahead of the
+last shipped Mac build. It is never written into the xcconfig, so the iOS build
+number is unaffected.
+
+On `--mac` the script prepares libsodium automatically: the vendored
+`libsodium.xcframework` has no Mac Catalyst slice, so
+`apps/mobile/ios/scripts/libsodium-catalyst.sh` extends it (idempotently) before
+`pod install`. On a clean checkout this needs a normal `npm install` first and
+one-time network access to fetch the pinned upstream libsodium tarball.
+
+Drop `--upload` to export only; you can then deliver the export with Apple's
+Transporter app. For a headless upload, export a personal App Store Connect API
+key first and then run the command above:
 
 ```bash
-export VEYRAN_MAC_PROVISIONING_PROFILE="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/<profile>.provisionprofile"
-scripts/build-macos-testflight.sh
+export PENCIL_ASC_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_<id>.p8"
+export PENCIL_ASC_KEY_ID="<id>"
+export PENCIL_ASC_ISSUER_ID="<issuer-id>"
 ```
 
-The script selects a new Unix-seconds build number. To reproduce a build,
-set `VEYRAN_MAC_BUILD_NUMBER` explicitly. The package is written to
-`apps/desktop/output/testflight-macos/mas-arm64/` and is never published by the build
-script. Validate the signed app and profile before upload:
+The Electron-only `scripts/build-macos-testflight.sh` and
+`scripts/upload-macos-testflight.sh` path is retired for this record and must not
+be used.
 
-```bash
-codesign --verify --strict --verbose=2 apps/desktop/output/testflight-macos/mas-arm64/VeyraN.app
-codesign -d --entitlements :- apps/desktop/output/testflight-macos/mas-arm64/VeyraN.app
-security cms -D -i "$VEYRAN_MAC_PROVISIONING_PROFILE"
-```
+Assign the uploaded macOS build to an internal TestFlight group and install it
+from TestFlight on an Apple Silicon Mac. Do not submit this private beta for App
+Store review or enable external testing unless requested.
 
-Upload the generated `.pkg` to the **VeyraN** app record using Apple's
-Transporter app while signed into the account with access to VeyraN. Drag the
-package into Transporter and choose **Deliver**. As an alternative, use a
-personal App Store Connect API key with the command below when API access is
-available:
-
-```bash
-export VEYRAN_ASC_KEY_PATH="$HOME/.appstoreconnect/private_keys/AuthKey_<id>.p8"
-export VEYRAN_ASC_KEY_ID="<id>"
-export VEYRAN_ASC_ISSUER_ID="<issuer-id>"
-scripts/upload-macos-testflight.sh apps/desktop/output/testflight-macos/mas-arm64/VeyraN-<build>-arm64.pkg
-```
-
-The upload script validates before uploading and waits for Apple processing.
-After processing, assign the macOS build to an internal TestFlight group and
-install it from TestFlight on an Apple Silicon Mac. Do not submit this private
-beta for App Store review or enable external testing unless requested.
-
-Apple's Transporter checks that `icon.icns` in the app bundle contains a
-512-point @2x image. The build script checks this before presenting a package
-as ready for upload.
-
-This first package supports Apple Silicon Macs running macOS 13 or later. The
-TestFlight package uses App Sandbox with network access, user-selected file
-read/write and printing. It claims only its own team-prefixed app group,
-`QXCNJY73A8.com.ozel0t.note.notesnookpencil`, for Electron's sandboxed
-process communication; the provisioning profile permits this through its
-`QXCNJY73A8.*` wildcard. It does not use the upstream app group. The app uses
-the existing `/Documents/Notesnook/` sandbox exception for its default backup
-directory. The helper-process entitlements retain the upstream library
-validation exception needed by the Electron build. The app uses
-the same export-compliance declaration as the private iOS VeyraN build,
-`ITSAppUsesNonExemptEncryption = false`, recorded in `private-testflight.md`.
+The Mac Catalyst bundle is sandboxed with network access; it claims the app
+group `group.com.ozel0t.note.notesnookpencil` shared with the iOS build (see
+`apps/mobile/ios/Notesnook/Notesnook-macOS.entitlements`), and its keychain
+access group is `$(AppIdentifierPrefix)group.com.ozel0t.note.notesnookpencil`.
+`QXCNJY73A8` is the team ID, not part of the app group identifier. It does not
+use the upstream app group. It uses the same export-compliance declaration as
+the private iOS VeyraN build, `ITSAppUsesNonExemptEncryption = false`, recorded
+in `private-testflight.md`.

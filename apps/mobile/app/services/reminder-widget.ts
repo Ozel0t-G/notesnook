@@ -299,6 +299,9 @@ async function writeCurrentSnapshot() {
   const appearance = SettingsService.getProperty("useSystemTheme")
     ? "system"
     : themeState.colorScheme;
+  // The store holds the accent-applied themes, so the widget's brand accent
+  // always follows Settings > Themes' palette. The theme definition itself is
+  // never edited: only these two existing snapshot v3 fields carry the color.
   const options = {
     appearance,
     accentLight: themeState.lightTheme.scopes.base.primary.accent,
@@ -429,7 +432,10 @@ function start() {
     if (
       state.colorScheme !== previous.colorScheme ||
       state.darkTheme !== previous.darkTheme ||
-      state.lightTheme !== previous.lightTheme
+      state.lightTheme !== previous.lightTheme ||
+      // A palette change rewrites both themes, but watching the choice itself
+      // keeps the widget correct even if a future theme keeps its accents.
+      state.accentColor !== previous.accentColor
     ) {
       update();
     }

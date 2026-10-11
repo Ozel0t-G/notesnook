@@ -38,7 +38,11 @@ import { RootNavigation } from "./navigation/navigation-stack";
 import Notifications from "./services/notifications";
 import SettingsService from "./services/settings";
 import { TipManager } from "./services/tip-manager";
-import { changeSystemBarColors, useThemeStore } from "./stores/use-theme-store";
+import {
+  changeSystemBarColors,
+  getEffectiveTheme,
+  useThemeStore
+} from "./stores/use-theme-store";
 import { useUserStore } from "./stores/use-user-store";
 import { syncMacWindowAppearance } from "./utils/mac-window-appearance";
 import RNBootSplash from "react-native-bootsplash";
@@ -125,10 +129,10 @@ const App = (props: { configureMode: "note-preview" }) => {
   );
 };
 
-let currTheme =
-  useThemeStore.getState().colorScheme === "dark"
-    ? SettingsService.getProperty("darkTheme")
-    : SettingsService.getProperty("lighTheme");
+// The engine renders the *effective* theme: the user's theme with the accent
+// palette applied. That is what recolors the entire app, not just the settings
+// preview.
+let currTheme = getEffectiveTheme(useThemeStore.getState());
 useThemeEngineStore.getState().setTheme(currTheme);
 
 export const withTheme = (

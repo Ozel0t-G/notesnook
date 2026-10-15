@@ -49,8 +49,22 @@ export type Settings = {
    * layout.
    */
   isMacCatalyst: boolean;
+  /**
+   * Narrow iPad only: the editor is the pager's document *page* of the
+   * two-page workspace (see `apps/mobile/app/navigation/fluid-panels-view.tsx`),
+   * so it needs a back affordance of its own - `deviceMode` is "tablet" there
+   * and the device-mode rules cannot see the two-page layout. Additive and
+   * optional: false/absent everywhere else leaves the header unchanged.
+   */
+  pagedPresentation?: boolean;
   premium: boolean;
   tools: ToolbarGroupDefinition[];
+  /**
+   * The preset the native app has stored for this platform's toolbar. Absent
+   * on payloads that predate presets: those keep their exact `tools` groups
+   * (legacy), see `resolveToolbarGroups`.
+   */
+  toolbarPreset?: "default" | "minimal" | "custom";
   noToolbar?: boolean;
   noHeader?: boolean;
   doubleSpacedLines?: boolean;

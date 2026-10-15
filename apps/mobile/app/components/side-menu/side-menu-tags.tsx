@@ -204,7 +204,9 @@ const TagItem = (props: {
   );
 };
 
-export const SideMenuTags = () => {
+export const SideMenuTags = ({
+  showHeader = true
+}: { showHeader?: boolean } = {}) => {
   const [tags, isLoading] = useTags();
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
@@ -273,6 +275,7 @@ export const SideMenuTags = () => {
     >
       {!tags || tags?.placeholders.length === 0 ? (
         <SideMenuListEmpty
+          showHeader={showHeader}
           placeholder={strings.emptyPlaceholders("tag")}
           isLoading={loading}
         />
@@ -286,14 +289,16 @@ export const SideMenuTags = () => {
             bouncesZoom={false}
             overScrollMode="never"
             ListHeaderComponent={
-              <View
-                style={{
-                  backgroundColor: visual.sidebarBackground,
-                  paddingTop: DefaultAppStyles.GAP_VERTICAL
-                }}
-              >
-                <SideMenuHeader />
-              </View>
+              showHeader ? (
+                <View
+                  style={{
+                    backgroundColor: visual.sidebarBackground,
+                    paddingTop: DefaultAppStyles.GAP_VERTICAL
+                  }}
+                >
+                  <SideMenuHeader />
+                </View>
+              ) : undefined
             }
             renderItem={renderItem}
           />

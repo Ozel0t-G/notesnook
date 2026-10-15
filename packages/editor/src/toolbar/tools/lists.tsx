@@ -20,11 +20,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { ToolProps } from "../types.js";
 import { Box, Button, Flex } from "@theme-ui/components";
 import { IconNames } from "../icons.js";
-import { useCallback, useRef } from "react";
+import { useCallback, useContext, useRef } from "react";
 import { SplitButton } from "../components/split-button.js";
 import {
+  PopupParentContext,
   usePopupManager,
-  useToolbarLocation
+  useToolbarLocation,
+  useToolbarStore
 } from "../stores/toolbar-store.js";
 import { getToolbarElement } from "../utils/dom.js";
 import { PopupWrapper } from "../../components/popup-presenter/index.js";
@@ -52,10 +54,23 @@ function ListTool<TListStyleTypes extends string>(
   const toolbarLocation = useToolbarLocation();
   const isBottom = toolbarLocation === "bottom";
   const buttonRef = useRef<HTMLButtonElement>(null);
+  // See `ColorTool`: `parentGroup` is the enclosing group's joined-tool id,
+  // not an actual popup id, so prefer the real enclosing popup from
+  // `PopupParentContext` and only fall back to `parentGroup` when it names a
+  // currently open popup other than this one.
+  const contextParent = useContext(PopupParentContext);
+  const openedPopups = useToolbarStore((store) => store.openedPopups);
+  const parent =
+    contextParent ??
+    (parentGroup &&
+    parentGroup !== props.title &&
+    typeof openedPopups[parentGroup] === "object"
+      ? parentGroup
+      : undefined);
   const { toggle, isOpen, close } = usePopupManager({
     id: props.title,
     group: "lists",
-    parent: parentGroup
+    parent
   });
 
   return (

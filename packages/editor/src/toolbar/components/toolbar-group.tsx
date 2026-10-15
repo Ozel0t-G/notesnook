@@ -25,6 +25,18 @@ import { MoreTools } from "./more-tools.js";
 import { getToolDefinition } from "../tool-definitions.js";
 import { strings } from "@notesnook/intl";
 
+/**
+ * Reserved namespace for the "more" popups produced by this component. A
+ * collapsed group uses its tools' joined ids as a group id, so a single-tool
+ * group (`[["headings"]]`, id `"headings"`) would otherwise give its "more"
+ * popup the id of the leaf popup it contains (`Headings`' dropdown is also
+ * `"headings"`): opening "more" would immediately open the leaf menu too, and
+ * the two could never be toggled independently. Prefixing keeps the popup that
+ * *contains* the tools distinct from the tools' own popups. No `ToolId` and no
+ * leaf popup id (`headings`, `macFormat`, ...) starts with this prefix.
+ */
+const MORE_POPUP_ID_PREFIX = "more-";
+
 export type ToolbarGroupProps = FlexProps & {
   tools: ToolbarGroupDefinition;
   editor: Editor;
@@ -54,7 +66,7 @@ export function ToolbarGroup(props: ToolbarGroupProps) {
               key={"more-tools"}
               title={strings.more()}
               icon="more"
-              popupId={toolId.join("")}
+              popupId={`${MORE_POPUP_ID_PREFIX}${toolId.join("")}`}
               tools={toolId}
               editor={editor}
             />

@@ -17,6 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { strings } from "@notesnook/intl";
+import { IPadSourceSymbol, isIPadSourceList } from "./ipad-source-navigation";
 import { useThemeColors } from "@notesnook/theme";
 import React, { useEffect } from "react";
 import { View } from "react-native";
@@ -52,9 +54,11 @@ export const NotebookItem = ({
   onLongPress,
   onAddNotebook,
   canDisableSelectionMode,
-  disableExpand
+  disableExpand,
+  sourceList = false
 }: {
   index: number;
+  sourceList?: boolean;
   item: TreeItem;
   expanded?: boolean;
   onToggleExpanded?: () => void;
@@ -95,6 +99,156 @@ export const NotebookItem = ({
     };
   }, [item.notebook.id, notebook.id, onItemUpdate]);
 
+  const onSelectOrOpen = async () => {
+    if (selectionEnabled) {
+      const state = selectionStore.getState();
+
+      if (selected) {
+        state.markAs(item.notebook, "deselected");
+        return;
+      }
+
+      if (!state.multiSelect) {
+        const keys = Object.keys(state.selection);
+        const nextState: any = {};
+        for (const key in keys) {
+          nextState[key] = !state.initialState[key] ? undefined : "deselected";
+        }
+
+        state.setSelection({
+          [item.notebook.id]: "selected",
+          ...nextState
+        });
+      } else {
+        state.markAs(item.notebook, "selected");
+      }
+
+      if (
+        selectionStore.getState().getSelectedItemIds().length === 0 &&
+        canDisableSelectionMode
+      ) {
+        selectionStore.setState({
+          enabled: false
+        });
+      }
+    } else {
+      onPress?.();
+    }
+  };
+
+  if (sourceList && isIPadSourceList()) {
+    const count = totalNotes?.(notebook.id) || 0;
+    return (
+      <View
+        style={{
+          paddingLeft: Math.min(item.depth, 5) * DefaultAppStyles.GAP_SMALL * 2,
+          width: "100%",
+          opacity: item.disabled ? 0.5 : 1
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            minHeight: 44,
+            borderRadius: defaultBorderRadius,
+            backgroundColor:
+              isFocused || selected ? visual.selectedSurface : undefined
+          }}
+        >
+          <Pressable
+            testID={`notebook-item-${item.depth}-${index}`}
+            onPress={onSelectOrOpen}
+            onLongPress={onLongPress}
+            accessibilityRole="button"
+            accessibilityLabel={notebook.title}
+            accessibilityState={{
+              selected: selectionEnabled ? !!selected : !!isFocused
+            }}
+            accessibilityValue={{ text: strings.notes(count) }}
+            type="transparent"
+            noborder
+            style={{
+              flex: 1,
+              width: "auto",
+              minHeight: 44,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: DefaultAppStyles.GAP_SMALL,
+              paddingHorizontal: DefaultAppStyles.GAP_SMALL,
+              paddingVertical: DefaultAppStyles.GAP_VERTICAL_SMALL
+            }}
+          >
+            <IPadSourceSymbol
+              name="book.closed"
+              color={
+                isFocused || selected
+                  ? colors.primary.accent
+                  : colors.primary.icon
+              }
+              size={AppFontSize.md}
+            />
+            <Paragraph
+              size={AppFontSize.md}
+              color={
+                isFocused ? colors.selected.paragraph : colors.primary.paragraph
+              }
+              style={{ flex: 1, flexShrink: 1 }}
+            >
+              {notebook.title}
+            </Paragraph>
+            {selectionEnabled ? (
+              <IPadSourceSymbol
+                name={selected ? "checkmark.circle.fill" : "circle"}
+                size={AppFontSize.md}
+                color={colors.primary.accent}
+              />
+            ) : (
+              <Paragraph size={AppFontSize.sm} color={visual.secondaryText}>
+                {count}
+              </Paragraph>
+            )}
+          </Pressable>
+          {item.hasChildren && !disableExpand ? (
+            <Pressable
+              testID={`expand-notebook-${index}`}
+              accessibilityRole="button"
+              accessibilityLabel={notebook.title}
+              accessibilityState={{ expanded: !!expanded }}
+              onPress={onToggleExpanded}
+              type="transparent"
+              noborder
+              style={{ width: 44, minHeight: 44 }}
+            >
+              <IPadSourceSymbol
+                name={expanded ? "chevron.down" : "chevron.right"}
+                size={AppFontSize.xs}
+                color={visual.secondaryText}
+              />
+            </Pressable>
+          ) : null}
+          {onAddNotebook ? (
+            <Pressable
+              testID={`add-notebook-${index}`}
+              accessibilityRole="button"
+              accessibilityLabel={strings.addNotebook()}
+              onPress={onAddNotebook}
+              type="transparent"
+              noborder
+              style={{ width: 44, minHeight: 44 }}
+            >
+              <IPadSourceSymbol
+                name="plus"
+                size={AppFontSize.md}
+                color={colors.primary.accent}
+              />
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View
       style={{
@@ -113,44 +267,7 @@ export const NotebookItem = ({
         type={isFocused || selected ? "selected" : "transparent"}
         onLongPress={onLongPress}
         testID={`notebook-item-${item.depth}-${index}`}
-        onPress={async () => {
-          if (selectionEnabled) {
-            const state = selectionStore.getState();
-
-            if (selected) {
-              state.markAs(item.notebook, "deselected");
-              return;
-            }
-
-            if (!state.multiSelect) {
-              const keys = Object.keys(state.selection);
-              const nextState: any = {};
-              for (const key in keys) {
-                nextState[key] = !state.initialState[key]
-                  ? undefined
-                  : "deselected";
-              }
-
-              state.setSelection({
-                [item.notebook.id]: "selected",
-                ...nextState
-              });
-            } else {
-              state.markAs(item.notebook, "selected");
-            }
-
-            if (
-              selectionStore.getState().getSelectedItemIds().length === 0 &&
-              canDisableSelectionMode
-            ) {
-              selectionStore.setState({
-                enabled: false
-              });
-            }
-          } else {
-            onPress?.();
-          }
-        }}
+        onPress={onSelectOrOpen}
         style={{
           justifyContent: "space-between",
           width: "100%",

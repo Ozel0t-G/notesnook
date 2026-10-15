@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 import {
   Editor,
-  getMacToolbarGroups,
+  resolveToolbarGroups,
   TiptapOptions,
   Toolbar,
   useTiptap
@@ -35,11 +35,28 @@ export default function TiptapEditorWrapper(props: {
   options: Partial<TiptapOptions>;
   onEditorUpdate: (editor: Editor) => void;
   settings: Settings;
+  /**
+   * iOS document chrome only. `true` is the calm reading presentation: the
+   * formatting toolbar stays *mounted* (its stores, tools and lifecycle are
+   * untouched) but is hidden in CSS. Optional and defaulting to the previous
+   * behaviour, so every other caller renders exactly as before.
+   */
+  readingPresentation?: boolean;
 }) {
   const tab = useTabContext();
   const editor = useTiptap(props.options, [props.options]);
   globalThis.editors[tab.id] = editor;
   const isMac = props.settings.isMacCatalyst;
+  /**
+   * The compact iPhone/iPad toolbar is an opt-in of the *host*, not of the
+   * settings payload: `__PLATFORM__` is injected by the native app before this
+   * bundle runs (apps/mobile/app/screens/editor/index.tsx) and is `"ios"` for
+   * iPhone, iPad *and* Mac Catalyst. Mac Catalyst is an iOS build, so its
+   * `"ios"` is normalized off here - the Mac presentation (`isMac`) always
+   * wins - and any other or unknown host (`"android"`, an unset global) stays
+   * `false`, which keeps the previous web/Android toolbar exactly as it was.
+   */
+  const ios = globalThis.__PLATFORM__ === "ios" && !isMac;
 
   useEffect(() => {
     props.onEditorUpdate(editor);
@@ -52,8 +69,23 @@ export default function TiptapEditorWrapper(props: {
           <Toolbar
             className="theme-scope-editorToolbar"
             macCatalyst={isMac}
+            /**
+             * The host's compact-bar opt-in, forwarded alongside the Mac flag.
+             * The shared toolbar uses it for the iOS-specific presentation of
+             * the "Aa" format column; it stays `false` everywhere else, so the
+             * previous web/Android bar is untouched.
+             */
+            ios={ios}
             sx={{
-              display: props.settings.noToolbar ? "none" : "flex",
+              /**
+               * `noToolbar` is always honoured; the iOS quiet reading
+               * presentation merely hides the (still mounted) toolbar. When
+               * neither applies the bar is the previous flex row.
+               */
+              display:
+                props.settings.noToolbar || props.readingPresentation
+                  ? "none"
+                  : "flex",
               overflowY: "hidden",
               minHeight: isMac ? MAC_TOOLBAR_CAPSULE_HEIGHT : "45px",
               ...(isMac
@@ -88,18 +120,42 @@ export default function TiptapEditorWrapper(props: {
              * and Android bottom toolbar instead of downward past the edge.
              */
             location="bottom"
+            /**
+             * The quiet reading presentation hides the toolbar in CSS only. Its
+             * zero-size rect must not anchor the automatic LinkSettings popup
+             * (that would clip it above the status bar), so the automatic popup
+             * is disabled while reading and returns with `Edit` (the tool and
+             * its commands stay exactly as they are).
+             */
+            linkSettingsAutoOpen={!props.readingPresentation}
+            /**
+             * Same quiet-reading rationale as `linkSettingsAutoOpen` above,
+             * for the toolbar's own popups ("more", "Aa", any nested menu):
+             * an already-open popup renders through its own portal outside
+             * the toolbar's (hidden) DOM subtree, so CSS alone cannot hide
+             * it - it survives at the toolbar's clipped origin, above the
+             * native app's own chrome. This gates only the popup's rendered
+             * visibility; its open/pinned state in the toolbar store is left
+             * untouched and reappears exactly as it was once `Edit` returns.
+             */
+            popupsVisible={!props.readingPresentation}
             tools={
               /**
-               * On Mac the toolbar is the Notes-style simplified format bar
-               * (WP08 R6): one "Aa" popover plus list buttons instead of the
-               * mobile web toolbar. Every other platform keeps the toolbar
-               * from the app settings unchanged.
+               * The configured toolbar, resolved by the shared resolver from
+               * the settings the native app sends: an explicit preset wins
+               * (Mac Catalyst's "default" is the Notes-style simplified format
+               * bar: one "Aa" popover plus list buttons), a legacy payload
+               * without a preset keeps its exact stored groups, and a
+               * first-frame payload without either gets the host default:
+               * Mac Catalyst the Notes-style format bar, the opted-in iOS host
+               * the compact iPhone/iPad bar.
                */
-              isMac
-                ? getMacToolbarGroups()
-                : Array.isArray(props.settings.tools)
-                ? [...props.settings.tools]
-                : []
+              resolveToolbarGroups({
+                toolbarPreset: props.settings.toolbarPreset,
+                tools: props.settings.tools,
+                macCatalyst: isMac,
+                ios
+              })
             }
             defaultFontFamily={props.settings.fontFamily}
             defaultFontSize={props.settings.fontSize}

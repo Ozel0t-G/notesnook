@@ -126,6 +126,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 + (BOOL)toolbarSearchAvailable;
 
+/** Main thread; follows the existing menu-context note target. */
++ (void)refreshEditorAvailability;
+
 @end
 
 #endif

@@ -18,7 +18,36 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { notesnook } from "../test.ids";
-import { TestBuilder } from "./utils";
+import { TestBuilder, Tests } from "./utils";
+
+// iOS uses the existing native More submenus; Android retains its sort sheet.
+const openListOptions = (section: "Sort By" | "Group By") => async () => {
+  if (device.getPlatform() !== "ios") {
+    await Tests.fromId("icon-sort").waitAndTap();
+    return;
+  }
+  await Tests.fromId("header-more-menu").waitAndTap();
+  await Tests.fromText(section).waitAndTap();
+};
+const closeSortSheet = async () => {
+  if (device.getPlatform() !== "ios") await device.pressBack();
+};
+const checkSortedList = async () => {
+  if (device.getPlatform() === "ios") {
+    await Tests.fromText("Note 1").isVisible(5000);
+  } else {
+    await Tests.fromId(notesnook.listitem.menu).waitAndTap();
+    await device.pressBack();
+  }
+};
+const toggleListStyle = (label: string) => async () => {
+  if (device.getPlatform() !== "ios") {
+    await Tests.fromId("icon-compact-mode").waitAndTap();
+    return;
+  }
+  await Tests.fromId("header-more-menu").waitAndTap();
+  await Tests.fromText(label).waitAndTap();
+};
 
 describe("Sort & filter", () => {
   it("Sort by date-edited/date-created", async () => {
@@ -35,17 +64,16 @@ describe("Sort & filter", () => {
           .typeText("Edited ", true);
       })
       .pressBack(2)
-      .waitAndTapById("icon-sort")
+      .addStep(openListOptions("Sort By"))
       .wait(500)
       .waitAndTapByText("Date created")
-      .pressBack()
-      .waitAndTapById(notesnook.listitem.menu)
-      .pressBack()
-      .waitAndTapById("icon-sort")
+      .addStep(closeSortSheet)
+      .addStep(checkSortedList)
+      .addStep(openListOptions("Sort By"))
       .wait(500)
       .waitAndTapByText("Date edited")
-      .pressBack()
-      .waitAndTapById(notesnook.listitem.menu)
+      .addStep(closeSortSheet)
+      .addStep(checkSortedList)
       .run();
   });
 
@@ -53,11 +81,17 @@ describe("Sort & filter", () => {
     await TestBuilder.create()
       .prepare()
       .createNote("Note 1", "Note 1")
-      .waitAndTapById("icon-sort")
+      .addStep(openListOptions("Group By"))
       .wait(500)
       .waitAndTapByText("None")
-      .pressBack()
-      .isVisibleByText("ALL")
+      .addStep(closeSortSheet)
+      .addStep(async () => {
+        if (device.getPlatform() === "ios") {
+          // The redundant All section is intentionally hidden on Apple lists.
+          await Tests.fromText("Note 1").isVisible(5000);
+          await Tests.fromText("Today").isNotVisible();
+        } else await Tests.fromText("ALL").isVisible();
+      })
       .run();
   });
 
@@ -65,10 +99,10 @@ describe("Sort & filter", () => {
     await TestBuilder.create()
       .prepare()
       .createNote("Note 1", "Note 1")
-      .waitAndTapById("icon-sort")
+      .addStep(openListOptions("Group By"))
       .wait(500)
       .waitAndTapByText("Abc")
-      .pressBack()
+      .addStep(closeSortSheet)
       .isVisibleByText("N")
       .run();
   });
@@ -77,7 +111,7 @@ describe("Sort & filter", () => {
     await TestBuilder.create()
       .prepare()
       .createNote("Note 1", "Note 1")
-      .waitAndTapById("icon-sort")
+      .addStep(openListOptions("Group By"))
       .wait(500)
       .waitAndTapByText("Year")
       .run();
@@ -87,7 +121,7 @@ describe("Sort & filter", () => {
     await TestBuilder.create()
       .prepare()
       .createNote("Note 1", "Note 1")
-      .waitAndTapById("icon-sort")
+      .addStep(openListOptions("Group By"))
       .wait(500)
       .waitAndTapByText("Week")
       .run();
@@ -97,7 +131,7 @@ describe("Sort & filter", () => {
     await TestBuilder.create()
       .prepare()
       .createNote("Note 1", "Note 1")
-      .waitAndTapById("icon-sort")
+      .addStep(openListOptions("Group By"))
       .wait(500)
       .waitAndTapByText("Month")
       .run();
@@ -107,9 +141,12 @@ describe("Sort & filter", () => {
     await TestBuilder.create()
       .prepare()
       .createNote("Note 1", "Note 1")
-      .waitAndTapById("icon-compact-mode")
-      .isNotVisibleByText("Note 1")
-      .waitAndTapById("icon-compact-mode")
+      .addStep(toggleListStyle("View as Compact List"))
+      .addStep(async () => {
+        if (device.getPlatform() !== "ios")
+          await Tests.fromText("Note 1").isNotVisible();
+      })
+      .addStep(toggleListStyle("View with Previews"))
       .isVisibleByText("Note 1")
       .run();
   });

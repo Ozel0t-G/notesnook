@@ -222,7 +222,16 @@ const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
               }
             : undefined
         }
-        onCompose={Platform.OS === "ios" ? openEditor : undefined}
+        onCompose={
+          Platform.OS === "ios"
+            ? () =>
+                openEditor(
+                  notebook
+                    ? { id: notebook.id, title: notebook.title }
+                    : undefined
+                )
+            : undefined
+        }
         hasSearch={true}
         onSearch={() => {
           if (!notebook) return;
@@ -264,47 +273,52 @@ const NotebookScreen = ({ route, navigation }: NavigationProps<"Notebook">) => {
             title: notebook?.title || "",
             paragraph: strings.notesEmpty(),
             button: strings.addFirstNote(),
-            action: openEditor,
+            action: () =>
+              openEditor(
+                notebook
+                  ? { id: notebook.id, title: notebook.title }
+                  : undefined
+              ),
             loading: strings.loadingNotes()
           }}
         />
       </DelayLayout>
       {/* iOS: compose sits in the navigation bar, the tree in the "…" menu. */}
       {Platform.OS === "ios" ? null : (
-      <View
-        style={{
-          position: "absolute",
-          bottom: 20,
-          right: 20,
-          alignItems: "center"
-        }}
-      >
-        <FloatingButton
-          icon="file-tree"
-          testID="notebookTreeSheet"
-          size="small"
-          onPress={() => {
-            if (!notebook) return;
-            Notebooks.present(notebook);
-          }}
+        <View
           style={{
-            position: "relative",
-            right: 0,
-            bottom: 0,
-            paddingBottom: 10
+            position: "absolute",
+            bottom: 20,
+            right: 20,
+            alignItems: "center"
           }}
-        />
-        <FloatingButton
-          onPress={openEditor}
-          alwaysVisible
-          style={{
-            position: "relative",
-            paddingTop: 10,
-            right: 0,
-            bottom: 0
-          }}
-        />
-      </View>
+        >
+          <FloatingButton
+            icon="file-tree"
+            testID="notebookTreeSheet"
+            size="small"
+            onPress={() => {
+              if (!notebook) return;
+              Notebooks.present(notebook);
+            }}
+            style={{
+              position: "relative",
+              right: 0,
+              bottom: 0,
+              paddingBottom: 10
+            }}
+          />
+          <FloatingButton
+            onPress={openEditor}
+            alwaysVisible
+            style={{
+              position: "relative",
+              paddingTop: 10,
+              right: 0,
+              bottom: 0
+            }}
+          />
+        </View>
       )}
       <SelectionHeader
         id={route.params?.id}

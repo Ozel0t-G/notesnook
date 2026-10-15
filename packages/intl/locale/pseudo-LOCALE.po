@@ -8907,3 +8907,11 @@ msgstr ""
 #: src/strings.ts:1941
 msgid "Zoom out"
 msgstr ""
+
+#: src/strings.ts
+msgid "Columns"
+msgstr ""
+
+#: src/strings.ts
+msgid "Rows"
+msgstr ""

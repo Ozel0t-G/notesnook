@@ -27,7 +27,12 @@ import Link, { LinkAttributes } from "../../extensions/link/index.js";
 import { ImageNode } from "../../extensions/image/index.js";
 import { findMark, selectionToOffset } from "../../utils/prosemirror.js";
 import { Editor, getMarkAttributes } from "@tiptap/core";
+import { insertInternalLink } from "../tools/internal-link-command.js";
+import type { Editor as ForkedEditor } from "../../types.js";
 import { strings } from "@notesnook/intl";
+
+import { useToolbarStore } from "../stores/toolbar-store.js";
+import { getEditorContainer, getEditorDOM } from "../utils/dom.js";
 
 export type LinkPopupProps = {
   link?: LinkDefinition;
@@ -126,21 +131,33 @@ export async function showLinkPopup(editor: Editor) {
     editor.state.selection.to
   );
   if (isInternalLink(attrs.href)) {
-    const link = await editor.storage.createInternalLink?.(
-      attrs as LinkAttributes
-    );
-    if (!link) return;
-    if (isActive) {
-      const { from, to } = editor.state.selection;
-      if (selectedNode) editor.commands.setTextSelection(selectedNode);
-      editor.commands.setLink(link);
-      if (selectedNode) editor.commands.setTextSelection({ from, to });
-    } else {
-      editor.commands.setLink({ ...link, title: selectedText || link.title });
-    }
+    // Existing internal link (or an empty selection inside one): reuse the
+    // shared guarded command so the picker result is applied with the exact
+    // same readonly/destroyed/document-identity guarantees as the other entry
+    // points. The hovered link range is preserved and the custom linked text is
+    // kept (`insertInternalLink` prefers the selected text as the title).
+    await insertInternalLink(editor as unknown as ForkedEditor, {
+      attributes: attrs as LinkAttributes,
+      range:
+        selectedNode && isActive
+          ? { from: selectedNode.from, to: selectedNode.to }
+          : undefined
+    });
     return;
   }
 
+  const isMac = useToolbarStore.getState().macCatalyst;
+  const restoreMacFocus = () => {
+    if (
+      isMac &&
+      !editor.isDestroyed &&
+      editor.isEditable &&
+      editor.view.dom.isConnected &&
+      getEditorDOM() === editor.view.dom
+    ) {
+      editor.commands.focus(undefined, { scrollIntoView: false });
+    }
+  };
   showPopup({
     popup: (close) => (
       <LinkPopup
@@ -152,7 +169,10 @@ export async function showLinkPopup(editor: Editor) {
               }
             : undefined
         }
-        onClose={close}
+        onClose={() => {
+          close();
+          restoreMacFocus();
+        }}
         onDone={(link) => {
           if (isActive) {
             if (selectedNode)
@@ -160,12 +180,29 @@ export async function showLinkPopup(editor: Editor) {
             editor.commands.setLink(link);
           } else editor.commands.toggleLink(link);
           close();
+          restoreMacFocus();
         }}
         isEditing={isActive}
         isImageActive={isImageActive}
       />
     ),
-    mobile: "sheet",
-    desktop: "popup"
+    mobile: isMac ? "popup" : "sheet",
+    desktop: "popup",
+    ...(isMac
+      ? {
+          position: {
+            target:
+              getEditorDOM().closest<HTMLElement>(".active") ||
+              getEditorContainer(),
+            isTargetAbsolute: true,
+            location: "top" as const,
+            align: "center" as const,
+            yOffset: -8
+          },
+          onClose: restoreMacFocus
+        }
+      : {}),
+    title: isActive ? strings.editLink() : strings.insertLink(),
+    focusOnRender: false
   });
 }

@@ -129,6 +129,10 @@ import {
 } from "@mdi/js";
 
 export const Icons = {
+  undo: "M9 5 3 10l6 5v-4h6a4 4 0 0 1 4 4v4h2v-4a6 6 0 0 0-6-6H9V5Z",
+  redo: "m15 5 6 5-6 5v-4H9a4 4 0 0 0-4 4v4H3v-4a6 6 0 0 1 6-6h6V5Z",
+  closeKeyboard:
+    "M3 3h18v12H3V3Zm2 2v8h14V5H5Zm2 2h2v2H7V7Zm4 0h2v2h-2V7Zm4 0h2v2h-2V7ZM7 10h10v1H7v-1Zm1 8 4 4 4-4-1.4-1.4-2.6 2.6-2.6-2.6L8 18Z",
   bold: mdiFormatBold,
   italic: mdiFormatItalic,
   underline: mdiFormatUnderline,

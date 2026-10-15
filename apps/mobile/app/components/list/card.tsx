@@ -19,13 +19,21 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Dimensions, View } from "react-native";
+import { Dimensions, Platform, View } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { Message, useMessageStore } from "../../stores/use-message-store";
+import { isMacCatalyst } from "../../utils/constants";
 import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
+import { TaskSymbolView } from "../task-symbol-view";
 import { Pressable } from "../ui/pressable";
 import Paragraph from "../ui/typography/paragraph";
+
+const phoneMessageSymbols = new Map([
+  ["account-outline", "person.crop.circle"],
+  ["key", "key"],
+  ["email", "envelope"]
+]);
 
 export const Card = ({
   color,
@@ -41,6 +49,12 @@ export const Card = ({
   );
   const announcements = useMessageStore((state) => state.announcements);
   const fontScale = Dimensions.get("window").fontScale;
+  const phone = Platform.OS === "ios" && !Platform.isPad && !isMacCatalyst();
+  const phoneSymbol = phone
+    ? phoneMessageSymbols.get(messageBoardState.icon)
+    : undefined;
+  const iconColor =
+    messageBoardState.type === "error" ? colors.error.icon : color;
 
   return !messageBoardState.visible ||
     (announcements && announcements.length) ? null : (
@@ -48,14 +62,20 @@ export const Card = ({
       style={{
         width: "100%",
         paddingHorizontal: DefaultAppStyles.GAP,
-        paddingVertical: DefaultAppStyles.GAP_VERTICAL
+        paddingVertical: phone
+          ? DefaultAppStyles.GAP_SMALL / 2
+          : DefaultAppStyles.GAP_VERTICAL
       }}
     >
       <Pressable
         onPress={messageBoardState.onPress}
+        {...(phone ? { accessibilityRole: "button" as const } : {})}
         type="plain"
         style={{
-          paddingVertical: DefaultAppStyles.GAP_VERTICAL,
+          paddingVertical: phone
+            ? DefaultAppStyles.GAP_VERTICAL_SMALL
+            : DefaultAppStyles.GAP_VERTICAL,
+          ...(phone ? { minHeight: 44 } : {}),
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
@@ -71,40 +91,53 @@ export const Card = ({
         >
           <View
             style={{
-              width: 40 * fontScale,
-              height: 40 * fontScale,
+              width: (phone ? DefaultAppStyles.GAP * 2 : 40) * fontScale,
+              height: (phone ? DefaultAppStyles.GAP * 2 : 40) * fontScale,
+              ...(phone ? { flexShrink: 0 } : {}),
               borderRadius: 100,
               alignItems: "center",
               justifyContent: "center"
             }}
           >
-            <Icon
-              size={AppFontSize.xxxl}
-              color={
-                messageBoardState.type === "error" ? colors.error.icon : color
-              }
-              allowFontScaling
-              name={messageBoardState.icon}
-            />
+            {phoneSymbol ? (
+              <TaskSymbolView
+                name={phoneSymbol}
+                size={AppFontSize.xl * fontScale}
+                color={iconColor}
+              />
+            ) : (
+              <Icon
+                size={AppFontSize.xxxl}
+                color={iconColor}
+                allowFontScaling
+                name={messageBoardState.icon}
+              />
+            )}
           </View>
 
           <View
             style={{
-              marginLeft: 10,
-              marginRight: 10
+              marginLeft: phone ? DefaultAppStyles.GAP_SMALL : 10,
+              marginRight: phone ? DefaultAppStyles.GAP_SMALL : 10,
+              ...(phone ? { flex: 1, minWidth: 0 } : {})
             }}
           >
             <Paragraph
               style={{
-                flexWrap: "nowrap",
-                flexShrink: 1
+                flexWrap: phone ? "wrap" : "nowrap",
+                flexShrink: 1,
+                ...(phone ? { fontFamily: undefined } : {})
               }}
               size={AppFontSize.sm}
               color={colors.primary.heading}
             >
               {messageBoardState.actionText}
             </Paragraph>
-            <Paragraph color={colors.secondary.paragraph} size={AppFontSize.xs}>
+            <Paragraph
+              color={colors.secondary.paragraph}
+              size={AppFontSize.xs}
+              style={phone ? { fontFamily: undefined } : undefined}
+            >
               {messageBoardState.message}
             </Paragraph>
           </View>

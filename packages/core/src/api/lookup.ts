@@ -107,6 +107,180 @@ export default class Lookup {
     }, notes || this.db.notes.all);
   }
 
+  /**
+   * Bounded, parameterized candidate ids for the Connect `search_notes`
+   * surface.
+   *
+   * Unlike {@link notes} this never materializes the authorized id set into an
+   * `IN (...)` parameter list. The granted note/notebook id arrays (each bounded
+   * to 1000 by the adapter) are passed as **two JSON parameters** and expanded
+   * with `json_each` *inside* the query, so the number of SQL parameters is
+   * constant regardless of how many notes/notebook members exist.
+   *
+   * Eligibility is applied *before* matching, ranking and the `LIMIT`:
+   *
+   *  - the note row must be live (not soft-deleted, not trashed, not
+   *    `localOnly`) and its **current** content row (`notes.contentId =
+   *    content.id`) must exist and be a live, unlocked, non-`localOnly`
+   *    plaintext body — a missing body therefore never becomes an empty hit;
+   *  - the note must be in scope: a directly granted note (regardless of its
+   *    archived flag) or a note related to a granted notebook whose backing
+   *    notebook row is live and whose note is not archived (the relation
+   *    source, `Relations.from`, excludes archived notes — not archived
+   *    notebooks);
+   *  - the content FTS match is joined to `content.id = notes.contentId`, so a
+   *    historical/stale body row with the same `noteId` can never produce a
+   *    hit.
+   *
+   * The FTS hits are grouped per note (`SUM(rank)`), ordered by rank
+   * (descending, matching the default `notes` ordering) with a deterministic id
+   * tiebreak, and cut to `limit` ids. When the query carries sub-3-character
+   * tokens (which the trigram FTS cannot match) the existing lookup semantics
+   * are preserved: if any *eligible* FTS hit exists the regex is applied as a
+   * filter over those hits, otherwise it is applied over the eligible set
+   * itself — it is deliberately not a union, and a hit that only exists as a
+   * *hidden* (local-only/locked/out-of-scope) FTS match does not flip that
+   * branch. Eligible FTS hits keep their rank order (deterministic id tiebreak)
+   * in that branch too; only the no-eligible-FTS fallback orders by id.
+   *
+   * Metadata-only query tokens (`tag:`, `pinned:` …) are ignored exactly like
+   * the quick `notes` search ignores them.
+   */
+  async boundedNoteIds(
+    query: string,
+    bounds: {
+      noteIds: readonly string[];
+      notebookIds: readonly string[];
+      limit: number;
+    }
+  ): Promise<string[]> {
+    const { content, title } = transformQuery(query);
+    const titleQuery = title?.query ?? "";
+    const contentQuery = content?.query ?? "";
+    const smallTitle = filterSmallTokens(title?.tokens) ?? [];
+    const smallContent = filterSmallTokens(content?.tokens) ?? [];
+    const hasFts = !!(titleQuery || contentQuery);
+    const hasShort = smallTitle.length > 0 || smallContent.length > 0;
+    if (!hasFts && !hasShort) return [];
+    const limit = Math.floor(bounds.limit);
+    if (!Number.isFinite(limit) || limit <= 0) return [];
+
+    const db = this.db.sql();
+    const noteIdsJson = JSON.stringify(bounds.noteIds);
+    const notebookIdsJson = JSON.stringify(bounds.notebookIds);
+
+    const eligible = sql`
+      eligible AS (
+        SELECT n.id AS id
+        FROM notes n
+        JOIN content c ON c.id = n.contentId
+        WHERE n.dateDeleted IS NULL
+          AND (n.deleted IS NULL OR n.deleted = 0)
+          AND (n.localOnly IS NULL OR n.localOnly = 0)
+          AND c.noteId = n.id
+          AND (c.deleted IS NULL OR c.deleted = 0)
+          AND (c.locked IS NULL OR c.locked = 0)
+          AND (c.localOnly IS NULL OR c.localOnly = 0)
+          AND (
+            n.id IN (SELECT value FROM json_each(${noteIdsJson}))
+            OR EXISTS (
+              SELECT 1
+              FROM relations r
+              JOIN notebooks nb ON nb.id = r.fromId
+              WHERE r.toType = 'note'
+                AND r.toId = n.id
+                AND r.fromType = 'notebook'
+                AND (r.deleted IS NULL OR r.deleted = 0)
+                AND r.fromId IN (
+                  SELECT value FROM json_each(${notebookIdsJson})
+                )
+                AND (nb.deleted IS NULL OR nb.deleted = 0)
+                AND nb.dateDeleted IS NULL
+                AND (n.archived IS NULL OR n.archived = 0)
+            )
+          )
+      )`;
+
+    const titleFts = titleQuery
+      ? sql`
+          SELECT f.id AS id, f.rank AS rank
+          FROM notes_fts f
+          JOIN notes n ON n.id = f.id AND n.contentId IS NOT NULL
+          WHERE f.title MATCH ${titleQuery}
+            AND f.rank = 'bm25(1.0, 10.0)'
+            AND f.id IN (SELECT id FROM eligible)`
+      : undefined;
+    const contentFts = contentQuery
+      ? sql`
+          SELECT c.noteId AS id, f.rank AS rank
+          FROM content_fts f
+          JOIN content c ON c.id = f.id
+          JOIN notes n ON n.id = c.noteId AND n.contentId = c.id
+          WHERE f.data MATCH ${contentQuery}
+            AND f.rank = 'bm25(1.0, 1.0, 10.0)'
+            AND c.noteId IN (SELECT id FROM eligible)`
+      : undefined;
+    const ftsParts = [titleFts, contentFts].filter(
+      (part): part is NonNullable<typeof titleFts> => part !== undefined
+    );
+    const ftsAll = ftsParts.length
+      ? sql`fts_all AS (
+            SELECT id, SUM(rank) AS rank
+            FROM (${sql.join(ftsParts, sql` UNION ALL `)}) AS fts_raw
+            GROUP BY id
+          )`
+      : undefined;
+
+    const titleRegex = smallTitle.length
+      ? escapeRegexTokens(smallTitle)
+      : undefined;
+    const contentRegex = smallContent.length
+      ? escapeRegexTokens(smallContent)
+      : undefined;
+
+    const statement = !hasShort
+      ? sql`WITH ${eligible}, ${ftsAll}
+            SELECT id FROM fts_all
+            ORDER BY rank DESC, id ASC
+            LIMIT ${limit}`
+      : hasFts
+      ? sql`WITH ${eligible}, ${ftsAll}
+            SELECT e.id AS id
+            FROM eligible e
+            WHERE (
+                (
+                  EXISTS (SELECT 1 FROM fts_all)
+                  AND e.id IN (SELECT id FROM fts_all)
+                )
+                OR NOT EXISTS (SELECT 1 FROM fts_all)
+              )
+              AND (${titleRegexExists(titleRegex)} OR ${contentRegexExists(
+            contentRegex
+          )})
+            ORDER BY
+              -- Preserve the existing FTS rank order whenever an *eligible*
+              -- FTS hit exists: the regex only filters that ranked set, it must
+              -- not re-rank it into plain id order. When there is no eligible
+              -- FTS hit the branch falls back to the eligible set itself, whose
+              -- (all-NULL rank) order degrades to the deterministic id order.
+              (SELECT f.rank FROM fts_all f WHERE f.id = e.id) DESC,
+              e.id ASC
+            LIMIT ${limit}`
+      : sql`WITH ${eligible}
+            SELECT e.id AS id
+            FROM eligible e
+            WHERE (${titleRegexExists(titleRegex)} OR ${contentRegexExists(
+            contentRegex
+          )})
+            ORDER BY e.id ASC
+            LIMIT ${limit}`;
+
+    const result = (await statement.execute(db)) as {
+      rows?: { id: unknown }[];
+    };
+    return (result.rows ?? []).map((row) => String(row.id));
+  }
+
   async notesWithHighlighting(
     query: string,
     notes: FilteredSelector<Note>,
@@ -1157,6 +1331,46 @@ function filterSmallTokens(tokens: QueryTokens | undefined) {
   return [...tokens.andTokens, ...tokens.orTokens].filter(
     (token) => token.length < 3
   );
+}
+
+/** Escape regex special chars and join the surviving tokens (`a|b`). */
+function escapeRegexTokens(tokens: string[]) {
+  return tokens
+    .filter((token) => token && token.length > 0)
+    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+}
+
+/**
+ * `EXISTS` fragment for the title regex of {@link Lookup.boundedNoteIds}. It is
+ * an `EXISTS` subquery over the eligible alias `e` (never a materialized id
+ * list) so the row set is never copied into memory.
+ */
+function titleRegexExists(regex: string | undefined) {
+  return regex
+    ? sql`EXISTS (
+        SELECT 1 FROM notes nt
+        WHERE nt.id = e.id AND nt.title REGEXP ${regex}
+      )`
+    : sql`0`;
+}
+
+/**
+ * `EXISTS` fragment for the *current* body regex of
+ * {@link Lookup.boundedNoteIds}. The body is reached through
+ * `notes.contentId = content.id`, so a stale historical body row cannot
+ * satisfy a regex match.
+ */
+function contentRegexExists(regex: string | undefined) {
+  return regex
+    ? sql`EXISTS (
+        SELECT 1 FROM notes nc
+        JOIN content cc ON cc.id = nc.contentId
+        WHERE nc.id = e.id
+          AND (cc.locked IS NULL OR cc.locked = 0)
+          AND cc.data REGEXP ${regex}
+      )`
+    : sql`0`;
 }
 
 function transformTokens(tokens: QueryTokens | undefined) {

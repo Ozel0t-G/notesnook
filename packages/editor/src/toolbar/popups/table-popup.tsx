@@ -18,9 +18,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { Box, Flex, Text } from "@theme-ui/components";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Popup } from "../components/popup.js";
-import { useIsMobile } from "../stores/toolbar-store.js";
+import { useIsMobile, useIsMacCatalyst } from "../stores/toolbar-store.js";
 import { InlineInput } from "../../components/inline-input/index.js";
 import { strings } from "@notesnook/intl";
 
@@ -37,18 +37,41 @@ export type TablePopupProps = {
 };
 export function TablePopup(props: TablePopupProps) {
   const isMobile = useIsMobile();
+  const isMac = useIsMacCatalyst();
+  const sizeFields = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!isMac) return;
+    // WKWebView may ignore autoFocus while the popup portal is mounting.
+    // One owned frame retries after insertion, never on selection/size updates.
+    const frame = requestAnimationFrame(() =>
+      sizeFields.current?.querySelector<HTMLInputElement>("input")?.focus()
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [isMac]);
   const autoExpand = !isMobile;
   const cellSize = isMobile ? 30 : 15;
 
   const { onInsertTable } = props;
   const [cellLocation, setCellLocation] = useState<CellLocation>({
-    column: 0,
-    row: 0
+    column: isMac ? 1 : 0,
+    row: isMac ? 1 : 0
   });
   const [tableSize, setTableSize] = useState<TableSize>({
     columns: MIN_COLUMNS,
     rows: MIN_ROWS
   });
+  const validSize = isMac
+    ? Number.isInteger(cellLocation.column) &&
+      Number.isInteger(cellLocation.row) &&
+      cellLocation.column >= 1 &&
+      cellLocation.column <= MAX_COLUMNS &&
+      cellLocation.row >= 1 &&
+      cellLocation.row <= MAX_ROWS
+    : !!cellLocation.column && !!cellLocation.row;
+  const insertSize = () => {
+    if (validSize)
+      onInsertTable({ columns: cellLocation.column, rows: cellLocation.row });
+  };
 
   useEffect(() => {
     if (!autoExpand) return;
@@ -75,16 +98,11 @@ export function TablePopup(props: TablePopupProps) {
   return (
     <Popup
       action={{
-        title:
-          !cellLocation.column || !cellLocation.row
-            ? strings.setTableSizeNotice()
-            : strings.insertTableOfSize(cellLocation.row, cellLocation.column),
-        disabled: !cellLocation.column || !cellLocation.row,
-        onClick: () =>
-          onInsertTable({
-            columns: cellLocation.column,
-            rows: cellLocation.row
-          })
+        title: !validSize
+          ? strings.setTableSizeNotice()
+          : strings.insertTableOfSize(cellLocation.row, cellLocation.column),
+        disabled: !validSize,
+        onClick: insertSize
       }}
     >
       <Flex
@@ -115,8 +133,20 @@ export function TablePopup(props: TablePopupProps) {
             .map((_, index) => (
               <Box
                 key={index}
+                as={isMac ? "button" : "div"}
+                {...(isMac ? { type: "button" as const } : {})}
+                aria-label={
+                  isMac
+                    ? strings.insertTableOfSize(
+                        getCellLocation(index, tableSize).row,
+                        getCellLocation(index, tableSize).column
+                      )
+                    : undefined
+                }
+                tabIndex={isMac ? -1 : undefined}
                 data-index={index}
                 sx={{
+                  ...(isMac ? { p: 0 } : {}),
                   height: cellSize || 15,
                   borderRadius: "small",
                   border: "1px solid",
@@ -125,7 +155,21 @@ export function TablePopup(props: TablePopupProps) {
                         bg: "background-selected",
                         borderColor: "transparent"
                       }
-                    : { bg: "background-secondary", borderColor: "border" })
+                    : { bg: "background-secondary", borderColor: "border" }),
+                  ...(isMac
+                    ? {
+                        ":focus-visible": {
+                          outline: "2px solid",
+                          outlineColor: "accent",
+                          outlineOffset: 1
+                        }
+                      }
+                    : {})
+                }}
+                // Catalyst keeps keyboard entry in the named size fields.
+                // The grid is an alternative pointer/assistive click route.
+                onMouseDown={(event) => {
+                  if (isMac) event.preventDefault();
                 }}
                 onTouchStart={() => {
                   setCellLocation(getCellLocation(index, tableSize));
@@ -134,20 +178,50 @@ export function TablePopup(props: TablePopupProps) {
                   setCellLocation(getCellLocation(index, tableSize));
                 }}
                 onTouchEnd={(e) => {
-                  e.preventDefault();
+                  if (!isMac) e.preventDefault();
                 }}
                 onClick={() => {
+                  const location = isMac
+                    ? getCellLocation(index, tableSize)
+                    : cellLocation;
                   onInsertTable({
-                    columns: cellLocation.column,
-                    rows: cellLocation.row
+                    columns: location.column,
+                    rows: location.row
                   });
                 }}
               />
             ))}
         </Box>
         <Flex
+          ref={sizeFields}
+          onKeyDown={(event) => {
+            if (!isMac) return;
+            if (event.key === "Enter") {
+              event.preventDefault();
+              event.stopPropagation();
+              insertSize();
+            } else if (event.key.startsWith("Arrow")) {
+              event.stopPropagation();
+            } else if (
+              event.key === "Tab" ||
+              event.code === "Tab" ||
+              event.keyCode === 9
+            ) {
+              if (event.ctrlKey || event.metaKey || event.altKey) return;
+              // Catalyst may keep native key traversal on the first field.
+              // Own only the interior step; boundary Tab and Escape stay free.
+              const inputs = sizeFields.current?.querySelectorAll("input");
+              if (!inputs || inputs.length !== 2) return;
+              const from = event.shiftKey ? inputs[1] : inputs[0];
+              const to = event.shiftKey ? inputs[0] : inputs[1];
+              if (event.target !== from) return;
+              event.preventDefault();
+              event.stopPropagation();
+              to.focus();
+            }
+          }}
           sx={{
-            display: ["flex", "none", "none"],
+            display: isMac ? "flex" : ["flex", "none", "none"],
             mt: 1,
             alignItems: "center",
             justifyContent: "center",
@@ -156,8 +230,15 @@ export function TablePopup(props: TablePopupProps) {
         >
           <InlineInput
             containerProps={{ sx: { mr: 1, flexShrink: 1 } }}
-            label="columns"
-            placeholder={`${cellLocation.column} columns`}
+            label={isMac ? strings.tableColumns() : "columns"}
+            aria-label={isMac ? strings.tableColumns() : undefined}
+            autoFocus={isMac}
+            min={isMac ? 1 : undefined}
+            max={isMac ? MAX_COLUMNS : undefined}
+            step={isMac ? 1 : undefined}
+            placeholder={
+              isMac ? strings.tableColumns() : `${cellLocation.column} columns`
+            }
             type="number"
             value={cellLocation.column}
             onChange={(e) => {
@@ -169,8 +250,14 @@ export function TablePopup(props: TablePopupProps) {
           />
           <InlineInput
             containerProps={{ sx: { flexShrink: 1 } }}
-            label="rows"
-            placeholder={`${cellLocation.row} rows`}
+            label={isMac ? strings.tableRows() : "rows"}
+            aria-label={isMac ? strings.tableRows() : undefined}
+            min={isMac ? 1 : undefined}
+            max={isMac ? MAX_ROWS : undefined}
+            step={isMac ? 1 : undefined}
+            placeholder={
+              isMac ? strings.tableRows() : `${cellLocation.row} rows`
+            }
             type="number"
             value={cellLocation.row}
             onChange={(e) => {
@@ -183,7 +270,7 @@ export function TablePopup(props: TablePopupProps) {
         </Flex>
         <Text
           variant={"body"}
-          sx={{ mt: 1, display: ["none", "block", "block"] }}
+          sx={{ mt: 1, display: isMac ? "none" : ["none", "block", "block"] }}
         >
           {cellLocation.column} x {cellLocation.row}
         </Text>

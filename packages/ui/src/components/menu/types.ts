@@ -55,6 +55,7 @@ export type MenuButtonItem = BaseMenuItem<"button"> & {
   variant?: "dangerous" | "normal";
 
   styles?: {
+    button?: ThemeUICSSObject;
     title?: ThemeUICSSObject;
     icon?: ThemeUICSSObject;
   };

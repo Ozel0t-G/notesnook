@@ -40,17 +40,22 @@ import {
   hasBottomTabBar
 } from "../../components/apple-tab-bar";
 import { AddNotebookSheet } from "../../components/sheets/add-notebook";
-import { UserSheet } from "../../components/sheets/user";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isMacCatalyst } from "../../utils/constants";
-import { getObfuscatedEmail } from "../../utils/functions";
 import { useSettingStore } from "../../stores/use-setting-store";
-import { SyncStatus, useUserStore } from "../../stores/use-user-store";
 import { useLibrarySourceList } from "../../hooks/use-library-source-list";
 import {
   useMacSidebarSectionCollapsed,
   useMacSidebarSectionsStore
 } from "../../stores/use-mac-sidebar-sections-store";
+import { useIPadWorkspace } from "../../components/ipad-workspace-context";
+import {
+  ipadDefaultCollection,
+  ipadShowsNoteCollection
+} from "../../utils/ipad-layout";
+import { AppFontSize } from "../../utils/size";
+import { DefaultAppStyles } from "../../utils/styles";
+import { AccountAffordance } from "../../components/header/account-affordance";
 
 type LibraryDestination = {
   key: string;
@@ -78,36 +83,91 @@ export default function Library({
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   const insets = useSafeAreaInsets();
+  const isMac = isMacCatalyst();
+  const isPhone = Platform.OS === "ios" && !Platform.isPad && !isMac;
+  /**
+   * The iPad workspace this column is laid out in, or undefined on every other
+   * client (and outside the provider). It is read for exactly two things: the
+   * collection this column must show by default (the pane mode, *not* the
+   * sidebar's momentary visibility: a closed medium drawer and fullscreen both
+   * report the sidebar as not visible but still give this column a collection),
+   * and whether the sidebar's own account affordance is on screen.
+   */
+  const ipad = useIPadWorkspace();
+  /**
+   * Reads the navigator's *current* focus for this Library route.
+   *
+   * "Is the Library focused" has two different answers at two different
+   * moments: the value a render paints from, and the value at cleanup time (the
+   * retained column may have lost focus to a pushed Notebook since). This
+   * getter answers the present, so the collection it hands to `NoteCollection`
+   * can prove at cleanup whether it still owns the foreground; the state below
+   * is the render-time snapshot it reacts to.
+   */
+  const navigatorIsFocused = React.useCallback(
+    () => navigation?.isFocused?.() ?? true,
+    [navigation]
+  );
+  /**
+   * Whether this Library column currently owns the foreground, seeded from the
+   * navigator and kept live by the focus/blur subscriptions below. Only the
+   * focused column may publish the collection it shows as the focused route and
+   * the header's New Note behaviour; a retained background column must never
+   * take either from the screen that is actually in front of the user.
+   */
+  const [ownsForeground, setOwnsForeground] = React.useState(() =>
+    navigatorIsFocused()
+  );
   const [collection, setCollection] = React.useState<
     LibraryCollection | undefined
-  >(route.params?.initialCollection);
+  >(
+    () =>
+      route.params?.initialCollection ||
+      (isMac
+        ? MAC_DEFAULT_COLLECTION
+        : ipad && navigatorIsFocused()
+        ? ipadDefaultCollection(ipad.paneMode)
+        : undefined)
+  );
   const [allNotes, allNotesLoading, refreshAllNotes] = useNotes();
   const [inboxNotes, inboxLoading, refreshInbox] = useInboxNotes();
-  const isMac = isMacCatalyst();
-  const deviceMode = useSettingStore((state) => state.deviceMode);
-  const user = useUserStore((state) => state.user);
-  const userProfile = useUserStore((state) => state.profile);
-  const lastSyncStatus = useUserStore((state) => state.lastSyncStatus);
   /**
-   * iPad landscape large: FluidPanelsView removes the fixed left sidebar (see
-   * `hideTabletSidebar` there), so the account/login-status affordance the
-   * sidebar used to carry moves into this list's navigation bar. Gated on the
-   * same predicate — `!isMacCatalyst()` because Mac also reports
-   * `deviceMode === "tablet"` (and historically `Platform.isPad`).
+   * Bumped whenever the user *re-enters* the collection that is already on
+   * screen: the sidebar re-selects this Library column (a repeated
+   * `initialCollection` selection) or the retained column is focused again.
+   * Both are re-entries that remount nothing, so the bare state update above
+   * would otherwise leave the list showing the headline and edited time a save
+   * had already replaced in the database.
+   */
+  const [collectionRevision, requestCollectionRefresh] = React.useReducer(
+    (revision: number) => revision + 1,
+    0
+  );
+  const deviceMode = useSettingStore((state) => state.deviceMode);
+  /**
+   * iPad without the width-derived workspace (no provider above this screen):
+   * the root reports `deviceMode === "tablet"` and the sidebar pane is not on
+   * screen, so the account/login-status affordance the sidebar used to carry
+   * moves into this list's navigation bar. Gated on the same predicate —
+   * `!isMacCatalyst()` because Mac also reports `deviceMode === "tablet"` (and
+   * `Platform.isPad`). The sidebar pane is never unmounted for this: it is laid
+   * out at zero width / off canvas (see `navigation/fluid-panels-view.tsx`), so
+   * "on screen" is a presentation fact, not a mounting one.
+   *
+   * With an iPad workspace the momentary answer is used instead: the sidebar's
+   * account affordance (components/side-menu/side-menu-header.tsx) is the one
+   * that is actually reachable only when the sidebar is actually on screen, and
+   * that is a presentation fact the pane mode alone cannot answer (a closed
+   * medium drawer, fullscreen). It never decides which collection is shown.
    */
   const noSidebarIPadLandscape =
     Platform.OS === "ios" &&
     Platform.isPad === true &&
     !isMac &&
     deviceMode === "tablet";
-  const signedIn = !!user;
-  const accountText = signedIn
-    ? userProfile?.fullName || getObfuscatedEmail(user?.email || "")
-    : strings.notLoggedIn();
-  const accountDotColor =
-    !signedIn || lastSyncStatus === SyncStatus.Failed
-      ? colors.error.icon
-      : colors.success.icon;
+  const showAccountAffordance = ipad
+    ? !ipad.sidebarVisible
+    : noSidebarIPadLandscape;
   const { notebooks, tags, counts, notebookCounts, tagCounts } =
     useLibrarySourceList(navigation, { countsByNotebookAndTag: true });
   const notebooksCollapsed = useMacSidebarSectionCollapsed("notebooks");
@@ -116,18 +176,108 @@ export default function Library({
 
   /**
    * The sidebar selects a list by navigating here with `initialCollection`
-   * (`openMacList` in services/mac-list-navigation.ts), so follow the params
-   * instead of only reading them once. Mac always has a collection: All Notes is
-   * the middle column's default content.
+   * (`openMacList` in services/mac-list-navigation.ts, the iPad sidebar's own
+   * rows), so follow the params instead of only reading them once. Mac always
+   * has a collection: All Notes is the middle column's default content.
+   *
+   * The effect keys off the params *object*, not the value: two selections of
+   * the same collection (open Inbox, go back to the source list, open Inbox
+   * again) carry the same value, and a value-keyed effect would ignore the
+   * second one and leave the column on the source list. A navigation that
+   * changes the parameters produces a new params object (React Navigation
+   * merges the action's params into a fresh object), so the repeated selection
+   * still applies - while a plain re-render keeps the same object and never
+   * re-applies a param over a selection the user has since undone.
+   */
+  const initialCollection = route.params?.initialCollection;
+  /**
+   * The params object the last navigation applied. The column is mounted with
+   * its collection already seeded (above) when it opens *once* on a param, so
+   * the mount value is remembered as handled: only a *new* params object - a
+   * real navigation - re-applies the selection and re-reads the list.
+   */
+  const handledParams = React.useRef(route.params);
+  React.useEffect(() => {
+    if (handledParams.current === route.params) return;
+    handledParams.current = route.params;
+    if (!initialCollection) return;
+    setCollection(initialCollection);
+    // A fresh params object is a real navigation (the sidebar row was pressed
+    // again), and it must re-read the list even when the collection value is
+    // unchanged: the user is asking for that list *now*, and the row it shows
+    // may have been edited in the editor since it was last read.
+    requestCollectionRefresh();
+  }, [route.params, initialCollection]);
+
+  /**
+   * The column is kept mounted across a pushed screen, so nothing else tells it
+   * that it lost the foreground and got it back: re-entering it (returning from
+   * Notebook / Favorites) re-reads the collection on screen, and both
+   * transitions keep `ownsForeground` live.
+   *
+   * The current focus is read *after* the subscriptions are installed: focus
+   * can change between the render above and this registration, and neither a
+   * one-shot read nor the subscriptions alone would see that transition - the
+   * column would keep believing the focus state it happened to render with.
    */
   React.useEffect(() => {
-    const next = route.params?.initialCollection;
-    if (next) setCollection(next);
-  }, [route.params?.initialCollection]);
+    const nav = navigation;
+    const unsubscribeFocus = nav?.addListener?.("focus", () => {
+      setOwnsForeground(true);
+      requestCollectionRefresh();
+    });
+    const unsubscribeBlur = nav?.addListener?.("blur", () => {
+      setOwnsForeground(false);
+    });
+    setOwnsForeground(navigatorIsFocused());
+    return () => {
+      unsubscribeFocus?.();
+      unsubscribeBlur?.();
+    };
+  }, [navigation, navigatorIsFocused]);
+
+  /**
+   * Wide and medium give this column the note collection and the sidebar the
+   * source list, so a column without a collection must fall back to All Notes
+   * rather than draw a second copy of the source list. This is the mode, not
+   * the sidebar's momentary visibility: a medium drawer that happens to be
+   * closed, or fullscreen, still leaves the column a collection.
+   *
+   * The fallback is *written into the state* (and seeded above on mount) rather
+   * than derived on every render, so a later narrow - where there is no column
+   * default at all - keeps showing the very list that had been on screen, with
+   * its scroll position and its selected note, instead of dropping back to the
+   * source categories.
+   *
+   * Seeding is functional: the params effect above has already queued an
+   * incoming explicit choice into `prev`, so it is preserved; only an empty
+   * column (a narrow "back" that left a stale param behind) takes the default.
+   * Guarding on `initialCollection` here would instead re-block the seed after
+   * a back whenever the old param object is still on the route.
+   *
+   * The seed is written only while the column owns the foreground. A retained
+   * background column still *derives* the wide/medium default for rendering
+   * (see `activeCollection`), but must not commit it into state: a narrow
+   * source list the user left behind, widened while a Notebook is in front, and
+   * narrowed again would otherwise come back as All Notes and lose the source
+   * history the user expects to return to. The explicit `route.params` choice
+   * above is intentional and applies regardless of focus.
+   */
+  const paneMode = ipad?.paneMode;
+  React.useEffect(() => {
+    if (!ownsForeground) return;
+    if (!paneMode || collection !== undefined) return;
+    const next = ipadDefaultCollection(paneMode);
+    if (!next) return;
+    setCollection((prev) => prev ?? next);
+  }, [paneMode, collection, ownsForeground]);
 
   const activeCollection = isMac
     ? collection || MAC_DEFAULT_COLLECTION
-    : collection;
+    : collection ||
+      (ipad && ipadShowsNoteCollection(ipad.paneMode)
+        ? MAC_DEFAULT_COLLECTION
+        : undefined);
 
   const goBackToLibrary = React.useCallback(
     () => setCollection(isMac ? MAC_DEFAULT_COLLECTION : undefined),
@@ -142,6 +292,9 @@ export default function Library({
         notes={allNotes}
         loading={allNotesLoading}
         refresh={refreshAllNotes}
+        refreshRevision={collectionRevision}
+        ownsForeground={ownsForeground}
+        isFocused={navigatorIsFocused}
         selector={() => db.notes.all}
         placeholder={{
           title: strings.yourNotes(),
@@ -164,6 +317,9 @@ export default function Library({
         notes={inboxNotes}
         loading={inboxLoading}
         refresh={refreshInbox}
+        refreshRevision={collectionRevision}
+        ownsForeground={ownsForeground}
+        isFocused={navigatorIsFocused}
         selector={() => db.notes.unassigned}
         placeholder={{
           title: strings.yourInbox(),
@@ -252,11 +408,11 @@ export default function Library({
       style={{
         flexDirection: "row",
         alignItems: "center",
-        marginTop: 22,
+        marginTop: isPhone ? visual.sectionSpacing : 22,
         marginBottom: 4,
         // Section headers line up with the rows' content (and their trailing
         // "+" with the row counts), not with the column's edges.
-        marginLeft: 20,
+        marginLeft: isPhone ? visual.pagePadding * 2 : 20,
         marginRight: 8
       }}
     >
@@ -265,14 +421,20 @@ export default function Library({
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityState={{ expanded: !collapsed }}
-        style={{ flex: 1, flexDirection: "row", alignItems: "center" }}
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          alignItems: "center",
+          minHeight: isPhone ? 44 : undefined
+        }}
       >
         <Text
           accessibilityRole="header"
           style={{
-            color: visual.primaryText,
-            fontSize: 20,
-            fontWeight: "700"
+            color: visual.secondaryText,
+            fontSize: isPhone ? AppFontSize.md : 17,
+            flexShrink: isPhone ? 1 : undefined,
+            fontWeight: "400"
           }}
         >
           {title}
@@ -318,11 +480,14 @@ export default function Library({
         }
         style={{
           minHeight: 54,
+          paddingVertical: isPhone
+            ? DefaultAppStyles.GAP_VERTICAL_SMALL
+            : undefined,
           flexDirection: "row",
           alignItems: "center",
-          marginHorizontal: 16,
+          marginHorizontal: isPhone ? visual.pagePadding : 16,
           marginTop: index === 0 ? marginTop : 0,
-          paddingHorizontal: 16,
+          paddingHorizontal: isPhone ? visual.pagePadding : 16,
           borderTopLeftRadius: index === 0 ? visual.controlRadius : 0,
           borderTopRightRadius: index === 0 ? visual.controlRadius : 0,
           borderBottomLeftRadius:
@@ -340,11 +505,11 @@ export default function Library({
           color={colors.primary.accent}
         />
         <Text
-          numberOfLines={1}
+          numberOfLines={isPhone ? 2 : 1}
           style={{
             flex: 1,
             color: visual.primaryText,
-            fontSize: 16,
+            fontSize: isPhone ? AppFontSize.md : 16,
             marginLeft: 14
           }}
         >
@@ -392,61 +557,60 @@ export default function Library({
       })
   }));
 
+  // Keep the existing notebook content/actions in one fragment. Phone places
+  // this primary filing destination before secondary sources; other clients
+  // retain their existing order.
+  const notebookSection = (
+    <>
+      {sectionTitle(
+        "notebooks",
+        strings.routes.Notebooks(),
+        notebooksCollapsed,
+        () =>
+          AddNotebookSheet.present(
+            undefined,
+            undefined,
+            "global",
+            undefined,
+            false
+          )
+      )}
+      {notebooksCollapsed
+        ? null
+        : notebookRows.length
+        ? notebookRows.map((item, index) =>
+            row(item, index, notebookRows.length)
+          )
+        : row(
+            {
+              key: "new-notebook",
+              label: strings.newNotebookRow(),
+              symbol: "folder.badge.plus",
+              onPress: () =>
+                AddNotebookSheet.present(
+                  undefined,
+                  undefined,
+                  "global",
+                  undefined,
+                  false
+                )
+            },
+            0,
+            1
+          )}
+    </>
+  );
+
   /**
-   * The compact account/login-status affordance that stands in for the removed
-   * sidebar on iPad landscape: the signed-in name (or obfuscated e-mail), a
+   * The compact account/login-status affordance that stands in for the sidebar
+   * whenever it is not on screen: the signed-in name (or obfuscated e-mail), a
    * sync/login dot, and `notLoggedIn` when signed out. It is a bar item, not a
    * card: pressing it opens the existing UserSheet for login/sync/account, so
    * no Library content moves or grows. Only the leading slot is used, next to
    * the Search and compose buttons.
    */
-  const accountAffordance = noSidebarIPadLandscape ? (
-    <Pressable
-      testID="library-account"
-      accessibilityRole="button"
-      accessibilityLabel={accountText}
-      onPress={() => UserSheet.present()}
-      hitSlop={6}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        // The leading slot shares the bar with the trailing buttons; keep the
-        // label shrinkable so a long name/e-mail can never push them out.
-        flexShrink: 1,
-        maxWidth: "100%",
-        minHeight: 44,
-        paddingRight: 8,
-        opacity: pressed ? 0.4 : 1
-      })}
-    >
-      <TaskSymbolView
-        name={signedIn ? "person.crop.circle.fill" : "person.crop.circle"}
-        size={22}
-        color={colors.primary.accent}
-      />
-      <Text
-        numberOfLines={1}
-        ellipsizeMode="tail"
-        style={{
-          flexShrink: 1,
-          color: visual.primaryText,
-          fontSize: 15,
-          marginLeft: 6
-        }}
-      >
-        {accountText}
-      </Text>
-      <View
-        testID="library-account-status"
-        style={{
-          width: 9,
-          height: 9,
-          borderRadius: 4.5,
-          marginLeft: 6,
-          backgroundColor: accountDotColor
-        }}
-      />
-    </Pressable>
+  const accountAffordance = showAccountAffordance ? (
+    <AccountAffordance />
   ) : undefined;
 
   return (
@@ -460,7 +624,7 @@ export default function Library({
         }}
       >
         {/*
-          Search and compose live in the navigation bar, as in Notes; the
+          Separate Settings and compose live in the navigation bar; the
           "Notebooks" section header's "+" (see `sectionTitle`) adds a notebook.
           Mac renders neither this list nor this bar: its source list is the
           sidebar pane and its chrome is the window's native toolbar.
@@ -470,10 +634,10 @@ export default function Library({
           trailing={
             <>
               <IosBarButton
-                symbol="magnifyingglass"
-                accessibilityLabel={strings.search()}
-                testID="library-search"
-                onPress={() => selectAppleSection("search")}
+                symbol="gearshape"
+                accessibilityLabel={strings.routes.Settings()}
+                testID="library-settings"
+                onPress={() => selectAppleSection("settings")}
               />
               <IosBarButton
                 symbol="square.and.pencil"
@@ -492,45 +656,11 @@ export default function Library({
           testID="library-heading"
         />
         {collections.map((item, index) => row(item, index, collections.length))}
+        {isPhone ? notebookSection : null}
         {destinations.map((item, index) =>
           row(item, index, destinations.length, visual.sectionSpacing)
         )}
-        {sectionTitle(
-          "notebooks",
-          strings.routes.Notebooks(),
-          notebooksCollapsed,
-          () =>
-            AddNotebookSheet.present(
-              undefined,
-              undefined,
-              "global",
-              undefined,
-              false
-            )
-        )}
-        {notebooksCollapsed
-          ? null
-          : notebookRows.length
-          ? notebookRows.map((item, index) =>
-              row(item, index, notebookRows.length)
-            )
-          : row(
-              {
-                key: "new-notebook",
-                label: strings.newNotebookRow(),
-                symbol: "folder.badge.plus",
-                onPress: () =>
-                  AddNotebookSheet.present(
-                    undefined,
-                    undefined,
-                    "global",
-                    undefined,
-                    false
-                  )
-              },
-              0,
-              1
-            )}
+        {!isPhone ? notebookSection : null}
         {/* An empty Tags section is hidden; tags appear once a note has one. */}
         {tagRows.length
           ? sectionTitle("tags", strings.routes.Tags(), tagsCollapsed)

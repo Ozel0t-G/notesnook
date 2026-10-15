@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { RRule } from "rrule";
 import { Mutex } from "async-mutex";
 import Database from "../api/index.js";
-import { Reminder, SettingItem } from "../types.js";
+import { Reminder, SettingItem, isDeleted } from "../types.js";
 import { getId, makeId } from "../utils/id.js";
 import { logger } from "../logger.js";
 import {
@@ -40,6 +40,108 @@ const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const warnedRecordKeys = new Set<string>();
 const MAX_WARNED_RECORD_KEYS = 1000;
+
+/**
+ * Database-scoped, opaque, single-acquisition lease for the Task / Task list
+ * write critical section.
+ *
+ * Task records and Task list records live in the *same* settings rows and are
+ * written by several independent paths (the ordinary Tasks API, `TaskLists`
+ * list management and the Connect adapter over `runExclusiveTaskWrite`). To
+ * make a read→merge→write of those rows atomic, every writer has to serialize
+ * on one mutex per live `Database` — an instance-local mutex would let two
+ * `Tasks`/`TaskLists` instances (or an adapter and the editor) interleave.
+ *
+ * Re-entrancy is explicit: a writer that already holds the critical section
+ * passes the {@link TaskWriteLease} it received, and the nested call runs
+ * inline. This is what lets `TaskLists.remove` move its Tasks and
+ * `Tasks.create`/`update` materialize the default list without re-acquiring
+ * (and dead-locking on) the mutex they already hold.
+ *
+ * The lease is deliberately *not* exported through any wire schema or model
+ * API: the brand symbol is module-private, so a token cannot be forged outside
+ * this file, and it is only valid for the database it was minted for and only
+ * while that critical section is still running.
+ */
+const TASK_LEASE_BRAND = Symbol("veyran.task-write.lease");
+
+export interface TaskWriteLease {
+  readonly [TASK_LEASE_BRAND]: true;
+}
+
+interface TaskLockEntry {
+  /** Serializes Task record mutations. Taken first. */
+  readonly mutation: Mutex;
+  /** Serializes Task creation (and its default-list materialization). */
+  readonly create: Mutex;
+  /** The lease whose critical section is currently executing, if any. */
+  active?: TaskWriteLease;
+}
+
+const TASK_LOCKS = new WeakMap<object, TaskLockEntry>();
+
+function taskLockEntry(db: object): TaskLockEntry {
+  let entry = TASK_LOCKS.get(db);
+  if (!entry) {
+    entry = { mutation: new Mutex(), create: new Mutex() };
+    TASK_LOCKS.set(db, entry);
+  }
+  return entry;
+}
+
+function isTaskLease(token: unknown): token is TaskWriteLease {
+  return (
+    typeof token === "object" &&
+    token !== null &&
+    (token as Record<symbol, unknown>)[TASK_LEASE_BRAND] === true
+  );
+}
+
+/** True when `token` is the *currently active* Task write lease for `db`. */
+function isTaskWriteLease(db: object, token?: TaskWriteLease): boolean {
+  if (!isTaskLease(token)) return false;
+  return TASK_LOCKS.get(db)?.active === token;
+}
+
+function assertTaskWriteLease(db: object, token: TaskWriteLease): void {
+  if (!isTaskWriteLease(db, token))
+    throw new Error(
+      "Task write lease is not active for this database."
+    );
+}
+
+/**
+ * Run `fn` inside the Task / Task list write critical section for `db`.
+ *
+ * The established order is `mutation` then `create`; every writer that takes
+ * the lock uses this helper, so list writes and Task writes cannot interleave.
+ * Pass the live `lease` received by an enclosing call to run inline.
+ */
+async function withTaskWrite<T>(
+  db: object,
+  fn: (lease: TaskWriteLease) => Promise<T>,
+  lease?: TaskWriteLease
+): Promise<T> {
+  if (lease !== undefined) {
+    assertTaskWriteLease(db, lease);
+    return fn(lease);
+  }
+  const entry = taskLockEntry(db);
+  return entry.mutation.runExclusive(() =>
+    entry.create.runExclusive(async () => {
+      const active = Object.freeze({
+        [TASK_LEASE_BRAND]: true
+      }) as TaskWriteLease;
+      entry.active = active;
+      try {
+        return await fn(active);
+      } finally {
+        // The lease dies the moment the critical section exits.
+        if (entry.active === active) entry.active = undefined;
+      }
+    })
+  );
+}
 
 export type TaskPriority = "none" | "low" | "medium" | "high";
 export type TaskSmartList =
@@ -88,6 +190,40 @@ export interface Task {
 
 export type TaskInput = Pick<Task, "title"> &
   Partial<Omit<Task, "title" | "schemaVersion" | "createdAt" | "updatedAt">>;
+
+/**
+ * Read-only validation a guarded Task writer runs *inside* its own critical
+ * section (the database-scoped Task write lease) after every preparation
+ * `await` (default-list materialization, calendar materialization) and
+ * immediately before `save`.
+ *
+ * `current` is the stored record the write was materialized from — read inside
+ * the same critical section — and `next` is the exact record about to be
+ * persisted, so a caller can validate both the revision its request was based
+ * on and the scope (list) the write lands in. Implementations must be
+ * read-only, side-effect free and safe to invoke more than once.
+ */
+export type TaskWriteGuard = (
+  current: Task | undefined,
+  next: Task
+) => Promise<void>;
+
+/**
+ * Optional read-only validation for the *recurrence follow-up* Task that a
+ * guarded completion creates.
+ *
+ * It is a separate callback on purpose: the next occurrence is a different
+ * record with a different (usually absent) current revision, so a completion's
+ * `expectedRevision` must never be applied to the new occurrence's id. It runs
+ * inside the same Task write lease the completion holds (the established
+ * `mutation` → `create` order) after every preparation `await` and immediately
+ * before `save`, so a list move, revocation or lock that lands while the
+ * follow-up waits denies the creation instead of racing past it.
+ */
+export type TaskRecurrenceGuard = (
+  current: Task | undefined,
+  next: Task
+) => Promise<void>;
 
 export interface TaskList {
   id: string;
@@ -482,6 +618,221 @@ export function isTaskOverdue(task: Task, now = new Date()): boolean {
   return new Date(year, month - 1, day, hour, minute).getTime() < now.getTime();
 }
 
+/**
+ * Pure create-input materialization, shared by `Tasks.create` and the
+ * pre-reservation validator. It mirrors `create` exactly (calendar
+ * materialization, defaults, derived series/lead fields) but touches no
+ * database and persists nothing, so the Connect adapter can validate a
+ * `create_task` payload *before* a durable receipt is reserved.
+ */
+function buildCreateValue(
+  input: TaskInput,
+  id: string,
+  listId: string,
+  now: number
+): Task {
+  const title = input.title.trim();
+  if (!title) throw new Error("Task title is required.");
+  const calendarWrite =
+    hasOwn(input, "reminderDate") || hasOwn(input, "reminderTime");
+  // A *defined* reminder time with no reminder date would be silently dropped by
+  // the floating-calendar materialization below (and flip the record into a
+  // `scheduleVersion: 2` write whose legacy `reminderAt`/due date it then
+  // overrides). Reject it here — at the raw materialization boundary, *before*
+  // the drop — so `Tasks.create` and the Connect pre-reservation validator
+  // (`validateTaskCreateInput`, which calls this same materializer) refuse a
+  // time-only calendar instead of persisting a Task that lost the time. An
+  // explicit `reminderTime: undefined` still means "no time" and clears.
+  if (
+    hasOwn(input, "reminderTime") &&
+    input.reminderTime !== undefined &&
+    !input.reminderDate
+  )
+    throw new Error("Invalid Task reminder time.");
+  const reminderDate = calendarWrite ? input.reminderDate : undefined;
+  const reminderTime =
+    calendarWrite && reminderDate ? input.reminderTime : undefined;
+  const dueDate = calendarWrite ? input.dueDate ?? reminderDate : input.dueDate;
+  const dueTime = calendarWrite
+    ? input.dueDate !== undefined
+      ? input.dueTime
+      : reminderTime
+    : input.dueTime;
+  const reminderAt = calendarWrite
+    ? taskReminderTimestamp({
+        reminderDate,
+        reminderTime,
+        scheduleVersion: 2
+      })
+    : input.reminderAt;
+  return {
+    id,
+    title,
+    description: input.description,
+    listId,
+    completed: !!input.completed,
+    completedAt: input.completed ? input.completedAt || now : undefined,
+    completedWallDate: input.completed ? input.completedWallDate : undefined,
+    completedWallTime: input.completed ? input.completedWallTime : undefined,
+    dueDate,
+    dueTime,
+    reminderAt,
+    reminderDate,
+    reminderTime,
+    urgent: input.urgent || undefined,
+    scheduleVersion: calendarWrite ? 2 : input.scheduleVersion,
+    recurrenceRule: input.recurrenceRule,
+    priority: input.priority || "none",
+    flagged: !!input.flagged,
+    createdAt: now,
+    updatedAt: now,
+    schemaVersion: VERSION,
+    seriesId: input.recurrenceRule ? input.seriesId || id : undefined,
+    seriesStartDate: input.recurrenceRule
+      ? input.seriesStartDate || dueDate
+      : undefined,
+    seriesStartTime: input.recurrenceRule
+      ? input.seriesStartTime || dueTime
+      : undefined,
+    occurrenceKey: input.occurrenceKey,
+    legacyReminderId: input.legacyReminderId,
+    reminderLeadMinutes:
+      input.reminderLeadMinutes ??
+      reminderLeadMinutes({ dueDate, dueTime, reminderAt }),
+    localOnly: input.localOnly
+  };
+}
+
+/**
+ * Pure update-input materialization, shared by `Tasks.updateUnsafe` and the
+ * pre-reservation validator. It merges `patch` into `old` with exactly the
+ * calendar/series/completion rules `updateUnsafe` applies, but persists
+ * nothing.
+ */
+function buildUpdateValue(
+  old: Task,
+  patch: Partial<TaskInput>,
+  now: number
+): Task {
+  const value: Task = {
+    ...old,
+    ...patch,
+    id: old.id,
+    schemaVersion: VERSION,
+    createdAt: old.createdAt,
+    updatedAt: Math.max(now, old.updatedAt + 1)
+  };
+  const calendarWrite =
+    hasOwn(patch, "reminderDate") || hasOwn(patch, "reminderTime");
+  if (calendarWrite) {
+    // A patch that *supplies* a reminder time is only valid when the merged
+    // record still resolves a reminder date (either the record's existing
+    // floating date, or one supplied in this same patch). Rejecting here — at
+    // the raw materialization boundary, before the drop below — stops the
+    // silent loss of a caller's time when the date is absent or was explicitly
+    // cleared. A patch that only clears (`reminderTime: undefined`, or only
+    // `reminderDate: undefined` while the old time lingers) keeps the existing
+    // clear semantics and is allowed to drop the time.
+    if (
+      hasOwn(patch, "reminderTime") &&
+      patch.reminderTime !== undefined &&
+      !value.reminderDate
+    )
+      throw new Error("Invalid Task reminder time.");
+    if (!value.reminderDate) value.reminderTime = undefined;
+    const previousSchedule = taskReminderSchedule(old);
+    const dueMirrorsReminder =
+      !old.dueDate ||
+      (old.dueDate === previousSchedule.date &&
+        old.dueTime === previousSchedule.time);
+    if (dueMirrorsReminder) {
+      value.dueDate = value.reminderDate;
+      value.dueTime = value.reminderTime;
+    }
+    value.reminderAt = taskReminderTimestamp({
+      reminderDate: value.reminderDate,
+      reminderTime: value.reminderTime,
+      scheduleVersion: 2
+    });
+    value.scheduleVersion = 2;
+  } else if (
+    old.scheduleVersion === 2 &&
+    (hasOwn(patch, "dueDate") ||
+      hasOwn(patch, "dueTime") ||
+      hasOwn(patch, "reminderAt"))
+  ) {
+    if (hasOwn(patch, "reminderAt")) {
+      const instant =
+        value.reminderAt === undefined ? undefined : new Date(value.reminderAt);
+      value.reminderDate = instant ? calendarDate(instant) : undefined;
+      value.reminderTime = instant ? calendarTime(instant) : undefined;
+    } else if (
+      old.dueDate === old.reminderDate &&
+      old.dueTime === old.reminderTime
+    ) {
+      value.reminderDate = value.dueDate;
+      value.reminderTime = value.dueTime;
+    }
+  }
+  value.title = value.title.trim();
+  if (
+    hasOwn(patch, "recurrenceRule") &&
+    patch.recurrenceRule !== old.recurrenceRule
+  ) {
+    value.seriesId = value.recurrenceRule ? old.seriesId || old.id : undefined;
+    value.seriesStartDate = value.recurrenceRule ? value.dueDate : undefined;
+    value.seriesStartTime = value.recurrenceRule ? value.dueTime : undefined;
+  } else if (
+    value.recurrenceRule &&
+    (hasOwn(patch, "dueDate") || hasOwn(patch, "dueTime") || calendarWrite)
+  ) {
+    value.seriesStartDate = old.seriesStartDate || old.dueDate;
+    value.seriesStartTime = old.seriesStartTime || old.dueTime;
+  }
+  if (!value.completed) {
+    value.completedAt = undefined;
+    value.completedWallDate = undefined;
+    value.completedWallTime = undefined;
+  }
+  if (
+    hasOwn(patch, "dueDate") ||
+    hasOwn(patch, "dueTime") ||
+    hasOwn(patch, "reminderAt") ||
+    calendarWrite
+  )
+    value.reminderLeadMinutes = reminderLeadMinutes(value);
+  return value;
+}
+
+/**
+ * Validate a `create_task` payload against the *actual* domain rules
+ * (`validateTask` + the real calendar/RRule helpers), without materializing a
+ * default list or persisting anything. Throws the same domain errors as
+ * `Tasks.create`; callers translate them to a bounded error code.
+ */
+export function validateTaskCreateInput(input: TaskInput): void {
+  validateTask(
+    buildCreateValue(
+      input,
+      input.id || "task-validation-preview",
+      input.listId || "list-validation-preview",
+      Date.now()
+    )
+  );
+}
+
+/**
+ * Validate an `update_task` payload against the record it will be applied to,
+ * using the *actual* domain update materialization and validator. Persists
+ * nothing.
+ */
+export function validateTaskUpdateInput(
+  current: Task,
+  patch: Partial<TaskInput>
+): void {
+  validateTask(buildUpdateValue(current, patch, Date.now()));
+}
+
 class TaskRecordStore {
   constructor(protected readonly db: Database) {}
 
@@ -523,6 +874,19 @@ class TaskRecordStore {
       return record ? [record] : [];
     });
   }
+
+  /**
+   * True when the *raw* settings row backing this Task / Task list is flagged
+   * `localOnly`. The JSON payload can disagree (a legacy or foreign writer), so
+   * external listings must consult the raw column in addition to the parsed
+   * record. Tombstoned rows are already excluded by the cached collection.
+   */
+  protected recordLocalOnly(kind: "task" | "list", id: string): boolean {
+    return (
+      this.db.settings.collection.get(settingId(key(kind, id)))?.localOnly ===
+      true
+    );
+  }
 }
 
 export class TaskLists extends TaskRecordStore {
@@ -530,13 +894,34 @@ export class TaskLists extends TaskRecordStore {
     return this.records<TaskList>("list");
   }
 
+  /** Raw local-only flag of the stored list row (the JSON may disagree). */
+  isLocalOnlyRecord(id: string): boolean {
+    return this.recordLocalOnly("list", id);
+  }
+
+  /**
+   * Raw settings row backing a Task list, including a tombstone
+   * (`{ id, deleted: true }`). `getRecord`/`get` filter tombstones out, so the
+   * raw row is the only way to tell "the row was deleted" apart from "the row
+   * exists but its JSON/schema version is unsupported" — the former must fall
+   * back to the virtual default (and be re-materialized), the latter must stay
+   * fail-closed.
+   */
+  private rawListRow(id: string) {
+    const recordKey = settingId(key("list", id));
+    return this.db.settings.collection.records([recordKey])[recordKey];
+  }
+
   getSync(id: string): TaskList | undefined {
     const existing = this.getRecord<TaskList>("list", id);
     if (existing || id !== DEFAULT_LIST_ID) return existing;
-    const recordKey = settingId(key("list", DEFAULT_LIST_ID));
-    return this.db.settings.collection.records([recordKey])[recordKey]
-      ? undefined
-      : this.virtualDefault();
+    const raw = this.rawListRow(DEFAULT_LIST_ID);
+    // A *deleted* default list row is treated as absent: the virtual default is
+    // returned and the next default-list write re-materializes it inside the
+    // held Task write lease. A present, non-deleted row that failed to parse
+    // (unsupported schema version / corrupt JSON) remains fail-closed.
+    if (raw && !isDeleted(raw)) return undefined;
+    return this.virtualDefault();
   }
 
   async list(): Promise<TaskList[]> {
@@ -554,8 +939,8 @@ export class TaskLists extends TaskRecordStore {
   async default(): Promise<TaskList> {
     const existing = this.getRecord<TaskList>("list", DEFAULT_LIST_ID);
     if (existing) return existing;
-    const recordKey = settingId(key("list", DEFAULT_LIST_ID));
-    if (this.db.settings.collection.records([recordKey])[recordKey])
+    const raw = this.rawListRow(DEFAULT_LIST_ID);
+    if (raw && !isDeleted(raw))
       throw new Error(
         "The default Task list has an unsupported schema version."
       );
@@ -575,73 +960,132 @@ export class TaskLists extends TaskRecordStore {
     };
   }
 
-  /** A read of Tasks never writes; actual mutations can materialize the list. */
-  async ensureDefaultPersisted(): Promise<TaskList> {
-    const value = await this.default();
-    if (!this.getRecord<TaskList>("list", DEFAULT_LIST_ID))
-      await this.save("list", {
-        ...value,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      });
-    return this.getRecord<TaskList>("list", DEFAULT_LIST_ID)!;
+  /**
+   * Materialize the (virtual) default Task list as a persisted row.
+   *
+   * Runs inside the database-scoped Task write critical section — the same one
+   * every Task create/update and `runExclusiveTaskWrite` take — so it can never
+   * interleave with a concurrent list or Task write. A caller that already
+   * holds the section (a Task create/update that lands in the default list)
+   * passes its live `lease` and the write runs inline.
+   */
+  async ensureDefaultPersisted(lease?: TaskWriteLease): Promise<TaskList> {
+    return withTaskWrite(
+      this.db,
+      async () => {
+        const value = await this.default();
+        if (!this.getRecord<TaskList>("list", DEFAULT_LIST_ID))
+          await this.save("list", {
+            ...value,
+            createdAt: Date.now(),
+            updatedAt: Date.now()
+          });
+        return this.getRecord<TaskList>("list", DEFAULT_LIST_ID)!;
+      },
+      lease
+    );
   }
 
   async create(input: TaskListInput | string): Promise<TaskList> {
-    const data = typeof input === "string" ? { name: input } : input;
-    const name = data.name.trim();
-    if (!name) throw new Error("Task list name is required.");
-    if (data.symbol && !isTaskListSymbol(data.symbol))
-      throw new Error("Invalid Task list symbol.");
-    if (data.color && !validListColor(data.color))
-      throw new Error("Invalid Task list color.");
-    const now = Date.now();
-    const value: TaskList = {
-      id: getId(),
-      name,
-      sortOrder: data.sortOrder ?? now,
-      createdAt: now,
-      updatedAt: now,
-      schemaVersion: VERSION,
-      color: data.color ?? DEFAULT_TASK_LIST_COLOR,
-      symbol: data.symbol ?? DEFAULT_TASK_LIST_SYMBOL
-    };
-    await this.save("list", value);
-    return value;
+    return withTaskWrite(this.db, async () => {
+      const data = typeof input === "string" ? { name: input } : input;
+      const name = data.name.trim();
+      if (!name) throw new Error("Task list name is required.");
+      if (data.symbol && !isTaskListSymbol(data.symbol))
+        throw new Error("Invalid Task list symbol.");
+      if (data.color && !validListColor(data.color))
+        throw new Error("Invalid Task list color.");
+      const now = Date.now();
+      const value: TaskList = {
+        id: getId(),
+        name,
+        sortOrder: data.sortOrder ?? now,
+        createdAt: now,
+        updatedAt: now,
+        schemaVersion: VERSION,
+        color: data.color ?? DEFAULT_TASK_LIST_COLOR,
+        symbol: data.symbol ?? DEFAULT_TASK_LIST_SYMBOL
+      };
+      await this.save("list", value);
+      return value;
+    });
   }
 
   async update(id: string, patch: Partial<TaskListInput>): Promise<TaskList> {
-    const old = this.getSync(id);
-    if (!old) throw new Error("Task list not found.");
-    const name = patch.name === undefined ? old.name : patch.name.trim();
-    if (!name) throw new Error("Task list name is required.");
-    if (patch.symbol !== undefined && !isTaskListSymbol(patch.symbol))
-      throw new Error("Invalid Task list symbol.");
-    if (patch.color !== undefined && !validListColor(patch.color))
-      throw new Error("Invalid Task list color.");
-    const value: TaskList = { ...old, ...patch, name, updatedAt: Date.now() };
-    await this.save("list", value);
-    return value;
+    return withTaskWrite(this.db, async () => {
+      const old = this.getSync(id);
+      if (!old) throw new Error("Task list not found.");
+      const name = patch.name === undefined ? old.name : patch.name.trim();
+      if (!name) throw new Error("Task list name is required.");
+      if (patch.symbol !== undefined && !isTaskListSymbol(patch.symbol))
+        throw new Error("Invalid Task list symbol.");
+      if (patch.color !== undefined && !validListColor(patch.color))
+        throw new Error("Invalid Task list color.");
+      // Assemble only the mutable Task list fields from the patch and pin the
+      // identity/version fields to the stored record: `patch` is typed as
+      // `Partial<TaskListInput>` but a runtime (untyped) caller could otherwise
+      // overwrite `id`, `schemaVersion` or `createdAt` through the spread, which
+      // would orphan every Task that points at this list. An *own* key still
+      // overrides (including an explicit `undefined` clear); an absent key keeps
+      // the stored value.
+      const value: TaskList = {
+        id: old.id,
+        name,
+        sortOrder: hasOwn(patch, "sortOrder")
+          ? (patch.sortOrder as number)
+          : old.sortOrder,
+        createdAt: old.createdAt,
+        updatedAt: Date.now(),
+        schemaVersion: VERSION,
+        color: hasOwn(patch, "color") ? patch.color : old.color,
+        symbol: hasOwn(patch, "symbol") ? patch.symbol : old.symbol
+      };
+      await this.save("list", value);
+      return value;
+    });
   }
 
   async remove(id: string): Promise<void> {
     if (id === DEFAULT_LIST_ID)
       throw new Error("The default Task list cannot be deleted.");
-    if (!this.getRecord<TaskList>("list", id)) return;
-    const fallback = await this.default();
-    for (const task of this.db.tasks
-      .listSync()
-      .filter((item) => item.listId === id))
-      await this.db.tasks.update(task.id, { listId: fallback.id });
-    await this.delete("list", id);
+    // The whole read→reassign→delete runs inside the Task write critical
+    // section, and the reassignments reuse this very lease: a concurrent Task
+    // create/update cannot interleave between reading the list's Tasks and
+    // moving them, and `Tasks.update` is never re-entered (which would
+    // dead-lock on the mutation mutex this call already holds).
+    await withTaskWrite(this.db, async (lease) => {
+      if (!this.getRecord<TaskList>("list", id)) return;
+      const fallback = await this.default();
+      for (const task of this.db.tasks
+        .listSync()
+        .filter((item) => item.listId === id))
+        await this.db.tasks.updateWithinLease(lease, task.id, {
+          listId: fallback.id
+        });
+      await this.delete("list", id);
+    });
   }
 }
 
 export class Tasks extends TaskRecordStore {
   private readonly maintenanceMutex = new Mutex();
-  private readonly createMutex = new Mutex();
-  /** Serializes local writes to a Task with guarded widget completions. */
-  private readonly mutationMutex = new Mutex();
+
+  /**
+   * Narrow internal boundary for callers that perform their own
+   * read→merge→write over the `settings` rows Task records live in (the sync
+   * merge of an `appleTasks:v1:*`/`veyranConnect:v1:*` chunk).
+   *
+   * It takes the *same* database-scoped critical section as every local Task
+   * and Task list writer (in the established `mutation` → `create` order), so a
+   * sync merge cannot interleave with a guarded local Task write and overwrite
+   * it with a value computed from a stale row. It is not a general-purpose
+   * lock: callers must only run the settings-row read/merge/write they were
+   * given, never call back into `Tasks`, and never take the domain write lock
+   * while holding it.
+   */
+  async runExclusiveTaskWrite<T>(fn: () => Promise<T>): Promise<T> {
+    return withTaskWrite(this.db, () => fn());
+  }
   /** Includes completed history. */
   async list(): Promise<Task[]> {
     return this.listSync();
@@ -654,6 +1098,11 @@ export class Tasks extends TaskRecordStore {
     return this.getRecord<Task>("task", id);
   }
 
+  /** Raw local-only flag of the stored task row (the JSON may disagree). */
+  isLocalOnlyRecord(id: string): boolean {
+    return this.recordLocalOnly("task", id);
+  }
+
   private recordExists(id: string) {
     const settingKey = settingId(key("task", id));
     return !!this.db.settings.collection.records([settingKey])[settingKey];
@@ -664,181 +1113,166 @@ export class Tasks extends TaskRecordStore {
     return this.recordExists(makeId(`${PREFIX}legacy:${reminderId}`));
   }
 
-  async create(input: TaskInput): Promise<Task> {
-    const title = input.title.trim();
-    if (!title) throw new Error("Task title is required.");
-    const listId = input.listId || (await this.db.taskLists.default()).id;
+  /**
+   * Create a Task.
+   *
+   * `guard` (optional) is a read-only validation that runs inside the Task
+   * write lease *after* the existence check and the default-list
+   * materialization and immediately before the record is saved, so a permission
+   * or lock change that landed while those awaits were suspended cannot be
+   * followed by the write they were supposed to prevent.
+   */
+  async create(input: TaskInput, guard?: TaskWriteGuard): Promise<Task> {
+    return withTaskWrite(this.db, (lease) =>
+      this.createWithinLease(input, guard, lease)
+    );
+  }
+
+  /**
+   * `create` body, already inside the Task write critical section.
+   *
+   * The target list is revalidated (and the default list materialized) *inside*
+   * the section, immediately before the record is saved, so a list removal or a
+   * privacy toggle that landed while the caller waited cannot be raced past.
+   * The default-list materialization reuses this call's `lease` — it never
+   * re-acquires the mutex this call already holds.
+   */
+  private async createWithinLease(
+    input: TaskInput,
+    guard: TaskWriteGuard | undefined,
+    lease: TaskWriteLease
+  ): Promise<Task> {
+    assertTaskWriteLease(this.db, lease);
+    if (!input.title || !input.title.trim())
+      throw new Error("Task title is required.");
+    // An explicit empty/whitespace `listId` is a caller error, never "use the
+    // default list": silently routing it to the default would hide a bug and
+    // persist a Task the caller did not ask for.
+    const requestedListId = input.listId;
+    if (requestedListId !== undefined && !requestedListId.trim())
+      throw new Error("Task list not found.");
+    const listId = requestedListId ?? (await this.db.taskLists.default()).id;
     if (!this.db.taskLists.getSync(listId))
       throw new Error("Task list not found.");
     const now = Date.now();
     const id = input.id || getId();
-    const calendarWrite =
-      hasOwn(input, "reminderDate") || hasOwn(input, "reminderTime");
-    const reminderDate = calendarWrite ? input.reminderDate : undefined;
-    const reminderTime =
-      calendarWrite && reminderDate ? input.reminderTime : undefined;
-    const dueDate = calendarWrite
-      ? input.dueDate ?? reminderDate
-      : input.dueDate;
-    const dueTime = calendarWrite
-      ? input.dueDate !== undefined
-        ? input.dueTime
-        : reminderTime
-      : input.dueTime;
-    const reminderAt = calendarWrite
-      ? taskReminderTimestamp({
-          reminderDate,
-          reminderTime,
-          scheduleVersion: 2
-        })
-      : input.reminderAt;
-    const value: Task = {
-      id,
-      title,
-      description: input.description,
-      listId,
-      completed: !!input.completed,
-      completedAt: input.completed ? input.completedAt || now : undefined,
-      completedWallDate: input.completed ? input.completedWallDate : undefined,
-      completedWallTime: input.completed ? input.completedWallTime : undefined,
-      dueDate,
-      dueTime,
-      reminderAt,
-      reminderDate,
-      reminderTime,
-      urgent: input.urgent || undefined,
-      scheduleVersion: calendarWrite ? 2 : input.scheduleVersion,
-      recurrenceRule: input.recurrenceRule,
-      priority: input.priority || "none",
-      flagged: !!input.flagged,
-      createdAt: now,
-      updatedAt: now,
-      schemaVersion: VERSION,
-      seriesId: input.recurrenceRule ? input.seriesId || id : undefined,
-      seriesStartDate: input.recurrenceRule
-        ? input.seriesStartDate || dueDate
-        : undefined,
-      seriesStartTime: input.recurrenceRule
-        ? input.seriesStartTime || dueTime
-        : undefined,
-      occurrenceKey: input.occurrenceKey,
-      legacyReminderId: input.legacyReminderId,
-      reminderLeadMinutes:
-        input.reminderLeadMinutes ??
-        reminderLeadMinutes({ dueDate, dueTime, reminderAt }),
-      localOnly: input.localOnly
-    };
+    const value = buildCreateValue(input, id, listId, now);
     validateTask(value);
-    return this.createMutex.runExclusive(async () => {
-      if (this.recordExists(id))
-        throw new Error("A Task with this ID already exists or was deleted.");
-      if (listId === DEFAULT_LIST_ID)
-        await this.db.taskLists.ensureDefaultPersisted();
-      await this.save("task", value);
-      return value;
-    });
+    if (this.recordExists(id))
+      throw new Error("A Task with this ID already exists or was deleted.");
+    if (listId === DEFAULT_LIST_ID)
+      await this.db.taskLists.ensureDefaultPersisted(lease);
+    if (!this.db.taskLists.getSync(listId))
+      throw new Error("Task list not found.");
+    if (guard) await guard(this.getRecord<Task>("task", id), value);
+    await this.save("task", value);
+    return value;
   }
 
   async update(id: string, patch: Partial<TaskInput>): Promise<Task> {
-    return this.mutationMutex.runExclusive(() => this.updateUnsafe(id, patch));
+    return withTaskWrite(this.db, (lease) =>
+      this.updateUnsafe(id, patch, undefined, lease)
+    );
+  }
+
+  /**
+   * Narrow internal helper: an update performed by a caller that already holds
+   * the Task write critical section (e.g. `TaskLists.remove` moving a list's
+   * Tasks). It never re-acquires the lock; the lease is revalidated first.
+   *
+   * @internal
+   */
+  async updateWithinLease(
+    lease: TaskWriteLease,
+    id: string,
+    patch: Partial<TaskInput>
+  ): Promise<Task> {
+    return withTaskWrite(
+      this.db,
+      (live) => this.updateUnsafe(id, patch, undefined, live),
+      lease
+    );
+  }
+
+  /**
+   * Additive guarded update. `guard` runs inside the Task write critical
+   * section (shared with ordinary updates and widget completions) on the record
+   * that was read *inside* that critical section and on the exact record about
+   * to be saved, immediately before `save`: nothing between the revision/scope
+   * validation and the persisted change is awaited, so neither a manual edit
+   * nor a permission/lock change can slip in between them.
+   */
+  async updateGuarded(
+    id: string,
+    patch: Partial<TaskInput>,
+    guard: TaskWriteGuard
+  ): Promise<Task> {
+    return withTaskWrite(this.db, (lease) =>
+      this.updateUnsafe(id, patch, guard, lease)
+    );
   }
 
   private async updateUnsafe(
     id: string,
-    patch: Partial<TaskInput>
+    patch: Partial<TaskInput>,
+    guard: TaskWriteGuard | undefined,
+    lease: TaskWriteLease
   ): Promise<Task> {
+    assertTaskWriteLease(this.db, lease);
     const old = await this.get(id);
     if (!old) throw new Error("Task not found.");
+    // An explicit empty/whitespace `listId` must be rejected, never silently
+    // persisted: `patch.listId && ...` alone would skip the guard for `""` and
+    // `buildUpdateValue` would write `listId: ""` onto the record.
+    if (
+      hasOwn(patch, "listId") &&
+      patch.listId !== undefined &&
+      !patch.listId.trim()
+    )
+      throw new Error("Task list not found.");
     if (patch.listId && !this.db.taskLists.getSync(patch.listId))
       throw new Error("Task list not found.");
-    const value: Task = {
-      ...old,
-      ...patch,
-      id,
-      schemaVersion: VERSION,
-      createdAt: old.createdAt,
-      updatedAt: Math.max(Date.now(), old.updatedAt + 1)
-    };
-    const calendarWrite =
-      hasOwn(patch, "reminderDate") || hasOwn(patch, "reminderTime");
-    if (calendarWrite) {
-      if (!value.reminderDate) value.reminderTime = undefined;
-      const previousSchedule = taskReminderSchedule(old);
-      const dueMirrorsReminder =
-        !old.dueDate ||
-        (old.dueDate === previousSchedule.date &&
-          old.dueTime === previousSchedule.time);
-      if (dueMirrorsReminder) {
-        value.dueDate = value.reminderDate;
-        value.dueTime = value.reminderTime;
-      }
-      value.reminderAt = taskReminderTimestamp({
-        reminderDate: value.reminderDate,
-        reminderTime: value.reminderTime,
-        scheduleVersion: 2
-      });
-      value.scheduleVersion = 2;
-    } else if (
-      old.scheduleVersion === 2 &&
-      (hasOwn(patch, "dueDate") ||
-        hasOwn(patch, "dueTime") ||
-        hasOwn(patch, "reminderAt"))
-    ) {
-      // Older fork clients can still write the compatibility fields.
-      if (hasOwn(patch, "reminderAt")) {
-        const instant =
-          value.reminderAt === undefined
-            ? undefined
-            : new Date(value.reminderAt);
-        value.reminderDate = instant ? calendarDate(instant) : undefined;
-        value.reminderTime = instant ? calendarTime(instant) : undefined;
-      } else if (
-        old.dueDate === old.reminderDate &&
-        old.dueTime === old.reminderTime
-      ) {
-        value.reminderDate = value.dueDate;
-        value.reminderTime = value.dueTime;
-      }
-    }
-    value.title = value.title.trim();
-    if (
-      hasOwn(patch, "recurrenceRule") &&
-      patch.recurrenceRule !== old.recurrenceRule
-    ) {
-      value.seriesId = value.recurrenceRule
-        ? old.seriesId || old.id
-        : undefined;
-      value.seriesStartDate = value.recurrenceRule ? value.dueDate : undefined;
-      value.seriesStartTime = value.recurrenceRule ? value.dueTime : undefined;
-    } else if (
-      value.recurrenceRule &&
-      (hasOwn(patch, "dueDate") || hasOwn(patch, "dueTime") || calendarWrite)
-    ) {
-      // Changing one occurrence does not move the series schedule.
-      value.seriesStartDate = old.seriesStartDate || old.dueDate;
-      value.seriesStartTime = old.seriesStartTime || old.dueTime;
-    }
-    if (!value.completed) {
-      value.completedAt = undefined;
-      value.completedWallDate = undefined;
-      value.completedWallTime = undefined;
-    }
-    if (
-      hasOwn(patch, "dueDate") ||
-      hasOwn(patch, "dueTime") ||
-      hasOwn(patch, "reminderAt") ||
-      calendarWrite
-    )
-      value.reminderLeadMinutes = reminderLeadMinutes(value);
+    const value = buildUpdateValue(old, patch, Date.now());
     validateTask(value);
+    // Revalidate the list this record is about to land in *inside* the critical
+    // section, and materialize the default list inline on this very lease
+    // (never re-entering the mutex this call already holds).
     if (patch.listId === DEFAULT_LIST_ID)
-      await this.db.taskLists.ensureDefaultPersisted();
+      await this.db.taskLists.ensureDefaultPersisted(lease);
+    if (patch.listId && !this.db.taskLists.getSync(patch.listId))
+      throw new Error("Task list not found.");
+    // Last possible await is behind us: validate the materialized record (and
+    // the record it was materialized from) immediately before the save.
+    if (guard) await guard(old, value);
     await this.save("task", value);
     return value;
   }
 
   async complete(id: string): Promise<Task> {
-    return this.mutationMutex.runExclusive(() => this.completeUnsafe(id));
+    return withTaskWrite(this.db, (lease) =>
+      this.completeUnsafe(id, undefined, undefined, lease)
+    );
+  }
+
+  /**
+   * Additive guarded completion. Runs inside the same Task write critical
+   * section as {@link complete} / {@link completeIfUnchanged} and reuses the
+   * existing `completeUnsafe` recurrence handling, so guarded completion cannot
+   * double-create the next occurrence.
+   *
+   * `recurrenceGuard` (optional) is the caller's validation for the *next*
+   * occurrence this completion creates; it runs inside the critical section,
+   * right before that record is saved. It never sees the completion's revision
+   * expectations — see {@link TaskRecurrenceGuard}.
+   */
+  async completeGuarded(
+    id: string,
+    guard: TaskWriteGuard,
+    recurrenceGuard?: TaskRecurrenceGuard
+  ): Promise<Task> {
+    return withTaskWrite(this.db, (lease) =>
+      this.completeUnsafe(id, guard, recurrenceGuard, lease)
+    );
   }
 
   /** Complete only the occurrence and revision displayed by a widget snapshot.
@@ -847,25 +1281,39 @@ export class Tasks extends TaskRecordStore {
     id: string,
     expectedUpdatedAt: number
   ): Promise<Task | undefined> {
-    return this.mutationMutex.runExclusive(async () => {
+    return withTaskWrite(this.db, async (lease) => {
       const current = await this.get(id);
       if (
         !current ||
         (!current.completed && current.updatedAt !== expectedUpdatedAt)
       )
         return;
-      return this.completeUnsafe(id);
+      return this.completeUnsafe(id, undefined, undefined, lease);
     });
   }
 
-  private async completeUnsafe(id: string): Promise<Task> {
+  private async completeUnsafe(
+    id: string,
+    guard: TaskWriteGuard | undefined,
+    recurrenceGuard: TaskRecurrenceGuard | undefined,
+    lease: TaskWriteLease
+  ): Promise<Task> {
     const old = await this.get(id);
     if (!old) throw new Error("Task not found.");
-    const completedAt = Date.now();
-    const wallTime = new Date(completedAt);
-    const completed = old.completed
-      ? old
-      : await this.updateUnsafe(id, {
+    let completed: Task;
+    if (old.completed) {
+      // An already completed occurrence is a successful, repairable retry (see
+      // `completeIfUnchanged`), but the caller's guard still has to see the
+      // stored record before the recurrence follow-up — a persisted write of
+      // its own — may run.
+      if (guard) await guard(old, old);
+      completed = old;
+    } else {
+      const completedAt = Date.now();
+      const wallTime = new Date(completedAt);
+      completed = await this.updateUnsafe(
+        id,
+        {
           completed: true,
           completedAt,
           completedWallDate: calendarDate(wallTime),
@@ -873,12 +1321,24 @@ export class Tasks extends TaskRecordStore {
             2,
             "0"
           )}:${String(wallTime.getMinutes()).padStart(2, "0")}`
-        });
-    await this.ensureNextOccurrence(completed);
+        },
+        guard,
+        lease
+      );
+    }
+    // The recurrence write is a follow-up of the completion but a *different*
+    // record: it keeps the established `mutation` → `create` ordering (on this
+    // same lease) and is validated by its own optional follow-up guard (fence +
+    // the list the new occurrence lands in), never by the completion's guard.
+    await this.ensureNextOccurrence(completed, recurrenceGuard, lease);
     return completed;
   }
 
-  private async ensureNextOccurrence(completed: Task): Promise<void> {
+  private async ensureNextOccurrence(
+    completed: Task,
+    guard?: TaskRecurrenceGuard,
+    lease?: TaskWriteLease
+  ): Promise<void> {
     const next = safeNextOccurrence(completed);
     if (next) {
       const seriesId = completed.seriesId || completed.id;
@@ -900,26 +1360,33 @@ export class Tasks extends TaskRecordStore {
             ? calendarTime(reminderInstant)
             : next.time
           : undefined;
+        const occurrence = {
+          ...completed,
+          id: nextId,
+          completed: false,
+          completedAt: undefined,
+          completedWallDate: undefined,
+          completedWallTime: undefined,
+          dueDate: next.date,
+          dueTime: next.time,
+          reminderAt,
+          ...(completed.scheduleVersion === 2
+            ? { reminderDate, reminderTime }
+            : {}),
+          seriesId,
+          seriesStartDate: completed.seriesStartDate || completed.dueDate,
+          seriesStartTime: completed.seriesStartTime || completed.dueTime,
+          occurrenceKey,
+          reminderLeadMinutes: completed.reminderLeadMinutes
+        } as TaskInput;
         try {
-          await this.create({
-            ...completed,
-            id: nextId,
-            completed: false,
-            completedAt: undefined,
-            completedWallDate: undefined,
-            completedWallTime: undefined,
-            dueDate: next.date,
-            dueTime: next.time,
-            reminderAt,
-            ...(completed.scheduleVersion === 2
-              ? { reminderDate, reminderTime }
-              : {}),
-            seriesId,
-            seriesStartDate: completed.seriesStartDate || completed.dueDate,
-            seriesStartTime: completed.seriesStartTime || completed.dueTime,
-            occurrenceKey,
-            reminderLeadMinutes: completed.reminderLeadMinutes
-          });
+          // A completion already holds the Task write lease; the follow-up must
+          // run inline on it (it is the *same* critical section that created
+          // the completion) rather than re-acquiring the mutex. The maintenance
+          // path (`reconcileRecurrence`) holds no lease and takes the normal
+          // top-level `create`.
+          if (lease) await this.createWithinLease(occurrence, guard, lease);
+          else await this.create(occurrence, guard);
         } catch (error) {
           // Another completion may have created the same stable occurrence.
           if (!this.recordExists(nextId)) throw error;
@@ -947,10 +1414,15 @@ export class Tasks extends TaskRecordStore {
   }
 
   async uncomplete(id: string): Promise<Task> {
-    return this.mutationMutex.runExclusive(() => this.uncompleteUnsafe(id));
+    return withTaskWrite(this.db, (lease) =>
+      this.uncompleteUnsafe(id, lease)
+    );
   }
 
-  private async uncompleteUnsafe(id: string): Promise<Task> {
+  private async uncompleteUnsafe(
+    id: string,
+    lease: TaskWriteLease
+  ): Promise<Task> {
     const old = await this.get(id);
     if (!old) throw new Error("Task not found.");
     if (!old.completed) return old;
@@ -967,11 +1439,16 @@ export class Tasks extends TaskRecordStore {
           );
       }
     }
-    return this.updateUnsafe(id, { completed: false, completedAt: undefined });
+    return this.updateUnsafe(
+      id,
+      { completed: false, completedAt: undefined },
+      undefined,
+      lease
+    );
   }
 
   async remove(id: string): Promise<void> {
-    await this.mutationMutex.runExclusive(async () => {
+    await withTaskWrite(this.db, async () => {
       if (!this.getRecord<Task>("task", id)) return;
       await this.delete("task", id);
     });

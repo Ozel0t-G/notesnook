@@ -17,16 +17,18 @@ final class VeyraNTabBarViewManager: RCTViewManager {
 final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
   private let tabBar = UITabBar()
   /// Index-aligned with `tabBar.items`. `compose` is an action, not a section.
-  /// The third item opens Settings; it is an action too (the bar highlights
-  /// Settings while the sheet is up, and the section underneath is restored on
-  /// dismissal), so it is not a persistent section either.
-  private let sections = ["library", "tasks", "settings", "compose"]
+  /// Settings has a separate gear entry and leaves this selection intact.
+  private let sections = ["library", "tasks", "search", "compose"]
   private static let composeSection = "compose"
 
   @objc var selectedSection: String = "library" { didSet { updateSelection() } }
   @objc var onSelect: RCTBubblingEventBlock?
   @objc var itemTitles: NSDictionary = [:] { didSet { updateTitles() } }
-  /// The app's single accent (petrol) for the selected tab.
+  /// Follow the effective app theme even when it differs from system appearance.
+  @objc var isDark: Bool = false {
+    didSet { overrideUserInterfaceStyle = isDark ? .dark : .light }
+  }
+  /// The app's selected-tab accent.
   @objc var tint: UIColor? { didSet { tabBar.tintColor = tint } }
 
   override init(frame: CGRect) {
@@ -36,8 +38,8 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
     tabBar.delegate = self
 
     let libraryItem = UITabBarItem(
-      title: NSLocalizedString("Library", comment: "Library tab"),
-      image: UIImage(systemName: "books.vertical"),
+      title: NSLocalizedString("Notes", comment: "Notes tab"),
+      image: UIImage(systemName: "note.text"),
       tag: 0
     )
     let tasksItem = UITabBarItem(
@@ -45,18 +47,18 @@ final class VeyraNTabBarNativeView: UIView, UITabBarDelegate {
       image: UIImage(systemName: "checklist"),
       tag: 1
     )
-    let settingsItem = UITabBarItem(
-      title: NSLocalizedString("Settings", comment: "Settings tab"),
-      image: UIImage(systemName: "gearshape"),
+    let searchItem = UITabBarItem(
+      title: NSLocalizedString("Search", comment: "Search tab"),
+      image: UIImage(systemName: "magnifyingglass"),
       tag: 2
     )
     libraryItem.accessibilityIdentifier = "veyran-tab-library"
     tasksItem.accessibilityIdentifier = "veyran-tab-tasks"
-    settingsItem.accessibilityIdentifier = "veyran-tab-settings"
+    searchItem.accessibilityIdentifier = "veyran-tab-search"
 
     // Tabs are places, not actions: "New Note" lives in the toolbar
     // (square.and.pencil) like in Notes.
-    tabBar.items = [libraryItem, tasksItem, settingsItem]
+    tabBar.items = [libraryItem, tasksItem, searchItem]
     addSubview(tabBar)
     NSLayoutConstraint.activate([
       tabBar.leadingAnchor.constraint(equalTo: leadingAnchor),

@@ -16,6 +16,16 @@
         "types": "./dist/types/index.d.ts",
         "default": "./dist/esm/index.js"
       }
+    },
+    "./connect/protocol": {
+      "require": {
+        "types": "./dist/types/connect/protocol.d.ts",
+        "default": "./dist/cjs/connect/protocol.js"
+      },
+      "import": {
+        "types": "./dist/types/connect/protocol.d.ts",
+        "default": "./dist/esm/connect/protocol.js"
+      }
     }
   },
   "repository": {
@@ -46,6 +56,7 @@
     "nanoid": "5.0.7",
     "otplib": "^12.0.1",
     "refractor": "^4.8.1",
+    "sodium-native": "^4.3.3",
     "sqlite-better-trigram": "^0.0.3",
     "sqlite-regex": "^0.2.4-alpha.1",
     "sqlite3-fts5-html": "^0.0.4",
@@ -67,6 +78,7 @@
   "dependencies": {
     "@leeoniya/ufuzzy": "^1.0.10",
     "@microsoft/signalr": "^8.0.0",
+    "@noble/hashes": "^1.8.0",
     "@notesnook/intl": "file:../intl",
     "@notesnook/logger": "file:../logger",
     "@readme/data-urls": "^3.0.0",

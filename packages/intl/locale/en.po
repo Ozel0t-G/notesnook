@@ -8975,3 +8975,11 @@ msgstr "Zoom in or out the app content."
 #: src/strings.ts:1941
 msgid "Zoom out"
 msgstr "Zoom out"
+
+#: src/strings.ts
+msgid "Columns"
+msgstr "Columns"
+
+#: src/strings.ts
+msgid "Rows"
+msgstr "Rows"

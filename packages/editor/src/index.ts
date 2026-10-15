@@ -482,6 +482,7 @@ export {
 export { type ImageAttributes } from "./extensions/image/index.js";
 export { type LinkAttributes } from "./extensions/link/index.js";
 export * from "./toolbar/index.js";
+export { showMacInsertMenu } from "./toolbar/tools/block.js";
 export * from "./types.js";
 export * from "./utils/word-counter.js";
 export * from "./utils/font.js";
@@ -498,3 +499,10 @@ export {
 export { replaceDateTime } from "./extensions/date-time/index.js";
 export type * from "./extension-imports.js";
 export { type Selection } from "@tiptap/pm/state";
+
+export {
+  getPopupDismissToken,
+  dismissPopupForOwner
+} from "./components/popup-presenter/index.js";
+
+export { showMacFormattingMenu } from "./toolbar/tools/mac-format-menu.js";

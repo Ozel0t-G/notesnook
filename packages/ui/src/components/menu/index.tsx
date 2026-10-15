@@ -39,10 +39,17 @@ import { ScrollContainer } from "../scroll-container/index.js";
 type MenuProps = MenuContainerProps & {
   items?: MenuItem[];
   onClose: () => void;
+  /** Opt-in for bounded native-host panes; keep legacy submenu placement. */
+  fitSubmenusToViewport?: boolean;
 };
 
 export function Menu(props: MenuProps) {
-  const { items = [], onClose, ...containerProps } = props;
+  const {
+    items = [],
+    onClose,
+    fitSubmenusToViewport = false,
+    ...containerProps
+  } = props;
   const hoverTimeout = useRef<number>();
   const onAction = useCallback(
     (e?: Event, item?: MenuButtonItem) => {
@@ -82,12 +89,31 @@ export function Menu(props: MenuProps) {
     }
 
     function repositionSubmenu() {
+      if (!subMenuRef.current) return;
       if (!subMenuRef.current || !menuItemElement) return;
 
-      const { top, left } = getPosition(subMenuRef.current, {
+      let { top, left } = getPosition(subMenuRef.current, {
         target: menuItemElement,
         location: "right"
       });
+      if (fitSubmenusToViewport) {
+        const submenu = subMenuRef.current;
+        const viewportWidth =
+          document.documentElement.clientWidth || window.innerWidth;
+        const anchor = menuItemElement.getBoundingClientRect();
+        const parentLeft =
+          submenu.offsetParent?.getBoundingClientRect().left || 0;
+        const width = submenu.offsetWidth;
+        const preferred =
+          anchor.right + width <= viewportWidth
+            ? anchor.right
+            : anchor.left - width;
+        // Translate the clamped viewport coordinate back to the actual
+        // positioned parent (the popup can itself start in the pane's middle).
+        left =
+          Math.max(0, Math.min(preferred, Math.max(0, viewportWidth - width))) -
+          parentLeft;
+      }
       subMenuRef.current.style.top = `${top}px`;
       subMenuRef.current.style.left = `${left}px`;
     }
@@ -97,8 +123,14 @@ export function Menu(props: MenuProps) {
 
     const observer = new ResizeObserver(() => repositionSubmenu());
     observer.observe(subMenuRef.current);
-    return () => observer.disconnect();
-  }, [isSubmenuOpen, focusIndex, items]);
+    if (fitSubmenusToViewport)
+      window.addEventListener("resize", repositionSubmenu);
+    return () => {
+      observer.disconnect();
+      if (fitSubmenusToViewport)
+        window.removeEventListener("resize", repositionSubmenu);
+    };
+  }, [isSubmenuOpen, focusIndex, items, fitSubmenusToViewport]);
 
   return (
     <>
@@ -163,6 +195,8 @@ export function Menu(props: MenuProps) {
       </MenuContainer>
       {focusedItem?.type === "button" && focusedItem?.menu && isSubmenuOpen && (
         <Menu
+          fitSubmenusToViewport={fitSubmenusToViewport}
+          menuLayout={fitSubmenusToViewport ? "column" : undefined}
           menuRef={subMenuRef}
           sx={{
             position: "absolute",
@@ -180,9 +214,32 @@ export function Menu(props: MenuProps) {
 type MenuContainerProps = FlexProps & {
   title?: string;
   menuRef?: React.Ref<HTMLDivElement>;
+  /**
+   * Opts this menu's inner scroll element into being the sole
+   * *user*-scrollable element, instead of the outer `<ul>` box: in column
+   * mode the outer box bounds height (via `sx.maxHeight`) *and* sets its own
+   * `overflowY: hidden` (see `Dropdown`'s `sx`), so it is not itself
+   * user-scrollable - `hidden` still permits programmatic scrolling, this is
+   * not a claim that the outer box is no scroll container at all. For every
+   * other, non-column `Menu` the outer box's `overflowY` is left unset, as
+   * before.
+   * In column mode that inner scroll element is a plain native DOM node (a
+   * theme-ui `Box`), not the third-party `ScrollContainer`/`MacScrollbar`
+   * every other `Menu` still renders unchanged - a bounded hypothesis fix
+   * for a reported blank-repaint symptom tied to that library inside a
+   * fixed-position portal, not a confirmed root cause.
+   * `undefined` (every existing `Menu` call site) leaves every prop this
+   * `MenuContainer` renders with exactly as it was before this flag existed -
+   * this is an opt-in, not a claim that any given menu's content does or
+   * does not exceed the existing 80vh cap (the wrapped `MoreTools` popup, for
+   * one, can already grow past it). Only the iPhone/iPad "Aa" column menu,
+   * whose content is known to be able to exceed the available height, sets
+   * this (see `Dropdown`'s `menuLayout`).
+   */
+  menuLayout?: "column";
 };
 function MenuContainer(props: PropsWithChildren<MenuContainerProps>) {
-  const { children, title, sx, menuRef, ...flexProps } = props;
+  const { children, title, sx, menuRef, menuLayout, ...flexProps } = props;
 
   return (
     <Box
@@ -227,7 +284,22 @@ function MenuContainer(props: PropsWithChildren<MenuContainerProps>) {
           {title}
         </Text>
       )}
-      <ScrollContainer suppressScrollX>{children}</ScrollContainer>
+      {menuLayout === "column" ? (
+        <Box
+          className="menuScrollContainer"
+          data-test-id="menu-scroll-container"
+          style={{
+            minHeight: 0,
+            flex: "1 1 auto",
+            overflowY: "auto",
+            overflowX: "hidden"
+          }}
+        >
+          {children}
+        </Box>
+      ) : (
+        <ScrollContainer suppressScrollX>{children}</ScrollContainer>
+      )}
       {/* <FlexScrollContainer>{children}</FlexScrollContainer> */}
     </Box>
   );
@@ -253,9 +325,7 @@ export function MenuPresenter(props: PropsWithChildren<MenuPresenterProps>) {
 
   useEffect(() => {
     if (!isOpen) return;
-    console.log(isOpen);
     function onContextMenu(e: MouseEvent) {
-      console.log("CONTEXT", e);
       if (
         e.target instanceof HTMLElement &&
         !!e.target.closest(".ReactModal__Overlay")

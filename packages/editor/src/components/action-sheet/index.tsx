@@ -308,7 +308,7 @@ export function ActionSheetPresenter(
           transition: sheetTransition,
           borderTopLeftRadius: 15,
           borderTopRightRadius: 15,
-          boxShadow: theme?.shadows.menu || "none",
+          boxShadow: theme?.shadows?.menu || "none",
           flex: 1,
           flexDirection: "column"
         }}

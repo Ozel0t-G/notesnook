@@ -36,6 +36,19 @@ import { ActionSheetRef, ScrollView } from "react-native-actions-sheet";
 import { strings } from "@notesnook/intl";
 import { DefaultAppStyles } from "../../../utils/styles";
 
+/**
+ * The `SheetProvider` context the toolbar picker is presented in.
+ *
+ * `ConfigureToolbar` mounts exactly one `SheetProvider` with this context
+ * inside the Settings screen subtree, and `ToolSheet.present` targets the same
+ * context. Presenting through the app-wide "global" provider (the root
+ * `DialogProvider`, which lives *outside* the Settings `RNSScreen`) is what
+ * produced the "Attempt to present RCTFabricModalHostViewController on a
+ * UIViewController already presenting RNSScreen" UIKit error on the iPad
+ * settings modal, so both sides must use this single shared value.
+ */
+export const TOOL_SHEET_CONTEXT = "configure-toolbar";
+
 export default function ToolSheet({
   group,
   fwdRef
@@ -58,6 +71,12 @@ export default function ToolSheet({
         <Pressable
           key={item}
           type="secondary"
+          // Each row is a real, activatable toolbar tool: expose it as a button
+          // and label it with the tool's actual translated title (the same
+          // `tool.title` rendered as its visible text) so VoiceOver announces
+          // something meaningful instead of the raw tool id / icon.
+          accessibilityRole="button"
+          accessibilityLabel={tool?.title}
           onPress={() => {
             const _data = useDragState.getState().data.slice();
             if (group.groupIndex !== undefined) {
@@ -143,6 +162,10 @@ export default function ToolSheet({
 
 ToolSheet.present = (payload: DraggableItem) => {
   presentSheet({
+    // The picker belongs to the Settings screen (it edits the toolbar
+    // preview rendered there), so it must be presented by the scoped provider
+    // mounted inside `ConfigureToolbar` - never by the global/root provider.
+    context: TOOL_SHEET_CONTEXT,
     component: (ref) => <ToolSheet fwdRef={ref} group={payload} />
   });
 };

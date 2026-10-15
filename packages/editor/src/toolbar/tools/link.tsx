@@ -19,10 +19,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import { ToolProps } from "../types.js";
 import { ToolButton } from "../components/tool-button.js";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { ResponsivePresenter } from "../../components/responsive/index.js";
 import { LinkPopup } from "../popups/link-popup.js";
-import { useToolbarLocation } from "../stores/toolbar-store.js";
+import {
+  LinkSettingsAutoOpenContext,
+  useToolbarLocation
+} from "../stores/toolbar-store.js";
 import { MoreTools } from "../components/more-tools.js";
 import { useRefValue } from "../../hooks/use-ref-value.js";
 import { findMark, selectionToOffset } from "../../utils/prosemirror.js";
@@ -37,10 +40,23 @@ import { Icons } from "../icons.js";
 import { mdiNoteOutline, mdiBookOutline, mdiPound } from "@mdi/js";
 import { Icon } from "@notesnook/ui";
 import { LinkData } from "../../types.js";
+import {
+  insertInternalLink,
+  resolveActiveInternalLinkRange
+} from "./internal-link-command.js";
+import type { LinkAttributes } from "../../extensions/link/index.js";
 
 export function LinkSettings(props: ToolProps) {
   const { editor } = props;
   const isBottom = useToolbarLocation() === "bottom";
+  // Read the flag unconditionally, before any early return (hook order). When
+  // the embedding app suppresses the *automatic* popup (the iOS quiet reading
+  // presentation), render nothing: unmounting `MoreTools` also runs its
+  // existing `autoCloseOnUnmount` cleanup, so an already-open popup closes and
+  // re-opens with the flag. The tool, its commands and the toolbar lifecycle
+  // are untouched.
+  const autoOpenLinkSettings = useContext(LinkSettingsAutoOpenContext);
+  if (!autoOpenLinkSettings) return null;
   if (!editor.isActive("link") || !isBottom) return null;
 
   return (
@@ -93,15 +109,8 @@ export function AddInternalLink(props: ToolProps) {
       icon={props.icon}
       title={props.title}
       disabled={isActive}
-      onClick={async () => {
-        const link = await editor.storage.createInternalLink?.();
-        if (!link) return;
-
-        const selectedText = editor.state.doc.textBetween(
-          editor.state.selection.from,
-          editor.state.selection.to
-        );
-        editor.commands.setLink({ ...link, title: selectedText || link.title });
+      onClick={() => {
+        return insertInternalLink(editor);
       }}
     />
   );
@@ -123,26 +132,15 @@ export function EditLink(props: ToolProps) {
       <ToolButton
         icon={props.icon}
         title={props.title}
-        onClick={async () => {
+        onClick={() => {
           hide();
-          const link = await editor.storage.createInternalLink?.();
-          if (!link) return;
-          const { from, to } = editor.state.selection;
-          if (selectedNode.current)
-            editor.commands.setTextSelection(selectedNode.current);
-
-          const selectedText =
-            !!selectedNode.current &&
-            editor.state.doc.textBetween(
-              selectedNode.current.from,
-              selectedNode.current.to
-            );
-          editor.commands.setLink({
-            ...link,
-            title: selectedText || link.title
+          return insertInternalLink(editor, {
+            // Let the host picker keep/prefill the existing internal link.
+            attributes: attrs as LinkAttributes,
+            range: selectedNode.current
+              ? { from: selectedNode.current.from, to: selectedNode.current.to }
+              : undefined
           });
-          if (selectedNode.current)
-            editor.commands.setTextSelection({ from, to });
         }}
       />
     );
@@ -188,12 +186,49 @@ export function RemoveLink(props: ToolProps) {
       title={props.title}
       toggled={false}
       onClick={() => {
-        if (selectedNode)
-          editor.commands.setTextSelection({
-            from: selectedNode.from,
-            to: selectedNode.to
-          });
-        editor.chain().focus().unsetLink().run();
+        // The hover context selects the hovered fragment of a link; without a
+        // hover context (the bottom `LinkSettings` menu) the caret itself is
+        // used — at the "normal ending caret" of a freshly created link it
+        // rests on the plain spacer next to the link while the editor still
+        // reports the link mark as active. In both cases resolve the *actual*
+        // link run first: selecting a link's exact range (its full run, across
+        // the bold/italic/color text nodes a formatted caption may be split
+        // into) makes `unsetLink` remove that one link only and never a single
+        // styled fragment or a neighbouring node.
+        const hoveredNode = selectedNode?.node;
+        const nodeMark = hoveredNode
+          ? findMark(hoveredNode, LinkNode.name)
+          : undefined;
+        const attributes = (
+          hoveredNode
+            ? nodeMark?.attrs
+            : getMarkAttributes(editor.state, LinkNode.name)
+        ) as LinkAttributes | undefined;
+        const hovered = selectedNode
+          ? { from: selectedNode.from, to: selectedNode.to }
+          : selectionToOffset(editor.state) ?? {
+              from: editor.state.selection.from,
+              to: editor.state.selection.to
+            };
+        const range = resolveActiveInternalLinkRange(
+          editor,
+          hovered,
+          attributes
+        );
+        if (range) {
+          // The exact link run the user is acting on: unlink that one only.
+          editor.commands.setTextSelection(range);
+          editor.chain().focus().unsetLink().run();
+        } else if (hoveredNode && !hoveredNode.isText && nodeMark) {
+          // A non-text node hand-off (e.g. an imported image that carries a
+          // link mark) the inline resolver cannot reach keeps its previous
+          // behavior: unlink the explicitly hovered node.
+          editor.commands.setTextSelection(hovered);
+          editor.chain().focus().unsetLink().run();
+        }
+        // Otherwise (plain text, no link context, an ambiguous boundary or any
+        // unresolved range): a no-op. Selecting the range anyway could unlink a
+        // neighbour from an empty selection at a boundary.
         hide();
       }}
     />
@@ -399,5 +434,9 @@ function LinkTypeIcon({
 }
 
 export function isInternalLink(href?: string | null) {
-  return typeof href === "string" ? href.startsWith("nn://") : false;
+  // Mirrors the protocol aliases accepted by the core internal-link parser
+  // (`packages/core/src/utils/internal-link.ts`): both `nn://` and `veyran://`,
+  // case-insensitive. The editor package must not depend on `@notesnook/core`,
+  // so the existing pattern is reused directly instead of adding a dependency.
+  return typeof href === "string" ? /^(?:nn|veyran):\/\//i.test(href) : false;
 }

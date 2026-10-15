@@ -235,6 +235,14 @@ export default function List(props: ListProps) {
           index={itemProps.index}
           isSheet={props.isRenderedInActionSheet || false}
           items={props.data}
+          origin={
+            props.headerTitle && props.renderedInRoute
+              ? {
+                  id: String(props.id || props.renderedInRoute),
+                  title: props.headerTitle
+                }
+              : undefined
+          }
           groupId={props.id}
           groupOptions={groupOptions}
           group={props.groupType as GroupingKey}
@@ -257,6 +265,7 @@ export default function List(props: ListProps) {
       props.id,
       props.groupType,
       props.renderedInRoute,
+      props.headerTitle,
       props.customAccentColor,
       props.dataType,
       groupOptions,
@@ -272,7 +281,7 @@ export default function List(props: ListProps) {
       eSendEvent(eScrollEvent, {
         y: event.nativeEvent.contentOffset.y,
         route: props.renderedInRoute,
-        id: props.id || props.renderedInRoute
+        id: String(props.id || props.renderedInRoute)
       });
     },
     [props.renderedInRoute, props.id, correctMacListLaunchScroll]
@@ -302,7 +311,7 @@ export default function List(props: ListProps) {
     eSendEvent(eScrollEvent, {
       y: 0,
       route: props.renderedInRoute,
-      id: props.id || props.renderedInRoute
+      id: String(props.id || props.renderedInRoute)
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -361,10 +370,22 @@ export default function List(props: ListProps) {
           flex: 1,
           // Mac's note list column is the Mac window background, the same
           // colour as the editor and the rest of the window (macOS 26 Notes).
+          //
+          // iPad's tablet pane paints the resolved *list* surface
+          // (navigation/fluid-panels-view.tsx), so the list's own root has to
+          // paint that same role: it sits inside the pane and covers it, and
+          // `elevatedSurface` (`contentSurface`) used to paint white/#2B2B2F
+          // over it, which left the list and the reading canvas
+          // indistinguishable in light mode. A list rendered inside an action
+          // sheet is not part of that pane: it floats on its own and keeps the
+          // elevated card surface it has always painted. Android and the other
+          // clients keep the screen background untouched.
           backgroundColor: isMacListColumn
             ? macWindowBackground(colors, isDark)
             : visual.ios && isTabletPane
-            ? visual.contentSurface
+            ? props.isRenderedInActionSheet
+              ? visual.contentSurface
+              : visual.listSurface
             : visual.screenBackground
         }}
       >

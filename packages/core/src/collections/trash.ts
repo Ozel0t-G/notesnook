@@ -30,6 +30,10 @@ import {
 import { sql } from "@streetwriters/kysely";
 import { MAX_SQL_PARAMETERS } from "../database/sql-collection.js";
 import { withSubNotebooks } from "./notebooks.js";
+import {
+  DomainWriteToken,
+  withDomainWrite
+} from "../connect/domain-lock.js";
 
 export default class Trash {
   collections = ["notes", "notebooks"] as const;
@@ -85,6 +89,10 @@ export default class Trash {
   }
 
   async cleanup() {
+    return withDomainWrite(this.db, (token) => this.cleanupLocked(token));
+  }
+
+  private async cleanupLocked(token: DomainWriteToken) {
     const duration = this.db.settings.getTrashCleanupInterval();
     if (duration === -1 || !duration) {
       await this.buildCache();
@@ -121,53 +129,73 @@ export default class Trash {
       },
       { noteIds: [] as string[], notebookIds: [] as string[] }
     );
-    await this._delete(noteIds, notebookIds);
+    await this._delete(token, noteIds, notebookIds);
 
     await this.buildCache();
   }
 
+  /**
+   * Move notes/notebooks to the trash. Trash state is one of the mutability
+   * gates of a note write, so the transition shares the domain write lock with
+   * note content writers (`token` re-enters when an enclosing writer, e.g.
+   * `Notes.moveToTrash`, already holds it).
+   */
   async add(
     type: "note" | "notebook",
     ids: string[],
-    deletedBy: TrashItem["deletedBy"] = "user"
+    deletedBy: TrashItem["deletedBy"] = "user",
+    token?: DomainWriteToken
   ) {
-    if (type === "note") {
-      await this.db.notes.collection.update(ids, {
-        type: "trash",
-        itemType: "note",
-        dateDeleted: Date.now(),
-        deletedBy
-      });
-      this.cache.notes.push(...ids);
-      if (deletedBy === "user" || deletedBy === "expired")
-        this.userDeletedCache.notes.push(...ids);
-    } else if (type === "notebook") {
-      await this.db.notebooks.collection.update(ids, {
-        type: "trash",
-        itemType: "notebook",
-        dateDeleted: Date.now(),
-        deletedBy
-      });
-      this.cache.notebooks.push(...ids);
-      if (deletedBy === "user") this.userDeletedCache.notebooks.push(...ids);
-    }
+    await withDomainWrite(
+      this.db,
+      async () => {
+        if (type === "note") {
+          await this.db.notes.collection.update(ids, {
+            type: "trash",
+            itemType: "note",
+            dateDeleted: Date.now(),
+            deletedBy
+          });
+          this.cache.notes.push(...ids);
+          if (deletedBy === "user" || deletedBy === "expired")
+            this.userDeletedCache.notes.push(...ids);
+        } else if (type === "notebook") {
+          await this.db.notebooks.collection.update(ids, {
+            type: "trash",
+            itemType: "notebook",
+            dateDeleted: Date.now(),
+            deletedBy
+          });
+          this.cache.notebooks.push(...ids);
+          if (deletedBy === "user") this.userDeletedCache.notebooks.push(...ids);
+        }
+      },
+      token
+    );
   }
 
   async delete(...ids: string[]) {
     if (ids.length <= 0) return;
 
-    const noteIds = ids.filter((id) => this.cache.notes.includes(id));
-    const notebookIds = ids.filter((id) => this.cache.notebooks.includes(id));
+    await withDomainWrite(this.db, async (token) => {
+      const noteIds = ids.filter((id) => this.cache.notes.includes(id));
+      const notebookIds = ids.filter((id) => this.cache.notebooks.includes(id));
 
-    await this._delete(noteIds, notebookIds);
+      await this._delete(token, noteIds, notebookIds);
+    });
   }
 
-  private async _delete(noteIds: string[], notebookIds: string[]) {
+  /** Callers must hold the domain write lock (see {@link withDomainWrite}). */
+  private async _delete(
+    token: DomainWriteToken,
+    noteIds: string[],
+    notebookIds: string[]
+  ) {
     if (noteIds.length > 0) {
       for (const chunk of toChunks(noteIds, MAX_SQL_PARAMETERS)) {
-        await this.db.content.removeByNoteId(...chunk);
+        await this.db.content.removeByNoteIdLocked(token, ...chunk);
         await this.db.noteHistory.clearSessions(...chunk);
-        await this.db.notes.remove(...chunk);
+        await this.db.notes.removeLocked(token, ...chunk);
         deleteItems(this.cache.notes, ...chunk);
         deleteItems(this.userDeletedCache.notes, ...chunk);
       }
@@ -187,37 +215,43 @@ export default class Trash {
   async restore(...ids: string[]) {
     if (ids.length <= 0) return;
 
-    const noteIds = ids.filter((id) => this.cache.notes.includes(id));
-    const notebookIds = ids.filter((id) => this.cache.notebooks.includes(id));
+    await withDomainWrite(this.db, async () => {
+      const noteIds = ids.filter((id) => this.cache.notes.includes(id));
+      const notebookIds = ids.filter((id) => this.cache.notebooks.includes(id));
 
-    if (noteIds.length > 0) {
-      await this.db.notes.collection.update(noteIds, {
-        type: "note",
-        dateDeleted: null,
-        itemType: null,
-        deletedBy: null
-      });
-      deleteItems(this.cache.notes, ...noteIds);
-      deleteItems(this.userDeletedCache.notes, ...noteIds);
-    }
+      if (noteIds.length > 0) {
+        await this.db.notes.collection.update(noteIds, {
+          type: "note",
+          dateDeleted: null,
+          itemType: null,
+          deletedBy: null
+        });
+        deleteItems(this.cache.notes, ...noteIds);
+        deleteItems(this.userDeletedCache.notes, ...noteIds);
+      }
 
-    if (notebookIds.length > 0) {
-      const ids = [...notebookIds, ...(await this.subNotebooks(notebookIds))];
-      await this.db.notebooks.collection.update(ids, {
+      if (notebookIds.length === 0) return;
+      const idsToRestore = [
+        ...notebookIds,
+        ...(await this.subNotebooks(notebookIds))
+      ];
+      await this.db.notebooks.collection.update(idsToRestore, {
         type: "notebook",
         dateDeleted: null,
         itemType: null,
         deletedBy: null
       });
-      deleteItems(this.cache.notebooks, ...ids);
-      deleteItems(this.userDeletedCache.notebooks, ...ids);
-    }
+      deleteItems(this.cache.notebooks, ...idsToRestore);
+      deleteItems(this.userDeletedCache.notebooks, ...idsToRestore);
+    });
   }
 
   async clear() {
-    await this._delete(this.cache.notes, this.cache.notebooks);
-    this.cache = { notebooks: [], notes: [] };
-    this.userDeletedCache = { notebooks: [], notes: [] };
+    await withDomainWrite(this.db, async (token) => {
+      await this._delete(token, this.cache.notes, this.cache.notebooks);
+      this.cache = { notebooks: [], notes: [] };
+      this.userDeletedCache = { notebooks: [], notes: [] };
+    });
   }
 
   // synced(id: string) {

@@ -1,0 +1,80 @@
+{
+  "captured_at": "2026-10-15T14:16:04.547031+02:00",
+  "root_read_only": "/Users/ozel0t/Notesnook/notesnook",
+  "files": [
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/navigation/navigation-stack.tsx",
+      "relative_path": "apps/mobile/app/navigation/navigation-stack.tsx",
+      "before_sha256": "dee95fcb69b0b091358bf2647f32bb85a331bababc332e8a9b33c6db54fc2582",
+      "bytes": 40434,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/navigation/navigation-stack.tsx"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/components/ipad-primary-navigation-context.ts",
+      "relative_path": "apps/mobile/app/components/ipad-primary-navigation-context.ts",
+      "before_sha256": "ec375646320fc42f03ab706b4cef4d4677baffa7eb539ca188f20c772260417a",
+      "bytes": 1092,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/components/ipad-primary-navigation-context.ts"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/components/mac-section-layout.tsx",
+      "relative_path": "apps/mobile/app/components/mac-section-layout.tsx",
+      "before_sha256": "86c0185721cdf999d2d3777b634f9f18c0badc45ff58ef7b43429569e188b445",
+      "bytes": 5697,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/components/mac-section-layout.tsx"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/screens/tasks/index.tsx",
+      "relative_path": "apps/mobile/app/screens/tasks/index.tsx",
+      "before_sha256": "f331070462b9e1c13ba3cbf44f80c17dc21398e1a9504ab7396f8ce866355ccb",
+      "bytes": 68618,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/screens/tasks/index.tsx"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/screens/global-search/index.tsx",
+      "relative_path": "apps/mobile/app/screens/global-search/index.tsx",
+      "before_sha256": "8470abb791456e9aca6ffce2bfd211a59232c01a9bf6a75161c43fe9a5dfb864",
+      "bytes": 15511,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/screens/global-search/index.tsx"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/components/ipad-primary-destinations.test.tsx",
+      "relative_path": "apps/mobile/app/components/ipad-primary-destinations.test.tsx",
+      "before_sha256": "02727808c321770a7b62883dcaf54c80590f4789f97665f2cfbd6081a73b331e",
+      "bytes": 6759,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/components/ipad-primary-destinations.test.tsx"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/navigation/ipad-primary-workspace.integration.test.tsx",
+      "relative_path": "apps/mobile/app/navigation/ipad-primary-workspace.integration.test.tsx",
+      "before_sha256": "af7f8b991d3c79011dd846a2ea5e30a7cf13aadd48bbef096e4f8dbebf06c9ea",
+      "bytes": 28508,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/navigation/ipad-primary-workspace.integration.test.tsx"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/notesnook/apps/mobile/app/navigation/navigation-stack.test.tsx",
+      "relative_path": "apps/mobile/app/navigation/navigation-stack.test.tsx",
+      "before_sha256": "3edb90f7aee4a0dee42d4afd3178c867a5fec83c570c73ea405bccbf274a6a23",
+      "bytes": 36676,
+      "external_snapshot": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/navigation/navigation-stack.test.tsx"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/VeyraN_Codex_Complete_Package/VeyraN_Apple_Redesign_Overnight_Codex_Master_V2.txt",
+      "sha256": "43338c24f0196165708a4418e21625074c610653d691f83a37b09e9dec81f063",
+      "read_scope": "8.2/8.3 only; lines543-560"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/VeyraN_Codex_Complete_Package/02_Final_Mockups/08_iPad_Light.png",
+      "sha256": "6019e1dde0e3a1a10869856d41ef9117eb7615735b6595caf90c62d072eca4f1",
+      "bytes": 1372338,
+      "scope": "Read current approved wide Notes visual reference; not Tasks/Search native continuity evidence"
+    },
+    {
+      "path": "/Users/ozel0t/Notesnook/VeyraN_Codex_Complete_Package/02_Final_Mockups/09_iPad_Dark.png",
+      "sha256": "d695da8b0acd81586352ac01662360326b48b55031caad9ff1e2098db965318c",
+      "bytes": 1484115,
+      "scope": "Read current approved wide Notes visual reference; not Tasks/Search native continuity evidence"
+    }
+  ],
+  "scope": "Only C10-approved navigation/context/Tasks/Search host seams/C4-C5 tests and Master excerpts. Real FluidPanelsView not inspected in C10; its owner role is documented by the existing wrapper and C5 substitution."
+}

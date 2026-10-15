@@ -27,7 +27,7 @@ import {
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { useIsCompactModeEnabled } from "../../../hooks/use-is-compact-mode-enabled";
 import { presentSheet } from "../../../services/event-manager";
 import SettingsService from "../../../services/settings";
@@ -222,14 +222,12 @@ export const SectionHeader = React.memo<
      * iPhone/iPad note lists (Notes/Inbox, Favorites, Archive, a notebook,
      * ...): the date sections ("Pinned", "Today", "Yesterday", ...) are plain
      * text headings instead of the accent-colored, uppercase pill the other
-     * lists draw. Their sort/view actions now live in the screen's top header
-     * (which shows the note count and the trio right under the large title; the
-     * Home note list already owned its own), so the pair is not repeated here.
+     * lists draw. Sort/view actions remain in the screen's existing More menu,
+     * so the pair is not repeated here.
      * The press that opens the jump-to-section dialog and the grouped list
      * spacing are kept. Android and every non-note list keep the pill below.
      */
     if (visual.ios && dataType === "note") {
-      const isHomeNote = isHomeNoteRoute(screen);
       const title =
         !item.title || item.title === ""
           ? screen === "Search"
@@ -242,39 +240,56 @@ export const SectionHeader = React.memo<
       // must stay. Only this iOS/iPad note branch is affected; the Mac
       // Catalyst header (above) and the Android pill (below) are untouched.
       if (groupOptions.groupBy === "none" && item.title === "All") return null;
+      const phone =
+        Platform.OS === "ios" && !Platform.isPad && !isMacCatalyst();
       return (
         <View
           style={{
             width: "100%",
-            // The note row's own text starts at the list inset plus its row
-            // inset; the heading keeps that same leading edge so the sections
-            // line up with the notes they group.
-            paddingHorizontal: visual.listInset + visual.rowInset,
-            paddingTop: index === 0 ? DefaultAppStyles.GAP : 0,
-            marginBottom: 8,
-            marginTop: index > 0 ? visual.sectionSpacing : 0
+            // Phone dates sit near the group edge; iPad keeps its existing
+            // alignment with the note text inside the row.
+            paddingHorizontal: phone
+              ? visual.listInset + DefaultAppStyles.GAP_SMALL / 2
+              : visual.listInset + visual.rowInset,
+            paddingTop: phone ? 0 : index === 0 ? DefaultAppStyles.GAP : 0,
+            marginBottom: phone ? DefaultAppStyles.GAP_SMALL / 2 : 8,
+            marginTop:
+              index > 0
+                ? phone
+                  ? DefaultAppStyles.GAP_SMALL
+                  : visual.sectionSpacing
+                : 0
           }}
         >
           <Pressable
             onPress={() => {
               onOpenJumpToDialog();
             }}
-            hitSlop={{ top: 10, left: 10, right: 30, bottom: 10 }}
+            accessibilityRole={phone ? "button" : undefined}
+            accessibilityLabel={phone ? title : undefined}
+            hitSlop={
+              phone
+                ? { left: 10, right: 10 }
+                : { top: 10, left: 10, right: 30, bottom: 10 }
+            }
             style={{
+              minHeight: phone ? 44 : undefined,
               justifyContent: "flex-start",
               flexDirection: "row",
               alignItems: "center",
-              width: "auto"
+              alignSelf: "stretch",
+              width: "100%"
             }}
           >
             <Heading
-              numberOfLines={1}
-              size={17}
+              numberOfLines={phone ? 2 : 1}
+              size={phone ? AppFontSize.md : 17}
               style={{
                 alignSelf: "center",
-                textAlignVertical: "center"
+                textAlignVertical: "center",
+                fontWeight: "400"
               }}
-              color={isHomeNote ? visual.primaryText : visual.secondaryText}
+              color={visual.secondaryText}
             >
               {title}
             </Heading>
@@ -377,6 +392,7 @@ export const SectionHeader = React.memo<
     );
   },
   (prev, next) => {
+    if (prev.screen !== next.screen) return false;
     if (prev.item.title !== next.item.title) return false;
     if (prev.itemCount !== next.itemCount) return false;
     if (prev.groupOptions?.groupBy !== next.groupOptions.groupBy) return false;

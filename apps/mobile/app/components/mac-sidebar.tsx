@@ -27,6 +27,7 @@ import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { useLibrarySourceList } from "../hooks/use-library-source-list";
 import { openMacList } from "../services/mac-list-navigation";
 import useNavigationStore from "../stores/use-navigation-store";
+import { useMacSettingsOpen } from "../hooks/use-mac-settings-open";
 import { useMacSystemStore } from "../stores/use-mac-system-store";
 import {
   AppleSection,
@@ -159,9 +160,10 @@ const presentNewNotebook = () =>
  * stack, so iPhone/iPad keep the card-style list of screens/library and Mac gets
  * the 28 pt source rows.
  *
- * The list is split like the app's top-level sections: a Library group (Library,
- * Notebooks, Tags), a Tasks group (the smart lists and the user's Task Lists)
- * and Archive/Trash at the bottom. Selecting a Library row opens that list in
+ * Notes and Tasks are pinned primary destinations. Each keeps a mounted
+ * source-list scroll view: Notes contains Library, Notebooks, Tags and the
+ * Archive/Templates/Trash destinations; Tasks contains smart and user lists.
+ * Selecting a Library row opens that list in
  * the middle column through `openMacList`
  * (services/mac-list-navigation.ts); selecting a Tasks row switches to the Tasks
  * section and selects that list in useTasksSelectionStore, which the Tasks
@@ -208,9 +210,8 @@ export function MacSidebar() {
   };
 
   // Settings is a full view next to the sidebar: no source-list row is current.
-  const settingsOpen = useNavigationStore(
-    (state) => state.currentRoute === "Settings"
-  );
+  const settingsOpen = useMacSettingsOpen();
+  const showingTasks = section === "tasks";
   const isCurrentDestination = React.useCallback(
     (key: string) => {
       if (section !== "library" || settingsOpen) return false;
@@ -398,89 +399,66 @@ export function MacSidebar() {
         // out by React Native and the footer always sits at the bottom.
         style={{ flex: 1, flexDirection: "column" }}
       >
-        <ScrollView
-          testID="library-scroll"
-          // flex: 1 so the account footer below can stay pinned to the bottom
-          // while the list scrolls; its own paddingBottom only needs the small
-          // gap under the last row now that the footer owns the bottom edge.
-          // Explicitly transparent: the panel's glass is what paints behind
-          // the rows.
-          style={{ flex: 1, backgroundColor: "transparent" }}
-          contentContainerStyle={{
-            // The window's native toolbar is drawn above the content area, and
-            // UIKit reports its height as the window's top safe-area inset. The
-            // glass panel now starts `MAC_SIDEBAR_PANEL_INSET` below the window
-            // top, so that inset is subtracted here: the source list's first
-            // row lands at the same height under the toolbar as before, and the
-            // toolbar/traffic lights stay clear of it.
+        {/* Primary destinations stay reachable even in a long source list. */}
+        <View
+          style={{
             paddingTop:
-              macToolbarInset(insets.top) - MAC_SIDEBAR_PANEL_INSET + 8,
-            paddingBottom: 8
+              macToolbarInset(insets.top) - MAC_SIDEBAR_PANEL_INSET + 8
           }}
         >
-        {/* 1. Library: notes destinations, accent-tinted icons. */}
-        <MacSectionHeader
-          id="library"
-          title={strings.routes.Library()}
-          testID="library-heading"
-          collapsed={collapsed.library}
-          onToggle={toggleSection}
-        />
-        {collapsed.library
-          ? null
-          : libraryRows.map((item, index) => (
-              <MacRow
-                key={item.key}
-                item={item}
-                index={index}
-                selected={isCurrentDestination(item.key)}
-              />
-            ))}
-
-        {/* 2. Notebooks, with the existing new-notebook action. */}
-        <MacSectionHeader
-          id="notebooks"
-          title={strings.routes.Notebooks()}
-          collapsed={collapsed.notebooks}
-          onToggle={toggleSection}
-          onAdd={presentNewNotebook}
-          addAccessibilityLabel={strings.newNotebookRow()}
-          addTestID="library-new-notebook"
-        />
-        {collapsed.notebooks ? null : notebookRows.length ? (
-          notebookRows.map((item, index) => (
-            <MacRow
-              key={item.key}
-              item={item}
-              index={index}
-              selected={isCurrentDestination(item.key)}
-            />
-          ))
-        ) : (
-          <MacRow
-            item={{
-              key: "new-notebook",
-              label: strings.newNotebookRow(),
-              symbol: "folder.badge.plus",
-              onPress: presentNewNotebook
+          <MacPrimaryDestination
+            testID="mac-sidebar-notes"
+            title={strings.dataTypesPluralCamelCase.note()}
+            symbol="doc.text"
+            selected={section === "library" && !settingsOpen}
+            onPress={() => {
+              if (section !== "library" || settingsOpen)
+                switchSection("library");
             }}
-            index={0}
-            selected={false}
           />
-        )}
-
-        {/* 3. Tags, hidden entirely while there are none. */}
-        {tagRows.length ? (
-          <>
+          <MacPrimaryDestination
+            testID="mac-sidebar-tasks"
+            title={strings.tasksTitle()}
+            symbol="checkmark.circle"
+            selected={showingTasks && !settingsOpen}
+            onPress={() => {
+              if (!showingTasks || settingsOpen) switchSection("tasks");
+            }}
+          />
+        </View>
+        {/* Keep both lists laid out in the same viewport; changing visibility
+            must not collapse a ScrollView's native content/viewport size.
+            Inactive sources also leave the pointer and accessibility trees. */}
+        <View style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+          <ScrollView
+            testID="library-scroll"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: showingTasks ? 0 : 1,
+              backgroundColor: "transparent"
+            }}
+            pointerEvents={showingTasks ? "none" : "auto"}
+            accessibilityElementsHidden={showingTasks}
+            importantForAccessibility={
+              showingTasks ? "no-hide-descendants" : "auto"
+            }
+            contentContainerStyle={{ paddingBottom: 8 }}
+          >
+            {/* 1. Library: notes destinations, accent-tinted icons. */}
             <MacSectionHeader
-              id="tags"
-              title={strings.routes.Tags()}
-              collapsed={collapsed.tags}
+              id="library"
+              title={strings.routes.Library()}
+              testID="library-heading"
+              collapsed={collapsed.library}
               onToggle={toggleSection}
             />
-            {collapsed.tags
+            {collapsed.library
               ? null
-              : tagRows.map((item, index) => (
+              : libraryRows.map((item, index) => (
                   <MacRow
                     key={item.key}
                     item={item}
@@ -488,76 +466,135 @@ export function MacSidebar() {
                     selected={isCurrentDestination(item.key)}
                   />
                 ))}
-          </>
-        ) : null}
 
-        {/* 4. Divider between the two source-list halves. */}
-        <View
-          style={{
-            height: 1,
-            backgroundColor: visual.separator,
-            marginHorizontal: 8,
-            marginVertical: 10
-          }}
-        />
+            {/* 2. Notebooks, with the existing new-notebook action. */}
+            <MacSectionHeader
+              id="notebooks"
+              title={strings.routes.Notebooks()}
+              collapsed={collapsed.notebooks}
+              onToggle={toggleSection}
+            />
+            {collapsed.notebooks
+              ? null
+              : notebookRows.map((item, index) => (
+                  <MacRow
+                    key={item.key}
+                    item={item}
+                    index={index}
+                    selected={isCurrentDestination(item.key)}
+                  />
+                ))}
+            <MacRow
+              key="new-notebook"
+              testID="library-new-notebook"
+              item={{
+                key: "new-notebook",
+                label: strings.newNotebookRow(),
+                symbol: "folder.badge.plus",
+                onPress: presentNewNotebook
+              }}
+              index={notebookRows.length}
+              selected={false}
+            />
 
-        {/* 5. Tasks: the smart lists, reusing the Tasks screen's data. */}
-        <MacSectionHeader
-          id="tasks"
-          title={strings.tasksTitle()}
-          collapsed={collapsed.tasks}
-          onToggle={toggleSection}
-        />
-        {collapsed.tasks
-          ? null
-          : smartListRows.map((item, index) => (
+            {/* 3. Tags, hidden entirely while there are none. */}
+            {tagRows.length ? (
+              <>
+                <MacSectionHeader
+                  id="tags"
+                  title={strings.routes.Tags()}
+                  collapsed={collapsed.tags}
+                  onToggle={toggleSection}
+                />
+                {collapsed.tags
+                  ? null
+                  : tagRows.map((item, index) => (
+                      <MacRow
+                        key={item.key}
+                        item={item}
+                        index={index}
+                        selected={isCurrentDestination(item.key)}
+                      />
+                    ))}
+              </>
+            ) : null}
+
+            {/* Secondary note destinations retain their existing routes and menus. */}
+            <View
+              style={{
+                height: 1,
+                backgroundColor: visual.separator,
+                marginHorizontal: 8,
+                marginVertical: 10
+              }}
+            />
+            {bottomRows.map((item, index) => (
               <MacRow
                 key={item.key}
                 item={item}
                 index={index}
-                selected={isTaskSelected(item.taskSelection)}
+                selected={isCurrentDestination(item.key)}
               />
             ))}
+          </ScrollView>
+          <ScrollView
+            testID="mac-sidebar-tasks-sources"
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              opacity: showingTasks ? 1 : 0,
+              backgroundColor: "transparent"
+            }}
+            pointerEvents={showingTasks ? "auto" : "none"}
+            accessibilityElementsHidden={!showingTasks}
+            importantForAccessibility={
+              showingTasks ? "auto" : "no-hide-descendants"
+            }
+            contentContainerStyle={{ paddingBottom: 8 }}
+          >
+            {/* 5. Tasks: the smart lists, reusing the Tasks screen's data. */}
+            <MacSectionHeader
+              id="tasks"
+              title={strings.tasksTitle()}
+              collapsed={collapsed.tasks}
+              onToggle={toggleSection}
+            />
+            {collapsed.tasks
+              ? null
+              : smartListRows.map((item, index) => (
+                  <MacRow
+                    key={item.key}
+                    item={item}
+                    index={index}
+                    selected={isTaskSelected(item.taskSelection)}
+                  />
+                ))}
 
-        {/* 6. Lists: the user's Task Lists, with the New List action. */}
-        <MacSectionHeader
-          id="lists"
-          title={strings.tasksLists()}
-          collapsed={collapsed.lists}
-          onToggle={toggleSection}
-          onAdd={requestNewList}
-          addAccessibilityLabel={strings.tasksNewList()}
-          addTestID="mac-sidebar-new-list"
-        />
-        {collapsed.lists
-          ? null
-          : taskListRows.map((item, index) => (
-              <MacRow
-                key={item.key}
-                item={item}
-                index={index}
-                selected={isTaskSelected(item.taskSelection)}
-              />
-            ))}
-
-        {/* 7. A second divider, then Archive and Trash at the bottom. */}
-        <View
-          style={{
-            height: 1,
-            backgroundColor: visual.separator,
-            marginHorizontal: 8,
-            marginVertical: 10
-          }}
-        />
-        {bottomRows.map((item, index) => (
-          <MacRow
-            key={item.key}
-            item={item}
-            index={index}
-            selected={isCurrentDestination(item.key)}
-          />
-        ))}
-        </ScrollView>
+            {/* 6. Lists: the user's Task Lists, with the New List action. */}
+            <MacSectionHeader
+              id="lists"
+              title={strings.tasksLists()}
+              collapsed={collapsed.lists}
+              onToggle={toggleSection}
+              onAdd={requestNewList}
+              addAccessibilityLabel={strings.tasksNewList()}
+              addTestID="mac-sidebar-new-list"
+            />
+            {collapsed.lists
+              ? null
+              : taskListRows.map((item, index) => (
+                  <MacRow
+                    key={item.key}
+                    item={item}
+                    index={index}
+                    selected={isTaskSelected(item.taskSelection)}
+                  />
+                ))}
+          </ScrollView>
+        </View>
         {/* Pinned glass account card: last child of the panel's flex column,
             outside the ScrollView so it never scrolls away with the source
             list and always sits at the panel's bottom, 10 pt in from the
@@ -569,9 +606,70 @@ export function MacSidebar() {
 }
 
 /**
+ * A primary destination uses accent text rather than a filled collection
+ * selection, keeping the current section distinct from its selected source.
+ */
+function MacPrimaryDestination({
+  testID,
+  title,
+  symbol,
+  selected,
+  onPress
+}: {
+  testID: string;
+  title: string;
+  symbol: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const systemAccent = useMacSystemStore((state) => state.accent);
+  const color = selected
+    ? macAccent(colors.primary.accent, systemAccent)
+    : visual.primaryText;
+  const { hovered, hoverProps } = useMacHover();
+  return (
+    <Pressable
+      {...hoverProps}
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ selected }}
+      style={{
+        height: MAC_ROW_HEIGHT,
+        flexDirection: "row",
+        alignItems: "center",
+        marginHorizontal: MAC_SOURCE_LIST_INSET,
+        paddingHorizontal: MAC_ROW_PADDING,
+        borderRadius: MAC_ROW_RADIUS,
+        backgroundColor: "transparent",
+        overflow: "hidden"
+      }}
+    >
+      <MacHoverHighlight visible={hovered} radius={MAC_ROW_RADIUS} />
+      <TaskSymbolView name={symbol} size={MAC_ROW_ICON_SIZE} color={color} />
+      <Text
+        numberOfLines={1}
+        style={{
+          flex: 1,
+          color,
+          fontSize: MAC_ROW_FONT_SIZE,
+          fontWeight: selected ? "600" : "400",
+          marginLeft: 8
+        }}
+      >
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
+/**
  * A collapsible source-list section header: an 11 pt semibold label in the
- * secondary color with a small chevron (and, for Notebooks and Lists, a "+"
- * button). Clicking the header toggles the section through
+ * secondary color with a small chevron and an optional add button.
+ * Clicking the header toggles the section through
  * use-mac-sidebar-sections-store.
  */
 function MacSectionHeader({
@@ -650,7 +748,7 @@ function MacSectionHeader({
 }
 
 /**
- * The sidebar section headers' "+" button (New Notebook / New List).
+ * The sidebar section headers' optional "+" button (for example, New List).
  *
  * Unlike the toolbar's `IosBarButton` (44×44 pt with 6 pt of hit slop, sized
  * for touch), this is a compact Mac target: 22×22 pt with no hit slop, so it
@@ -707,12 +805,14 @@ function MacRow({
   item,
   index,
   marginTop = 0,
-  selected
+  selected,
+  testID
 }: {
   item: LibraryDestination;
   index: number;
   marginTop?: number;
   selected: boolean;
+  testID?: string;
 }) {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
@@ -726,6 +826,7 @@ function MacRow({
   const row = (
     <Pressable
       {...hoverProps}
+      testID={testID}
       onPress={item.onPress}
       accessibilityRole="button"
       accessibilityState={{ selected }}

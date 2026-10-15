@@ -1,0 +1,121 @@
+{
+  "assignment_id": "C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY",
+  "agent": "C",
+  "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+  "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+  "status": "READY",
+  "result": "ARCHITECTURE_STOP_EXTERNAL_READONLY_PROPOSAL_NO_CODE",
+  "completed_at": "2026-10-15T14:17:36.981096+02:00",
+  "elapsed_seconds_since_ack": 346.52,
+  "within_20_minutes": true,
+  "conclusion": "Single retained wide iPad sidebar requires reviewed host ownership across sibling root routes; current route predicate edit would hide the sole visible fallback. Per-route wrappers do not retain one sidebar instance.",
+  "proposal": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/INTEGRATION-PROPOSAL.txt",
+  "architecture_review_required_before_code": {
+    "kind": "architecture",
+    "owner": "Root",
+    "focus": [
+      "Single actual sidebar host above Notes/Tasks/Search content transitions",
+      "Real FluidPanelsView split/pager/provider ownership not inspected within C10",
+      "Existing route/focus/compose/Search-result return continuity",
+      "Full-window versus content-width measurement",
+      "At most3production/2existing-test feasibility before authorization"
+    ]
+  },
+  "production_or_test_code_authored": false,
+  "patch_authored": false,
+  "repository_writes": false,
+  "source_inputs_rechecked_unchanged": true,
+  "changed_inputs": [],
+  "source_hashes_manifest": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/SOURCE-MANIFEST.json",
+  "tests_or_independent_diff_run": false,
+  "reason_no_code_tests_diff": "Assignment explicitly permits architecture-stop proposal; no runnable code candidate exists. C5 adapter cannot prove actual cross-route host continuity. Future reviewed implementation needs focused route/return-state tests and independent exact DIFF.",
+  "resource_policy_observed": {
+    "at": "2026-10-15T11:58:04.787517+00:00",
+    "authority": "Explicit user mobile-QA priority 2026-10-15",
+    "max_active_qa_simulators": 1,
+    "concurrent_heavy_builds": 1,
+    "xcodebuild_jobs": 2,
+    "runtime_and_heavy_builds": "Do not overlap during host recovery",
+    "agent_builds_or_device_operations": false,
+    "preserve_qa_data": true,
+    "no_blanket_reset_or_delete": true,
+    "resume_visual_qa_immediately_when_reliable": true
+  },
+  "builds_device_services_ui_or_Connect_operations": false,
+  "additional_accessibility_cycles": false,
+  "new_session_checkout_or_writer": false,
+  "mcp_notification": false,
+  "original_workspace_missing_at_start": true,
+  "own_repo_present": false,
+  "prior_handoffs": "Prior directories absent at start; not reconstructed or modified, hashes cannot be reverified here. Root C9 receipt read; accepted45/1 code, native pending.",
+  "unverified": [
+    "Actual persistent-sidebar route lifecycle and native geometry",
+    "Actual notebook/editor persistence and selection continuity across Tasks/Search",
+    "Native widths/keyboard/readability; Root QA only"
+  ],
+  "artifacts": [
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/ACK.json",
+      "sha256": "0ccf4c37d6d3919f72112b11643c10fa731e970b459095fbc1380ed7063ca7b9",
+      "bytes": 1301
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/INTEGRATION-PROPOSAL.txt",
+      "sha256": "38d92439d0afb43b94b32a55d9449c5932c8138edd0d3fc79f876a82fc29ab31",
+      "bytes": 13778
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/SOURCE-MANIFEST.json",
+      "sha256": "c5059e849ddeac0b10080ba5e3f29355c60666e3f32a6ea7830f96bf722e30b1",
+      "bytes": 5536
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/components/ipad-primary-destinations.test.tsx",
+      "sha256": "02727808c321770a7b62883dcaf54c80590f4789f97665f2cfbd6081a73b331e",
+      "bytes": 6759
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/components/ipad-primary-navigation-context.ts",
+      "sha256": "ec375646320fc42f03ab706b4cef4d4677baffa7eb539ca188f20c772260417a",
+      "bytes": 1092
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/components/mac-section-layout.tsx",
+      "sha256": "86c0185721cdf999d2d3777b634f9f18c0badc45ff58ef7b43429569e188b445",
+      "bytes": 5697
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/navigation/ipad-primary-workspace.integration.test.tsx",
+      "sha256": "af7f8b991d3c79011dd846a2ea5e30a7cf13aadd48bbef096e4f8dbebf06c9ea",
+      "bytes": 28508
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/navigation/navigation-stack.test.tsx",
+      "sha256": "3edb90f7aee4a0dee42d4afd3178c867a5fec83c570c73ea405bccbf274a6a23",
+      "bytes": 36676
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/navigation/navigation-stack.tsx",
+      "sha256": "dee95fcb69b0b091358bf2647f32bb85a331bababc332e8a9b33c6db54fc2582",
+      "bytes": 40434
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/screens/global-search/index.tsx",
+      "sha256": "8470abb791456e9aca6ffce2bfd211a59232c01a9bf6a75161c43fe9a5dfb864",
+      "bytes": 15511
+    },
+    {
+      "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/snapshots/apps/mobile/app/screens/tasks/index.tsx",
+      "sha256": "f331070462b9e1c13ba3cbf44f80c17dc21398e1a9504ab7396f8ce866355ccb",
+      "bytes": 68618
+    }
+  ],
+  "queue_followup": {
+    "checked_once_at_finish": "2026-10-15T14:17:52.390603+02:00",
+    "queue_updated_at": "2026-10-15T12:09:39.486783+00:00",
+    "queue_sha256": "1a48264890a5bf6f99a77da5b6aea0ebf58fd5208bba495ab07b3ddf76be3eea",
+    "newer_matching_session_assignments": [],
+    "action": "End turn; no further assignment started",
+    "daemon_or_busy_wait": false
+  }
+}

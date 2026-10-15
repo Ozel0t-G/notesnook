@@ -18,15 +18,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 import { ScopedThemeProvider, useThemeColors } from "@notesnook/theme";
-import React, { useEffect, useRef } from "react";
-import {
-  NativeEventEmitter,
-  NativeModules,
-  Platform,
-  View
-} from "react-native";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
+import { Platform, View } from "react-native";
 import ActionSheet from "react-native-actions-sheet";
 import useGlobalSafeAreaInsets from "../../../hooks/use-global-safe-area-insets";
+import {
+  createMacSheetFacade,
+  registerMacModal
+} from "../../../services/mac-modal-stack";
 import { useSettingStore } from "../../../stores/use-setting-store";
 import { useUserStore } from "../../../stores/use-user-store";
 import { getContainerBorder } from "../../../utils/colors";
@@ -71,6 +70,12 @@ const SheetWrapper = ({
   // bottom. iPhone/iPad/Android keep the bottom sheet untouched, so every Mac
   // difference below is fenced behind this flag.
   const isMac = isMacCatalyst();
+  const macFacadeRef = useRef(null);
+  const macControllerRef = useRef(null);
+  // Read live inside the registry's isClosable callback, so a prop change on
+  // an already-presented sheet never re-registers or reorders its entry.
+  const closableRef = useRef(closeOnTouchBackdrop);
+  closableRef.current = closeOnTouchBackdrop;
   const deviceMode = useSettingStore((state) => state.deviceMode);
   const sheetKeyboardHandler = useSettingStore(
     (state) => state.sheetKeyboardHandler
@@ -155,61 +160,82 @@ const SheetWrapper = ({
   };
 
   const _onOpen = () => {
+    // A late onOpen for a presentation that started before the app locked
+    // must not re-arm the registry entry: the sheet is hidden, not actually
+    // owning anything on screen.
     if (lockEvents.current) return;
+    if (isMac) macControllerRef.current?.present();
     onOpen && onOpen();
   };
 
   const _onClose = async () => {
+    if (isMac) macControllerRef.current?.dismissed();
     if (lockEvents.current) return;
     if (onClose) {
       onClose();
     }
   };
 
-  useEffect(() => {
-    if (locked) {
-      const ref = fwdRef || localRef;
-      ref?.current?.hide();
-      if (useUserStore.getState().appLocked) {
-        lockEvents.current = true;
-        const unsub = useUserStore.subscribe((state) => {
-          if (!state.appLocked) {
-            ref?.current?.show();
-            unsub();
-            lockEvents.current = false;
-          }
-        });
+  // Mac Catalyst only: register this sheet into the shared Escape-ownership
+  // registry (services/mac-modal-stack) so the root VeyraNMacMenu Escape
+  // handler (hooks/use-mac-menu-commands.ts) can close the single actually-
+  // topmost sheet/dialog instead of broadcasting hide to everything. A
+  // layout effect, not a passive one: some callers (e.g. RecoveryKeySheet, a
+  // class component) call fwdRef.current?.setModalVisible(true) from their own
+  // commit-phase setState callback, which runs before any child's passive
+  // effect - the facade has to already be assigned to fwdRef.current by then.
+  // hide() is routed through the facade so repeated Escape before the close
+  // animation finishes never double-hides; actual presentation is armed from
+  // the real onOpen callback (_onOpen above), not from this facade, so a
+  // request native ends up refusing never owns Escape. Registered once per
+  // mount: only an actual new presentation changes this entry's order, never
+  // a prop update.
+  useLayoutEffect(() => {
+    if (!isMac) return;
+    let facade;
+    const controller = registerMacModal(
+      "sheet",
+      () => closableRef.current,
+      () => facade?.hide()
+    );
+    facade = createMacSheetFacade(localRef, controller);
+    macControllerRef.current = controller;
+    macFacadeRef.current = facade;
+    if (fwdRef) fwdRef.current = facade;
+    return () => {
+      if (fwdRef && fwdRef.current === facade) {
+        fwdRef.current = null;
       }
-    }
-  }, [locked, fwdRef]);
+      macFacadeRef.current = null;
+      macControllerRef.current = null;
+      controller.unregister();
+    };
+  }, [isMac, fwdRef]);
 
-  // Mac Catalyst only: Escape closes the sheet. The library's own
-  // `closeOnPressBack` is Android's hardware back button, so Escape arrives
-  // through the VeyraNMacMenu key command that hooks/use-mac-menu-commands.ts
-  // already handles app-wide (the native side never emits it while a text field
-  // is focused, so typing inside a sheet is safe). That handler closes
-  // "global"-context sheets via eCloseSheet; the sheets living in the other
-  // SheetProvider contexts have no eCloseSheet listener, so each one closes
-  // itself here from the same command. Sheets that disabled backdrop dismissal
-  // (progress spinners, the database migration) ignore Escape as well.
   useEffect(() => {
-    if (!isMac || !closeOnTouchBackdrop) return;
-    const nativeModule = NativeModules?.VeyraNMacMenu;
-    if (!nativeModule) return;
-
-    const emitter = new NativeEventEmitter(nativeModule);
-    const subscription = emitter.addListener("VeyraNMacMenuCommand", (body) => {
-      if (body?.command !== "escape") return;
-      const ref = fwdRef || localRef;
-      ref?.current?.hide();
-    });
-    return () => subscription.remove();
-  }, [isMac, closeOnTouchBackdrop, fwdRef]);
+    if (!locked) return;
+    const getRef = () =>
+      isMac ? macFacadeRef.current : (fwdRef || localRef).current;
+    // Clear ownership immediately: a hidden appLocked sheet must never own
+    // Escape, even before (or without) the real native onClose arriving.
+    if (isMac) macControllerRef.current?.dismissed();
+    getRef()?.hide();
+    if (useUserStore.getState().appLocked) {
+      lockEvents.current = true;
+      const unsub = useUserStore.subscribe((state) => {
+        if (!state.appLocked) {
+          getRef()?.show();
+          unsub();
+          lockEvents.current = false;
+        }
+      });
+    }
+  }, [locked, fwdRef, isMac]);
 
   return (
     <ScopedThemeProvider value="sheet">
       <ActionSheet
-        ref={fwdRef || localRef}
+        ref={isMac ? localRef : fwdRef || localRef}
         animated={isAnimated}
         testIDs={{
           backdrop: "sheet-backdrop"

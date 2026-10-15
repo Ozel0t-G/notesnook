@@ -1,0 +1,190 @@
+{
+  "agent": "c-ipad",
+  "source": "/Users/ozel0t/Library/Mobile Documents/com~apple~CloudDocs/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+  "restored": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+  "source_files_hashed": 3671,
+  "original_worker_source_preserved": true,
+  "dependency_basis": "local current Root clone; package and lock files matched; no install/build",
+  "source_not_rebased_or_integrated": true,
+  "dirty_baseline_differences": [
+    {
+      "path": "apps/mobile/app/navigation/ipad-primary-workspace.integration.test.tsx",
+      "worker_sha256": "af7f8b991d3c79011dd846a2ea5e30a7cf13aadd48bbef096e4f8dbebf06c9ea",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/navigation/navigation-stack.test.tsx",
+      "worker_sha256": "b1e51bc10c36169d9150a687345be6971463c3d471fd35377bcb2c02bb367aff",
+      "baseline_sha256": "be0a6d3d29164a1b5dba3ec233486d891b2d5048542bde8e8ef980d380d28f96",
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/app/navigation/navigation-stack.tsx",
+      "worker_sha256": "dee95fcb69b0b091358bf2647f32bb85a331bababc332e8a9b33c6db54fc2582",
+      "baseline_sha256": "af815e093c6ffb72795bd94f0ddcabf38dcb17a3bea8c0304f6bab415eb7f0e3",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/ipad-primary-destinations.test.tsx",
+      "worker_sha256": "02727808c321770a7b62883dcaf54c80590f4789f97665f2cfbd6081a73b331e",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/ipad-primary-destinations.tsx",
+      "worker_sha256": "e40deaa45c0c35f67e4df61561109789886a5ebc4e3f5b3cca2e1f2a1b26619c",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/ipad-notebook-information.tsx",
+      "worker_sha256": "07b30b14401a2d685f98cbe2d485e9e30772bca9bd77338338067da0c29c42fa",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/ipad-primary-navigation-context.ts",
+      "worker_sha256": "ec375646320fc42f03ab706b4cef4d4677baffa7eb539ca188f20c772260417a",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/headers/notebook-header.test.tsx",
+      "worker_sha256": "6ddc6b5ebe55e1208e938c2590777fc8b4537c23a1ff8c92bb605c84de56b5d2",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/headers/notebook-header.tsx",
+      "worker_sha256": "14851b4392a0cba3fa08fc71f77a07eb8d499a89b4aff23e2aedeb8d085a0d8a",
+      "baseline_sha256": "b7d4b91b41f0ff487d4f61747a09955ce7523f06eb908fe9d135f16ca47656d2",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/index.tsx",
+      "worker_sha256": "7e1b571a8f2aa1ef5b0f84e93b080688057fe64c08dfc2bb9e0adabcefdc02d5",
+      "baseline_sha256": "072bc850339705a2e98e5af6433ac89acf2f14d0d591e75b37c0742b4aceecae",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/side-menu-header.tsx",
+      "worker_sha256": "b90fd1372c6fb8eeb081cfd9d1af420309590e3565bc291e35046ccede18baac",
+      "baseline_sha256": "aa0e5536e71c287b91e205d94f135565b646afa7c78eb95fc37e01b94c1734c0",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/side-menu-tags.tsx",
+      "worker_sha256": "0eedfda645ab7573cdbbc302b91414745b6565f2108da6757b57a84cd9161d17",
+      "baseline_sha256": "2845ef272efac75ead8a3373e60ea7b8a257e6bf2b5c28485fbb95d9dc4e5a8f",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/menu-item.tsx",
+      "worker_sha256": "c2c6a11f7d79b7290ffdbe2800dc2cab262aed6fc0fba1049f5a3a94d826f9f5",
+      "baseline_sha256": "785b23ff166359664c4651303bffb87c48127785b5d9f19c2d8662f53588ab77",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/notebook-item.tsx",
+      "worker_sha256": "cd69bc05099467433dfdd96eb8b635675627bb3352150fa7be08127093ba7899",
+      "baseline_sha256": "8db6bf4fda7d2f3e2e047ca8dddb646831492307d7e6c0c7bbfdf7664a5b09f7",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/menu-item.test.tsx",
+      "worker_sha256": "44fef24a84c6bbae72f1d42ed07d0d4d57ecb18f240a25465b15596acd8ca32c",
+      "baseline_sha256": "7672dc050d18113df3211671e8080c1271269bc9b828dbb8c399f1711d1b10be",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/ipad-source-navigation.tsx",
+      "worker_sha256": "a7a517d844987c72ffa715faa066389f25135d62b2340b280ca95c2a96cfbbca",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/side-menu-notebooks.tsx",
+      "worker_sha256": "46cd82bff328740cf38cf6ab2dd6840387ec2b0853b91fee3398185fe6c89fef",
+      "baseline_sha256": "1df42a959b62bdfc10b856fbebd76e6cb9a838a12c517af0f56f61256f218b0f",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/ipad-source-navigation.test.tsx",
+      "worker_sha256": "3a41c788b85da6075ea6448b037909e45cf80f8a40c03df693e7904b9f317474",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/side-menu-list-empty.tsx",
+      "worker_sha256": "20fc0ddcd13091810a3647a4966fb773b2b736c57655be08039de8163e574707",
+      "baseline_sha256": "1b0897ecf0102228f4a2ce2ee81a332bb2223847df007625253aa3447fd5624b",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/side-menu/side-menu-home.tsx",
+      "worker_sha256": "f2a93a02c5648713d62013ad74920739785dfa99ec22a72063cc41d2ec9a4295",
+      "baseline_sha256": "625c368396d1354dd37e0b6751b6a672226f02ec8bdfdcc53e3da8169deb94e1",
+      "matches_current_root": true
+    }
+  ],
+  "baseline_paths_absent_from_cloud": [],
+  "artifact_files_copied": 661,
+  "artifact_files_already_identical": 0,
+  "local_artifact_variants_retained": [],
+  "cloud_source_excluded_regenerable_dirs": [
+    "node_modules",
+    "build",
+    ".git",
+    "plugin/veyran-connect/dist",
+    "extensions/web-clipper/dist",
+    "extensions/web-clipper/node_modules",
+    "packages/ui/dist",
+    "packages/ui/node_modules",
+    "packages/crypto/dist",
+    "packages/crypto/node_modules",
+    "packages/core/dist",
+    "packages/core/node_modules",
+    "packages/logger/dist",
+    "packages/clipper/dist",
+    "packages/clipper/node_modules",
+    "packages/intl/dist",
+    "packages/intl/node_modules",
+    "packages/editor-mobile/build.bundle",
+    "packages/editor-mobile/node_modules",
+    "packages/editor-mobile/sourcemaps",
+    "packages/common/dist",
+    "packages/common/node_modules",
+    "packages/theme/dist",
+    "packages/theme/node_modules",
+    "packages/streamable-fs/dist",
+    "packages/streamable-fs/node_modules",
+    "packages/sodium/dist",
+    "packages/sodium/node_modules",
+    "packages/editor/dist",
+    "packages/editor/node_modules",
+    "apps/theme-builder/node_modules",
+    "apps/web/node_modules",
+    "apps/web/build",
+    "apps/vericrypt/node_modules",
+    "apps/desktop/dist",
+    "apps/desktop/node_modules",
+    "apps/desktop/output",
+    "apps/desktop/test-artifacts",
+    "apps/desktop/build",
+    "apps/monograph/node_modules",
+    "apps/monograph/output",
+    "apps/mobile/node_modules",
+    "apps/mobile/build",
+    "apps/mobile/ios/Pods",
+    "apps/mobile/ios/build",
+    "apps/mobile/ios/.veyran-redesignqa",
+    "servers/veyran-connect/dist",
+    "servers/veyran-connect/node_modules",
+    "servers/themes/dist",
+    "servers/themes/node_modules"
+  ],
+  "branch": "test",
+  "separate_inodes": true,
+  "cloud_source_unchanged": true
+}

@@ -22,6 +22,27 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #if TARGET_OS_MACCATALYST
 #import "VeyraNMacToolbar.h"
 
+/** Reuse the existing A4 action without capturing a menu-time note target. */
+UIMenu *VeyraNMoreFormattingMenu(BOOL hasNote) {
+  UIAction *moreFormatting = [UIAction
+      actionWithTitle:NSLocalizedString(@"More Formatting…",
+                                        @"Open the full editor formatting tools")
+                image:nil
+           identifier:nil
+              handler:^(__kindof UIAction *action) {
+                // Menu context can change while a menu is open.
+                if ([VeyraNMacMenu menuContextHasNote]) {
+                  [VeyraNMacMenu sendCommand:@"openFormatting"];
+                }
+              }];
+  moreFormatting.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+  return [UIMenu menuWithTitle:@""
+                        image:nil
+                   identifier:nil
+                      options:UIMenuOptionsDisplayInline
+                     children:@[ moreFormatting ]];
+}
+
 /**
  * `NSColor` and `NSColorSpace`: AppKit marks both classes unavailable on Mac
  * Catalyst, so the bridge cannot name them or their methods. These protocols
@@ -545,6 +566,7 @@ RCT_EXPORT_METHOD(setContext:(NSDictionary *)context) {
     }
     currentMenuContextHasNote = hasNote;
     currentMenuContextHasList = hasList;
+    [VeyraNMacToolbar refreshEditorAvailability];
     // setNeedsRebuild (not setNeedsRevalidate) because the disabled state is
     // applied while the menus are built, not only validated.
     [UIMenuSystem.mainSystem setNeedsRebuild];

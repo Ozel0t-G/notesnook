@@ -150,15 +150,44 @@ describe("persisted Task to iOS Widget decoder", () => {
         expect(visible.revisions[task.id]).toBe(task.updatedAt);
 
         // Simulate termination after the completed occurrence is persisted,
-        // before Core can create the next one. Replaying the widget action
-        // must run Core's idempotent completion path again to repair it.
-        const interruptedCreate = vi
-          .spyOn(db.tasks, "create")
-          .mockRejectedValueOnce(new Error("next occurrence not saved"));
+        // before Core can create the next one. The recurrence follow-up is
+        // persisted through the *private* `createWithinLease` (never the public
+        // `create`), so the fault has to be injected at the actual underlying
+        // write: the settings `upsert` of the stable next-occurrence row. The
+        // completed row (written first, `completed: true`) must not match.
+        const settings = db.settings.collection;
+        const realUpsert = settings.upsert.bind(settings);
+        const isNextOccurrenceWrite = (key: unknown, value: unknown) => {
+          if (typeof key !== "string" || !key.startsWith("appleTasks:v1:task:"))
+            return false;
+          if (typeof value !== "string") return false;
+          try {
+            const record = JSON.parse(value) as {
+              seriesId?: string;
+              completed?: boolean;
+            };
+            return record?.seriesId === task.id && record.completed !== true;
+          } catch {
+            return false;
+          }
+        };
+        let injected = false;
+        const interruptedUpsert = vi
+          .spyOn(settings, "upsert")
+          .mockImplementation(async (item) => {
+            if (!injected && isNextOccurrenceWrite(item.key, item.value)) {
+              injected = true;
+              throw new Error("next occurrence not saved");
+            }
+            return realUpsert(item);
+          });
+        // Replaying the widget action must run Core's idempotent completion
+        // path again to repair the lost occurrence.
         await expect(db.tasks.complete(task.id)).rejects.toThrow(
           "next occurrence not saved"
         );
-        interruptedCreate.mockRestore();
+        interruptedUpsert.mockRestore();
+        expect(injected).toBe(true);
         expect((await db.tasks.get(task.id))?.completed).toBe(true);
         expect(
           (await db.tasks.list()).filter((item) => !item.completed)

@@ -17,39 +17,50 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-let mockIsMacCatalyst = true;
-
-// The module under test only needs `Platform.OS` from react-native; the Mac
-// branch is driven by the mocked isMacCatalyst() below. Platform.isMacCatalyst
-// is deliberately left out: reading the `mock…` variable right here would run
-// before its declaration (jest hoists this factory above it).
-jest.mock("react-native", () => ({
-  Platform: { OS: "ios" }
-}));
-
-jest.mock("./constants", () => ({
-  isMacCatalyst: () => mockIsMacCatalyst
-}));
+/*
+ * The native Apple tokens under the 2026 neutral-surface contract
+ * (docs/APPLE_DESIGN_SYSTEM.md §2): the big surfaces are neutral (the standard
+ * VeyraN palette for the bundled appearances, the theme's own authored colors
+ * for anything imported) and the accent reaches only the interactive
+ * affordances. Android and other clients are untouched: they keep the aliases
+ * the theme itself provides.
+ */
 
 import {
-  getAppleVisualTokens,
-  IOS_DARK,
-  IOS_DARK_ACCENT_TINT,
-  MAC_DARK,
-  MAC_DARK_ACCENT_TINT,
-  MAC_LIGHT
-} from "./apple-visual-tokens";
-import {
-  MAC_DARK_WINDOW_ACCENT_TINT,
-  macWindowBackground,
+  APPLE_SELECTION_ACCENT_MIX,
+  APPLE_SURFACE_NEUTRALS,
   mixHex
-} from "./mac-layout";
+} from "@notesnook/theme";
 
-type ThemeColors = Parameters<typeof getAppleVisualTokens>[0];
+type AppleTokens = typeof import("./apple-visual-tokens");
 
 /**
- * A dark/light Notesnook theme whose own colors repeat no IOS_DARK value, so a
- * returned IOS_DARK color can only come from the token branch under test.
+ * Load the token module with a specific `Platform.OS`. The module caches
+ * nothing at import time, but every platform gets its own freshly loaded copy
+ * (and its own mocked native bridge) so a case cannot leak a Platform into the
+ * next one.
+ */
+const loadAppleTokens = (os: "ios" | "android"): AppleTokens => {
+  jest.resetModules();
+  jest.doMock("react-native", () => ({
+    Platform: { OS: os },
+    NativeModules: {}
+  }));
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  return require("./apple-visual-tokens") as AppleTokens;
+};
+
+type ThemeColors = Parameters<
+  AppleTokens["getAppleVisualTokens"]
+>[0];
+
+/** The bundled VeyraN appearances, identified exactly like the engine does. */
+const VEYRAN_LIGHT = { id: "veyran-light", colorScheme: "light" as const };
+const VEYRAN_DARK = { id: "veyran-dark", colorScheme: "dark" as const };
+
+/**
+ * A dark/light theme whose own colors repeat no neutral value, so a returned
+ * neutral can only come from the resolved Apple role under test.
  */
 const theme = (isDark: boolean) =>
   ({
@@ -73,11 +84,7 @@ const theme = (isDark: boolean) =>
     }
   } as unknown as ThemeColors);
 
-/**
- * The same theme with only the accent replaced, so a case can prove the dark
- * tokens follow `primary.accent` on their own - the rest of the palette
- * (including `primary.background`) is untouched.
- */
+/** The same theme with only the accent replaced. */
 const withAccent = (colors: ThemeColors, accent: string): ThemeColors =>
   ({
     ...colors,
@@ -85,256 +92,254 @@ const withAccent = (colors: ThemeColors, accent: string): ThemeColors =>
     selected: { ...colors.selected, accent }
   } as ThemeColors);
 
-/** The dark iOS tokens that are supposed to follow the accent. */
-const IOS_ACCENT_TINTED_KEYS = [
+/** The neutral roles: no accent is allowed to move any of these. */
+const NEUTRAL_KEYS = [
   "screenBackground",
   "sidebarBackground",
   "navigationSurface",
-  "toolbarSurface",
-  "editorSurround",
   "contentSurface",
   "secondarySurface",
   "elevatedSurface",
+  "toolbarSurface",
+  "editorSurround",
   "surface",
   "separator",
-  "selectedSurface",
-  "selectionBackground"
+  "hoverSurface"
 ] as const;
 
-/**
- * The dark Mac tokens that follow the accent. `separator` is the one exception:
- * the dark Mac hairline is an `rgba()` string, so there is no hex to tint.
- */
-const MAC_ACCENT_TINTED_KEYS = [
-  "screenBackground",
-  "sidebarBackground",
-  "navigationSurface",
-  "toolbarSurface",
-  "editorSurround",
-  "contentSurface",
-  "secondarySurface",
-  "elevatedSurface",
-  "surface",
-  "selectedSurface",
-  "selectionBackground"
-] as const;
+/** The interactive affordances: the accent-bearing surfaces. */
+const AFFORDANCE_KEYS = ["selectedSurface", "selectionBackground"] as const;
 
-/** Every string anywhere in the token object, lower-cased for comparison. */
-function collectStrings(value: unknown, out: string[] = []): string[] {
-  if (typeof value === "string") out.push(value.toLowerCase());
-  else if (Array.isArray(value)) collectStrings(value, out);
-  else if (value && typeof value === "object")
-    for (const item of Object.values(value)) collectStrings(item, out);
-  return out;
-}
-
-describe("Mac Catalyst visual tokens", () => {
-  beforeEach(() => {
-    mockIsMacCatalyst = true;
+describe("Apple visual tokens (bundled VeyraN appearance)", () => {
+  afterEach(() => {
+    jest.dontMock("react-native");
+    jest.resetModules();
   });
 
-  test("tints the theme's primary background for the whole window (dark)", () => {
-    const themeColors = theme(true);
-    const tokens = getAppleVisualTokens(themeColors, true);
-    const accent = themeColors.primary.accent;
-    const windowBackground = macWindowBackground(themeColors, true);
+  test("light resolves the neutral surfaces, not the theme's own colors", () => {
+    const colors = theme(false);
+    const tokens = loadAppleTokens("ios").getAppleVisualTokens(
+      colors,
+      false,
+      VEYRAN_LIGHT
+    );
 
-    // Catalyst is still an iOS build: the layout branches keyed off `ios`
-    // (radii, insets, three-column reach) must not move.
     expect(tokens.ios).toBe(true);
-    // One background across the window: the root, the note list, the editor
-    // and the band behind the toolbar all resolve to the theme's primary
-    // background with the accent blended in (macOS 26 Notes), not to a fixed
-    // macOS grey.
-    expect(windowBackground).toBe(
+    expect(tokens.screenBackground).toBe("#F6F6F8");
+    expect(tokens.sidebarBackground).toBe("#ECEDEF");
+    expect(tokens.navigationSurface).toBe("#ECEDEF");
+    expect(tokens.listSurface).toBe("#F6F6F8");
+    expect(tokens.documentSurface).toBe("#FFFFFF");
+    // Cards/fields/settings rows float above the canvas.
+    expect(tokens.contentSurface).toBe("#FFFFFF");
+    expect(tokens.elevatedSurface).toBe("#FFFFFF");
+    expect(tokens.toolbarSurface).toBe("#FFFFFF");
+    expect(tokens.editorSurround).toBe("#FFFFFF");
+    expect(tokens.surface).toBe("#FFFFFF");
+    // The light field fill is the recessed list tone.
+    expect(tokens.secondarySurface).toBe("#F6F6F8");
+    expect(tokens.separator).toBe("#D9D9DE");
+
+    // The theme's own near-white was replaced, not merely nudged.
+    expect(tokens.screenBackground).not.toBe(colors.primary.background);
+    expect(tokens.documentSurface).not.toBe(colors.primary.background);
+
+    // Selection is the one place the accent reaches a surface.
+    expect(tokens.selectedSurface).toBe(
       mixHex(
-        themeColors.primary.background,
-        accent,
-        MAC_DARK_WINDOW_ACCENT_TINT
+        APPLE_SURFACE_NEUTRALS.light.listSurface,
+        colors.primary.accent as string,
+        APPLE_SELECTION_ACCENT_MIX.light
       )
     );
-    expect(tokens.screenBackground).toBe(windowBackground);
-    expect(tokens.sidebarBackground).toBe(windowBackground);
-    expect(tokens.navigationSurface).toBe(windowBackground);
-    expect(tokens.toolbarSurface).toBe(windowBackground);
-    expect(tokens.editorSurround).toBe(windowBackground);
-    // The theme's base colour is only nudged, never replaced.
-    expect(tokens.screenBackground).not.toBe(themeColors.primary.background);
-    // Elevated surfaces are the macOS semantic greys with the same accent tint:
-    // they float above the window, so they keep their own value.
-    expect(tokens.contentSurface).toBe(
-      mixHex(MAC_DARK.content, accent, MAC_DARK_ACCENT_TINT)
-    );
-    expect(tokens.secondarySurface).toBe(
-      mixHex(MAC_DARK.secondarySurface, accent, MAC_DARK_ACCENT_TINT)
-    );
-    expect(tokens.elevatedSurface).toBe(tokens.contentSurface);
-    expect(tokens.surface).toBe(tokens.contentSurface);
-    // The dark Mac hairline is an rgba() string: nothing to tint.
-    expect(tokens.separator).toBe("rgba(255,255,255,0.1)");
-    expect(tokens.selectedSurface).toBe(
-      mixHex(MAC_DARK.selected, accent, MAC_DARK_ACCENT_TINT)
-    );
     expect(tokens.selectionBackground).toBe(tokens.selectedSurface);
+    expect(tokens.selectedSurface).not.toBe(colors.selected.background);
+    // Hover stays the theme's own fill.
+    expect(tokens.hoverSurface).toBe(colors.primary.hover);
   });
 
-  test("a different accent re-tints the dark Mac surfaces only", () => {
-    const blueTokens = getAppleVisualTokens(theme(true), true);
-    const orangeTokens = getAppleVisualTokens(
-      withAccent(theme(true), "#FF9500"),
-      true
+  test("dark resolves the neutral surfaces too", () => {
+    const colors = theme(true);
+    const tokens = loadAppleTokens("ios").getAppleVisualTokens(
+      colors,
+      true,
+      VEYRAN_DARK
     );
 
-    for (const key of MAC_ACCENT_TINTED_KEYS)
-      expect(orangeTokens[key]).not.toBe(blueTokens[key]);
+    expect(tokens.screenBackground).toBe("#202023");
+    expect(tokens.sidebarBackground).toBe("#252527");
+    expect(tokens.navigationSurface).toBe("#252527");
+    expect(tokens.listSurface).toBe("#202023");
+    expect(tokens.documentSurface).toBe("#18181B");
+    expect(tokens.contentSurface).toBe("#2B2B2F");
+    expect(tokens.elevatedSurface).toBe("#2B2B2F");
+    expect(tokens.toolbarSurface).toBe("#2B2B2F");
+    expect(tokens.editorSurround).toBe("#18181B");
+    expect(tokens.surface).toBe("#2B2B2F");
+    // The dark field fill is the raised elevated tone.
+    expect(tokens.secondarySurface).toBe("#2B2B2F");
+    expect(tokens.separator).toBe("#36363A");
 
-    // The light Mac window is a fixed off-white: the accent never reaches it.
-    expect(
-      getAppleVisualTokens(withAccent(theme(false), "#FF9500"), false)
-    ).toEqual(getAppleVisualTokens(theme(false), false));
+    expect(tokens.screenBackground).not.toBe(colors.primary.background);
+    expect(tokens.selectedSurface).toBe(
+      mixHex(
+        APPLE_SURFACE_NEUTRALS.dark.listSurface,
+        colors.primary.accent as string,
+        APPLE_SELECTION_ACCENT_MIX.dark
+      )
+    );
+    // ...and the seam between the old tinted window and the neutral one: the
+    // window is no longer the theme background blended with the accent.
+    expect(tokens.screenBackground).not.toBe(
+      mixHex(colors.primary.background, colors.primary.accent as string, 0.06)
+    );
   });
 
-  test("never uses pure white for the light Mac window", () => {
-    const themeColors = theme(false);
-    const tokens = getAppleVisualTokens(themeColors, false);
+  test("a different accent moves only the interactive affordances", () => {
+    const blue = loadAppleTokens("ios").getAppleVisualTokens(
+      theme(true),
+      true,
+      VEYRAN_DARK
+    );
+    const orange = loadAppleTokens("ios").getAppleVisualTokens(
+      withAccent(theme(true), "#FF9500"),
+      true,
+      VEYRAN_DARK
+    );
+
+    for (const key of NEUTRAL_KEYS) expect(orange[key]).toBe(blue[key]);
+    for (const key of AFFORDANCE_KEYS)
+      expect(orange[key]).not.toBe(blue[key]);
+  });
+
+  test("an imported theme keeps its authored surfaces", () => {
+    const colors = theme(true);
+    const tokens = loadAppleTokens("ios").getAppleVisualTokens(colors, true, {
+      id: "my-custom-dark",
+      colorScheme: "dark"
+    });
 
     expect(tokens.ios).toBe(true);
-    // The light Mac window is the soft off-white, not the theme's near-white
-    // (#FBFBFB here) and never #FFFFFF.
-    expect(tokens.screenBackground).toBe("#F3F3F5");
-    expect(tokens.sidebarBackground).toBe("#F3F3F5");
-    expect(tokens.navigationSurface).toBe("#F3F3F5");
-    expect(tokens.toolbarSurface).toBe("#F3F3F5");
-    expect(tokens.editorSurround).toBe("#F3F3F5");
-    expect(tokens.screenBackground).not.toBe("#FFFFFF");
-    // Cards/fields/settings rows are a hair above the window, never #FFFFFF.
-    expect(tokens.contentSurface).toBe("#FAFAFB");
-    expect(tokens.secondarySurface).toBe("#FAFAFB");
-    expect(tokens.elevatedSurface).toBe("#FAFAFB");
-    expect(tokens.surface).toBe(MAC_LIGHT.content);
-    expect(tokens.separator).toBe("#D9D9DE");
-    expect(tokens.selectedSurface).toBe("#DCDCE0");
-    expect(tokens.selectionBackground).toBe("#DCDCE0");
-    expect(tokens.contentSurface).not.toBe("#FFFFFF");
+    expect(tokens.screenBackground).toBe(colors.secondary.background);
+    expect(tokens.sidebarBackground).toBe(colors.secondary.background);
+    expect(tokens.navigationSurface).toBe(colors.secondary.background);
+    expect(tokens.documentSurface).toBe(colors.primary.background);
+    expect(tokens.editorSurround).toBe(colors.primary.background);
+    expect(tokens.contentSurface).toBe(colors.primary.background);
+    expect(tokens.surface).toBe(colors.primary.background);
+    expect(tokens.secondarySurface).toBe(colors.secondary.background);
+    expect(tokens.separator).toBe(colors.primary.border);
+    expect(tokens.selectedSurface).toBe(colors.selected.background);
+    expect(tokens.selectionBackground).toBe(colors.selected.background);
+    expect(tokens.hoverSurface).toBe(colors.primary.hover);
+    // No neutral leaked into a custom theme.
+    expect(tokens.screenBackground).not.toBe(
+      APPLE_SURFACE_NEUTRALS.dark.windowBackground
+    );
+    expect(tokens.documentSurface).not.toBe(
+      APPLE_SURFACE_NEUTRALS.dark.documentSurface
+    );
+  });
+});
+
+describe("Android and other non-Apple clients", () => {
+  afterEach(() => {
+    jest.dontMock("react-native");
+    jest.resetModules();
   });
 
-  test("never returns an IOS_DARK value on the Mac", () => {
-    const groupedValues = Object.values(IOS_DARK).map((value) =>
-      value.toLowerCase()
+  test("keeps the theme aliases, byte for byte", () => {
+    const colors = theme(true);
+    const tokens = loadAppleTokens("android").getAppleVisualTokens(
+      colors,
+      true,
+      VEYRAN_DARK
     );
 
-    for (const isDark of [true, false]) {
-      const tokens = collectStrings(getAppleVisualTokens(theme(isDark), isDark));
-      for (const grouped of groupedValues) {
-        expect(tokens).not.toContain(grouped);
-      }
-    }
-  });
-
-  test("keeps every spacing and radius token unchanged from iOS", () => {
-    mockIsMacCatalyst = false;
-    const iosDark = getAppleVisualTokens(theme(true), true);
-    const iosLight = getAppleVisualTokens(theme(false), false);
-
-    mockIsMacCatalyst = true;
-    const macDark = getAppleVisualTokens(theme(true), true);
-    const macLight = getAppleVisualTokens(theme(false), false);
-
-    const layoutKeys = [
-      "cardRadius",
-      "buttonRadius",
-      "controlRadius",
-      "sectionRadius",
-      "sheetRadius",
-      "pagePadding",
-      "sectionSpacing",
-      "rowPadding",
-      "sidebarPadding",
-      "listInset",
-      "rowInset",
-      "rowSpacing"
-    ] as const;
-
-    for (const key of layoutKeys) {
-      expect(macDark[key]).toBe(iosDark[key]);
-      expect(macLight[key]).toBe(iosLight[key]);
+    expect(tokens.ios).toBe(false);
+    expect(tokens.screenBackground).toBe(colors.primary.background);
+    expect(tokens.sidebarBackground).toBe(colors.primary.background);
+    expect(tokens.navigationSurface).toBe(colors.secondary.background);
+    expect(tokens.documentSurface).toBe(colors.primary.background);
+    expect(tokens.contentSurface).toBe(colors.primary.background);
+    expect(tokens.editorSurround).toBe(colors.primary.background);
+    expect(tokens.elevatedSurface).toBe(colors.secondary.background);
+    expect(tokens.toolbarSurface).toBe(colors.secondary.background);
+    expect(tokens.surface).toBe(colors.primary.background);
+    expect(tokens.secondarySurface).toBe(colors.secondary.background);
+    expect(tokens.separator).toBe(colors.primary.border);
+    expect(tokens.selectedSurface).toBe(colors.selected.background);
+    expect(tokens.selectionBackground).toBe(colors.selected.background);
+    expect(tokens.hoverSurface).toBe(colors.primary.hover);
+    // The resolver never ran: no Apple neutral shows up on Android.
+    for (const key of NEUTRAL_KEYS) {
+      expect(Object.values(APPLE_SURFACE_NEUTRALS.dark)).not.toContain(
+        tokens[key]
+      );
+      expect(Object.values(APPLE_SURFACE_NEUTRALS.light)).not.toContain(
+        tokens[key]
+      );
     }
   });
 });
 
-describe("iOS visual tokens", () => {
-  beforeEach(() => {
-    mockIsMacCatalyst = false;
+describe("layout geometry", () => {
+  afterEach(() => {
+    jest.dontMock("react-native");
+    jest.resetModules();
   });
 
-  test("tints the dark Apple surfaces with the theme accent", () => {
-    const themeColors = theme(true);
-    const tokens = getAppleVisualTokens(themeColors, true);
-    const accent = themeColors.primary.accent;
+  const iosGeometry = {
+    cardRadius: 20,
+    buttonRadius: 16,
+    controlRadius: 16,
+    sectionRadius: 22,
+    sheetRadius: 24,
+    pagePadding: 16,
+    sectionSpacing: 20,
+    rowPadding: 16,
+    sidebarPadding: 12,
+    listInset: 16,
+    rowInset: 18,
+    rowSpacing: 0
+  } as const;
 
-    expect(tokens.ios).toBe(true);
-    const windowSurface = mixHex(
-      IOS_DARK.grouped,
-      accent,
-      IOS_DARK_ACCENT_TINT.window
+  test("Apple keeps the iOS metrics whatever the theme or appearance", () => {
+    const colors = theme(false);
+    const veyranLight = loadAppleTokens("ios").getAppleVisualTokens(
+      colors,
+      false,
+      VEYRAN_LIGHT
     );
-    const contentSurface = mixHex(
-      IOS_DARK.card,
-      accent,
-      IOS_DARK_ACCENT_TINT.content
-    );
-    const selectionSurface = mixHex(
-      IOS_DARK.selected,
-      accent,
-      IOS_DARK_ACCENT_TINT.selected
-    );
+    const custom = loadAppleTokens("ios").getAppleVisualTokens(colors, true, {
+      id: "my-custom-dark",
+      colorScheme: "dark"
+    });
 
-    expect(tokens.screenBackground).toBe(windowSurface);
-    expect(tokens.sidebarBackground).toBe(windowSurface);
-    expect(tokens.navigationSurface).toBe(windowSurface);
-    expect(tokens.editorSurround).toBe(windowSurface);
-    expect(tokens.contentSurface).toBe(contentSurface);
-    expect(tokens.secondarySurface).toBe(contentSurface);
-    expect(tokens.elevatedSurface).toBe(contentSurface);
-    expect(tokens.toolbarSurface).toBe(contentSurface);
-    expect(tokens.surface).toBe(contentSurface);
-    expect(tokens.separator).toBe(
-      mixHex(IOS_DARK.separator, accent, IOS_DARK_ACCENT_TINT.separator)
-    );
-    expect(tokens.selectedSurface).toBe(selectionSurface);
-    expect(tokens.selectionBackground).toBe(selectionSurface);
-    // The charcoal bases, not the old flat UIKit greys.
-    expect(tokens.screenBackground).not.toBe(IOS_DARK.grouped);
-    expect(tokens.contentSurface).not.toBe(IOS_DARK.card);
+    for (const [key, value] of Object.entries(iosGeometry)) {
+      expect(veyranLight[key as keyof typeof iosGeometry]).toBe(value);
+      expect(custom[key as keyof typeof iosGeometry]).toBe(value);
+    }
+    // The layout numbers follow the platform, never the surface resolution.
+    expect(veyranLight.cardRadius).toBe(custom.cardRadius);
   });
 
-  test("a different accent re-tints every dark iOS surface", () => {
-    const blueTokens = getAppleVisualTokens(theme(true), true);
-    const orangeTokens = getAppleVisualTokens(
-      withAccent(theme(true), "#FF9500"),
+  test("Android keeps its own (smaller) metrics", () => {
+    const tokens = loadAppleTokens("android").getAppleVisualTokens(
+      theme(true),
       true
     );
 
-    for (const key of IOS_ACCENT_TINTED_KEYS)
-      expect(orangeTokens[key]).not.toBe(blueTokens[key]);
-
-    // Light iOS stays theme-driven and ignores the accent entirely.
-    expect(
-      getAppleVisualTokens(withAccent(theme(false), "#FF9500"), false)
-    ).toEqual(getAppleVisualTokens(theme(false), false));
-  });
-
-  test("keeps the light appearance theme-driven", () => {
-    const themeColors = theme(false);
-    const tokens = getAppleVisualTokens(themeColors, false);
-
-    expect(tokens.ios).toBe(true);
-    expect(tokens.screenBackground).toBe(themeColors.secondary.background);
-    expect(tokens.sidebarBackground).toBe(themeColors.secondary.background);
-    expect(tokens.contentSurface).toBe(themeColors.primary.background);
-    expect(tokens.secondarySurface).toBe(themeColors.secondary.background);
-    expect(tokens.separator).toBe(themeColors.primary.border);
-    expect(tokens.selectedSurface).toBe(themeColors.selected.background);
-    expect(tokens.selectionBackground).toBe(themeColors.selected.background);
+    expect(tokens.cardRadius).toBe(18);
+    expect(tokens.buttonRadius).toBe(14);
+    expect(tokens.controlRadius).toBe(14);
+    expect(tokens.sectionRadius).toBe(18);
+    expect(tokens.sheetRadius).toBe(15);
+    expect(tokens.pagePadding).toBe(12);
+    expect(tokens.sectionSpacing).toBe(10);
+    expect(tokens.rowPadding).toBe(12);
+    expect(tokens.sidebarPadding).toBe(8);
+    expect(tokens.listInset).toBe(12);
+    expect(tokens.rowSpacing).toBe(6);
   });
 });

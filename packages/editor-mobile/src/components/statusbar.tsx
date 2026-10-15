@@ -51,21 +51,32 @@ function StatusBar({
 
   useEffect(() => {
     globalThis.statusBars[tab.id] = statusBar;
-    if (showChars) {
-      editors[tab.id]?.on("selectionUpdate", (event) => {
-        setChars(event.editor.extensionStorage.characterCount.characters());
-      });
-    }
-    if (editors[tab.id]) {
-      setChars(
-        editors[tab.id]?.extensionStorage.characterCount.characters() || 0
-      );
-    }
 
     return () => {
       globalThis.statusBars[tab.id] = undefined;
     };
-  }, [tab.id, statusBar, showChars]);
+  }, [tab.id, statusBar]);
+
+  useEffect(() => {
+    const editor = editors[tab.id];
+    if (editor) {
+      setChars(editor.extensionStorage.characterCount.characters() || 0);
+    }
+    if (!showChars || !editor) return;
+
+    // Registered with a stable, captured identity so the cleanup below can
+    // unregister exactly this listener (and only this listener) when the
+    // character count is toggled off, the tab changes or the component
+    // unmounts.
+    const onSelectionUpdate = () => {
+      setChars(editor.extensionStorage.characterCount.characters() || 0);
+    };
+    editor.on("selectionUpdate", onSelectionUpdate);
+
+    return () => {
+      editor.off("selectionUpdate", onSelectionUpdate);
+    };
+  }, [tab.id, showChars]);
 
   useEffect(() => {
     currentWords.current = words;

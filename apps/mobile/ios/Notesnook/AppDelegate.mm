@@ -167,6 +167,10 @@ static UIMenuIdentifier const VeyraNNoteMenuIdentifier = @"veyran.note";
   [VeyraNMacMenu sendCommand:@"openSettings"];
 }
 
+- (void)veyranToggleAssistantInspector:(id)sender {
+  [VeyraNMacMenu sendCommand:@"toggleAssistantInspector"];
+}
+
 - (void)veyranToggleSidebar:(id)sender {
   [VeyraNMacMenu sendCommand:@"toggleSidebar"];
 }
@@ -311,8 +315,10 @@ static WKWebView *VeyraNFirstVisibleWebView(UIView *view) {
 }
 
 - (void)veyranEscape:(id)sender {
-  // Never steal Escape from a real UIKit text field.
+  // With a focused UIKit input, cancel only the topmost registered modal.
+  // Never fall through to route navigation or Web popup dismissal.
   if ([self veyran_isTextInputFirstResponder]) {
+    [VeyraNMacMenu sendCommand:@"escapeModal"];
     return;
   }
   [VeyraNMacMenu sendCommand:@"escape"];
@@ -410,6 +416,81 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
     action.attributes = UIMenuElementAttributesDisabled;
   }
   return action;
+}
+
+/** The same editor format groups serve the menu bar and native Aa item. */
+NSArray<UIMenu *> *VeyraNEditorFormatMenus(BOOL hasNote) {
+  UIAction *styleTitle = VeyraNMenuAction(@"Title", @"format:title", hasNote);
+  UIAction *styleHeading =
+      VeyraNMenuAction(@"Heading", @"format:heading", hasNote);
+  UIAction *styleSubheading =
+      VeyraNMenuAction(@"Subheading", @"format:subheading", hasNote);
+  UIAction *styleBody = VeyraNMenuAction(@"Body", @"format:body", hasNote);
+  UIMenu *styleMenu =
+      [UIMenu menuWithTitle:@""
+                      image:nil
+                 identifier:nil
+                    options:UIMenuOptionsDisplayInline
+                   children:@[
+                     styleTitle, styleHeading, styleSubheading, styleBody
+                   ]];
+
+  UIAction *bulletedList =
+      VeyraNMenuAction(@"Bulleted List", @"format:bulletedList", hasNote);
+  UIAction *numberedList =
+      VeyraNMenuAction(@"Numbered List", @"format:numberedList", hasNote);
+  UIAction *checklist =
+      VeyraNMenuAction(@"Checklist", @"format:checklist", hasNote);
+  UIAction *blockquote =
+      VeyraNMenuAction(@"Block Quote", @"format:blockquote", hasNote);
+  UIAction *codeBlock =
+      VeyraNMenuAction(@"Code Block", @"format:codeBlock", hasNote);
+  UIMenu *blocksMenu =
+      [UIMenu menuWithTitle:@""
+                      image:nil
+                 identifier:nil
+                    options:UIMenuOptionsDisplayInline
+                   children:@[
+                     bulletedList, numberedList, checklist, blockquote,
+                     codeBlock
+                   ]];
+
+  UIKeyCommand *bold = VeyraNMenuCommand(@"Bold", @"b", UIKeyModifierCommand,
+                                         @selector(veyranFormatBold:));
+  bold.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+  UIKeyCommand *italic =
+      VeyraNMenuCommand(@"Italic", @"i", UIKeyModifierCommand,
+                        @selector(veyranFormatItalic:));
+  italic.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+  UIKeyCommand *underline =
+      VeyraNMenuCommand(@"Underline", @"u", UIKeyModifierCommand,
+                        @selector(veyranFormatUnderline:));
+  underline.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+  UIKeyCommand *strikethrough =
+      VeyraNMenuCommand(@"Strikethrough", @"x",
+                        UIKeyModifierCommand | UIKeyModifierShift,
+                        @selector(veyranFormatStrikethrough:));
+  strikethrough.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+  UIKeyCommand *link = VeyraNMenuCommand(@"Link…", @"k", UIKeyModifierCommand,
+                                         @selector(veyranFormatLink:));
+  link.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
+  UIMenu *marksMenu =
+      [UIMenu menuWithTitle:@""
+                      image:nil
+                 identifier:nil
+                    options:UIMenuOptionsDisplayInline
+                   children:@[ bold, italic, underline, strikethrough, link ]];
+
+  UIAction *clearFormatting = VeyraNMenuAction(
+      @"Clear Formatting", @"format:clearFormatting", hasNote);
+  UIMenu *clearFormattingMenu =
+      [UIMenu menuWithTitle:@""
+                      image:nil
+                 identifier:nil
+                    options:UIMenuOptionsDisplayInline
+                   children:@[ clearFormatting ]];
+
+  return @[ styleMenu, blocksMenu, marksMenu, clearFormattingMenu ];
 }
 
 /**
@@ -626,84 +707,13 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
   // Cmd-K, whose key commands would otherwise be swallowed by the menu.
   // Everything is greyed out while no note is open (K4).
   if ([builder menuForIdentifier:UIMenuFormat]) {
-    UIAction *styleTitle = VeyraNMenuAction(@"Title", @"format:title", hasNote);
-    UIAction *styleHeading =
-        VeyraNMenuAction(@"Heading", @"format:heading", hasNote);
-    UIAction *styleSubheading =
-        VeyraNMenuAction(@"Subheading", @"format:subheading", hasNote);
-    UIAction *styleBody = VeyraNMenuAction(@"Body", @"format:body", hasNote);
-    UIMenu *styleMenu =
-        [UIMenu menuWithTitle:@""
-                        image:nil
-                   identifier:nil
-                      options:UIMenuOptionsDisplayInline
-                     children:@[
-                       styleTitle, styleHeading, styleSubheading, styleBody
-                     ]];
-
-    UIAction *bulletedList =
-        VeyraNMenuAction(@"Bulleted List", @"format:bulletedList", hasNote);
-    UIAction *numberedList =
-        VeyraNMenuAction(@"Numbered List", @"format:numberedList", hasNote);
-    UIAction *checklist =
-        VeyraNMenuAction(@"Checklist", @"format:checklist", hasNote);
-    UIAction *blockquote =
-        VeyraNMenuAction(@"Block Quote", @"format:blockquote", hasNote);
-    UIAction *codeBlock =
-        VeyraNMenuAction(@"Code Block", @"format:codeBlock", hasNote);
-    UIMenu *blocksMenu =
-        [UIMenu menuWithTitle:@""
-                        image:nil
-                   identifier:nil
-                      options:UIMenuOptionsDisplayInline
-                     children:@[
-                       bulletedList, numberedList, checklist, blockquote,
-                       codeBlock
-                     ]];
-
-    UIKeyCommand *bold = VeyraNMenuCommand(@"Bold", @"b", UIKeyModifierCommand,
-                                           @selector(veyranFormatBold:));
-    bold.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
-    UIKeyCommand *italic =
-        VeyraNMenuCommand(@"Italic", @"i", UIKeyModifierCommand,
-                          @selector(veyranFormatItalic:));
-    italic.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
-    UIKeyCommand *underline =
-        VeyraNMenuCommand(@"Underline", @"u", UIKeyModifierCommand,
-                          @selector(veyranFormatUnderline:));
-    underline.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
-    UIKeyCommand *strikethrough =
-        VeyraNMenuCommand(@"Strikethrough", @"x",
-                          UIKeyModifierCommand | UIKeyModifierShift,
-                          @selector(veyranFormatStrikethrough:));
-    strikethrough.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
-    UIKeyCommand *link = VeyraNMenuCommand(@"Link…", @"k", UIKeyModifierCommand,
-                                           @selector(veyranFormatLink:));
-    link.attributes = hasNote ? 0 : UIMenuElementAttributesDisabled;
-    UIMenu *marksMenu =
-        [UIMenu menuWithTitle:@""
-                        image:nil
-                   identifier:nil
-                      options:UIMenuOptionsDisplayInline
-                     children:@[ bold, italic, underline, strikethrough, link ]];
-
-    UIAction *clearFormatting = VeyraNMenuAction(
-        @"Clear Formatting", @"format:clearFormatting", hasNote);
-    UIMenu *clearFormattingMenu =
-        [UIMenu menuWithTitle:@""
-                        image:nil
-                   identifier:nil
-                      options:UIMenuOptionsDisplayInline
-                     children:@[ clearFormatting ]];
-
-    // Inserted back to front, so the final order is styles, blocks, marks,
-    // Clear Formatting, then the system's own Font and Text submenus.
-    [builder insertChildMenu:clearFormattingMenu
-     atStartOfMenuForIdentifier:UIMenuFormat];
-    [builder insertChildMenu:marksMenu atStartOfMenuForIdentifier:UIMenuFormat];
-    [builder insertChildMenu:blocksMenu
-     atStartOfMenuForIdentifier:UIMenuFormat];
-    [builder insertChildMenu:styleMenu atStartOfMenuForIdentifier:UIMenuFormat];
+    // Reverse insertion preserves styles, blocks, marks, clear, More Formatting,
+    // then system Font/Text. Native Aa uses the same shared inline group.
+    NSArray<UIMenu *> *formatMenus = [VeyraNEditorFormatMenus(hasNote)
+        arrayByAddingObject:VeyraNMoreFormattingMenu(hasNote)];
+    for (UIMenu *menu in [formatMenus reverseObjectEnumerator]) {
+      [builder insertChildMenu:menu atStartOfMenuForIdentifier:UIMenuFormat];
+    }
   }
 
   // View > Library / Tasks / Search (Cmd-1/2/3): the sections the window
@@ -805,12 +815,16 @@ static UIAction *VeyraNMenuAction(NSString *title, NSString *command,
         VeyraNMenuCommand(@"Toggle Sidebar", @"s",
                           UIKeyModifierControl | UIKeyModifierCommand,
                           @selector(veyranToggleSidebar:));
+    UIKeyCommand *toggleInspector =
+        VeyraNMenuCommand(NSLocalizedString(@"Assistant", @"Optional window inspector"), @"i",
+                          UIKeyModifierAlternate | UIKeyModifierCommand,
+                          @selector(veyranToggleAssistantInspector:));
     UIMenu *toggleSidebarMenu =
         [UIMenu menuWithTitle:@""
                         image:nil
                    identifier:nil
                       options:UIMenuOptionsDisplayInline
-                     children:@[ toggleSidebar ]];
+                     children:@[ toggleSidebar, toggleInspector ]];
     [builder insertChildMenu:toggleSidebarMenu
        atEndOfMenuForIdentifier:UIMenuView];
   }

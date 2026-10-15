@@ -34,8 +34,19 @@ import { SQLCollection } from "../database/sql-collection.js";
 import { InternalLink } from "../utils/internal-link.js";
 import { tinyToTiptap } from "../migrations.js";
 import { EVENTS } from "../common.js";
-import { DeleteEvent, UpdateEvent } from "../database/index.js";
+import { DatabaseSchema, DeleteEvent, UpdateEvent } from "../database/index.js";
 import { logger } from "../logger.js";
+import {
+  assertDomainWriteLease,
+  DomainWriteToken,
+  withDomainWrite
+} from "../connect/domain-lock.js";
+import {
+  ExpressionBuilder,
+  ExpressionOrFactory,
+  SqlBool,
+  sql
+} from "@streetwriters/kysely";
 
 export const EMPTY_CONTENT = (noteId: string): UnencryptedContentItem => ({
   noteId,
@@ -48,6 +59,19 @@ export const EMPTY_CONTENT = (noteId: string): UnencryptedContentItem => ({
   data: "<p></p>",
   locked: false
 });
+
+/**
+ * Read-only validation callback that a guarded writer may run immediately
+ * before *every* persistence boundary it owns (content row, note row, relation
+ * and history side effects).
+ *
+ * It is deliberately asynchronous and may be invoked more than once for a
+ * single write: a caller that must not persist anything after its permission,
+ * session or lock state changed needs a check that runs after each `await`
+ * (content post-processing, attachment/link relations, history) and not only
+ * once at the start. Implementations must stay read-only and side-effect free.
+ */
+export type ContentPersistenceGuard = () => Promise<void>;
 
 export class Content implements ICollection {
   name = "content";
@@ -66,7 +90,32 @@ export class Content implements ICollection {
     await this.collection.init();
   }
 
-  async add(content: Partial<ContentItem>) {
+  /**
+   * Persist a content row.
+   *
+   * Runs inside the shared domain write lock: content rows are the object the
+   * vault, trash and the Connect adapter all read-modify-write, so an ordinary
+   * save must not interleave with a guarded write (and vice versa). Callers
+   * that already hold the lock (see `connect/domain-lock.ts`) pass the token
+   * they received so the nested call runs inline instead of deadlocking.
+   */
+  async add(
+    content: Partial<ContentItem>,
+    token?: DomainWriteToken,
+    guard?: ContentPersistenceGuard
+  ) {
+    return withDomainWrite(
+      this.db,
+      (writeToken) => this.addUnsafe(content, writeToken, guard),
+      token
+    );
+  }
+
+  private async addUnsafe(
+    content: Partial<ContentItem>,
+    token?: DomainWriteToken,
+    guard?: ContentPersistenceGuard
+  ) {
     if (typeof content.data === "object") {
       if ("data" in content.data && typeof content.data.data === "string")
         content.data = content.data.data;
@@ -100,12 +149,19 @@ export class Content implements ICollection {
     let unencryptedData =
       typeof content.data === "string" ? content.data : undefined;
 
+    // Post-processing is not read-only: it can save attachments and rewrite
+    // note↔attachment / note↔note relations, so the guard is threaded through
+    // it and re-run before those side effects (and again below before the row
+    // itself is written).
     if (unencryptedData && content.type && content.noteId)
-      unencryptedData = await this.postProcess({
-        type: content.type,
-        data: unencryptedData,
-        noteId: content.noteId
-      });
+      unencryptedData = await this.postProcess(
+        {
+          type: content.type,
+          data: unencryptedData,
+          noteId: content.noteId
+        },
+        guard
+      );
 
     if (content.id && (await this.exists(content.id))) {
       const contentData = encryptedData
@@ -121,6 +177,7 @@ export class Content implements ICollection {
           length: JSON.stringify(contentData.data).length
         });
 
+      if (guard) await guard();
       await this.collection.update([content.id], {
         dateEdited: content.dateEdited,
         localOnly: content.localOnly,
@@ -131,6 +188,7 @@ export class Content implements ICollection {
       });
 
       if (content.sessionId && contentData && content.type && content.noteId) {
+        if (guard) await guard();
         await this.db.noteHistory.add(content.sessionId, {
           noteId: content.noteId,
           type: content.type,
@@ -162,22 +220,70 @@ export class Content implements ICollection {
         length: JSON.stringify(contentItem.data).length
       });
 
+      if (guard) await guard();
       await this.collection.upsert(contentItem);
 
-      if (content.sessionId)
+      if (content.sessionId) {
+        if (guard) await guard();
         await this.db.noteHistory.add(content.sessionId, contentItem);
+      }
     } else return;
 
     return id;
   }
 
   async get(id: string) {
-    const content = await this.collection.get(id);
+    return this.readAndPreprocess(() => this.collection.get(id));
+  }
+
+  /**
+   * Read a content row and persist the pre-processing migration (tiny→tiptap,
+   * block ids) when it changed something.
+   *
+   * The write-back is a *compare-and-swap*: it only replaces the row while the
+   * row is still the unlocked, non-deleted body (same `type` **and** same
+   * `data`) this read observed. `db.transaction` is a pass-through in this
+   * codebase (no real SQL transaction) and the read cannot hold the shared
+   * domain lock without deadlocking the writers that call it from inside their
+   * own critical section, so the conditional update is what makes the
+   * read-modify-write safe.
+   *
+   * Only the transformed `type`/`data` columns are written: the row's other
+   * metadata (`localOnly`, dates, `conflicted`, ...) belongs to whoever wrote
+   * it last and must survive a migration write-back. Returning the *fresh* row
+   * afterwards is what keeps a lost CAS from leaking the stale captured body:
+   * when a vault lock (ciphertext + `locked`) or any other replacement lands
+   * while this read is suspended, the caller sees the current locked body and
+   * never the plaintext this read started from.
+   */
+  private async readAndPreprocess(
+    read: () => Promise<ContentItem | undefined>
+  ): Promise<ContentItem | undefined> {
+    const content = await read();
     if (!content || isDeleted(content)) return;
-    if (!content.locked && (await this.preProcess(content))) {
-      await this.collection.update([content.id], content, { modify: false });
-    }
-    return content;
+    if (content.locked) return content;
+    if (typeof content.data !== "string") return content;
+
+    const observedType = content.type;
+    const observedData = content.data;
+    if (!(await this.preProcess(content))) return content;
+
+    await this.collection.update(
+      [content.id],
+      { type: content.type, data: content.data },
+      {
+        modify: false,
+        condition: preprocessCondition(observedType, observedData)
+      }
+    );
+
+    // Re-read instead of returning the in-memory copy: the CAS may have been
+    // lost (body replaced or vaulted while this read was suspended) and the
+    // stored row — not the pre-write snapshot — is the only body that may be
+    // handed out.
+    const current = await read();
+    if (!current || isDeleted(current)) return;
+    return current;
   }
 
   // async raw(id: string) {
@@ -186,11 +292,41 @@ export class Content implements ICollection {
   //   return content;
   // }
 
+  /**
+   * Require the *live* lease of this database.
+   *
+   * The `*Locked` methods below bypass `withDomainWrite` on purpose (their
+   * callers already hold the critical section), so they must not trust the
+   * parameter being passed: a stale, copied or foreign token would otherwise
+   * let a caller mutate content rows outside the lock — or while an unrelated
+   * writer holds it. The check is the same identity check `withDomainWrite`
+   * performs, and it runs before any read or write.
+   */
+  private assertDomainLease(token: DomainWriteToken): void {
+    assertDomainWriteLease(this.db, token);
+  }
+
   remove(...ids: string[]) {
+    return withDomainWrite(this.db, (token) =>
+      this.removeLocked(token, ...ids)
+    );
+  }
+
+  /** Callers must hold the domain write lock and pass their live token. */
+  removeLocked(token: DomainWriteToken, ...ids: string[]) {
+    this.assertDomainLease(token);
     return this.collection.softDelete(ids);
   }
 
   async removeByNoteId(...ids: string[]) {
+    return withDomainWrite(this.db, (token) =>
+      this.removeByNoteIdLocked(token, ...ids)
+    );
+  }
+
+  /** Callers must hold the domain write lock and pass their live token. */
+  async removeByNoteIdLocked(token: DomainWriteToken, ...ids: string[]) {
+    this.assertDomainLease(token);
     await this.db
       .sql()
       .replaceInto("content")
@@ -216,6 +352,18 @@ export class Content implements ICollection {
   }
 
   async updateByNoteId(partial: Partial<ContentItem>, ...ids: string[]) {
+    return withDomainWrite(this.db, (token) =>
+      this.updateByNoteIdLocked(token, partial, ...ids)
+    );
+  }
+
+  /** Callers must hold the domain write lock and pass their live token. */
+  async updateByNoteIdLocked(
+    token: DomainWriteToken,
+    partial: Partial<ContentItem>,
+    ...ids: string[]
+  ) {
+    this.assertDomainLease(token);
     await this.db
       .sql()
       .updateTable("content")
@@ -235,17 +383,15 @@ export class Content implements ICollection {
   }
 
   async findByNoteId(noteId: string) {
-    const content = (await this.db
-      .sql()
-      .selectFrom("content")
-      .where("noteId", "==", noteId)
-      .selectAll()
-      .executeTakeFirst()) as ContentItem;
-    if (!content || isDeleted(content)) return;
-    if (!content.locked && (await this.preProcess(content))) {
-      await this.collection.update([content.id], content, { modify: false });
-    }
-    return content;
+    return this.readAndPreprocess(
+      async () =>
+        (await this.db
+          .sql()
+          .selectFrom("content")
+          .where("noteId", "==", noteId)
+          .selectAll()
+          .executeTakeFirst()) as ContentItem
+    );
   }
 
   // multi(ids: string[]) {
@@ -333,23 +479,61 @@ export class Content implements ICollection {
     return changed;
   }
 
-  async postProcess(contentItem: NoteContent<false> & { noteId: string }) {
+  /**
+   * Run the (write-capable) content post-processing for one body.
+   *
+   * `guard` — when given — is a read-only validation that runs immediately
+   * before *every* persistence boundary this method (and the helpers it calls)
+   * owns:
+   *
+   *  - the attachment row a data-URI image is saved as (the `save` callback is
+   *    wrapped, so the check happens before the attachment is written, not
+   *    after the whole body has been post-processed);
+   *  - every note↔note relation written or removed by `processInternalLinks`;
+   *  - every note↔attachment relation written or removed by
+   *    `processLinkedAttachments`.
+   *
+   * Those are persistence boundaries like any other: a caller whose permission,
+   * session or lock state can change while an `await` is suspended must not let
+   * a revoked context rewrite relations or store an attachment, so each helper
+   * re-checks after its last read and immediately before each mutation. Without
+   * a guard (the ordinary editor/UI path) the behavior is unchanged.
+   */
+  async postProcess(
+    contentItem: NoteContent<false> & { noteId: string },
+    guard?: ContentPersistenceGuard
+  ) {
     const content = await getContentFromData(
       contentItem.type,
       contentItem.data
     );
     if (!content) return contentItem.data;
+
+    const saveAttachment = this.db.attachments.save.bind(this.db.attachments);
+    const guardedSave: typeof saveAttachment = guard
+      ? async (data, mime, filename) => {
+          // Saving an attachment is a write: revalidate before it lands.
+          await guard();
+          return saveAttachment(data, mime, filename);
+        }
+      : saveAttachment;
     const { data, hashes, internalLinks } = await content.postProcess(
-      this.db.attachments.save.bind(this.db.attachments)
+      guardedSave
     );
 
-    await this.processInternalLinks(contentItem.noteId, internalLinks);
-    await this.processLinkedAttachments(contentItem.noteId, hashes);
+    if (guard) await guard();
+    await this.processInternalLinks(contentItem.noteId, internalLinks, guard);
+    if (guard) await guard();
+    await this.processLinkedAttachments(contentItem.noteId, hashes, guard);
 
     return data;
   }
 
-  private async processLinkedAttachments(noteId: string, hashes: string[]) {
+  private async processLinkedAttachments(
+    noteId: string,
+    hashes: string[],
+    guard?: ContentPersistenceGuard
+  ) {
     const noteAttachments = await this.db.relations
       .from({ type: "note", id: noteId }, "attachment")
       .selector.filter.select(["id", "hash"])
@@ -360,6 +544,7 @@ export class Content implements ICollection {
     });
 
     for (const attachment of toDelete) {
+      if (guard) await guard();
       await this.db.relations.unlink(
         {
           id: noteId,
@@ -378,6 +563,7 @@ export class Content implements ICollection {
       .where((eb) => eb("hash", "in", toAdd))
       .items();
     for (const attachment of attachments) {
+      if (guard) await guard();
       await this.db.relations.add(
         {
           id: noteId,
@@ -390,7 +576,8 @@ export class Content implements ICollection {
 
   private async processInternalLinks(
     noteId: string,
-    internalLinks: InternalLink[]
+    internalLinks: InternalLink[],
+    guard?: ContentPersistenceGuard
   ) {
     const links = await this.db.relations
       .from({ type: "note", id: noteId }, "note")
@@ -405,6 +592,7 @@ export class Content implements ICollection {
     });
 
     for (const link of toDelete) {
+      if (guard) await guard();
       await this.db.relations.unlink(
         {
           id: noteId,
@@ -417,6 +605,9 @@ export class Content implements ICollection {
     for (const link of toAdd) {
       const note = await this.db.notes.exists(link.id);
       if (!note) continue;
+      // The existence read above is an `await`: revalidate before the relation
+      // is written, never after.
+      if (guard) await guard();
       await this.db.relations.add(
         {
           id: noteId,
@@ -426,4 +617,30 @@ export class Content implements ICollection {
       );
     }
   }
+}
+
+/**
+ * Compare-and-swap condition for the content read-modify-write performed by
+ * `Content.readAndPreprocess`: the update may only replace the row while the
+ * row is still the unlocked, non-deleted body this read observed.
+ *
+ * A vault lock stores ciphertext and sets `locked`/`dateEdited`, so any
+ * concurrent body replacement makes at least one clause false and the write-back
+ * becomes a no-op instead of restoring stale plaintext over the new content.
+ * `data` holds either a plaintext document or a serialized cipher object, so it
+ * is compared as a raw value rather than through the typed column. `type` is
+ * part of the condition too, so a row whose type was rewritten between the read
+ * and the write-back (e.g. an encrypted payload) is never relabelled.
+ */
+function preprocessCondition(
+  observedType: string,
+  observedData: string
+): ExpressionOrFactory<DatabaseSchema, keyof DatabaseSchema, SqlBool> {
+  return (eb: ExpressionBuilder<DatabaseSchema, keyof DatabaseSchema>) =>
+    eb.and([
+      eb.or([eb("locked", "is", null), eb("locked", "==", false)]),
+      eb.or([eb("deleted", "is", null), eb("deleted", "==", false)]),
+      sql<SqlBool>`type = ${observedType}`,
+      sql<SqlBool>`data = ${observedData}`
+    ]);
 }

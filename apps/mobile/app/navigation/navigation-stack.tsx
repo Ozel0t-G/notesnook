@@ -46,6 +46,10 @@ import {
 import { launchNewNoteTab } from "../hooks/use-shortcut-manager";
 import { parseReminderWidgetLink } from "../services/reminder-widget-links";
 import { AppleTabBar, isTopTabBar } from "../components/apple-tab-bar";
+import {
+  AppleTabBarOffsetContext,
+  getTopTabBarHeight
+} from "../components/apple-tab-bar-layout";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
 import { macToolbarInset, macWindowBackground } from "../utils/mac-layout";
@@ -60,6 +64,15 @@ import {
 import { openEditor, setOnFirstSaveUnassigned } from "../screens/notes/common";
 import { DDS } from "../services/device-detection";
 import { setMacListNavigation } from "../services/mac-list-navigation";
+import { useIPadWorkspace } from "../components/ipad-workspace-context";
+import { IPadPrimaryNavigationContext } from "../components/ipad-primary-navigation-context";
+import {
+  IPAD_ALL_NOTES_ROUTE_ID,
+  IPAD_INBOX_ROUTE_ID,
+  ipadDefaultCollection,
+  resolveIPadPaneMode,
+  type IPadPaneMode
+} from "../utils/ipad-layout";
 
 const RootStack = createNativeStackNavigator();
 
@@ -129,10 +142,9 @@ export const selectAppleSection = (selection: AppleTabBarSelection) => {
   }
 
   if (selection === "settings") {
-    // The bar's third item is an action like "New Note", not a section: it
-    // opens the existing Settings sheet over whatever section is showing.
-    // That section stays selected underneath, and the bar highlights Settings
-    // while the sheet is up (see `settingsVisible`). Mac has no tab bar - its
+    // The separate Settings entry opens the existing sheet over the current
+    // section. Notes/Tasks/Search retain that selection while the sheet is up.
+    // Mac has no tab bar - its
     // Settings entry point is the app menu / the Mac sidebar - so it never
     // reaches here.
     if (isMacCatalyst()) return;
@@ -154,6 +166,16 @@ export const selectAppleSection = (selection: AppleTabBarSelection) => {
   } else if (selection === "search") {
     rootNavigatorRef.current?.navigate("GlobalSearch" as any);
   } else {
+    if (Platform.OS === "ios" && Platform.isPad && !isMacCatalyst()) {
+      // Resume the existing notebook/list workspace. On narrow windows Notes
+      // reveals that list; on wider windows it is already beside the editor.
+      // Neither case should replace the notebook child route with Library.
+      if (resolveIPadPaneMode(useSettingStore.getState().dimensions.width) === "narrow") {
+        fluidTabsRef.current?.goToPage("home", true);
+      }
+      rootNavigatorRef.current?.navigate("FluidPanelsView" as any);
+      return;
+    }
     fluidTabsRef.current?.goToPage("home", true);
     rootNavigatorRef.current?.navigate(
       "FluidPanelsView" as any,
@@ -278,6 +300,33 @@ const LIBRARY_ROUTES = new Set([
   "Search"
 ]);
 
+/**
+ * The focused-route id the Library column publishes for itself, derived from
+ * what that column is about to show.
+ *
+ * On iPad (and Mac) the Library route is the note list column, and the
+ * collection it opens on reports its own id ("AllNotes"/"Inbox") as the focused
+ * route when it mounts. Effects run child-first, so seeding the plain route name
+ * ("Library") from the home effect below would run *after* the collection has
+ * published and overwrite it - leaving the sidebar's All Notes row unhighlighted
+ * even though the column is showing All Notes.
+ *
+ * Seeding the very id the column will publish keeps the two in agreement:
+ *   - wide/medium open the column on the default collection (All Notes), or on
+ *     the collection a deep link/homepage param asked for;
+ *   - narrow has no collection column at all (the Library *is* the source list),
+ *     so it keeps the plain "Library" id.
+ */
+function libraryFocusedRouteId(
+  initialCollection: string | undefined,
+  paneMode: IPadPaneMode
+): string {
+  const collection = initialCollection || ipadDefaultCollection(paneMode);
+  if (collection === "inbox") return IPAD_INBOX_ROUTE_ID;
+  if (collection === "all-notes") return IPAD_ALL_NOTES_ROUTE_ID;
+  return "Library";
+}
+
 const LegacyRemindersRedirect = ({ navigation }: { navigation: any }) => {
   React.useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -310,6 +359,19 @@ const AppNavigation = React.memo(
     const [home, setHome] = React.useState<
       { name: string; params: any } | undefined
     >(undefined);
+    /**
+     * The iPad workspace this stack is laid out in (undefined on iPhone,
+     * Android, Mac Catalyst and outside the provider). It is read for exactly
+     * one thing: seeding the Library column's focused route id below.
+     *
+     * It goes through a ref so the seeding effect stays keyed on `home` alone:
+     * the workspace changes on every width/fullscreen change, and re-running the
+     * seed there would overwrite whatever collection the user has since picked
+     * by hand with the one the width's default suggests.
+     */
+    const ipadWorkspace = useIPadWorkspace();
+    const ipadWorkspaceRef = React.useRef(ipadWorkspace);
+    ipadWorkspaceRef.current = ipadWorkspace;
 
     React.useEffect(() => {
       if (!home) {
@@ -427,17 +489,26 @@ const AppNavigation = React.memo(
       if (!home) return;
       useNavigationStore.getState().update(home?.name as keyof RouteParams);
       /**
-       * Mac's Library route is the note list column, and it opens on the All
-       * Notes collection (`MAC_DEFAULT_COLLECTION` in screens/library), whose
-       * `NoteCollection` reports "AllNotes" as the focused route. Effects run
-       * child-first, so this effect runs *after* the one in `NoteCollection`:
-       * seeding "Library" here would overwrite the id that marks the row the
-       * middle column is showing, and Mac's sidebar would have nothing
-       * highlighted until the user picked a row by hand.
+       * The Library route is a note list column on Mac and iPad, and it opens on
+       * a collection (`MAC_DEFAULT_COLLECTION` / `ipadDefaultCollection` in
+       * screens/library) whose `NoteCollection` reports "AllNotes" (or "Inbox")
+       * as the focused route. Effects run child-first, so this effect runs
+       * *after* the one in `NoteCollection`: seeding the plain route name
+       * "Library" here would overwrite the id that marks the row the column is
+       * showing, and the sidebar would have nothing highlighted until the user
+       * picked a row by hand. Seed the id the column will publish instead (see
+       * `libraryFocusedRouteId`); the workspace decides between the collection
+       * column (wide/medium) and the source list (narrow).
        */
+      const workspace = ipadWorkspaceRef.current;
       const focusedRouteId =
         isMacCatalyst() && home?.name === "Library"
-          ? "AllNotes"
+          ? IPAD_ALL_NOTES_ROUTE_ID
+          : home?.name === "Library" && workspace
+          ? libraryFocusedRouteId(
+              home?.params?.initialCollection,
+              workspace.paneMode
+            )
           : home?.params?.id || home?.name;
       useNavigationStore.getState().setFocusedRouteId(focusedRouteId);
       if (LIBRARY_ROUTES.has(home.name))
@@ -619,6 +690,8 @@ export const RootNavigation = () => {
   const deviceMode = useSettingStore((state) => state.deviceMode);
   const editorVisible = useAppleNavigationStore((state) => state.editorVisible);
   const fullscreen = useSettingStore((state) => state.fullscreen);
+  const dimensions = useSettingStore((state) => state.dimensions);
+  const section = useAppleNavigationStore((state) => state.section);
   const [rootRoute, setRootRoute] = React.useState<string>(
     introCompleted ? "FluidPanelsView" : "Welcome"
   );
@@ -657,8 +730,8 @@ export const RootNavigation = () => {
         setRootRoute(focused.name);
         if (focused.name === "Settings") {
           // Settings is an overlay: the section underneath stays selected (and
-          // is what the sheet returns to on dismissal), and the bar highlights
-          // Settings while it is open. Never derive a section from this route.
+          // is what the sheet returns to on dismissal). Never derive a section
+          // from the separate Settings route.
           useAppleNavigationStore.getState().setSettingsVisible(true);
         } else {
           // Any other focused route means the sheet is gone (or was never up).
@@ -737,7 +810,17 @@ export const RootNavigation = () => {
    * (components/mac-sidebar.tsx), which stays mounted next to every section, so
    * no bar - and no bar strip above the panes - is mounted there.
    */
+  // Tasks/Search cover the pane navigator on iPad. Keep their top strip until
+  // they have their own persistent sidebar; never hide their only return path.
+  const sidebarOwnsPrimary =
+    isTopTabBar() &&
+    introCompleted &&
+    !isAppLoading &&
+    rootRoute === "FluidPanelsView" &&
+    !fullscreen &&
+    resolveIPadPaneMode(dimensions.width) === "wide";
   const showTabBar =
+    !sidebarOwnsPrimary &&
     Platform.OS === "ios" &&
     !isMacCatalyst() &&
     introCompleted &&
@@ -750,11 +833,35 @@ export const RootNavigation = () => {
       "AddReminder",
       "Settings"
     ].includes(rootRoute) &&
-    (deviceMode !== "mobile" || !editorVisible);
+    /**
+     * `isTopTabBar()` is the hardware condition (iPad, not Mac) - it does not
+     * depend on the width, and the bar it draws is the window's top strip, not
+     * a per-screen affordance. It must therefore not disappear with the
+     * *presentation* of an open note: DDS classifies the 512 pt iPad as
+     * `mobile`, so the previous rule hid the whole top strip - and the note
+     * header's Back affordance with it - as soon as the editor was visible,
+     * while the 688 pt iPad (classified `tablet`) kept it. iPhone keeps the
+     * old rule: its bar is the bottom bar, hidden while a note is open.
+     */
+    (isTopTabBar() || deviceMode !== "mobile" || !editorVisible);
 
   const topTabBar = showTabBar && isTopTabBar();
+  const primaryNavigation = React.useMemo(
+    () => sidebarOwnsPrimary ? { selection: section, onSelect: selectAppleSection } : null,
+    [sidebarOwnsPrimary, section]
+  );
 
   return (
+    // Published unconditionally (always mounted, only its value changes) so
+    // the editor's KeyboardAvoidingView can read the top tab bar strip's
+    // actual rendered height instead of guessing it; 0 wherever the strip is
+    // not drawn (see components/apple-tab-bar-layout.ts).
+    <IPadPrimaryNavigationContext.Provider
+      value={primaryNavigation}
+    >
+    <AppleTabBarOffsetContext.Provider
+      value={topTabBar ? getTopTabBarHeight(safeAreaInsets.top) : 0}
+    >
     <View
       style={{
         flex: 1,
@@ -992,6 +1099,8 @@ export const RootNavigation = () => {
         <AppleTabBar onSelect={selectAppleSection} />
       )}
     </View>
+    </AppleTabBarOffsetContext.Provider>
+    </IPadPrimaryNavigationContext.Provider>
   );
 };
 

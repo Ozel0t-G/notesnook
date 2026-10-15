@@ -26,10 +26,44 @@ import type { SettingSection } from "./types";
 
 type AccountSessionState = { expired: boolean; setupRequired: boolean };
 
+/** The session flags the recovery row keys its visibility on. */
+function useAccountSessionState(): AccountSessionState {
+  const expired = useSettingStore((state) => state.settings.sessionExpired);
+  const setupRequired = useUserStore((state) => state.accountSetupRequired);
+  return useMemo(
+    () => ({ expired: expired === true, setupRequired: setupRequired === true }),
+    [expired, setupRequired]
+  );
+}
+
 export function createAccountSection(
   managementSections: SettingSection[],
-  signOut: () => Promise<unknown>
+  signOut: () => Promise<unknown>,
+  /**
+   * Optional: open the ordinary VeyraN sign-in screen. When provided, the
+   * incomplete/expired session gets a real, actionable row (a normal
+   * `type`-less row so it becomes a button — a `component` row is rendered
+   * disabled). It never signs out, resets or clears anything.
+   */
+  signIn?: () => void
 ): SettingSection {
+  const recoverySections: SettingSection[] = signIn
+    ? [
+        {
+          id: "veyran-account-recovery",
+          name: strings.signInToVeyran(),
+          description: strings.reloginToYourAccount(),
+          icon: "login",
+          useHook: () => useAccountSessionState(),
+          hidden: (current) => {
+            const { expired, setupRequired } =
+              (current as AccountSessionState) || {};
+            return !(expired || setupRequired);
+          },
+          modifer: () => signIn()
+        }
+      ]
+    : [];
   return {
     id: "account",
     name: strings.account(),
@@ -62,21 +96,11 @@ export function createAccountSection(
             ? strings.reloginToYourAccount()
             : "";
         },
-        useHook: () => {
-          const expired = useSettingStore(
-            (state) => state.settings.sessionExpired
-          );
-          const setupRequired = useUserStore(
-            (state) => state.accountSetupRequired
-          );
-          return useMemo(
-            () => ({ expired, setupRequired }),
-            [expired, setupRequired]
-          );
-        },
+        useHook: () => useAccountSessionState(),
         type: "component",
         icon: "shield-check-outline"
       },
+      ...recoverySections,
       ...managementSections,
       {
         id: "logout",

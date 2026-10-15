@@ -48,9 +48,18 @@ export function getEditorDOM() {
     getEditorContainer()) as HTMLElement; // ProseMirror
 }
 
-export function getPopupRoot() {
-  const container = getPopupContainer();
+export function getPopupRoot(container = getPopupContainer()) {
   const div = document.createElement("div");
   container.appendChild(div);
-  return createRoot(div);
+  const root = createRoot(div);
+  return {
+    render: root.render.bind(root),
+    unmount: () => {
+      try {
+        root.unmount();
+      } finally {
+        div.remove();
+      }
+    }
+  };
 }

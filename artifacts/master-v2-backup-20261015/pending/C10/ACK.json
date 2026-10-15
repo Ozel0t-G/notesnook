@@ -1,0 +1,27 @@
+{
+  "assignment_id": "C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY",
+  "agent": "C",
+  "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+  "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+  "status": "ACK",
+  "acknowledged_at": "2026-10-15T14:11:50.459068+02:00",
+  "max_minutes": 20,
+  "scope": "External Root proposal only; neither repository may be modified; architecture stop if wider restructuring required",
+  "workspace_directory_missing_at_start": true,
+  "own_repo_present": false,
+  "recovery_action": "Created only assigned C10 output ancestors; no checkout/session/writer created; prior outputs absent at start and not reconstructed or altered",
+  "resource_policy": {
+    "at": "2026-10-15T11:58:04.787517+00:00",
+    "authority": "Explicit user mobile-QA priority 2026-10-15",
+    "max_active_qa_simulators": 1,
+    "concurrent_heavy_builds": 1,
+    "xcodebuild_jobs": 2,
+    "runtime_and_heavy_builds": "Do not overlap during host recovery",
+    "agent_builds_or_device_operations": false,
+    "preserve_qa_data": true,
+    "no_blanket_reset_or_delete": true,
+    "resume_visual_qa_immediately_when_reliable": true
+  },
+  "queue_sha256": "f2be43285d76f820e7bcfd68bf942592596cc0917d5023d3e634713a2e8221d8",
+  "transport": "own ACK/READY only; no MCP message"
+}

@@ -1,0 +1,231 @@
+{
+  "updated_at": "2026-10-15T14:21:54.514010+00:00",
+  "root_thread": "01a13081-9b47-72a3-8eb0-c7922cad5ee6",
+  "transport": "READY/status/TASK-QUEUE.json primary; supported codex queue exact existing session verified; MCP only bundled fallback",
+  "topology": "three separate Codex sessions; collaboration group only root",
+  "automation": {
+    "id": "veyran-master-v2-koordination",
+    "status": "PAUSED",
+    "cadence": "15 minutes",
+    "scope": "current Root thread; pause at completion, revocation or deadline with truthful open report"
+  },
+  "agents": {
+    "A": {
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "package": "A12-MAC-UPPER-LIST-TOOLS",
+      "status": "READY_ARTIFACTS_RECOVERED_USER_HOLD",
+      "detail": "Existing local workspace restored and verified; no active writer; explicit user resume required.",
+      "previous": "A5 code accepted; native pending",
+      "handoff": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A12-MAC-UPPER-LIST-TOOLS/READY.json"
+    },
+    "B": {
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "package": "B11-PHONE-LIBRARY-FINAL-PRESENTATION",
+      "status": "WORKSPACE_RECOVERED_B11_NOT_STARTED_USER_HOLD",
+      "detail": "Existing local workspace restored and verified; no active writer; explicit user resume required.",
+      "previous": "B5 code accepted; native pending",
+      "baseline_fingerprint": "5c49d744c5d8153b199f7e208cd015490bd8bcc94d5e3fe11e1fdaa9ce3c4cbb",
+      "handoff": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B11-PHONE-LIBRARY-FINAL-PRESENTATION/READY.json"
+    },
+    "C": {
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "package": "C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY",
+      "status": "READY_ARCHITECTURE_PROPOSAL_USER_HOLD",
+      "detail": "Existing local workspace restored and verified; no active writer; explicit user resume required.",
+      "previous": "C2 ACCEPTED_CODE Root52/5/types0; true512/medium/scroll/DT/VO open",
+      "handoff": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/READY.json"
+    }
+  },
+  "integration_contract": [
+    "READY files atomic temp+rename in existing agent output directories",
+    "verify exact baseline hashes and current root file owners",
+    "inspect dirty-baseline patch and mandatory review verdicts",
+    "apply sequentially only to root; targeted tests",
+    "record ACCEPTED or REJECTED; publish bounded next assignment in TASK-QUEUE, wake existing session with supported queue once",
+    "runtime acceptance separately; only Root builds and operates isolated QA"
+  ],
+  "e2e": {
+    "package": "A3",
+    "result": "PASS communication and code integration, NOT native design acceptance",
+    "steps": [
+      "A direct READY received without user relay",
+      "Root inspected frozen handoff and independent DIFF/FINAL verdicts",
+      "exact five-file before/after verified and applied",
+      "Root 23 React tests in 2 suites and full mobile TypeScript passed",
+      "Root direct ACCEPTED/integrated response delivered",
+      "same A session started A4 and returned independently reviewed proposal"
+    ],
+    "receipt": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a3-integration.json",
+    "tests": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a3-integrated-tests.log",
+    "typecheck": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a3-integrated-types.log"
+  },
+  "open": [
+    "OPEN-ADAPTIVE-31 existing unchanged",
+    "Mac native Table Tab stillfails",
+    "A4 current native L/D partial; two-tab/smallwidth/final remain open",
+    "C3 wide L/D partial; actual512/medium/scroll/Move unverified",
+    "Root iPad primarynavigation/inset/selected visuals",
+    "Root Phone accountbanner/list gap; B6 metadata",
+    "Mac lower toolbar/custom parity/advanced panel visual refinement",
+    "A8 focused UIKit modal Escape code integrated; native pending",
+    "A10 two-line Mac title code integrated; native pending",
+    "C7 More > Properties native current bundle pending",
+    "Phone/iPad QA blocked on CoreSimulator device read query"
+  ],
+  "safety": "test only; no commits/push/PR/upload; no policy or locks changed; no personal apps/data; Connect deferred",
+  "runtime_update": "A7 current isolatedMac Light/Dark wholewindows and row/Settings return verified; no complete design acceptance. Phone simctl list blocked before boot/install, no new native claim.",
+  "build": {
+    "state": "PASS_FRESH_ISOLATION_RUNTIME_PENDING",
+    "path": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/integrated-a9-b9-c8",
+    "scope": "Simulator manifest A8/C7/B9/A10/A9/C8 already built; resumed Mac additionally C9 iPad-only source tokens",
+    "source_freeze": false,
+    "manifest_count": 1477,
+    "session": null,
+    "detail": "Catalyst -jobs2 exit0 at14:55:51 Oslo; fresh isolation exit0 at14:56:00,29 checks/664 editor files. No app launch."
+  },
+  "root_work": {
+    "next": "Wait for explicit user resume. No implementation, integration, new assignment, build or QA launch.",
+    "state": "RECOVERY_VERIFIED_AWAITING_USER_RESUME",
+    "cell": null,
+    "result": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a4-root/STATUS.json",
+    "native_tab": "STILL_FAIL e73a; no speculativeadditionalguard",
+    "final": "A4 focused FINAL completed PARTIAL; native two-tab/focus/owner removal/host ordering pending; no completion claim",
+    "review_cell": null,
+    "a6_review": {
+      "cell": null,
+      "state": "APPROVE",
+      "result": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a6-diff-review.json"
+    },
+    "c4_review": {
+      "cell": null,
+      "state": "CONDITIONAL_RESOLVED_CODEGATE",
+      "result": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/c4-root/diff-review.json"
+    },
+    "ui_blocker": null,
+    "a7_review": {
+      "state": "CONDITIONS_RESOLVED",
+      "cell": null,
+      "result": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a7-root/diff-review.json"
+    },
+    "tests_session": null,
+    "dispatch_session": null,
+    "qa_shutdown_session": null,
+    "a8_review": {
+      "cell": null,
+      "state": "CONDITIONAL_CODE_GATE_APPROVED",
+      "result": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a8-diff-review.json"
+    },
+    "qa_install": {
+      "state": "BLOCKED_CORE_SIMULATOR",
+      "session": null
+    },
+    "a10_review": {
+      "state": "CODE_GATE_APPROVED_CONDITIONS_RESOLVED",
+      "result": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a10-root/diff-review.json",
+      "requests": 16
+    },
+    "a9_review": {
+      "state": "APPROVE_WITH_NITS",
+      "cell": null,
+      "result": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a9-diff-review-focused.json",
+      "requests": 13
+    },
+    "host_load_report": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/host-load-20261015/REPORT.md",
+    "workspace_blocker": {
+      "state": "RESOLVED_RECOVERY_VERIFIED_USER_HOLD",
+      "evidence": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/workspace-recovery-20261015/VERIFICATION.json",
+      "root_sources_verified": 1477,
+      "original_iCloud_sources_preserved": true,
+      "existing_sessions_reused": true,
+      "new_setup_or_package_install": false
+    }
+  },
+  "runtime_report": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/integrated-a7-b7/RUNTIME-PARTIAL.md",
+  "queue": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/TASK-QUEUE.json",
+  "file_coordination_e2e": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/file-coordination-e2e.json",
+  "accessibility_priority": {
+    "effective_at": "2026-10-15T09:48:21.453695+00:00",
+    "authority": "Explicit user priority correction 2026-10-15",
+    "until": "2026-10-17 evening Europe/Oslo deadline",
+    "status": "DEFERRED",
+    "deferred": [
+      "additional VoiceOver audits",
+      "screenreader optimization",
+      "extended Dynamic Type verification",
+      "accessibility-specific test cycles"
+    ],
+    "retained": [
+      "existing accessibility features and labels",
+      "ordinary keyboard operation",
+      "readable text",
+      "adequate contrast",
+      "working navigation"
+    ],
+    "release_blocker": false,
+    "scope": "Do not treat deferred checks as failed mandatory acceptance; no intentional regression; preserve independent functional/design/security reviews"
+  },
+  "deferred": [
+    "additional VoiceOver audits",
+    "screenreader optimization",
+    "extended Dynamic Type verification",
+    "accessibility-specific test cycles"
+  ],
+  "resource_policy": {
+    "at": "2026-10-15T11:58:04.787517+00:00",
+    "authority": "Explicit user mobile-QA priority 2026-10-15",
+    "max_active_qa_simulators": 1,
+    "concurrent_heavy_builds": 1,
+    "xcodebuild_jobs": 2,
+    "runtime_and_heavy_builds": "Do not overlap during host recovery",
+    "agent_builds_or_device_operations": false,
+    "preserve_qa_data": true,
+    "no_blanket_reset_or_delete": true,
+    "resume_visual_qa_immediately_when_reliable": true
+  },
+  "user_hold": {
+    "status": "PAUSED_UNTIL_EXPLICIT_USER_RESUME",
+    "authority": "User requested recovery/copy only, then report and wait; 2026-10-15",
+    "allowed_current_work": "Recover and verify missing workspaces only",
+    "prohibited": "No implementation, integration, builds, QA launch, new assignment or session wake"
+  },
+  "recovery": {
+    "at": "2026-10-15T14:19:55.531075+00:00",
+    "result": "PASS_RECOVERY_ONLY",
+    "copies": [
+      {
+        "agent": "a-mac",
+        "source_files_sha256_verified": 3667,
+        "handoff_and_script_files_sha256_verified": 536,
+        "dependency_entries_size_and_link_verified": 403669,
+        "no_links_into_root": true,
+        "separate_inodes": true,
+        "branch": "test"
+      },
+      {
+        "agent": "b-iphone",
+        "source_files_sha256_verified": 3666,
+        "handoff_and_script_files_sha256_verified": 267,
+        "dependency_entries_size_and_link_verified": 403669,
+        "no_links_into_root": true,
+        "separate_inodes": true,
+        "branch": "test"
+      },
+      {
+        "agent": "c-ipad",
+        "source_files_sha256_verified": 3671,
+        "handoff_and_script_files_sha256_verified": 661,
+        "dependency_entries_size_and_link_verified": 403669,
+        "no_links_into_root": true,
+        "separate_inodes": true,
+        "branch": "test"
+      }
+    ],
+    "A12_candidate_files_verified": 3,
+    "C10_original_artifacts_verified": 11,
+    "root_build_source_hashes_unchanged": 1477,
+    "development_or_qa_resumed": false,
+    "automation": "PAUSED",
+    "user_resume_required": true,
+    "exclusion_note": "Original generated caches/build bundles remain untouched in iCloud; local generated/dependency trees cloned from intact Root, package/lock versions checked; old Finder and interrupted recovery copies retained separately."
+  }
+}

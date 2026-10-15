@@ -17,19 +17,41 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { getDefaultPresets } from "@notesnook/editor";
+import { resolveToolbarGroups } from "@notesnook/editor";
 import { useEffect, useState } from "react";
 import { Settings } from "../utils";
 
 const settingsJson = localStorage.getItem("editorSettings");
+// Set before the bundle runs (see `apps/mobile/app/screens/editor/index.tsx`);
+// false on iPhone and iPad. Read once, from the same host global the settings
+// controller uses below, so the first frame and every later update agree.
+const isMacCatalyst = globalThis.isMacCatalyst ?? false;
+/**
+ * The host's compact iPhone/iPad toolbar opt-in. `__PLATFORM__` is injected by
+ * the native app before this bundle runs and is `"ios"` for iPhone, iPad and
+ * Mac Catalyst; Mac Catalyst is normalized off (the Mac format bar always
+ * wins), and every other or unknown host stays `false`.
+ */
+const isIosHost = globalThis.__PLATFORM__ === "ios" && !isMacCatalyst;
 const initialState: Partial<Settings> = {
   fullscreen: false,
   deviceMode: "mobile",
-  // Set before the bundle runs (see `apps/mobile/app/screens/editor/index.tsx`);
-  // false on iPhone and iPad.
-  isMacCatalyst: globalThis.isMacCatalyst ?? false,
+  isMacCatalyst,
   premium: false,
-  tools: JSON.parse(JSON.stringify(getDefaultPresets().default)),
+  /**
+   * A session without any cached `editorSettings` starts from the explicit
+   * `default` preset and the *host* default groups, so the very first frame
+   * already lays out the right toolbar (Mac Catalyst gets the Notes-style
+   * format bar, the iOS host the compact iPhone/iPad bar). A cached payload
+   * keeps whatever it stored: a legacy payload without `toolbarPreset` is
+   * honored by exact groups, never guessed into a preset by comparing arrays.
+   */
+  toolbarPreset: "default",
+  tools: resolveToolbarGroups({
+    toolbarPreset: "default",
+    macCatalyst: isMacCatalyst,
+    ios: isIosHost
+  }),
   noToolbar: globalThis.noToolbar,
   noHeader: globalThis.noHeader,
   readonly: globalThis.readonly,

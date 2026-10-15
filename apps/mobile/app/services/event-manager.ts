@@ -37,6 +37,7 @@ import {
   eShowToast
 } from "../utils/events";
 import { strings } from "@notesnook/intl";
+import type { NoteSenderGuard } from "../utils/note-to-text";
 
 export enum VaultRequestType {
   CreateVault = "createVault",
@@ -71,6 +72,27 @@ export type Vault = {
     },
     password: string
   ) => void;
+  /**
+   * OPTIONAL. Ephemeral, native-only sender fence for the primary Share flow.
+   *
+   * When supplied, the Vault dialog routes the unlock-then-share conversion
+   * through `convertNoteToText(note, undefined, guard)` and only opens the OS
+   * share sheet for a string result. It is never persisted, serialized or sent
+   * over the wire, and it is not an unlock grant: only the decrypted note
+   * returned by `db.vault.open` authorizes the export. Existing callers that
+   * omit it keep the exact legacy (unguarded) share behavior.
+   */
+  shareGuard?: NoteSenderGuard;
+  /**
+   * OPTIONAL. Invoked at most once per Vault request, with the original
+   * callback captured when the request arrived, once that request can no longer
+   * be completed by this dialog: on cancel, replacement by a newer request,
+   * unmount, a stale/unconfirmed sender, a terminal conversion refusal, or the
+   * final resolve/reject of the OS share sheet. A wrong password keeps the
+   * dialog and this pending intent alive for a retry until the request is
+   * cancelled. Never persisted, serialized or sent over the wire.
+   */
+  onShareComplete?: () => void;
 };
 
 type NoteEdit = {

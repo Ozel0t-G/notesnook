@@ -29,7 +29,6 @@ import {
   View
 } from "react-native";
 import { db } from "../common/database";
-import { hideDialog } from "../components/dialog/functions";
 import { runMacNoteAction } from "../components/mac-note-commands";
 import { NativeMenuItem } from "../components/native-menu";
 import { Properties } from "../components/properties";
@@ -45,6 +44,10 @@ import {
   hideSheet,
   presentSheet
 } from "../services/event-manager";
+import {
+  consumeMacEscape,
+  hasActiveMacModal
+} from "../services/mac-modal-stack";
 import Navigation from "../services/navigation";
 import { saveNoteAsTemplate } from "../services/templates";
 import { useSettingStore } from "../stores/use-setting-store";
@@ -72,7 +75,8 @@ import { selectAppleSection } from "../navigation/navigation-stack";
  * The tag and notebook pickers are Mac form sheets (MAC_PICKER_SHEET_OPTIONS).
  * Escape pops the topmost one of these with `Navigation.goBack()`, landing back
  * on whatever was underneath (normally the Library section); the base screens
- * inside FluidPanelsView have nothing to dismiss.
+ * inside FluidPanelsView have nothing to dismiss. This fallback only runs once
+ * services/mac-modal-stack reports nothing registered is actually open.
  */
 const DISMISSABLE_ROUTES = new Set([
   "Settings",
@@ -146,21 +150,32 @@ function openRestoreBackupFlow() {
 }
 
 /**
- * Mirrors pressing Escape on iOS: close the topmost sheet or modal. Sheets and
- * dialogs are closed through the same events the rest of the app uses, and
- * both helpers are no-ops when nothing is open.
+ * Mirrors pressing Escape on iOS: closes the single actually-topmost owned
+ * sheet or dialog, tracked by services/mac-modal-stack (SheetWrapper and
+ * Dialog register into it as they present/dismiss, in the real order they
+ * were shown). Only when nothing is registered as currently open does Escape
+ * fall back to popping a dismissable root route, so a "global"-context sheet
+ * or dialog is always closed through its own instance rather than a
+ * broadcast hide.
  */
-function closeTopmostSheetOrModal() {
-  hideSheet();
-  hideDialog();
+function activeRootRoute() {
+  const state = rootNavigatorRef.current?.getState();
+  return state?.routes[state.index ?? state.routes.length - 1];
+}
 
-  // The root stack state, not the focused route: Settings contains its own
-  // nested stack, which must not hide the sheet around it.
-  const routes = rootNavigatorRef.current?.getState()?.routes;
-  if (!routes?.length) return;
-  const currentRoute = routes[routes.length - 1]?.name;
-  if (!currentRoute || !DISMISSABLE_ROUTES.has(currentRoute)) return;
-  Navigation.goBack();
+function closeTopmostSheetOrModal(dismissWebPopup: () => void) {
+  if (consumeMacEscape()) return;
+  const route = activeRootRoute();
+  if (!route) return;
+  // Root routes sit in front of the editor; never dismiss a Web popup behind
+  // Settings. No navigation fallback runs after an asynchronous Web reply.
+  if (DISMISSABLE_ROUTES.has(route.name)) {
+    Navigation.goBack();
+    return;
+  }
+  if (new Set(["FluidPanelsView", "Library", "Editor"]).has(route.name)) {
+    dismissWebPopup();
+  }
 }
 
 /**
@@ -398,6 +413,49 @@ export const useMacMenuCommands = () => {
       useMacWindowStore.subscribe(publishMenuContext)
     ];
 
+    let active = true;
+    let webEscapePending = false;
+    const dismissWebPopup = () => {
+      if (webEscapePending) return;
+      const tabId = useTabStore.getState().currentTab;
+      const commands = editorController.current?.commands;
+      const route = activeRootRoute();
+      const section = useAppleNavigationStore.getState().section;
+      if (
+        !tabId ||
+        !route ||
+        !commands?.dismissPopup ||
+        (route.name !== "Editor" &&
+          section !== "library" &&
+          section !== "search")
+      )
+        return;
+      const isCurrentScope = () => {
+        const currentRoute = activeRootRoute();
+        return (
+          active &&
+          !hasActiveMacModal() &&
+          editorController.current?.commands === commands &&
+          useTabStore.getState().currentTab === tabId &&
+          useAppleNavigationStore.getState().section === section &&
+          currentRoute?.key === route.key &&
+          currentRoute?.name === route.name
+        );
+      };
+      webEscapePending = true;
+      void Promise.resolve()
+        .then(() => {
+          if (!isCurrentScope()) return false;
+          return commands.dismissPopup(isCurrentScope);
+        })
+        .catch(() => {
+          console.warn("Mac editor popup dismissal failed");
+        })
+        .finally(() => {
+          webEscapePending = false;
+        });
+    };
+
     const emitter = new NativeEventEmitter(NativeModules.VeyraNMacMenu);
     const subscription = emitter.addListener(
       "VeyraNMacMenuCommand",
@@ -461,6 +519,12 @@ export const useMacMenuCommands = () => {
           return;
         }
         switch (command) {
+          case "openFormatting":
+            void editorController.current?.commands?.openFormatting();
+            return;
+          case "insertBlock":
+            void editorController.current?.commands?.openInsert();
+            return;
           case "newNote":
             // Same action as the compose button in the Library nav bar.
             setOnFirstSaveUnassigned();
@@ -595,6 +659,9 @@ export const useMacMenuCommands = () => {
             }
             break;
           }
+          case "toggleAssistantInspector":
+            useMacWindowStore.getState().toggleInspector();
+            break;
           case "toggleSidebar":
             // View > Toggle Sidebar (Ctrl-Cmd-S): the Library source list pane
             // collapses to zero width (see navigation/fluid-panels-view.tsx).
@@ -611,8 +678,13 @@ export const useMacMenuCommands = () => {
           case "listOpen":
             void moveInNoteList(0);
             break;
+          case "escapeModal":
+            // A focused UIKit input may cancel only the topmost owned modal.
+            // Never fall through to root-route or Web popup dismissal.
+            consumeMacEscape();
+            break;
           case "escape":
-            closeTopmostSheetOrModal();
+            closeTopmostSheetOrModal(dismissWebPopup);
             break;
           default:
             break;
@@ -621,6 +693,7 @@ export const useMacMenuCommands = () => {
     );
 
     return () => {
+      active = false;
       subscription.remove();
       sectionSubscription();
       contextSubscriptions.forEach((unsubscribe) => unsubscribe());

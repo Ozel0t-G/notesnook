@@ -1,0 +1,20 @@
+{
+  "name": "veyran-local",
+  "interface": {
+    "displayName": "VeyraN local plugins"
+  },
+  "plugins": [
+    {
+      "name": "veyran-connect",
+      "source": {
+        "source": "local",
+        "path": "./veyran-connect"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "notes"
+    }
+  ]
+}

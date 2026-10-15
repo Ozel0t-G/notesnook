@@ -26,7 +26,11 @@ import {
   usePermissionHandler
 } from "@notesnook/editor";
 import { strings } from "@notesnook/intl";
-import { useThemeColors } from "@notesnook/theme";
+import {
+  resolveAppleSurfaces,
+  useThemeColors,
+  useThemeEngineStore
+} from "@notesnook/theme";
 import FingerprintIcon from "mdi-react/FingerprintIcon";
 import {
   useCallback,
@@ -60,6 +64,13 @@ globalThis.toBlobURL = toBlobURL as typeof globalThis.toBlobURL;
 
 let didCallOnLoad = false;
 
+/**
+ * Bottom clearance the iOS document chrome reserves while the keyboard
+ * editing toolbar is visible, so its last lines are never covered. Matches the
+ * mobile toolbar's `minHeight` in `tiptap.tsx`.
+ */
+const IOS_EDITING_TOOLBAR_CLEARANCE = 45;
+
 const Tiptap = ({
   settings,
   getContentDiv
@@ -69,6 +80,42 @@ const Tiptap = ({
 }) => {
   const contentPlaceholderRef = useRef<HTMLDivElement>(null);
   const { colors } = useThemeColors();
+  /**
+   * The reading canvas, i.e. the surface the note itself is drawn on: the
+   * *document* role of the shared Apple surface resolver, the same role the
+   * native editor pane and the WebView's page paint (see App.tsx and
+   * apps/mobile/app/utils/apple-visual-tokens.ts). The loading, locked and
+   * "changes not saved" overlays cover the editor completely, so they must be
+   * the document surface rather than a second, slightly different tone - and
+   * because the resolver is shared, an imported theme's own background and the
+   * built-in VeyraN neutrals both come out right here.
+   */
+  const theme = useThemeEngineStore((store) => store.theme);
+  const documentSurface = resolveAppleSurfaces({
+    theme,
+    colors,
+    isDark: theme.colorScheme === "dark"
+  }).documentSurface;
+  /**
+   * Whether this WebView is embedded in an Apple client (iPhone, iPad or Mac
+   * Catalyst). `__PLATFORM__` is injected by the native app before the bundle
+   * runs (apps/mobile/app/screens/editor/index.tsx; Mac is an iOS build, so it
+   * is `"ios"` there too), and `isMacCatalyst` is injected alongside it. Android
+   * and every other host keep the theme's own primary background.
+   */
+  const isApplePlatform =
+    globalThis.__PLATFORM__ === "ios" || globalThis.isMacCatalyst === true;
+  /**
+   * The background of the full-pane overlays (loading, locked, empty and the
+   * "changes not saved" notice). They cover the editor completely, so on Apple
+   * they have to be the *document* role above - the same surface the note and
+   * the native pane behind the WebView paint - rather than the theme's primary
+   * background, which on the bundled VeyraN appearances is a different tone.
+   * Non-Apple hosts keep the primary background they have always used.
+   */
+  const overlaySurface = isApplePlatform
+    ? documentSurface
+    : colors.primary.background;
   const tab = useTabContext();
   const isFocused = useTabStore((state) => state.currentTab === tab?.id);
   const [tick, setTick] = useState(0);
@@ -92,6 +139,160 @@ const Tiptap = ({
     undo,
     redo
   };
+
+  /**
+   * The calm Apple *document chrome* (D1) is iPhone/iPad only: Mac Catalyst
+   * has no web header at all (the native NSToolbar carries its actions) and
+   * Android/any other host keeps the previous header. `__PLATFORM__` is
+   * injected by the native app before this bundle runs.
+   */
+  const isIOSDocChrome =
+    globalThis.__PLATFORM__ === "ios" && !settings.isMacCatalyst;
+  /**
+   * Whether this note may be written to under the existing rights. The quiet
+   * presentation is a *visual* state only: it never flips the editor's
+   * `editable` or the title's `readOnly` (a read-only note keeps its existing
+   * behaviour and its static link/image toolbar tools).
+   *
+   * A *locked* session is not writable either: until the note is unlocked the
+   * only field on the pane is the password input, whose focus must never be
+   * read as "the user started writing" (see `onChromeFocus`).
+   */
+  const isEditable = !(
+    tab.session?.readonly ||
+    tab.session?.locked ||
+    settings.readonly
+  );
+  /**
+   * iOS document chrome presentation. `writing === true` means the primary
+   * action is "Done" and the formatting toolbar is visible; `false` is the
+   * calm reading presentation ("Edit") with the toolbar mounted but hidden. A
+   * brand-new note (no `noteId` yet) starts in writing; an existing note
+   * starts quiet regardless of the async load order.
+   */
+  const [writing, setWriting] = useState<boolean>(
+    () => isIOSDocChrome && !tab.session?.noteId
+  );
+  /**
+   * The user's own entry signal: set when they focus the title/body or press
+   * the labelled Edit. It is what tells the *first save of the note being
+   * typed* (keep writing) apart from an *existing note loading asynchronously*
+   * (go quiet), both of which look like `undefined -> noteId` on the session.
+   */
+  const userEntryRef = useRef<boolean>(false);
+  const noteIdRef = useRef<string | undefined>(tab.session?.noteId);
+  /** iOS document chrome: the word count + tags disclosure. Closed = quiet. */
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    const next = tab.session?.noteId;
+    if (noteIdRef.current === next) return;
+    const prev = noteIdRef.current;
+    noteIdRef.current = next;
+    // A fresh, empty note enters writing with its details row closed.
+    if (!next) {
+      userEntryRef.current = false;
+      setWriting(true);
+      setDetailsOpen(false);
+      return;
+    }
+    // The note the user is actively writing in was saved for the first time:
+    // stay in writing - never flash "Edit" or drop the toolbar mid-keystroke -
+    // and keep the details row exactly as the user left it.
+    if (!prev && userEntryRef.current) return;
+    // Any other transition - an existing note's async load, or a switch from
+    // note A to note B - returns to the calm reading presentation and closes
+    // the details row (it belongs to the note that was showing).
+    userEntryRef.current = false;
+    setWriting(false);
+    setDetailsOpen(false);
+  }, [tab.session?.noteId]);
+
+  /**
+   * Enter writing: the labelled "Edit" and the direct focus on the title or
+   * body share this. The user-entry signal is what keeps the first save from
+   * dropping back to quiet.
+   */
+  const enterWriting = useCallback(() => {
+    /**
+     * Defence in depth for the labelled "Edit": a locked session (its pane is
+     * the password overlay) or a globally read-only editor must never be
+     * flipped into the writing presentation or focused - the header already
+     * suppresses the control there, and this guard keeps the state itself
+     * unreachable regardless of how the action is invoked. The callback's
+     * identity changes with `isEditable` (it is compared by the header's memo),
+     * so a locked -> unlocked transition around this can never go stale.
+     */
+    if (!isEditable) return;
+    userEntryRef.current = true;
+    setWriting(true);
+    editors[tab.id]?.commands.focus();
+  }, [tab.id, isEditable]);
+
+  /**
+   * Exit writing: the labelled "Done" blurs this tab's body and title through
+   * the editor's own commands - no document, history or read-only change -
+   * and returns to the calm reading presentation.
+   */
+  const exitWriting = useCallback(() => {
+    setWriting(false);
+    userEntryRef.current = false;
+    editors[tab.id]?.commands.blur();
+    editorTitles[tab.id]?.current?.blur();
+  }, [tab.id]);
+
+  const toggleDetails = useCallback(() => setDetailsOpen((open) => !open), []);
+
+  /**
+   * Parent-side focus wiring: the note body and the title enter writing on a
+   * real DOM focus. Focus on the header, the menus and any non-editable
+   * control (the locked note's password input, for instance) is ignored.
+   *
+   * The scroller these events bubble through also carries the overlays, so the
+   * entry has to *prove* itself: the title must be the actual `#editor-title`
+   * textarea and not read-only, and the body must be the note content whose
+   * editable root (`ProseMirror`) is not explicitly non-editable. A password
+   * field or any other control inside the pane therefore never turns the
+   * chrome into writing.
+   */
+  const onChromeFocus = useCallback(
+    (event: React.FocusEvent<HTMLDivElement>) => {
+      if (!isIOSDocChrome || !isEditable) return;
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      const titleEntry =
+        target.id === "editor-title" &&
+        target.getAttribute("readonly") === null &&
+        (target as HTMLTextAreaElement).readOnly !== true;
+      const bodyRoot = (target.closest(".ProseMirror") ??
+        target.closest(".main-editor")) as HTMLElement | null;
+      const bodyEntry =
+        !!bodyRoot && bodyRoot.getAttribute("contenteditable") !== "false";
+      if (!titleEntry && !bodyEntry) return;
+      userEntryRef.current = true;
+      setWriting(true);
+    },
+    [isIOSDocChrome, isEditable]
+  );
+
+  /**
+   * The wrapper stays mounted and the toolbar is only CSS-hidden in the quiet
+   * presentation. A read-only note keeps its toolbar (its static link/image
+   * tools), so the quiet presentation is only ever requested while editable -
+   * and only when this platform actually renders the web header that carries
+   * the labelled "Edit". With `noHeader` there is no Edit control at all, so
+   * hiding the toolbar too would leave no way back into writing.
+   */
+  const readingPresentation =
+    isIOSDocChrome && isEditable && !writing && !settings.noHeader;
+  // REF-08 puts the collection in iPad's command row. REF-03 keeps the
+  // combined caption above the title where a Back control occupies that row.
+  const collectionInHeader =
+    isIOSDocChrome &&
+    settings.deviceMode !== "mobile" &&
+    !settings.fullscreen &&
+    !settings.pagedPresentation;
+
   useEffect(() => {
     setPasswordError(null);
   }, [tab.session?.noteId]);
@@ -514,11 +715,20 @@ const Tiptap = ({
         ref={editorRoot}
         onDoubleClick={onClickEmptyArea}
       >
+        {settings.isMacCatalyst ? <div className="dialogContainer" /> : null}
         <Header
+          loading={controller.loading}
           hasRedo={redo}
           hasUndo={undo}
           settings={settings}
           noHeader={settings.noHeader || false}
+          surface={documentSurface}
+          writing={writing}
+          detailsOpen={detailsOpen}
+          collectionInHeader={collectionInHeader}
+          onEdit={enterWriting}
+          onDone={exitWriting}
+          onToggleDetails={toggleDetails}
         />
 
         <div
@@ -529,7 +739,7 @@ const Tiptap = ({
             zIndex: 999,
             width: "100%",
             height: "100%",
-            backgroundColor: colors.primary.background,
+            backgroundColor: overlaySurface,
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
@@ -600,8 +810,8 @@ const Tiptap = ({
               }
             }}
             onClick={() => {
-              const element = document.getElementById(
-                "editor-saving-failed-overlay"
+              const element = editorRoot.current?.querySelector<HTMLElement>(
+                "#editor-saving-failed-overlay"
               );
               if (element) {
                 element.style.display = "none";
@@ -620,6 +830,7 @@ const Tiptap = ({
 
         <div
           onScroll={controller.scroll}
+          onFocus={onChromeFocus}
           ref={containerRef}
           id="editor-container-scroller"
           style={{
@@ -632,21 +843,34 @@ const Tiptap = ({
              * Mac's format bar now floats over the bottom of the pane, so the
              * note keeps its usual 12 pt of breathing room at the top and gets
              * extra bottom padding instead, so the capsule never covers the
-             * last lines.
+             * last lines. The iOS document chrome reserves the bottom editing
+             * toolbar's height while it is visible (writing); the quiet
+             * presentation and the other platforms keep the previous zero.
              */
             paddingTop: "12px",
             paddingBottom: settings.isMacCatalyst
               ? `${MAC_TOOLBAR_CAPSULE_CLEARANCE}px`
+              : isIOSDocChrome && !readingPresentation
+              ? IOS_EDITING_TOOLBAR_CLEARANCE
               : 0
           }}
         >
           {settings.noHeader || tab.session?.locked ? null : (
             <>
               <div
+                id="editor-details"
+                /**
+                 * The word count + tags row is *CSS collapsed* behind the
+                 * header's labelled Details toggle on iOS - never conditionally
+                 * unmounted: `StatusBar` and `Tags` keep their global refs
+                 * (`statusBars`/`editorTags`) alive and keep updating while
+                 * collapsed. The other clients render it as before.
+                 */
+                aria-hidden={isIOSDocChrome ? !detailsOpen : undefined}
                 style={{
                   flexDirection: "row",
                   justifyContent: "space-between",
-                  display: "flex",
+                  display: isIOSDocChrome && !detailsOpen ? "none" : "flex",
                   alignItems: "center",
                   padding: settings.isMacCatalyst
                     ? `0px ${MAC_TEXT_COLUMN_PADDING}px`
@@ -675,7 +899,14 @@ const Tiptap = ({
                 <Tags settings={settings} loading={controller.loading} />
               </div>
 
-              {settings.isMacCatalyst ? <EditorDate /> : null}
+              {/**
+               * The last-edited date line, from the existing `setStatus` store.
+               * Mac has shown it above the title; the iOS document chrome
+               * shows the same calm, real date (no fabricated "now").
+               */}
+              {settings.isMacCatalyst || isIOSDocChrome ? (
+                <EditorDate showOrigin={!collectionInHeader} />
+              ) : null}
 
               <Title
                 titlePlaceholder={controller.titlePlaceholder}
@@ -697,7 +928,7 @@ const Tiptap = ({
                 height: "100%",
                 position: "absolute",
                 zIndex: 999,
-                backgroundColor: colors.primary.background,
+                backgroundColor: overlaySurface,
                 paddingRight: 12,
                 paddingLeft: 12,
                 display: "flex",
@@ -1034,6 +1265,12 @@ const Tiptap = ({
           ].join("-")}
           options={tiptapOptions}
           settings={settings}
+          /**
+           * The quiet iOS presentation mounts the toolbar but hides it in CSS
+           * (`readingPresentation`); the toolbar space is reserved above, in
+           * the scroller's bottom padding, so the last lines stay visible.
+           */
+          readingPresentation={readingPresentation}
           onEditorUpdate={(editor) => {
             if (!editor) {
               setUndo(false);

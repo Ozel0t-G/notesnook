@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "moduleResolution": "bundler",
+    "module": "ESNext",
+    "types": ["node"],
+    "declaration": false,
+    "incremental": false,
+    "noEmit": true
+  },
+  "include": ["src/"]
+}

@@ -24,18 +24,41 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 import { DraxProvider, DraxScrollView } from "react-native-drax";
 import Animated, { FadeInDown, FadeOutDown } from "react-native-reanimated";
+import SheetProvider from "../../../components/sheet-provider";
 import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
 import Paragraph from "../../../components/ui/typography/paragraph";
-import { ToastManager } from "../../../services/event-manager";
+import { eSendEvent, ToastManager } from "../../../services/event-manager";
+import { eCloseSheet } from "../../../utils/events";
 import { AppFontSize } from "../../../utils/size";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { Group } from "./group";
 import { DragState, useDragState } from "./state";
+import { TOOL_SHEET_CONTEXT } from "./tool-sheet";
 export const ConfigureToolbar = () => {
   const data = useDragState((state) => state.data);
   const preset = useDragState((state) => state.preset);
   const { colors } = useThemeColors();
+
+  /**
+   * Dismiss the scoped toolbar picker the moment this screen goes away.
+   *
+   * The picker is presented by the `SheetProvider` mounted just below, inside
+   * the same Settings screen subtree. React runs deletion-effect cleanups
+   * parent-first, so this cleanup fires *before* the provider unsubscribes and
+   * is torn down - the provider is still live, its `eCloseSheet` listener is
+   * still installed and its `ActionSheetRef` still points at the mounted
+   * sheet, so the sheet is actually hidden. Without it a presented sheet would
+   * outlive the screen that owns it (a leaked native modal).
+   *
+   * Only the scoped context is closed; the global provider and every other
+   * context are untouched (its listener filters on this exact context string).
+   */
+  React.useLayoutEffect(() => {
+    return () => {
+      eSendEvent(eCloseSheet, TOOL_SHEET_CONTEXT);
+    };
+  }, []);
 
   const renderGroups = () => {
     return data?.map((item, index) => (
@@ -120,6 +143,14 @@ export const ConfigureToolbar = () => {
             ))}
           </View>
         </View>
+        {/*
+         * The one scoped sheet host for the toolbar picker. It is a stable
+         * sibling of the (remountable, `key={preset}`) scroll content, so
+         * switching presets re-renders the groups without remounting the sheet
+         * host and losing an open picker. It renders no UI of its own until a
+         * matching `eOpenSheet` arrives.
+         */}
+        <SheetProvider context={TOOL_SHEET_CONTEXT} />
         <DraxScrollView
           style={{
             flex: 1

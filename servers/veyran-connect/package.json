@@ -1,0 +1,36 @@
+{
+  "name": "@notesnook/veyran-connect",
+  "version": "1.0.0",
+  "private": true,
+  "description": "VeyraN Connect: loopback HTTPS broker + stdio MCP server (single Core contract).",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "./dist/server.mjs",
+  "bin": {
+    "veyran-connect": "./dist/cli.mjs"
+  },
+  "files": ["dist", "README.md", "INSTALL.md"],
+  "engines": {
+    "node": ">=22.10.0"
+  },
+  "scripts": {
+    "build": "node ./esbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "start:mcp": "node ./dist/server.mjs",
+    "cli": "node ./dist/cli.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.3.1",
+    "@modelcontextprotocol/server": "2.3.1",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "24.5.2",
+    "esbuild": "0.25.0",
+    "typescript": "5.6.3",
+    "vitest": "2.1.8"
+  }
+}

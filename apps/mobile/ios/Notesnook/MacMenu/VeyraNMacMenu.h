@@ -28,12 +28,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
  * event, with the body { command, text }. The sources are AppDelegate's
  * UIMenuBuilder ("newNote", "findInNotes", "pinNote", "toggleFavorite",
  * "moveToTrash", "section:library", "section:tasks", "section:search",
- * "openSettings", "escape", the editor's Find commands "find",
+ * "openSettings", the editor's Find commands "find",
  * "findAndReplace", "findNext", "findPrevious" and the Format menu's
- * "format:<name>" commands - K2/E3/E4) and the window toolbar
+ * "format:<name>" commands - K2/E3/E4), AppDelegate UIKeyCommands
+ * ("escape", "escapeModal": focused UIKit input, topmost owned modal only),
+ * and the window toolbar
  * (MacMenu/VeyraNMacToolbar.{h,m}: "toggleSidebar", "listOptions", "newNote",
- * "newTask", "shareNote", "noteInfo", "noteMore", and the toolbar search
- * field's "search"/"searchSubmit" commands, whose payload is the field's text).
+ * "newTask", "shareNote", "noteInfo", "noteMore", "toggleAssistantInspector",
+ * "format:checklist", "insertBlock", and the toolbar search field's
+ * "search"/"searchSubmit" commands, whose payload is the field's text).
+ * The shared More Formatting entry sends "openFormatting" without a payload;
+ * the existing editor controller resolves the current target when it runs.
  *
  * Also carries the reverse direction: `setSelectedSection`, which JS calls
  * when the app changes sections on its own (the sections are sidebar sections
@@ -124,3 +129,17 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #endif
 
 @end
+
+#if TARGET_OS_MACCATALYST
+/** Main-thread base format groups shared by the menu bar and toolbar Aa. */
+FOUNDATION_EXPORT NSArray<UIMenu *> *VeyraNEditorFormatMenus(BOOL hasNote);
+
+/**
+ * One inline More Formatting group for the menu bar and toolbar Aa.
+ * Main thread only. `hasNote` controls the initial disabled state; activation
+ * rechecks the live native note context before sending "openFormatting".
+ * The existing controller/Web helper resolves and validates the current
+ * tab/editor/session/note; this factory captures no document target.
+ */
+FOUNDATION_EXPORT UIMenu *VeyraNMoreFormattingMenu(BOOL hasNote);
+#endif

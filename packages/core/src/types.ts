@@ -442,10 +442,26 @@ export interface SessionContentItem extends BaseItem<"sessioncontent"> {
 }
 
 export type TrashCleanupInterval = 1 | 7 | 30 | 365 | -1;
+/**
+ * An optional, additive snapshot of the last explicit custom toolbar choice,
+ * stored next to a toolbar config so a built-in preset write (`config: []`)
+ * preserves it instead of dropping it. Deliberately structural: core must not
+ * depend on the editor's `ToolbarGroupDefinition`/`ToolId`, so the shape mirrors
+ * it exactly - outer groups -> group -> tool id | subgroup of tool ids.
+ */
+export type ToolbarCustomPreset = {
+  known: true;
+  groups: (string | string[])[][];
+};
 export type ToolbarConfig = {
   version: number | undefined;
   preset: string;
   config?: any[];
+  /**
+   * Present only for a *known* custom snapshot. Omitted entirely otherwise, so
+   * a legacy payload keeps its exact JSON bytes and property order.
+   */
+  customPreset?: ToolbarCustomPreset;
 };
 export type DefaultNotebook = { id: string; topic?: string };
 /**

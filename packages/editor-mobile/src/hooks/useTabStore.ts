@@ -29,6 +29,8 @@ globalThis.statusBars = {};
 export type TabItem = {
   id: string;
   session?: {
+    id?: string;
+    origin?: { id: string; title: string } | null;
     noteId?: string;
     readonly?: boolean;
     locked?: boolean;
@@ -74,6 +76,15 @@ export const useTabStore = create(
     }),
     {
       name: "tab-storage-v5",
+      partialize: (state) => ({
+        ...state,
+        tabs: state.tabs.map((tab) => ({
+          ...tab,
+          session: tab.session
+            ? { ...tab.session, origin: undefined }
+            : undefined
+        }))
+      }),
       storage: createJSONStorage(() => localStorage)
     }
   )

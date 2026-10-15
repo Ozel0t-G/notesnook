@@ -60,6 +60,8 @@ import {
 import { AttachmentGeneration, DownloadableFile } from "../../database/fs.js";
 import { SyncDevices } from "./devices.js";
 import { DefaultColors } from "../../collections/colors.js";
+import { withDomainWrite } from "../../connect/domain-lock.js";
+import { dbMutex } from "../../connect/mutex.js";
 
 enum LogLevel {
   /** Log level for very low severity diagnostic messages. */
@@ -689,54 +691,87 @@ export class Sync {
     }
 
     const collection = this.db[collectionType].collection;
-    const localItems = await collection.records(chunk.items.map((i) => i.id));
-    await this.assertBackendAllowed();
-    let items: (MaybeDeletedItem<Item> | undefined)[] = [];
-    if (itemType === "content") {
-      items = deserialized.map((item) =>
-        this.merger.mergeContent(item, localItems[item.id])
-      );
-    } else {
-      items =
-        itemType === "attachment"
-          ? await Promise.all(
-              deserialized.map((item) =>
-                this.merger.mergeAttachment(
-                  item as MaybeDeletedItem<Attachment>,
-                  localItems[item.id] as MaybeDeletedItem<Attachment>
+    // Read → merge → put is a read-modify-write of rows that other writers
+    // mutate under the shared domain write lock: note bodies (`content`), note
+    // metadata (`note`) and the notebook↔note relations that decide Connect
+    // authorization (`relation`). Merging outside that lock would let a guarded
+    // local write be overwritten by a merge computed from a stale local row.
+    // Every other collection keeps the previous (unlocked) path; the remaining
+    // awaits below are the pre-existing backend checks and are intentionally
+    // kept inside the critical section so a merge never outlives its session.
+    const mergeChunk = async () => {
+      const localItems = await collection.records(chunk.items.map((i) => i.id));
+      await this.assertBackendAllowed();
+      let items: (MaybeDeletedItem<Item> | undefined)[] = [];
+      if (itemType === "content") {
+        items = deserialized.map((item) =>
+          this.merger.mergeContent(item, localItems[item.id])
+        );
+      } else {
+        items =
+          itemType === "attachment"
+            ? await Promise.all(
+                deserialized.map((item) =>
+                  this.merger.mergeAttachment(
+                    item as MaybeDeletedItem<Attachment>,
+                    localItems[item.id] as MaybeDeletedItem<Attachment>
+                  )
                 )
               )
-            )
-          : deserialized.map((item) =>
-              this.merger.mergeItem(item, localItems[item.id])
-            );
-    }
+            : deserialized.map((item) =>
+                this.merger.mergeItem(item, localItems[item.id])
+              );
+      }
 
-    await this.assertBackendAllowed();
+      await this.assertBackendAllowed();
 
-    if (itemType === "note" || itemType === "content") {
-      items.forEach((item) =>
-        this.db.eventManager.publish(EVENTS.syncItemMerged, item)
+      if (itemType === "note" || itemType === "content") {
+        items.forEach((item) =>
+          this.db.eventManager.publish(EVENTS.syncItemMerged, item)
+        );
+
+        for (const item of items)
+          if (!item?.deleted && item?.type === "tiptap" && !!item.conflicted)
+            this.conflictedNoteIds.push(item.noteId);
+      }
+
+      if (itemType === "attachment" && options.offlineMode)
+        for (const item of items)
+          if (!item?.deleted && item?.type === "attachment")
+            this.uncachedAttachments.push({
+              filename: item.hash,
+              chunkSize: item.chunkSize
+            });
+
+      this.logger.debug(`Merged ${items.length} items for type ${itemType}`, {
+        ids: items.map((i) => i?.id)
+      });
+      await this.assertBackendAllowed();
+      await collection.put(items as any);
+    };
+
+    if (
+      itemType === "note" ||
+      itemType === "content" ||
+      itemType === "relation"
+    ) {
+      await withDomainWrite(this.db, mergeChunk);
+    } else if (itemType === "settingitem") {
+      // A `settingitem` chunk carries the Task domain records
+      // (`appleTasks:v1:*`) and the Connect idempotency receipts
+      // (`veyranConnect:v1:*`). Both are read-modify-written by guarded
+      // writers — the task write/create mutexes and the Connect adapter's
+      // database-scoped operation mutex — so the *whole* read→merge→put has to
+      // run under those same locks, in the same order the adapter uses
+      // (database operation mutex → task mutation mutex → task create mutex).
+      // Locking only the final `put` would still let a merge computed from a
+      // stale row overwrite a guarded local write (and the reverse).
+      await dbMutex(this.db).runExclusive(() =>
+        this.db.tasks.runExclusiveTaskWrite(mergeChunk)
       );
-
-      for (const item of items)
-        if (!item?.deleted && item?.type === "tiptap" && !!item.conflicted)
-          this.conflictedNoteIds.push(item.noteId);
+    } else {
+      await mergeChunk();
     }
-
-    if (itemType === "attachment" && options.offlineMode)
-      for (const item of items)
-        if (!item?.deleted && item?.type === "attachment")
-          this.uncachedAttachments.push({
-            filename: item.hash,
-            chunkSize: item.chunkSize
-          });
-
-    this.logger.debug(`Merged ${items.length} items for type ${itemType}`, {
-      ids: items.map((i) => i?.id)
-    });
-    await this.assertBackendAllowed();
-    await collection.put(items as any);
   }
 
   private async pushItem(deviceId: string, item: SyncTransferItem) {

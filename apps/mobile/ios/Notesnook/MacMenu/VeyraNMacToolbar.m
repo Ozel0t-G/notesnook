@@ -26,12 +26,19 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 // the system draws them in a single glass capsule (see
 // -makeEditorActionsGroup).
 #import <AppKit/NSToolbarItemGroup.h>
+#import <AppKit/NSMenuToolbarItem.h>
+#import <UIKit/NSToolbar+UIKitAdditions.h>
 
 #import "VeyraNMacMenu.h"
 
 /// Toolbar item identifiers, all namespaced to the app's own items.
 static NSToolbarItemIdentifier const VeyraNToggleSidebarIdentifier =
     @"veyran.toggleSidebar";
+static NSToolbarItemIdentifier const VeyraNAssistantInspectorIdentifier =
+    @"veyran.assistantInspector";
+static NSToolbarItemIdentifier const VeyraNFormatIdentifier = @"veyran.format";
+static NSToolbarItemIdentifier const VeyraNChecklistIdentifier = @"veyran.checklist";
+static NSToolbarItemIdentifier const VeyraNInsertIdentifier = @"veyran.insert";
 static NSToolbarItemIdentifier const VeyraNSearchIdentifier = @"veyran.search";
 static NSToolbarItemIdentifier const VeyraNNewItemIdentifier = @"veyran.newItem";
 static NSToolbarIdentifier const VeyraNToolbarIdentifier = @"veyran.main";
@@ -63,7 +70,8 @@ static NSString *const VeyraNToggleSidebarCommand = @"toggleSidebar";
  * The toolbar's icon-only actions, in the order they appear: the list's
  * "Sort & View" menu first (it leads, next to the New item), then the three
  * editor actions, which are inserted as one group after the flexible space (see
- * -makeEditorActionsGroup). The index into these four arrays is the item's
+ * -makeEditorActionsGroup), the optional Assistant Inspector and the direct
+ * Checklist/Insert actions. The index into these parallel arrays is the item's
  * `tag`, which is how -actionFromToolbar: reads the command back (an
  * NSToolbarItem carries no command string of its own).
  *
@@ -76,16 +84,19 @@ static NSString *const VeyraNToggleSidebarCommand = @"toggleSidebar";
  */
 static NSToolbarItemIdentifier const VeyraNActionIdentifiers[] = {
   @"veyran.listOptions", @"veyran.shareNote", @"veyran.noteInfo",
-  @"veyran.noteMore"
+  @"veyran.noteMore", VeyraNAssistantInspectorIdentifier, VeyraNChecklistIdentifier, VeyraNInsertIdentifier
 };
 static NSString *const VeyraNActionSymbols[] = {
-  @"arrow.up.arrow.down", @"square.and.arrow.up", @"info", @"ellipsis"
+  @"arrow.up.arrow.down", @"square.and.arrow.up", @"info", @"ellipsis", @"sidebar.right", @"checklist", @"plus.circle"
 };
 static NSString *const VeyraNActionLabels[] = { @"Sort & View", @"Share",
-                                                @"Note Info", @"More" };
+                                                @"Note Info", @"More", @"Assistant", @"Checklist", @"Insert" };
 static NSString *const VeyraNActionCommands[] = { @"listOptions", @"shareNote",
-                                                  @"noteInfo", @"noteMore" };
-static const NSUInteger VeyraNActionCount = 4;
+                                                  @"noteInfo", @"noteMore", @"toggleAssistantInspector", @"format:checklist", @"insertBlock" };
+enum { VeyraNActionCount = sizeof(VeyraNActionIdentifiers) / sizeof(VeyraNActionIdentifiers[0]) };
+_Static_assert(sizeof(VeyraNActionSymbols) / sizeof(VeyraNActionSymbols[0]) == VeyraNActionCount, "Toolbar symbol count");
+_Static_assert(sizeof(VeyraNActionLabels) / sizeof(VeyraNActionLabels[0]) == VeyraNActionCount, "Toolbar label count");
+_Static_assert(sizeof(VeyraNActionCommands) / sizeof(VeyraNActionCommands[0]) == VeyraNActionCount, "Toolbar command count");
 
 /**
  * The top-level sections, in the order the app and JavaScript use them. The
@@ -428,6 +439,9 @@ static CGFloat currentToolbarHeight = 0;
   if ([itemIdentifier isEqualToString:VeyraNEditorActionsIdentifier]) {
     return [self makeEditorActionsGroup];
   }
+  if ([itemIdentifier isEqualToString:VeyraNFormatIdentifier]) {
+    return [self makeFormatItem];
+  }
   NSUInteger action = VeyraNActionIndex(itemIdentifier);
   if (action != NSNotFound) {
     return [self makeActionItem:action];
@@ -454,10 +468,13 @@ static CGFloat currentToolbarHeight = 0;
       arrayWithObjects:VeyraNToggleSidebarIdentifier, VeyraNActionIdentifiers[0],
                        VeyraNNewItemIdentifier,
                        NSToolbarFlexibleSpaceItemIdentifier,
+                       VeyraNFormatIdentifier, VeyraNChecklistIdentifier, VeyraNInsertIdentifier,
                        VeyraNEditorActionsIdentifier, nil];
   // The field only exists where it can be built; on Mac Catalyst 15 the
   // identifier is left out rather than returned as a nil item (AppKit raises
   // on a missing item).
+  // The optional Inspector yields with standard-priority editor actions.
+  [identifiers addObject:VeyraNAssistantInspectorIdentifier];
   if (_searchAvailable) {
     [identifiers addObject:VeyraNSearchIdentifier];
   }
@@ -469,6 +486,37 @@ static CGFloat currentToolbarHeight = 0;
   // Nothing is customizable (allowsUserCustomization is NO); the default set is
   // the whole set.
   return [self toolbarDefaultItemIdentifiers:toolbar];
+}
+
+/** Native Aa retains base formats and adds the shared full-tool entry. */
+- (NSToolbarItem *)makeFormatItem {
+  NSMenuToolbarItem *item = [[NSMenuToolbarItem alloc]
+      initWithItemIdentifier:VeyraNFormatIdentifier];
+  NSString *label = NSLocalizedString(@"Formatting", @"Editor toolbar Aa");
+  item.image = [UIImage systemImageNamed:@"textformat"];
+  item.label = label;
+  item.paletteLabel = label;
+  item.toolTip = label;
+  item.autovalidates = NO;
+  item.enabled = [VeyraNMacMenu menuContextHasNote];
+  item.visibilityPriority = NSToolbarItemVisibilityPriorityStandard;
+  // Rebuild at presentation time: no cached disabled menu from app startup.
+  UIDeferredMenuElement *contents = [UIDeferredMenuElement
+      elementWithUncachedProvider:^(void (^completion)(NSArray<UIMenuElement *> *)) {
+        BOOL hasNote = [VeyraNMacMenu menuContextHasNote];
+        NSArray<UIMenu *> *formatMenus = VeyraNEditorFormatMenus(hasNote);
+        completion([formatMenus
+            arrayByAddingObject:VeyraNMoreFormattingMenu(hasNote)]);
+      }];
+  item.itemMenu = [UIMenu menuWithTitle:label children:@[ contents ]];
+  return item;
+}
+
++ (void)refreshEditorAvailability {
+  BOOL enabled = [VeyraNMacMenu menuContextHasNote];
+  [currentInstance toolbarItemWithIdentifier:VeyraNFormatIdentifier].enabled = enabled;
+  [currentInstance toolbarItemWithIdentifier:VeyraNChecklistIdentifier].enabled = enabled;
+  [currentInstance toolbarItemWithIdentifier:VeyraNInsertIdentifier].enabled = enabled;
 }
 
 /**
@@ -486,7 +534,7 @@ static CGFloat currentToolbarHeight = 0;
 - (NSToolbarItem *)makeActionItem:(NSUInteger)index {
   NSToolbarItem *item = [[NSToolbarItem alloc]
       initWithItemIdentifier:VeyraNActionIdentifiers[index]];
-  NSString *label = VeyraNActionLabels[index];
+  NSString *label = NSLocalizedString(VeyraNActionLabels[index], @"Window toolbar action");
   UIImage *image = [UIImage systemImageNamed:VeyraNActionSymbols[index]];
   // A missing symbol would leave a blank item: circle is the oldest SF Symbol
   // and always resolves.
@@ -511,6 +559,11 @@ static CGFloat currentToolbarHeight = 0;
       index == 0 ? NSToolbarItemVisibilityPriorityHigh
                  : NSToolbarItemVisibilityPriorityStandard;
   item.visibilityPriority = priority;
+  if ([item.itemIdentifier isEqualToString:VeyraNChecklistIdentifier] ||
+      [item.itemIdentifier isEqualToString:VeyraNInsertIdentifier]) {
+    item.autovalidates = NO;
+    item.enabled = [VeyraNMacMenu menuContextHasNote];
+  }
   return item;
 }
 

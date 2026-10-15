@@ -76,6 +76,8 @@ export function selectItem(item: Item) {
   return false;
 }
 
+export type NoteGroupEdges = { first: boolean; last: boolean };
+
 type SelectionWrapperProps = PropsWithChildren<{
   item: Item;
   onPress: () => void;
@@ -84,6 +86,7 @@ type SelectionWrapperProps = PropsWithChildren<{
   color?: string;
   index?: number;
   homeNote?: boolean;
+  groupEdges?: NoteGroupEdges;
 }>;
 
 const SelectionWrapper = ({
@@ -94,6 +97,7 @@ const SelectionWrapper = ({
   children,
   color,
   homeNote = false,
+  groupEdges,
   index: _index = 0
 }: SelectionWrapperProps) => {
   const itemId = useRef(item.id);
@@ -136,11 +140,13 @@ const SelectionWrapper = ({
   const macRow = isMacCatalyst() && isNoteItem && !isSheet;
   /**
    * iPhone/iPad note rows outside sheets are the approved flat, continuous
-   * list: transparent on the screen background, square corners, no gap and a
-   * hairline separator between rows. Scoped to note rows so this shared
+   * list: content surface on iPhone, transparent on iPad, no gap and a
+   * hairline separator between rows. Selected rows keep a rounded highlight. Scoped to note rows so this shared
    * wrapper keeps the notebook/tag/reminder (and Mac/sheet) looks untouched.
    */
   const flatIosRow = visual.ios && isNoteItem && !isSheet && !macRow;
+  const phoneRow =
+    flatIosRow && Platform.OS === "ios" && !Platform.isPad && item.type === "note";
   const macHighlighted = macRow && (showEditing || isSelected);
   const systemAccent = useMacSystemStore((state) => state.accent);
   const windowActive = useMacSystemStore((state) => state.active);
@@ -177,10 +183,18 @@ const SelectionWrapper = ({
             : isSheet
               ? colors.primary.hover
               : flatIosRow
-                ? "transparent"
+                ? Platform.OS === "ios" && Platform.isPad
+                  ? "transparent"
+                  : visual.contentSurface
                 : visual.elevatedSurface
       }
       testID={testID}
+      accessibilityRole={phoneRow ? "button" : undefined}
+      accessibilityState={
+        phoneRow && selectionMode === item.type
+          ? { selected: Boolean(isSelected) }
+          : undefined
+      }
       onLongPress={nativeMenus && !selectionMode ? undefined : onLongPress}
       onPress={
         macRow
@@ -212,8 +226,9 @@ const SelectionWrapper = ({
         justifyContent: "space-between",
         alignItems: "center",
         width: isSheet ? "100%" : "auto",
-        alignSelf: "center",
+        alignSelf: flatIosRow ? "stretch" : "center",
         overflow: "hidden",
+        minHeight: phoneRow ? 44 : undefined,
         paddingHorizontal: macRow ? MAC_NOTE_ROW_PADDING : visual.rowInset,
         paddingVertical: macRow
           ? MAC_NOTE_ROW_PADDING_VERTICAL
@@ -229,7 +244,9 @@ const SelectionWrapper = ({
         borderRadius: macRow
           ? MAC_NOTE_ROW_RADIUS
           : flatIosRow
-            ? 0
+            ? showEditing || isSelected
+              ? visual.controlRadius
+              : 0
             : visual.ios && isTabletPane && !isSheet
               ? 0
               : visual.ios && !isSheet
@@ -260,12 +277,22 @@ const SelectionWrapper = ({
         borderWidth: macRow ? 0 : isSheet || visual.ios ? 0 : 0.5,
         // No hairline between Mac rows: the gap above is the separation. Flat
         // iPhone/iPad note rows are separated by a hairline instead of a gap.
-        borderBottomWidth: macRow
-          ? 0
-          : flatIosRow || (visual.ios && isTabletPane && !isSheet)
+        borderBottomWidth:
+          macRow || phoneRow
+            ? 0
+            : flatIosRow || (visual.ios && isTabletPane && !isSheet)
             ? 0.5
             : 0,
         borderColor: visual.separator,
+        // Only outer group corners curve; selection must not make each
+        // interior row into a separate card.
+        ...(phoneRow && groupEdges ? {
+          borderRadius: 0,
+          borderTopLeftRadius: groupEdges.first ? visual.controlRadius : 0,
+          borderTopRightRadius: groupEdges.first ? visual.controlRadius : 0,
+          borderBottomLeftRadius: groupEdges.last ? visual.controlRadius : 0,
+          borderBottomRightRadius: groupEdges.last ? visual.controlRadius : 0
+        } : {}),
         ...(isSheet || visual.ios ? {} : visual.subtleShadow)
       }}
     >
@@ -294,7 +321,7 @@ const SelectionWrapper = ({
           }}
         />
       ) : null}
-      {showEditing && !macRow ? (
+      {showEditing && !macRow && !flatIosRow ? (
         <View
           style={{
             backgroundColor: color || colors.selected.accent,
@@ -307,6 +334,20 @@ const SelectionWrapper = ({
         />
       ) : null}
       {children}
+      {phoneRow && !groupEdges?.last ? (
+        <View
+          pointerEvents="none"
+          testID="phone-note-separator"
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: visual.rowInset,
+            right: 0,
+            height: 0.5,
+            backgroundColor: visual.separator
+          }}
+        />
+      ) : null}
     </Pressable>
   );
 

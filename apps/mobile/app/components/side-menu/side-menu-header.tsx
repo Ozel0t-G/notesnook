@@ -16,6 +16,8 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+import { strings } from "@notesnook/intl";
+import { IPadSourceSymbol, isIPadSourceList } from "./ipad-source-navigation";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import { Image, View } from "react-native";
@@ -27,11 +29,15 @@ import { UserSheet } from "../sheets/user";
 import AppIcon from "../ui/AppIcon";
 import { IconButton, IconButtonProps } from "../ui/icon-button";
 import { Pressable } from "../ui/pressable";
+import Paragraph from "../ui/typography/paragraph";
 import Heading from "../ui/typography/heading";
 import { useSideBarDraggingStore } from "./dragging-store";
 import SyncStatusButton from "./sync-status-button";
 
-const SettingsIcon = () => {
+export const SideMenuSettings = ({
+  labeled = false,
+  compact = false
+}: { labeled?: boolean; compact?: boolean } = {}) => {
   const { colors } = useThemeColors();
   const userProfile = useUserStore((state) => state.profile);
 
@@ -42,9 +48,32 @@ const SettingsIcon = () => {
         UserSheet.present();
       }}
       testID="sidemenu-settings-icon"
+      {...(isIPadSourceList()
+        ? {
+            accessibilityRole: "button" as const,
+            accessibilityLabel: strings.settings()
+          }
+        : {})}
       style={{
-        width: 40,
-        height: 40
+        width: labeled
+          ? compact
+            ? "auto"
+            : "100%"
+          : isIPadSourceList()
+          ? 44
+          : 40,
+        flex: labeled && compact ? 1 : undefined,
+        minWidth: labeled && compact ? 44 : undefined,
+        flexDirection: labeled ? "row" : undefined,
+        gap: labeled ? DefaultAppStyles.GAP_SMALL : undefined,
+        justifyContent: labeled ? "flex-start" : "center",
+        paddingHorizontal: labeled
+          ? compact
+            ? 0
+            : DefaultAppStyles.GAP
+          : undefined,
+        height: labeled ? undefined : isIPadSourceList() ? 44 : 40,
+        minHeight: labeled ? 44 : undefined
       }}
     >
       {userProfile?.profilePicture ? (
@@ -58,6 +87,12 @@ const SettingsIcon = () => {
             borderRadius: 100
           }}
         />
+      ) : isIPadSourceList() ? (
+        <IPadSourceSymbol
+          name="gearshape"
+          color={colors.primary.icon}
+          size={AppFontSize.lg}
+        />
       ) : (
         <AppIcon
           name="cog-outline"
@@ -65,11 +100,19 @@ const SettingsIcon = () => {
           size={AppFontSize.lg}
         />
       )}
+      {labeled ? (
+        <Paragraph style={compact ? { flexShrink: 1 } : undefined}>
+          {strings.settings()}
+        </Paragraph>
+      ) : null}
     </Pressable>
   );
 };
 
-export const SideMenuHeader = (props: { rightButtons?: IconButtonProps[] }) => {
+export const SideMenuHeader = (props: {
+  rightButtons?: IconButtonProps[];
+  compact?: boolean;
+}) => {
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
   return (
@@ -80,7 +123,12 @@ export const SideMenuHeader = (props: { rightButtons?: IconButtonProps[] }) => {
         alignItems: "center",
         borderBottomWidth: visual.ios ? 0 : 1,
         borderBottomColor: visual.separator,
-        paddingBottom: visual.ios ? 16 : DefaultAppStyles.GAP,
+        paddingBottom: props.compact
+          ? DefaultAppStyles.GAP_VERTICAL_SMALL
+          : visual.ios
+          ? 16
+          : DefaultAppStyles.GAP,
+        minHeight: props.compact ? 44 : undefined,
         paddingHorizontal: visual.ios
           ? visual.pagePadding
           : DefaultAppStyles.GAP
@@ -120,7 +168,7 @@ export const SideMenuHeader = (props: { rightButtons?: IconButtonProps[] }) => {
           />
         ))}
         <SyncStatusButton />
-        <SettingsIcon />
+        {props.compact ? null : <SideMenuSettings />}
       </View>
     </View>
   );

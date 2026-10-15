@@ -1,0 +1,7 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "veyran-connect",
+  "version": "1.0.0",
+  "description": "VeyraN Connect: local notes/tasks tools over the loopback broker (stdio MCP).",
+  "license": "GPL-3.0-or-later"
+}

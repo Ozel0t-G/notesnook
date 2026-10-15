@@ -66,6 +66,7 @@ import { sleep } from "../../../utils/time";
 import { unlockVault } from "../../../utils/unlock-vault";
 import { onNoteCreated } from "../../notes/common";
 import Commands from "./commands";
+import { SaveBarrier, SaveFlushResult } from "./save-barrier";
 import { SessionHistory } from "./session-history";
 import { EditorState, SavePayload } from "./types";
 import { TabSessionItem, syncTabs, useTabStore } from "./use-tab-store";
@@ -181,6 +182,14 @@ export const useEditor = (
   const currentLoadingNoteId = useRef<string>(undefined);
   const lastTabFocused = useRef<string>(undefined);
 
+  /**
+   * The saves this editor queued or has in flight, per sender (tab + note).
+   * `flushSaves` uses it to force this editor's own debounced saves and await
+   * their real result without changing any of the legacy save behaviour. It
+   * lives in a ref: hook lifetime only, no global or persisted state.
+   */
+  const saveBarrier = useRef(new SaveBarrier());
+
   const localTabState = useRef<LocalTabState>(new LocalTabState());
 
   const blockIdRef = useRef<string>(undefined);
@@ -199,9 +208,7 @@ export const useEditor = (
 
   useEffect(() => {
     commands.setInsets(
-      isDefaultEditor
-        ? webviewInsets
-        : { top: 0, left: 0, right: 0, bottom: 0 }
+      isDefaultEditor ? webviewInsets : { top: 0, left: 0, right: 0, bottom: 0 }
     );
   }, [commands, webviewInsets, isDefaultEditor]);
 
@@ -580,6 +587,7 @@ export const useEditor = (
       refresh?: boolean;
       searchResultIndex?: number;
       loadedFromEditor?: boolean;
+      origin?: { id: string; title: string } | null;
     }) => {
       loadNoteMutex.runExclusive(async () => {
         if (
@@ -624,6 +632,9 @@ export const useEditor = (
               useTabStore.getState().newTabSession(tabId, {});
             }
           }
+          useTabStore
+            .getState()
+            .updateTab(tabId, { session: { origin: event.origin ?? null } });
           saveCount.current[tabId] = 0;
 
           setTimeout(() => {
@@ -650,6 +661,9 @@ export const useEditor = (
               currentTab?.session?.noteId !== item.id &&
               tabId !== useTabStore.getState().currentTab
             ) {
+              useTabStore.getState().updateTab(tabId as string, {
+                session: { origin: event.origin ?? null }
+              });
               useTabStore.getState().focusTab(tabId as string);
               return;
             }
@@ -709,6 +723,20 @@ export const useEditor = (
             noteId: event.item.id
           };
 
+          // Updates merge session fields; explicitly clear context for an
+          // unrelated surface rather than accidentally retaining the last list.
+          const previousOrigin = useTabStore.getState().getTab(tabId!)?.session;
+          session.origin =
+            event.origin !== undefined
+              ? event.origin
+              : event.session
+              ? event.session.origin ?? null
+              : (event.refresh ||
+                  event.loadedFromEditor ||
+                  (previousOrigin?.locked && !tabLocked)) &&
+                previousOrigin?.noteId === item.id
+              ? previousOrigin.origin ?? null
+              : null;
           session.noteLocked = isLockedNote;
           session.locked = tabLocked;
           session.readonly = item.readonly;
@@ -1026,6 +1054,17 @@ export const useEditor = (
           lock.current: ${lock.current}
           currentLoadingNoteId.current: ${currentLoadingNoteId.current}
         `);
+        if (!onChange && noteId && !pendingChanges) {
+          // This edit was dropped instead of queued, so a later flush must not
+          // report the sender as clean. Scoped to the sender *and* to the save
+          // kind (`type`: `EditorEvents.content` / `EditorEvents.title`), so a
+          // dropped body edit is never cleared by a later title write. A
+          // foreign tab on the same note stays unaffected.
+          saveBarrier.current.markGuardedDrop(
+            { tabId, noteId, sourceNoteId },
+            type
+          );
+        }
         if (lock.current) {
           setTimeout(() => {
             if (lock.current) {
@@ -1068,31 +1107,121 @@ export const useEditor = (
         pendingChangesAt
       };
 
-      withTimer(
-        `${noteId || tabId}:${type}`,
-        () => {
-          if (!params.id && !params.sourceNoteId) {
-            params.id = useTabStore.getState().getNoteIdForTab(tabId);
-          }
-          if (onChange && params.data) {
-            onChange(params.data);
-            return;
-          }
-          if (useSettingStore.getState().isAppLoading) {
-            const sub = useSettingStore.subscribe((state) => {
-              if (!state.isAppLoading) {
-                saveNote(params);
-                sub();
-              }
-            });
-          } else {
-            saveNote(params);
-          }
-        },
-        150
+      const timerKey = `${noteId || tabId}:${type}`;
+      /**
+       * The ordinal of this edit's *registration*. It travels with the save
+       * into `beginJob` so supersession follows the order edits were queued in,
+       * not the order their debounces happened to fire: a flush can force an
+       * old queued save to run long after a newer edit was already dropped by
+       * the guard, and that old save's late success must not clear the newer
+       * failure.
+       */
+      let ticket: number | undefined;
+      /**
+       * What the 150 ms debounce runs - and what the barrier can force instead
+       * of waiting it out. The key, the payload and the guards are exactly the
+       * legacy ones; the only addition is that the real `saveNote` promise is
+       * handed to the barrier so a flush can await it.
+       */
+      const runSave = () => {
+        saveBarrier.current.completePending(timerKey, runSave);
+        // The timer is spent: it fired, or the barrier forced this run early
+        // and must not let the scheduled callback save the same payload twice.
+        clearTimeout(timers.current[timerKey]);
+        if (!params.id && !params.sourceNoteId) {
+          params.id = useTabStore.getState().getNoteIdForTab(tabId);
+        }
+        if (onChange && params.data) {
+          onChange(params.data);
+          return;
+        }
+        // The save's kind is the *transport* the edit came in on (`type`:
+        // `EditorEvents.content` for the body, `EditorEvents.title` for the
+        // title) - never `params.type`, which is the content format
+        // ("tiptap") and therefore identical for both. Only this separates a
+        // failed body write from a failed title write.
+        const job = saveBarrier.current.beginJob(
+          {
+            tabId,
+            noteId: params.id
+          },
+          type,
+          ticket
+        );
+        const start = () =>
+          saveBarrier.current.attachJob(job, saveNote(params));
+        if (useSettingStore.getState().isAppLoading) {
+          const sub = useSettingStore.subscribe((state) => {
+            if (!state.isAppLoading) {
+              sub();
+              start();
+            }
+          });
+        } else {
+          start();
+        }
+      };
+
+      ticket = saveBarrier.current.registerPending(
+        { tabId, noteId, sourceNoteId },
+        timerKey,
+        runSave,
+        type
       );
+      withTimer(timerKey, runSave, 150);
     },
     [editorSessionHistory, withTimer, onChange, saveNote]
+  );
+
+  /**
+   * The additive save barrier. Forces the exact sender's queued saves to run
+   * and awaits every save that sender has in flight, then reports what really
+   * happened. It never falls back to the current/default note, never performs
+   * another tab's work and never reports a pending save as written.
+   */
+  const flushSaves = useCallback(
+    (tabId: string, noteId: string): Promise<SaveFlushResult> =>
+      saveBarrier.current.flushSaves(tabId, noteId, {
+        readSender: (tab: string, note: string) => {
+          const tabStore = useTabStore.getState();
+          const tabItem = tabStore.getTab(tab);
+          if (!tabItem) return { ok: false, reason: "unknown-tab" };
+          if (tabStore.getNoteIdForTab(tab) !== note)
+            return { ok: false, reason: "stale-sender" };
+          if (tabStore.currentTab !== tab)
+            return { ok: false, reason: "inactive-sender" };
+          return { ok: true, sessionId: tabItem.session?.id };
+        },
+        isEditorLocked: () => lock.current,
+        isLoadingNote: (note: string) => currentLoadingNoteId.current === note,
+        isAppLoading: () => useSettingStore.getState().isAppLoading,
+        isUnsupportedEditor: () => !!onChange
+      }),
+    [onChange]
+  );
+
+  /**
+   * An additive, non-blocking peek for a caller that has to decide whether a
+   * flush is worth starting: true while this exact sender still has queued,
+   * in-flight or unresolved failed saves.
+   */
+  const isSavePending = useCallback(
+    (tabId: string, noteId: string) =>
+      saveBarrier.current.isSavePending(tabId, noteId),
+    []
+  );
+
+  /**
+   * The exact sender's monotonic save revision. A caller (the native database
+   * executor) captures it before it converts content for export and compares
+   * it afterwards: a difference means an edit arrived *and fully settled*
+   * while it was working, even though `isSavePending` is already false again.
+   * Kept in the hook's barrier instance for its lifetime - no global store.
+   */
+  const getSaveRevision = useCallback(
+    (tabId: string, noteId: string) =>
+      saveBarrier.current.getSaveRevision(tabId, noteId),
+    []
   );
 
   const restoreEditorState = useCallback(async () => {
@@ -1145,9 +1274,7 @@ export const useEditor = (
       postMessage(NativeEvents.theme, theme);
     });
     commands.setInsets(
-      isDefaultEditor
-        ? webviewInsets
-        : { top: 0, left: 0, right: 0, bottom: 0 }
+      isDefaultEditor ? webviewInsets : { top: 0, left: 0, right: 0, bottom: 0 }
     );
     await commands.setSettings();
 
@@ -1189,7 +1316,8 @@ export const useEditor = (
           restoreEditorState();
           if (note) {
             loadNote({
-              item: note
+              item: note,
+              refresh: true
             });
           }
         }
@@ -1220,6 +1348,9 @@ export const useEditor = (
     note: currentNotes,
     onReady,
     saveContent,
+    flushSaves,
+    isSavePending,
+    getSaveRevision,
     onContentChanged,
     editorId: editorId,
     overlay,

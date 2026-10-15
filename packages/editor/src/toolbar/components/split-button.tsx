@@ -17,11 +17,17 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { PropsWithChildren } from "react";
+import { PropsWithChildren, useContext } from "react";
 import { Flex } from "@theme-ui/components";
 import { ToolButton, ToolButtonProps } from "./tool-button.js";
-import { useIsMobile, useToolbarLocation } from "../stores/toolbar-store.js";
+import {
+  IosFormatContext,
+  PopupIdScopeContext,
+  useIsMobile,
+  useToolbarLocation
+} from "../stores/toolbar-store.js";
 import React from "react";
+import { strings } from "@notesnook/intl";
 
 export type SplitButtonProps = ToolButtonProps & {
   onOpen: () => void;
@@ -32,6 +38,8 @@ function _SplitButton(props: PropsWithChildren<SplitButtonProps>) {
 
   const toolbarLocation = useToolbarLocation();
   const isMobile = useIsMobile();
+  const isIosFormat = useContext(IosFormatContext);
+  const namedPalette = !!useContext(PopupIdScopeContext) || isIosFormat;
 
   return (
     <>
@@ -53,6 +61,16 @@ function _SplitButton(props: PropsWithChildren<SplitButtonProps>) {
           toggled={false}
         />
         <ToolButton
+          id={
+            namedPalette
+              ? `${toolButtonProps.id || toolButtonProps.icon}-palette`
+              : undefined
+          }
+          aria-label={
+            namedPalette
+              ? `${toolButtonProps.title} ${strings.color()}`
+              : undefined
+          }
           variant="small"
           icon={toolbarLocation === "bottom" ? "chevronUp" : "chevronDown"}
           toggled={toggled}

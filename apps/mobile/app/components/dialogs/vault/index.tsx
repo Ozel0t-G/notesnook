@@ -45,6 +45,7 @@ import {
 import { deleteItems } from "../../../utils/functions";
 import { fluidTabsRef } from "../../../utils/global-refs";
 import { convertNoteToText } from "../../../utils/note-to-text";
+import type { NoteSenderGuard } from "../../../utils/note-to-text";
 import { sleep } from "../../../utils/time";
 import BaseDialog from "../../dialog/base-dialog";
 import DialogButtons from "../../dialog/dialog-buttons";
@@ -70,6 +71,32 @@ import { useUserStore } from "../../../stores/use-user-store";
 import { AppFontSize } from "../../../utils/size";
 import { Pressable } from "../../ui/pressable";
 import AppIcon from "../../ui/AppIcon";
+
+/**
+ * One inbound `eOpenVaultDialog` request.
+ *
+ * A monotonic `token` is allocated synchronously for *every* incoming request
+ * (legacy ones included) so that an older, slower async operation can never
+ * install refs, dispatch a result, or close/mutate a newer request's dialog.
+ * `onShareComplete` is the request's own captured callback: it is fired at most
+ * once, even after `close()` clears the dialog refs, and never touches a newer
+ * request's intent.
+ */
+type VaultRequest = {
+  token: number;
+  noteId?: string;
+  shareGuard?: NoteSenderGuard;
+  onShareComplete?: () => void;
+  completed: boolean;
+  /** Only accept controls after this request's note and action refs are installed. */
+  ready: boolean;
+  /**
+   * Set right before this request's own dialog is closed and the OS share
+   * sheet is launched: completion then waits for the share's own
+   * resolve/reject instead of firing on the close itself.
+   */
+  shareDispatched: boolean;
+};
 
 export const VaultDialog: React.FC = () => {
   const { colors } = useThemeColors();
@@ -106,6 +133,26 @@ export const VaultDialog: React.FC = () => {
     | undefined
   >(undefined);
 
+  // Request tracking: the current inbound request's token and the request that
+  // still owns this dialog instance's pending completion.
+  const requestTokenRef = useRef(0);
+  const activeRequestRef = useRef<VaultRequest | null>(null);
+  const mountedRef = useRef(true);
+
+  /**
+   * Fires a request's captured `onShareComplete` exactly once and detaches it
+   * when it is still the active request. It never clears or calls into a newer
+   * request's intent.
+   */
+  const finishRequest = useCallback((request: VaultRequest) => {
+    if (request.completed) return;
+    request.completed = true;
+    if (activeRequestRef.current === request) {
+      activeRequestRef.current = null;
+    }
+    request.onShareComplete?.();
+  }, []);
+
   // Form ref
   const formRef = useRef(
     createFormRef({
@@ -120,48 +167,79 @@ export const VaultDialog: React.FC = () => {
   const confirmPassRef = useRef<TextInput>(null);
   const newPassInputRef = useRef<TextInput>(null);
 
-  const close = useCallback(() => {
-    if (loading) {
-      ToastManager.show({
-        heading: titleRef.current,
-        message: strings.pleaseWait() + "...",
-        type: "success",
-        context: "local"
-      });
-      return;
-    }
+  const ownsRequest = useCallback((request: VaultRequest | null) => {
+    return (
+      mountedRef.current &&
+      !!request &&
+      !request.completed &&
+      request.token === requestTokenRef.current &&
+      activeRequestRef.current === request
+    );
+  }, []);
 
-    Navigation.queueRoutesForUpdate();
+  const closeOwned = useCallback(
+    (owner: VaultRequest | null) => {
+      if (!mountedRef.current || owner !== activeRequestRef.current)
+        return false;
+      if (owner && !ownsRequest(owner)) return false;
+      if (loading) {
+        ToastManager.show({
+          heading: titleRef.current,
+          message: strings.pleaseWait() + "...",
+          type: "success",
+          context: "local"
+        });
+        return false;
+      }
 
-    // Reset form values and errors
-    formRef.current.setValue("password", "");
-    formRef.current.setValue("confirmPassword", "");
-    formRef.current.setValue("newPassword", "");
-    formRef.current.clearErrors();
+      Navigation.queueRoutesForUpdate();
 
-    // Reset refs
-    requestTypeRef.current = null;
-    noteRef.current = undefined;
-    titleRef.current = strings.goToEditor();
-    descriptionRef.current = null;
-    paragraphRef.current = null;
-    buttonTitleRef.current = null;
-    positiveButtonTypeRef.current = "transparent";
-    customActionTitleRef.current = null;
-    customActionParagraphRef.current = null;
-    noteLockedRef.current = false;
-    onUnlockRef.current = undefined;
+      // Reset form values and errors
+      formRef.current.setValue("password", "");
+      formRef.current.setValue("confirmPassword", "");
+      formRef.current.setValue("newPassword", "");
+      formRef.current.clearErrors();
 
-    // Reset UI state
-    setVisible(false);
-    setLoading(false);
-    setDeleteAll(false);
-    setBiometricUnlock(false);
-    setIsBiometryAvailable(false);
-    setIsBiometryEnrolled(false);
-  }, [loading]);
+      // Reset refs
+      requestTypeRef.current = null;
+      noteRef.current = undefined;
+      titleRef.current = strings.goToEditor();
+      descriptionRef.current = null;
+      paragraphRef.current = null;
+      buttonTitleRef.current = null;
+      positiveButtonTypeRef.current = "transparent";
+      customActionTitleRef.current = null;
+      customActionParagraphRef.current = null;
+      noteLockedRef.current = false;
+      onUnlockRef.current = undefined;
+
+      // The request that owned this dialog can no longer complete here. A request
+      // whose share sheet was already launched keeps ownership of its own
+      // completion until the sheet settles.
+      const request = owner;
+      if (request && !request.shareDispatched) {
+        finishRequest(request);
+      }
+
+      // Reset UI state
+      setVisible(false);
+      setLoading(false);
+      setDeleteAll(false);
+      setBiometricUnlock(false);
+      setIsBiometryAvailable(false);
+      setIsBiometryEnrolled(false);
+      return true;
+    },
+    [loading, finishRequest, ownsRequest]
+  );
+
+  const close = useCallback(
+    () => closeOwned(activeRequestRef.current),
+    [closeOwned]
+  );
 
   const deleteVault = useCallback(async () => {
+    const owner = activeRequestRef.current;
     setLoading(true);
     try {
       const { password } = formRef.current.getValues();
@@ -200,23 +278,27 @@ export const VaultDialog: React.FC = () => {
           });
         }
         eSendEvent("vaultUpdated");
+        if (!ownsRequest(owner)) return;
         setLoading(false);
-        close();
+        closeOwned(owner);
         ToastManager.show({
           message: strings.vaultDeleted(),
           type: "success",
           context: "global"
         });
       } else {
+        if (!ownsRequest(owner)) return;
         setLoading(false);
         formRef.current.setError("password", strings.passwordIncorrect());
       }
     } catch (e) {
       console.error(e);
+      if (ownsRequest(owner)) setLoading(false);
     }
-  }, [deleteAll, close]);
+  }, [deleteAll, closeOwned, ownsRequest]);
 
   const clearVault = useCallback(async () => {
+    const owner = activeRequestRef.current;
     setLoading(true);
     try {
       const { password } = formRef.current.getValues();
@@ -236,39 +318,50 @@ export const VaultDialog: React.FC = () => {
           true
         );
       });
-      setLoading(false);
-      close();
       eSendEvent("vaultUpdated");
+      if (!ownsRequest(owner)) return;
+      setLoading(false);
+      closeOwned(owner);
       ToastManager.show({
         message: strings.vaultCleared(),
         type: "success"
       });
     } catch (e) {
-      formRef.current.setError("password", strings.passwordIncorrect());
+      if (ownsRequest(owner)) {
+        formRef.current.setError("password", strings.passwordIncorrect());
+      }
     }
-    setLoading(false);
-  }, [close]);
+    if (ownsRequest(owner)) setLoading(false);
+  }, [closeOwned, ownsRequest]);
 
   const enrollFingerprint = useCallback(
-    async (password: string) => {
+    async (
+      password: string,
+      closeAfter = true,
+      owner = activeRequestRef.current
+    ) => {
+      if (!ownsRequest(owner)) return;
       setLoading(true);
       try {
         await db.vault.unlock(password);
+        if (!ownsRequest(owner)) return;
         await BiometricService.storeCredentials(password);
-        setLoading(false);
         eSendEvent("vaultUpdated");
+        if (!ownsRequest(owner)) return;
+        setLoading(false);
         ToastManager.show({
           heading: strings.biometricUnlockEnabled(),
           type: "success",
           context: "global"
         });
-        close();
+        if (closeAfter) closeOwned(owner);
       } catch (e) {
+        if (!ownsRequest(owner)) return;
         formRef.current.setError("password", strings.passwordIncorrect());
         setLoading(false);
       }
     },
-    [close]
+    [closeOwned, ownsRequest]
   );
 
   const takeErrorAction = useCallback(() => {
@@ -276,57 +369,70 @@ export const VaultDialog: React.FC = () => {
     setVisible(true);
   }, []);
 
-  const lockNote = useCallback(async () => {
-    const { password } = formRef.current.getValues();
-    if (!password || password.trim() === "") {
-      formRef.current.setError("password", strings.passwordIncorrect());
-      return;
-    } else {
-      await db.vault.add(noteRef.current!.id);
+  const lockNote = useCallback(
+    async (owner = activeRequestRef.current, item = noteRef.current) => {
+      if (!item || !ownsRequest(owner)) return;
+      const { password } = formRef.current.getValues();
+      if (!password || password.trim() === "") {
+        formRef.current.setError("password", strings.passwordIncorrect());
+        return;
+      } else {
+        await db.vault.add(item.id);
 
-      eSendEvent(eUpdateNoteInEditor, noteRef.current, true);
+        eSendEvent(eUpdateNoteInEditor, item, true);
 
-      close();
-      ToastManager.show({
-        message: strings.noteLocked(),
-        type: "error",
-        context: "local"
-      });
-      setLoading(false);
-    }
-  }, [close]);
+        if (!ownsRequest(owner)) return;
+        closeOwned(owner);
+        ToastManager.show({
+          message: strings.noteLocked(),
+          type: "error",
+          context: "local"
+        });
+        setLoading(false);
+      }
+    },
+    [closeOwned, ownsRequest]
+  );
 
   const permanantUnlock = useCallback(() => {
+    const owner = activeRequestRef.current;
+    const item = noteRef.current;
+    if (!item || !ownsRequest(owner)) return;
     const { password } = formRef.current.getValues();
     db.vault
-      .remove(noteRef.current!.id, password)
+      .remove(item.id, password)
       .then(async () => {
+        eSendEvent(eUpdateNoteInEditor, item, true);
+        if (!ownsRequest(owner)) return;
         ToastManager.show({
           heading: strings.noteUnlocked(),
           type: "success",
           context: "global"
         });
-        eSendEvent(eUpdateNoteInEditor, noteRef.current, true);
         if (biometricUnlock && !isBiometryEnrolled) {
-          await enrollFingerprint(password);
+          await enrollFingerprint(password, false, owner);
         }
-        close();
+        closeOwned(owner);
       })
       .catch((e) => {
-        takeErrorAction();
+        if (ownsRequest(owner)) takeErrorAction();
       });
   }, [
     biometricUnlock,
     isBiometryEnrolled,
-    close,
+    closeOwned,
+    ownsRequest,
     enrollFingerprint,
     takeErrorAction
   ]);
 
   const openInEditor = useCallback(
     (note: Note & { content?: NoteContent<false> }) => {
-      close();
+      const owner = activeRequestRef.current;
+      const token = requestTokenRef.current;
+      if (!closeOwned(owner)) return;
       InteractionManager.runAfterInteractions(async () => {
+        if (!mountedRef.current || requestTokenRef.current !== token) return;
         eSendEvent(eOnLoadNote, {
           item: note
         });
@@ -335,80 +441,234 @@ export const VaultDialog: React.FC = () => {
         }
       });
     },
-    [close]
+    [closeOwned]
   );
 
   const copyNote = useCallback(
     async (note: Note & { content?: NoteContent<false> }) => {
-      Clipboard.setString((await convertNoteToText(note, true)) || "");
+      const owner = activeRequestRef.current;
+      const text = await convertNoteToText(note, true);
+      if (!ownsRequest(owner)) return;
+      Clipboard.setString(text || "");
       ToastManager.show({
         heading: strings.noteCopied(),
         type: "success",
         context: "global"
       });
-      close();
+      closeOwned(owner);
     },
-    [close]
+    [closeOwned, ownsRequest]
   );
 
   const shareNote = useCallback(
-    async (note: Note & { content?: NoteContent<false> }) => {
-      close();
+    async (
+      note: Note & { content?: NoteContent<false> },
+      request: VaultRequest | null,
+      token: number
+    ) => {
+      const isCurrent = () =>
+        mountedRef.current &&
+        requestTokenRef.current === token &&
+        !request?.completed;
+      const senderGuard = request?.shareGuard;
+
+      // Legacy unguarded path: unchanged behavior. No guard means no
+      // `undefined` outcome and the exact pre-existing Share options survive.
+      if (!senderGuard) {
+        closeOwned(request);
+        try {
+          await Share.open({
+            title: note.title,
+            failOnCancel: false,
+            message: (await convertNoteToText(note)) || ""
+          });
+        } catch (e) {
+          console.error(e);
+        }
+        return;
+      }
+
+      // Guarded primary Share path. The fence only ever confirms this exact
+      // request (mounted + token + note id) and then defers to the caller's
+      // captured guard, so a stale sender or a stale request yields
+      // `undefined` from the converter.
+      const fence: NoteSenderGuard = (candidateNoteId: string) => {
+        if (!mountedRef.current) return false;
+        if (requestTokenRef.current !== token) return false;
+        if (request?.completed) return false;
+        if (request?.noteId !== candidateNoteId) return false;
+        return senderGuard(candidateNoteId);
+      };
+
+      let converted: string | false | undefined;
+      try {
+        converted = await convertNoteToText(note, undefined, fence);
+      } catch (e) {
+        // A stale failure must not close or error onto a newer dialog.
+        if (!isCurrent()) return;
+        // Close our own dialog (whose own guard releases this request's
+        // captured completion exactly once) and report the failure.
+        closeOwned(request);
+        ToastManager.show({
+          message: strings.somethingWentWrong(),
+          type: "error",
+          context: "global"
+        });
+        return;
+      }
+
+      if (typeof converted !== "string") {
+        if (!isCurrent()) {
+          // Stale/unconfirmed sender, or a request a newer one already
+          // replaced: release our own captured completion once and never touch
+          // the newer request's dialog.
+          if (request) finishRequest(request);
+          return;
+        }
+        // Our own, still-current request: close it so no completed request is
+        // left visible; `close()` releases the captured completion once. The
+        // current-request verdict is read here, *before* the close marks the
+        // request completed (which `isCurrent()` would otherwise see as stale
+        // and suppress the error forever). Only a real `false` refusal
+        // surfaces the generic error; a stale `undefined` stays silent.
+        closeOwned(request);
+        if (converted === false) {
+          ToastManager.show({
+            message: strings.somethingWentWrong(),
+            type: "error",
+            context: "global"
+          });
+        }
+        return;
+      }
+
+      // Revalidate our own request and the captured guard immediately before
+      // closing our own dialog. The close below must not invalidate this
+      // export.
+      if (!isCurrent() || senderGuard(note.id) !== true) {
+        if (isCurrent()) closeOwned(request);
+        else if (request) finishRequest(request);
+        return;
+      }
+
+      if (request) request.shareDispatched = true;
+      closeOwned(request);
       try {
         await Share.open({
           title: note.title,
           failOnCancel: false,
-          message: (await convertNoteToText(note)) || ""
+          message: converted
         });
       } catch (e) {
         console.error(e);
+      } finally {
+        if (request) finishRequest(request);
       }
     },
-    [close]
+    [closeOwned, finishRequest]
   );
 
   const deleteNote = useCallback(async () => {
+    const owner = activeRequestRef.current;
+    const item = noteRef.current;
+    if (!item || !ownsRequest(owner)) return;
     const { password } = formRef.current.getValues();
     try {
-      await db.vault.remove(noteRef.current!.id, password);
-      await deleteItems("note", [noteRef.current!.id]);
-      close();
+      await db.vault.remove(item.id, password);
+      await deleteItems("note", [item.id]);
+      closeOwned(owner);
     } catch (e) {
-      takeErrorAction();
+      if (ownsRequest(owner)) takeErrorAction();
     }
-  }, [close, takeErrorAction]);
+  }, [closeOwned, ownsRequest, takeErrorAction]);
 
   const openNote = useCallback(async () => {
     const { password } = formRef.current.getValues();
-    try {
-      if (!password) throw new Error("Invalid password");
+    const token = requestTokenRef.current;
+    // Snapshot the owning intent before any await: an old result must be
+    // dispatched under the request it started for, never the newer one whose
+    // refs replaced these. A request that `close()` already completed (cancel)
+    // is no longer current either.
+    const item = noteRef.current;
+    const requestType = requestTypeRef.current;
+    const request = activeRequestRef.current;
+    const onUnlock = onUnlockRef.current;
+    if (!request?.ready || request.noteId !== item?.id) return;
+    const isCurrent = () =>
+      mountedRef.current &&
+      requestTokenRef.current === token &&
+      !request?.completed;
+    // The supplied sender fence must still confirm before and after every await
+    // of the unlock. A supplied but non-callable guard fails closed; `undefined`
+    // (legacy callers) is inert and never calls anything.
+    const senderGuard = request?.shareGuard;
+    const guardConfirmed = () =>
+      senderGuard === undefined
+        ? true
+        : typeof senderGuard === "function" &&
+          senderGuard(item?.id as string) === true;
+    // Abandon an in-flight unlock whose sender fence no longer confirms: close
+    // our own dialog (releasing the captured completion once through `close()`)
+    // so no completed request is left visible, and never touch a newer request.
+    const abortUnconfirmedSender = () => {
+      if (isCurrent()) {
+        closeOwned(request);
+      } else if (request) {
+        finishRequest(request);
+      }
+    };
 
-      const note = await db.vault.open(noteRef.current!.id, password);
-      if (!note) throw new Error("Failed to unlock note.");
-      if (biometricUnlock && !isBiometryEnrolled) {
-        await enrollFingerprint(password);
+    try {
+      if (!item || !password) throw new Error("Invalid password");
+
+      // Revalidate the fence before the unlock: a sender that already changed
+      // must abort with no database access at all.
+      if (!guardConfirmed()) {
+        abortUnconfirmedSender();
+        return;
       }
 
-      const requestType = requestTypeRef.current;
+      const note = await db.vault.open(item.id, password);
+      if (!isCurrent()) return;
+
+      // A stale sender after the unlock finishes this request's own completion
+      // once and shares nothing.
+      if (!guardConfirmed()) {
+        abortUnconfirmedSender();
+        return;
+      }
+
+      if (!note) throw new Error("Failed to unlock note.");
+      if (biometricUnlock && !isBiometryEnrolled) {
+        await enrollFingerprint(password, false, request);
+        if (!isCurrent()) return;
+        if (!guardConfirmed()) {
+          abortUnconfirmedSender();
+          return;
+        }
+      }
 
       if (requestType === VaultRequestType.GoToEditor) {
         openInEditor(note);
       } else if (requestType === VaultRequestType.ShareNote) {
-        await shareNote(note);
+        await shareNote(note, request, token);
       } else if (requestType === VaultRequestType.DeleteNote) {
         await deleteNote();
       } else if (requestType === VaultRequestType.CopyNote) {
         await copyNote(note);
-      } else if (
-        requestType === VaultRequestType.CustomAction &&
-        onUnlockRef.current
-      ) {
-        const unlock = onUnlockRef.current;
-        close();
+      } else if (requestType === VaultRequestType.CustomAction && onUnlock) {
+        // Legacy custom action: `close()` completes this request but the
+        // captured `onUnlock` must still run after the post-close delay, so it
+        // is deliberately not gated on `isCurrent()`.
+        closeOwned(request);
         await sleep(500);
-        unlock(note, password);
+        if (mountedRef.current && requestTokenRef.current === token) {
+          onUnlock(note, password);
+        }
       }
     } catch (e) {
+      // A stale failure must not close or error onto a newer dialog.
+      if (!isCurrent()) return;
       takeErrorAction();
     }
   }, [
@@ -419,8 +679,9 @@ export const VaultDialog: React.FC = () => {
     shareNote,
     deleteNote,
     copyNote,
-    close,
-    takeErrorAction
+    closeOwned,
+    takeErrorAction,
+    finishRequest
   ]);
 
   const unlockNote = useCallback(async () => {
@@ -437,57 +698,69 @@ export const VaultDialog: React.FC = () => {
   }, [permanantUnlock, openNote]);
 
   const createVault = useCallback(async () => {
+    const owner = activeRequestRef.current;
+    const item = noteRef.current;
+    if (!ownsRequest(owner)) return;
     const { password } = formRef.current.getValues();
     await db.vault.create(password);
+    if (!ownsRequest(owner)) return;
 
     if (biometricUnlock) {
-      await enrollFingerprint(password);
+      await enrollFingerprint(password, false, owner);
     }
-    if (noteRef.current?.id) {
-      await db.vault.add(noteRef.current.id);
-      eSendEvent(eUpdateNoteInEditor, noteRef.current, true);
+    if (!ownsRequest(owner)) return;
+    if (item?.id) {
+      await db.vault.add(item.id);
+      eSendEvent(eUpdateNoteInEditor, item, true);
+      if (!ownsRequest(owner)) return;
       setLoading(false);
       ToastManager.show({
         heading: strings.noteLocked(),
         type: "success",
         context: "global"
       });
-      close();
+      closeOwned(owner);
     } else {
       ToastManager.show({
         heading: strings.vaultCreated(),
         type: "success",
         context: "global"
       });
-      close();
+      closeOwned(owner);
     }
     eSendEvent("vaultUpdated");
-  }, [biometricUnlock, enrollFingerprint, close]);
+  }, [biometricUnlock, enrollFingerprint, closeOwned, ownsRequest]);
 
   const revokeFingerprintAccess = useCallback(async () => {
+    const owner = activeRequestRef.current;
     try {
       await BiometricService.resetCredentials();
       eSendEvent("vaultUpdated");
+      if (!ownsRequest(owner)) return;
       ToastManager.show({
         heading: strings.biometricUnlockDisabled(),
         type: "success",
         context: "global"
       });
     } catch (e: any) {
+      if (!ownsRequest(owner)) return;
       ToastManager.show({
         heading: e.message,
         type: "success",
         context: "global"
       });
     }
-  }, []);
+  }, [ownsRequest]);
 
   const onPress = useCallback(async () => {
+    const request = activeRequestRef.current;
+    if (!request?.ready || request.completed) return;
     const requestType = requestTypeRef.current;
+    const item = noteRef.current;
 
     if (requestType === VaultRequestType.RevokeFingerprint) {
       await revokeFingerprintAccess();
-      close();
+      closeOwned(request);
       return;
     }
 
@@ -500,7 +773,7 @@ export const VaultDialog: React.FC = () => {
     if (requestType === VaultRequestType.DeleteVault && !isUserLoggedIn) {
       setLoading(true);
       await deleteVault();
-      setLoading(false);
+      if (ownsRequest(request)) setLoading(false);
       return;
     }
 
@@ -512,20 +785,23 @@ export const VaultDialog: React.FC = () => {
       db.vault
         .changePassword(password, newPassword)
         .then(async () => {
+          if (!ownsRequest(request)) return;
           setLoading(false);
           if (biometricUnlock) {
-            enrollFingerprint(newPassword);
+            await enrollFingerprint(newPassword, false, request);
           } else {
             await BiometricService.resetCredentials();
           }
+          if (!ownsRequest(request)) return;
           ToastManager.show({
             heading: strings.passwordUpdated(),
             type: "success",
             context: "global"
           });
-          close();
+          closeOwned(request);
         })
         .catch((e) => {
+          if (!ownsRequest(request)) return;
           setLoading(false);
           if (e.message === VAULT_ERRORS.wrongPassword) {
             formRef.current.setError("password", strings.passwordIncorrect());
@@ -537,13 +813,15 @@ export const VaultDialog: React.FC = () => {
       db.vault
         .unlock(password)
         .then(async (unlocked) => {
+          if (!ownsRequest(request)) return;
           if (unlocked) {
-            await lockNote();
+            await lockNote(request, item);
           } else {
             formRef.current.setError("password", strings.passwordIncorrect());
           }
         })
         .catch((e) => {
+          if (!ownsRequest(request)) return;
           formRef.current.setError("password", strings.passwordIncorrect());
         });
     } else if (
@@ -569,9 +847,11 @@ export const VaultDialog: React.FC = () => {
     }
   }, [
     loading,
+    isUserLoggedIn,
     biometricUnlock,
     revokeFingerprintAccess,
-    close,
+    closeOwned,
+    ownsRequest,
     createVault,
     enrollFingerprint,
     unlockNote,
@@ -582,11 +862,37 @@ export const VaultDialog: React.FC = () => {
 
   const onPressFingerprintAuth = useCallback(
     async (title?: string, description?: string) => {
+      const token = requestTokenRef.current;
+      const request = activeRequestRef.current;
+      if (!request?.ready) return;
+      const isCurrent = () =>
+        mountedRef.current &&
+        requestTokenRef.current === token &&
+        !request?.completed;
+      // The supplied fence must still confirm after the credential prompt (and
+      // after the sheet-closing delay) before this request may write a password
+      // or show its dialog. `undefined` is inert.
+      const senderGuard = request?.shareGuard;
+      const guardConfirmed = () =>
+        senderGuard === undefined
+          ? true
+          : typeof senderGuard === "function" &&
+            senderGuard(request?.noteId as string) === true;
+      const abortIfStaleSender = () => {
+        if (guardConfirmed()) return false;
+        if (request) finishRequest(request);
+        return true;
+      };
       try {
         const credentials = await BiometricService.getCredentials(
           title || titleRef.current,
           description || descriptionRef.current || ""
         );
+
+        // Never write a password or trigger a press for a request that was
+        // replaced while the credential prompt was open.
+        if (!isCurrent()) return;
+        if (abortIfStaleSender()) return;
 
         if (!credentials) throw new Error("Failed to get user credentials");
 
@@ -596,76 +902,163 @@ export const VaultDialog: React.FC = () => {
         } else {
           eSendEvent(eCloseActionSheet);
           await sleep(300);
+          if (!isCurrent()) return;
+          if (abortIfStaleSender()) return;
           setVisible(true);
         }
       } catch (e) {
         console.error(e);
       }
     },
-    [onPress]
+    [onPress, finishRequest]
   );
 
   const open = useCallback(
     async (data: Vault) => {
-      const biometry = await BiometricService.isBiometryAvailable();
-      const available = !!biometry;
-      const fingerprint = await BiometricService.hasInternetCredentials();
+      // A token is allocated synchronously for every inbound request, legacy
+      // ones included, before any await. Only the latest one may install refs,
+      // show the dialog or dispatch a result. A request that `close()` already
+      // completed (cancel) is no longer current either, so a superseded chain
+      // resuming from an await can never re-install refs or re-show a dialog.
+      const token = ++requestTokenRef.current;
 
-      if (data.item) {
-        const locked = await db.vaults.itemExists(data.item);
-        noteLockedRef.current = locked;
-        if (!locked) {
-          const content = await db.content.findByNoteId(data.item!.id);
-          if (content && isEncryptedContent(content)) {
-            noteLockedRef.current = true;
+      // This request supersedes any still-pending previous request: complete
+      // the previous request once with *its own* captured callback.
+      const previous = activeRequestRef.current;
+      const request: VaultRequest = {
+        token,
+        noteId: data.item?.id,
+        shareGuard: data.shareGuard,
+        onShareComplete: data.onShareComplete,
+        completed: false,
+        ready: false,
+        shareDispatched: false
+      };
+      activeRequestRef.current = request;
+      // Install before completion: a callback may synchronously open a newer request.
+      if (previous) finishRequest(previous);
+
+      const isCurrent = () =>
+        mountedRef.current &&
+        requestTokenRef.current === token &&
+        !request.completed;
+
+      try {
+        // Strict, fail-closed sender fence for the guarded ("new primary") path.
+        // A supplied but non-callable guard is a caller error: abort with no
+        // database access at all, never degrading to the legacy path. A supplied
+        // guard that does not confirm the captured note id aborts before every
+        // await. `undefined` (legacy callers) is inert and changes nothing.
+        const senderGuard = data.shareGuard;
+        const noteId = data.item?.id;
+        const guardConfirmed = () =>
+          senderGuard === undefined
+            ? true
+            : typeof senderGuard === "function" &&
+              senderGuard(noteId as string) === true;
+
+        if (!guardConfirmed()) {
+          finishRequest(request);
+          return;
+        }
+
+        const biometry = await BiometricService.isBiometryAvailable();
+        if (!isCurrent() || !guardConfirmed()) {
+          finishRequest(request);
+          return;
+        }
+        const available = !!biometry;
+        const fingerprint = await BiometricService.hasInternetCredentials();
+        if (!isCurrent() || !guardConfirmed()) {
+          finishRequest(request);
+          return;
+        }
+
+        if (data.item) {
+          const locked = await db.vaults.itemExists(data.item);
+          if (!isCurrent() || !guardConfirmed()) {
+            finishRequest(request);
+            return;
+          }
+          noteLockedRef.current = locked;
+          if (!locked) {
+            const content = await db.content.findByNoteId(data.item.id);
+            if (!isCurrent() || !guardConfirmed()) {
+              finishRequest(request);
+              return;
+            }
+            if (content && isEncryptedContent(content)) {
+              noteLockedRef.current = true;
+            }
           }
         }
-      }
 
-      // Set refs
-      noteRef.current = data.item;
-      titleRef.current = data.title || strings.goToEditor();
-      descriptionRef.current = data.description || null;
-      paragraphRef.current = data.paragraph || null;
-      buttonTitleRef.current = data.buttonTitle || null;
-      positiveButtonTypeRef.current = data.positiveButtonType || "transparent";
-      customActionTitleRef.current = data.customActionTitle || null;
-      customActionParagraphRef.current = data.customActionParagraph || null;
-      onUnlockRef.current = data.onUnlock;
-      requestTypeRef.current = data.requestType;
+        // Set refs (only a current request may)
+        noteRef.current = data.item;
+        titleRef.current = data.title || strings.goToEditor();
+        descriptionRef.current = data.description || null;
+        paragraphRef.current = data.paragraph || null;
+        buttonTitleRef.current = data.buttonTitle || null;
+        positiveButtonTypeRef.current =
+          data.positiveButtonType || "transparent";
+        customActionTitleRef.current = data.customActionTitle || null;
+        customActionParagraphRef.current = data.customActionParagraph || null;
+        onUnlockRef.current = data.onUnlock;
+        requestTypeRef.current = data.requestType;
+        request.ready = true;
 
-      // Set UI state
-      setIsBiometryAvailable(available);
-      setIsBiometryEnrolled(fingerprint);
-      setBiometricUnlock(fingerprint);
-      setDeleteAll(false);
-      setLoading(false);
+        // Set UI state
+        setIsBiometryAvailable(available);
+        setIsBiometryEnrolled(fingerprint);
+        setBiometricUnlock(fingerprint);
+        setDeleteAll(false);
+        setLoading(false);
 
-      // Auto-unlock with fingerprint if applicable
-      const canAutoUnlock =
-        fingerprint &&
-        available &&
-        data.requestType !== VaultRequestType.EnableFingerprint &&
-        data.requestType !== VaultRequestType.RevokeFingerprint &&
-        data.requestType !== VaultRequestType.ChangePassword &&
-        data.requestType !== VaultRequestType.ClearVault &&
-        data.requestType !== VaultRequestType.DeleteVault &&
-        data.requestType !== VaultRequestType.CustomAction &&
-        data.requestType !== VaultRequestType.PermanentUnlock &&
-        data.requestType !== VaultRequestType.CreateVault;
+        // Auto-unlock with fingerprint if applicable
+        const canAutoUnlock =
+          fingerprint &&
+          available &&
+          data.requestType !== VaultRequestType.EnableFingerprint &&
+          data.requestType !== VaultRequestType.RevokeFingerprint &&
+          data.requestType !== VaultRequestType.ChangePassword &&
+          data.requestType !== VaultRequestType.ClearVault &&
+          data.requestType !== VaultRequestType.DeleteVault &&
+          data.requestType !== VaultRequestType.CustomAction &&
+          data.requestType !== VaultRequestType.PermanentUnlock &&
+          data.requestType !== VaultRequestType.CreateVault;
 
-      if (canAutoUnlock && available) {
-        try {
-          await onPressFingerprintAuth(data.title, data.description);
-        } catch (e) {
+        if (canAutoUnlock && available) {
+          try {
+            await onPressFingerprintAuth(data.title, data.description);
+          } catch (e) {
+            if (isCurrent()) setVisible(true);
+          }
+        } else {
           setVisible(true);
         }
-      } else {
-        setVisible(true);
+      } catch {
+        // Preflight failure must release the captured native Share flight.
+        if (isCurrent()) {
+          setVisible(false);
+          setLoading(false);
+        }
+        finishRequest(request);
       }
     },
-    [onPressFingerprintAuth]
+    [onPressFingerprintAuth, finishRequest]
   );
+
+  // Mount fence: an unmount completes the pending request exactly once, using
+  // its captured callback, without launching a share or mutating UI state. Its
+  // own identity is stable, so this cleanup runs only on real unmount.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      const request = activeRequestRef.current;
+      if (request) finishRequest(request);
+    };
+  }, [finishRequest]);
 
   useEffect(() => {
     eSubscribeEvent(eOpenVaultDialog, open);

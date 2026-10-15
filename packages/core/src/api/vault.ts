@@ -23,6 +23,10 @@ import { EVENTS } from "../common.js";
 import { isCipher } from "../utils/crypto.js";
 import { Note, NoteContent } from "../types.js";
 import { logger } from "../logger.js";
+import {
+  DomainWriteToken,
+  withDomainWrite
+} from "../connect/domain-lock.js";
 
 export const VAULT_ERRORS = {
   noVault: "ERR_NO_VAULT",
@@ -111,24 +115,34 @@ export default class Vault {
     if (await this.unlock(oldPassword)) {
       const relations = await this.db.relations.from(vault, "note").get();
       for (const { toId: noteId } of relations) {
-        const content = await this.db.content.findByNoteId(noteId);
-        if (!content || !content.locked) {
-          await this.db.relations.unlink(vault, { id: noteId, type: "note" });
-          continue;
-        }
-
         try {
-          const decryptedContent = await this.decryptContent(
-            content,
-            oldPassword
-          );
+          // Re-encrypting one note's body is a read-modify-write of that body,
+          // so the *read* has to happen inside the same critical section as the
+          // write: reading the ciphertext before the lock would let a
+          // concurrent vault/editor write be overwritten with the stale row.
+          await withDomainWrite(this.db, async (token) => {
+            const content = await this.db.content.findByNoteId(noteId);
+            if (!content || !content.locked) {
+              await this.db.relations.unlink(vault, {
+                id: noteId,
+                type: "note"
+              });
+              return;
+            }
 
-          await this.encryptContent(
-            decryptedContent,
-            noteId,
-            newPassword,
-            `${Date.now()}`
-          );
+            const decryptedContent = await this.decryptContent(
+              content,
+              oldPassword
+            );
+
+            await this.encryptContent(
+              decryptedContent,
+              noteId,
+              newPassword,
+              `${Date.now()}`,
+              token
+            );
+          });
         } catch (e) {
           logger.error(e, `Could not decrypt content of note ${noteId}`);
           throw new Error(
@@ -155,8 +169,10 @@ export default class Vault {
     if (await this.unlock(password)) {
       const relations = await this.db.relations.from(vault, "note").get();
       for (const { toId: noteId } of relations) {
-        await this.unlockNote(noteId, password, true);
-        await this.db.relations.unlink(vault, { id: noteId, type: "note" });
+        await withDomainWrite(this.db, async (token) => {
+          await this.unlockNote(noteId, password, true, token);
+          await this.db.relations.unlink(vault, { id: noteId, type: "note" });
+        });
       }
     }
   }
@@ -189,10 +205,19 @@ export default class Vault {
   }
 
   /**
-   * Locks (add to vault) a note
+   * Locks (add to vault) a note.
+   *
+   * The whole read-modify-write (read the current body, encrypt it, persist)
+   * runs inside the shared domain write lock: a concurrent ordinary or
+   * Connect write must never be able to slip unprepared plaintext past the
+   * encryption step, and a vault transition must never be overwritten by a
+   * prepared plaintext fragment.
    */
   async add(noteId: string) {
-    await this.lockNote({ id: noteId }, await this.getVaultPassword());
+    const password = await this.getVaultPassword();
+    await withDomainWrite(this.db, (token) =>
+      this.lockNote({ id: noteId }, password, token)
+    );
     await this.db.noteHistory.clearSessions(noteId);
   }
 
@@ -200,9 +225,12 @@ export default class Vault {
    * Permanently unlocks (remove from vault) a note
    */
   async remove(noteId: string, password: string) {
-    await this.unlockNote(noteId, password, true);
-
-    await this.db.relations.to({ id: noteId, type: "note" }, "vault").unlink();
+    await withDomainWrite(this.db, async (token) => {
+      await this.unlockNote(noteId, password, true, token);
+      await this.db.relations
+        .to({ id: noteId, type: "note" }, "vault")
+        .unlink();
+    });
   }
 
   /**
@@ -215,10 +243,8 @@ export default class Vault {
     const note = await this.db.notes.note(noteId);
     if (!note) return;
 
-    const content = await this.unlockNote(
-      noteId,
-      password || this.password,
-      false
+    const content = await withDomainWrite(this.db, (token) =>
+      this.unlockNote(noteId, password || this.password, false, token)
     );
 
     if (password) {
@@ -241,7 +267,10 @@ export default class Vault {
     if (!note) return;
     // roll over erase timer
     this.startEraser();
-    return await this.lockNote(note, await this.getVaultPassword());
+    const password = await this.getVaultPassword();
+    return await withDomainWrite(this.db, (token) =>
+      this.lockNote(note, password, token)
+    );
   }
 
   async exists(vaultKey?: Cipher<"base64">) {
@@ -267,19 +296,23 @@ export default class Vault {
     content: NoteContent<false>,
     noteId: string,
     password: string,
-    sessionId?: string
+    sessionId?: string,
+    token?: DomainWriteToken
   ) {
     const encryptedContent = await this.db
       .storage()
       .encrypt({ password }, JSON.stringify(content.data));
 
-    return await this.db.content.add({
-      noteId,
-      sessionId,
-      data: encryptedContent,
-      dateEdited: Date.now(),
-      type: content.type
-    });
+    return await this.db.content.add(
+      {
+        noteId,
+        sessionId,
+        data: encryptedContent,
+        dateEdited: Date.now(),
+        type: content.type
+      },
+      token
+    );
   }
 
   async decryptContent(encryptedContent: NoteContent<true>, password?: string) {
@@ -298,13 +331,15 @@ export default class Vault {
     };
   }
 
+  /** Callers must hold the domain write lock and pass their token. */
   private async lockNote(
     item: {
       content?: NoteContent<false>;
       sessionId?: string;
       id: string;
     },
-    password: string
+    password: string,
+    token: DomainWriteToken
   ) {
     const vault = await this.db.vaults.default();
     if (!vault) throw new Error(VAULT_ERRORS.noVault);
@@ -337,15 +372,24 @@ export default class Vault {
       });
     }
 
-    await this.db.notes.add({
-      id,
-      headline: "",
-      dateEdited: Date.now(),
-      contentId:
-        data && type
-          ? await this.encryptContent({ data, type }, id, password, sessionId)
-          : undefined
-    });
+    await this.db.notes.add(
+      {
+        id,
+        headline: "",
+        dateEdited: Date.now(),
+        contentId:
+          data && type
+            ? await this.encryptContent(
+                { data, type },
+                id,
+                password,
+                sessionId,
+                token
+              )
+            : undefined
+      },
+      token
+    );
 
     await this.db.relations.add(vault, {
       id,
@@ -355,10 +399,12 @@ export default class Vault {
     return id;
   }
 
+  /** Callers must hold the domain write lock and pass their token. */
   private async unlockNote(
     noteId: string,
-    password?: string,
-    perm = false
+    password: string | undefined,
+    perm: boolean,
+    token: DomainWriteToken
   ): Promise<NoteContent<false> | undefined> {
     const content = await this.db.content.findByNoteId(noteId);
     if (!content || !content.locked) {
@@ -375,7 +421,8 @@ export default class Vault {
         decryptedContent,
         noteId,
         password,
-        `${Date.now}`
+        `${Date.now}`,
+        token
       );
     }
 
@@ -383,11 +430,14 @@ export default class Vault {
       await this.db.relations
         .to({ id: noteId, type: "note" }, "vault")
         .unlink();
-      await this.db.notes.add({
-        id: noteId,
-        contentId: content.id,
-        content: decryptedContent
-      });
+      await this.db.notes.add(
+        {
+          id: noteId,
+          contentId: content.id,
+          content: decryptedContent
+        },
+        token
+      );
       // await this.db.content.add({ id: note.contentId, data: content });
       return;
     }

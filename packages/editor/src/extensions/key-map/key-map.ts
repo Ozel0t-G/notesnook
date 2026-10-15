@@ -20,6 +20,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { tiptapKeys } from "@notesnook/common";
 import { Extension } from "@tiptap/core";
 import { showLinkPopup } from "../../toolbar/popups/link-popup.js";
+import { insertInternalLink } from "../../toolbar/tools/internal-link-command.js";
+import type { Editor } from "../../types.js";
 import { isListActive } from "../../utils/list.js";
 import { CodeBlock } from "../code-block/index.js";
 import { isInTable } from "../table/prosemirror-tables/util.js";
@@ -63,18 +65,11 @@ export const KeyMap = Extension.create({
         return true;
       },
       [tiptapKeys.insertInternalLink.keys]: ({ editor }) => {
-        editor.storage.createInternalLink?.().then((link) => {
-          if (!link) return;
-
-          const selectedText = editor.state.doc.textBetween(
-            editor.state.selection.from,
-            editor.state.selection.to
-          );
-          editor.commands.setLink({
-            ...link,
-            title: selectedText || link.title
-          });
-        });
+        // Route the shortcut through the same guarded command as every other
+        // internal-link entry point: the host picker result is only applied when
+        // the editor is still editable, alive and the document is unchanged.
+        // Fire-and-forget keeps the synchronous handled boolean tiptap expects.
+        insertInternalLink(editor as unknown as Editor);
         return true;
       },
       [tiptapKeys.insertLink.keys]: ({ editor }) => {

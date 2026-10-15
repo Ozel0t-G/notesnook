@@ -31,12 +31,15 @@ import {
   eSubscribeEvent,
   eUnSubscribeEvent
 } from "../../services/event-manager";
+import { registerMacModal } from "../../services/mac-modal-stack";
 import { getContainerBorder } from "../../utils/colors";
+import { isMacCatalyst } from "../../utils/constants";
 import { getElevationStyle } from "../../utils/elevation";
 import { eCloseSimpleDialog, eOpenSimpleDialog } from "../../utils/events";
 import { defaultBorderRadius } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { sleep } from "../../utils/time";
+import { useUserStore } from "../../stores/use-user-store";
 import { Toast } from "../toast";
 import { Button } from "../ui/button";
 import Input from "../ui/input";
@@ -131,6 +134,53 @@ export const Dialog = ({ context = "global" }: { context?: string }) => {
     setDialogInfo(undefined);
     dialogInfo?.onClose?.();
   }, [dialogInfo]);
+
+  // Live refs so the Mac registry entry's closability and close callback
+  // always observe this instance's current props/state without ever having
+  // to unregister and re-register the entry itself (which would wrongly
+  // bump it ahead of whatever else was actually presented afterwards).
+  const dialogInfoRef = useRef(dialogInfo);
+  dialogInfoRef.current = dialogInfo;
+  const loadingRef = useRef(loading);
+  loadingRef.current = loading;
+  const hideRef = useRef(hide);
+  hideRef.current = hide;
+  // BaseDialog hides itself internally (its own `internalVisible`) while the
+  // app is locked, without this component's own `visible` ever changing or
+  // `hide()` ever running - so this instance's own eligibility must track the
+  // live appLocked flag directly, independent of the dialog's own hide path.
+  const appLocked = useUserStore((state) => state.appLocked);
+
+  // Registered once per mounted Dialog instance: only an actual new
+  // presentation (via the effect below) changes this entry's order.
+  useEffect(() => {
+    if (!isMacCatalyst()) return;
+    const controller = registerMacModal(
+      "dialog",
+      () =>
+        !dialogInfoRef.current?.disableBackdropClosing && !loadingRef.current,
+      () => hideRef.current()
+    );
+    macControllerRef.current = controller;
+    return () => {
+      controller.unregister();
+      macControllerRef.current = null;
+    };
+  }, []);
+
+  const macControllerRef = useRef<ReturnType<typeof registerMacModal> | null>(
+    null
+  );
+
+  useEffect(() => {
+    const controller = macControllerRef.current;
+    if (!controller) return;
+    if (visible && dialogInfo && !appLocked) {
+      controller.present();
+    } else {
+      controller.dismissed();
+    }
+  }, [visible, dialogInfo, appLocked]);
 
   useEffect(() => {
     eSubscribeEvent(eOpenSimpleDialog, show);

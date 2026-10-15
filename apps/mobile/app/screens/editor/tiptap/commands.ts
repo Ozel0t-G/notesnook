@@ -272,6 +272,34 @@ class Commands {
     return this.sendCommand("scrollToSearchResult", index, tabId);
   };
 
+  /** Native Escape: capture a popup identity, then confirm the same UI scope. */
+  dismissPopup = async (isCurrentScope: () => boolean = () => true) => {
+    const tabId = useTabStore.getState().currentTab;
+    if (!tabId || !isCurrentScope()) return false;
+    const token = await this.sendCommand<number | null>(
+      "getPopupDismissToken",
+      tabId
+    );
+    if (
+      typeof token !== "number" ||
+      !Number.isSafeInteger(token) ||
+      token <= 0 ||
+      useTabStore.getState().currentTab !== tabId ||
+      !isCurrentScope()
+    )
+      return false;
+    const dismissed = await this.sendCommand<boolean>(
+      "dismissPopup",
+      tabId,
+      token
+    );
+    return (
+      useTabStore.getState().currentTab === tabId &&
+      isCurrentScope() &&
+      dismissed === true
+    );
+  };
+
   /**
    * Mac menu > Format (K2/E3): runs one of the editor's formatting commands
    * through the WebView bridge (`globalThis.commands.format` in
@@ -285,6 +313,23 @@ class Commands {
     const tabId = useTabStore.getState().currentTab;
     if (!tabId) return;
     return this.sendCommand("format", name, tabId);
+  };
+
+  openFormatting = async () => {
+    const tabId = useTabStore.getState().currentTab;
+    if (!tabId) return false;
+    if (Platform.OS === "ios" && Platform.isMacCatalyst)
+      this.ref.current?.requestFocus();
+    return this.sendCommand("openFormatting", tabId);
+  };
+
+  openInsert = async () => {
+    const tabId = useTabStore.getState().currentTab;
+    if (!tabId) return false;
+    // Native toolbar activation must hand hardware keys back to this WebView.
+    if (Platform.OS === "ios" && Platform.isMacCatalyst)
+      this.ref.current?.requestFocus();
+    return this.sendCommand("openInsert", tabId);
   };
 
   /**

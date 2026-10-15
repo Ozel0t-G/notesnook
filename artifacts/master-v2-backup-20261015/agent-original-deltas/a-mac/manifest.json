@@ -1,0 +1,154 @@
+{
+  "agent": "a-mac",
+  "source": "/Users/ozel0t/Library/Mobile Documents/com~apple~CloudDocs/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+  "restored": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+  "source_files_hashed": 3667,
+  "original_worker_source_preserved": true,
+  "dependency_basis": "local current Root clone; package and lock files matched; no install/build",
+  "source_not_rebased_or_integrated": true,
+  "dirty_baseline_differences": [
+    {
+      "path": "packages/editor-mobile/src/utils/commands.ts",
+      "worker_sha256": "cc7704b8d72c0d3ebd8d1f41cecfbcfe557ddb70feda4d1b2632f44d7516c6c9",
+      "baseline_sha256": "209ae234d3b5f1047a076621d8c96fd0da7d015b92070e44b3c7673a13a16ef1",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/screens/editor/tiptap/commands.ts",
+      "worker_sha256": "c732cc49bf8f229409fd7117eb812d610657623882d34e46e87c10bdcf51740c",
+      "baseline_sha256": "ea9383ddb487cef6b601ff72871b92de6731d1ea2c88441597c67ab262702c03",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/mac-note-row-content.tsx",
+      "worker_sha256": "360635a3734d08783ea887679f54f027581d78b958d4a99587e05e3cda46d54a",
+      "baseline_sha256": null,
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/app/components/mac-note-row-content.test.tsx",
+      "worker_sha256": "2c57f1e370910ecafbec1aa76cbd7cef5b9749734abb90c1517be75b9958f9fa",
+      "baseline_sha256": null,
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/app/components/mac-sidebar.tsx",
+      "worker_sha256": "dc17720d000a8238d9ab4871cae4dc024075b64828383cfed254300215bbb28d",
+      "baseline_sha256": "3af09876ea56d4fe034ae0695b113ba31dc523a2f5fab67b075e9d49713e0896",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/mac-sidebar-account-footer.test.tsx",
+      "worker_sha256": "3fcb768986ce7d07cd80e64b37bea3ac5259fa26e41bcbeaa70baab0b167ac36",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/mac-sidebar-account-footer.tsx",
+      "worker_sha256": "24cc12a363c9115fbb1f511c2138e7738dbb725ee8dd0952852d593cc6592a72",
+      "baseline_sha256": "8db646e6f5cc33de755cfbf9b79afa581b2794aec732f9eddbf0c6ac3a8b3af6",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/mac-sidebar.test.tsx",
+      "worker_sha256": "ad73615e75db2787f9fb54c5e2d290e39e32e67d24a0520da7f4f21f53e0a71a",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/hooks/use-mac-menu-commands.escape.test.tsx",
+      "worker_sha256": "294667cdee82bc80fddcd08e810a71d9914780c76a032f2ddd1af50a75fa72bc",
+      "baseline_sha256": "6c10e68e43d3baf6cf5e55ec3ea991f8810bdc681b72eea877eb95b648fbbaaa",
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/app/hooks/use-mac-menu-commands.ts",
+      "worker_sha256": "f80aaf4236f2811361a0f24e3ccec4834d5fc58c84553caec25f57bf23150167",
+      "baseline_sha256": "bc67641dec267f9b47a9fa8fa16465f775145d8d01d22496c6b65f93454f4c38",
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/app/hooks/use-mac-settings-open.ts",
+      "worker_sha256": "e19549937c49cbccc7003cd98bb52d4fe8936aeb522eb705670aca3f32af94bb",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/ios/Notesnook/MacMenu/VeyraNMacToolbar.m",
+      "worker_sha256": "48a03bd2e2129619b045ea354bf27a8bb7b7eb77e5adf21a41f418ca7f05484c",
+      "baseline_sha256": "090d3e82ceb45357c1dc4e4b5d43d7328f75bd27bda9582395354b5c7e564e76",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/ios/Notesnook/MacMenu/VeyraNMacMenu.h",
+      "worker_sha256": "6abe9ad7eed5de2ea08301442699e8bc1277b0958a6fac642244e03ae517e349",
+      "baseline_sha256": "134ba1ff94e96b924fd862c28d2d88d36ae2c9466a60d6220788bee784238cbe",
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/ios/Notesnook/MacMenu/VeyraNMacMenu.m",
+      "worker_sha256": "f65a7a523772740cb43698f2e91e250fb0cd4ed3138c3f9b18d8c330617d1b8d",
+      "baseline_sha256": "2478b820315837b861437eef50ef62d94807d72dc5724670ac68205083095953",
+      "matches_current_root": true
+    }
+  ],
+  "baseline_paths_absent_from_cloud": [],
+  "artifact_files_copied": 536,
+  "artifact_files_already_identical": 0,
+  "local_artifact_variants_retained": [],
+  "cloud_source_excluded_regenerable_dirs": [
+    "node_modules",
+    "build",
+    ".git",
+    "plugin/veyran-connect/dist",
+    "extensions/web-clipper/dist",
+    "extensions/web-clipper/node_modules",
+    "packages/ui/dist",
+    "packages/ui/node_modules",
+    "packages/crypto/dist",
+    "packages/crypto/node_modules",
+    "packages/core/dist",
+    "packages/core/node_modules",
+    "packages/logger/dist",
+    "packages/clipper/dist",
+    "packages/clipper/node_modules",
+    "packages/intl/dist",
+    "packages/intl/node_modules",
+    "packages/editor-mobile/build.bundle",
+    "packages/editor-mobile/node_modules",
+    "packages/editor-mobile/sourcemaps",
+    "packages/common/dist",
+    "packages/common/node_modules",
+    "packages/theme/dist",
+    "packages/theme/node_modules",
+    "packages/streamable-fs/dist",
+    "packages/streamable-fs/node_modules",
+    "packages/sodium/dist",
+    "packages/sodium/node_modules",
+    "packages/editor/dist",
+    "packages/editor/node_modules",
+    "apps/theme-builder/node_modules",
+    "apps/web/node_modules",
+    "apps/web/build",
+    "apps/vericrypt/node_modules",
+    "apps/desktop/dist",
+    "apps/desktop/node_modules",
+    "apps/desktop/output",
+    "apps/desktop/test-artifacts",
+    "apps/desktop/build",
+    "apps/monograph/node_modules",
+    "apps/monograph/output",
+    "apps/mobile/node_modules",
+    "apps/mobile/build",
+    "apps/mobile/ios/Pods",
+    "apps/mobile/ios/build",
+    "apps/mobile/ios/.veyran-redesignqa",
+    "servers/veyran-connect/dist",
+    "servers/veyran-connect/node_modules",
+    "servers/themes/dist",
+    "servers/themes/node_modules"
+  ],
+  "branch": "test",
+  "separate_inodes": true,
+  "cloud_source_unchanged": true
+}

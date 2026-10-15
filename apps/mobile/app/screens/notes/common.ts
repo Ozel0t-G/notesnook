@@ -42,14 +42,21 @@ export function toCamelCase(title: string) {
   return title.slice(0, 1).toUpperCase() + title.slice(1);
 }
 
-export function openEditor() {
+export function openEditor(origin?: unknown) {
+  // Native press callbacks may pass an event. Only explicit list metadata is
+  // accepted; notebook membership still uses the existing first-save path.
+  const candidate = origin as { id?: unknown; title?: unknown } | undefined;
+  const capturedOrigin =
+    typeof candidate?.id === "string" && typeof candidate.title === "string"
+      ? { id: candidate.id, title: candidate.title }
+      : null;
   if (!DDS.isTab) {
-    eSendEvent(eOnLoadNote, { newNote: true });
+    eSendEvent(eOnLoadNote, { newNote: true, origin: capturedOrigin });
     editorState().currentlyEditing = true;
     editorState().movedAway = false;
     fluidTabsRef.current?.goToPage("editor");
   } else {
-    eSendEvent(eOnLoadNote, { newNote: true });
+    eSendEvent(eOnLoadNote, { newNote: true, origin: capturedOrigin });
   }
 }
 

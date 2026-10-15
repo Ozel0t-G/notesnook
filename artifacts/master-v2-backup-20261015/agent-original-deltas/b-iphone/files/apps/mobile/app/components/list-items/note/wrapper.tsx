@@ -1,0 +1,195 @@
+/*
+This file is part of the Notesnook project (https://notesnook.com/)
+
+Copyright (C) 2023 Streetwriters (Private) Limited
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+import { BaseTrashItem, Color, Note, Reminder } from "@notesnook/core";
+import React from "react";
+import { Platform } from "react-native";
+import NoteItem from ".";
+import { notesnook } from "../../../../e2e/test.ids";
+import { db } from "../../../common/database";
+import { DDS } from "../../../services/device-detection";
+import {
+  eSendEvent,
+  hideSheet,
+  presentSheet
+} from "../../../services/event-manager";
+import { eOnLoadNote, eShowMergeDialog } from "../../../utils/events";
+import { fluidTabsRef } from "../../../utils/global-refs";
+import { isHomeNoteRoute } from "../../../utils/home-note-presentation";
+
+import { NotebooksWithDateEdited, TagsWithDateEdited } from "@notesnook/common";
+import type { NoteThumbnail as NoteThumbnailInfo } from "@notesnook/common";
+import {
+  NoteOrigin,
+  useTabStore
+} from "../../../screens/editor/tiptap/use-tab-store";
+import { editorController } from "../../../screens/editor/tiptap/utils";
+import { RouteParams } from "../../../stores/use-navigation-store";
+import NotePreview from "../../note-history/preview";
+import SelectionWrapper, {
+  selectItem,
+  type NoteGroupEdges
+} from "../selection-wrapper";
+
+export const openNote = async (
+  item: Note,
+  isTrash?: boolean,
+  isSheet?: boolean,
+  origin?: NoteOrigin
+) => {
+  const capturedOrigin = origin ? { ...origin } : null;
+  let note: Note = item;
+  if (isSheet) hideSheet();
+
+  if (!isTrash) {
+    note = (await db.notes.note(item.id)) as Note;
+  }
+
+  if (selectItem(item)) return;
+
+  if (note.conflicted) {
+    eSendEvent(eShowMergeDialog, note);
+    return;
+  }
+
+  if (isTrash) {
+    const content = note.contentId
+      ? await db.content.get(note.contentId)
+      : undefined;
+    presentSheet({
+      component: <NotePreview note={item} content={content} />
+    });
+  } else {
+    if (!useTabStore.getState().hasTabForNote(note.id!)) {
+      editorController.current.commands.setLoading(
+        true,
+        useTabStore.getState().currentTab
+      );
+    }
+    eSendEvent(eOnLoadNote, {
+      item: note,
+      origin: capturedOrigin
+    });
+    if (!DDS.isTab) {
+      setTimeout(() => {
+        fluidTabsRef.current?.goToPage("editor");
+      }, 32);
+    }
+  }
+};
+
+type NoteWrapperProps = {
+  item: Note | BaseTrashItem<Note>;
+  index: number;
+  tags?: TagsWithDateEdited;
+  notebooks?: NotebooksWithDateEdited;
+  color?: Color;
+  reminder?: Reminder;
+  attachmentsCount: number;
+  date: number;
+  isRenderedInActionSheet: boolean;
+  locked?: boolean;
+  renderedInRoute?: keyof RouteParams;
+  origin?: NoteOrigin;
+  groupEdges?: NoteGroupEdges;
+  /** First raster image attachment of the note (Apple list thumbnail). */
+  thumbnail?: NoteThumbnailInfo;
+};
+
+export const NoteWrapper = React.memo<
+  React.FunctionComponent<NoteWrapperProps>
+>(
+  function NoteWrapper({
+    item,
+    index,
+    isRenderedInActionSheet,
+    origin,
+    groupEdges,
+    ...restProps
+  }: NoteWrapperProps) {
+    const isTrash = item.type === "trash";
+
+    return (
+      <SelectionWrapper
+        testID={notesnook.ids.note.get(index)}
+        onPress={() =>
+          openNote(item as Note, isTrash, isRenderedInActionSheet, origin)
+        }
+        isSheet={isRenderedInActionSheet}
+        item={item}
+        index={index}
+        groupEdges={groupEdges}
+        color={restProps.color?.colorCode}
+        homeNote={
+          Platform.OS === "ios" && isHomeNoteRoute(restProps.renderedInRoute)
+        }
+      >
+        <NoteItem
+          {...restProps}
+          item={item}
+          index={index}
+          isTrash={isTrash}
+          isSheet={isRenderedInActionSheet}
+        />
+      </SelectionWrapper>
+    );
+  },
+  (prev, next) => {
+    if (
+      prev.groupEdges?.first !== next.groupEdges?.first ||
+      prev.groupEdges?.last !== next.groupEdges?.last
+    )
+      return false;
+    if (
+      prev.origin?.id !== next.origin?.id ||
+      prev.origin?.title !== next.origin?.title
+    )
+      return false;
+    if (prev.date !== next.date) {
+      return false;
+    }
+
+    if (
+      prev.tags?.dateEdited !== next.tags?.dateEdited ||
+      prev.tags?.items?.length !== next.tags?.items?.length
+    )
+      return false;
+
+    if (
+      prev.notebooks?.dateEdited !== next.notebooks?.dateEdited ||
+      prev.notebooks?.items?.length !== next.notebooks?.items?.length
+    )
+      return false;
+
+    if (prev.color !== next.color) return false;
+    if (prev.reminder?.id !== next.reminder?.id) return false;
+    if (prev.attachmentsCount !== next.attachmentsCount) return false;
+    // The thumbnail is resolved from the row's data; a recycled row must pick
+    // up the new note's image (and drop the old one) immediately.
+    if (prev.thumbnail?.hash !== next.thumbnail?.hash) return false;
+    if (prev.thumbnail?.mimeType !== next.thumbnail?.mimeType) return false;
+    if (prev.locked !== next.locked) return false;
+    if (prev.item?.dateModified !== next.item?.dateModified) {
+      return false;
+    }
+    if (prev.item?.id !== next.item?.id) return false;
+
+    return true;
+  }
+);

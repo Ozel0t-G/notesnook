@@ -1,0 +1,14 @@
+{
+  "name": "@notesnook/veyran-connect-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Portable VeyraN Connect plugin bundle (stdio MCP over the loopback broker).",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "engines": {
+    "node": ">=22.10.0"
+  },
+  "scripts": {
+    "build": "node ./scripts/bundle.mjs"
+  }
+}

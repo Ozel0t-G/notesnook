@@ -1,0 +1,20 @@
+VeyraN workspace recovery — verified, development remains paused
+
+All existing A/B/C workspace paths under /Users/ozel0t/Documents/Codex/2026-10-15 are restored. Original agent source states, including uncommitted and untracked files, were recovered separately from the current Root; no stale agent source was integrated into Root.
+
+Verification:
+- A: 3667 source files and 536 handoff/script files SHA-256 verified.
+- B: 3666 source files and 267 handoff/script files SHA-256 verified.
+- C: 3671 source files and 661 handoff/script files SHA-256 verified.
+- Each repository: 403669 local dependency/generated-file entries checked for matching membership, sizes and link targets against the intact local Root. Separate inodes, no symlinks into Root, branch test.
+- Package/lock versions match the local dependency basis. No installation, setup or build.
+- A12: all three candidate source hashes verified against its original manifest. Required independent review and integration still pending.
+- C10: separately created local handoff and every recorded artifact hash preserved and verified.
+- B11 did not start before the workspace incident; there is no missing B11 implementation to recover.
+- All1477 current Root build-input hashes remain unchanged.
+
+Original iCloud folders remain untouched. Generated app bundles, caches and sourcemaps were reused from the local Root rather than downloaded again; this is verified source/working-copy recovery, not a byte-for-byte copy of historical build caches. Original worker source snapshots and before/after differences remain in this recovery directory. The partial Finder repository for B and the interrupted A staging copy were retained separately at their workspace paths. No local artifact conflicts remained.
+
+Initial iCloud fast-copy/reads occasionally produced empty results while the source hydrated. Those attempts failed verification and were not accepted. Final sources and artifacts passed the complete hash verification; interrupted attempt logs remain for traceability.
+
+Automation PAUSED at explicit user instruction. All three existing native sessions were completed/inactive; none was woken. No implementation, integration, app launch, tests, build, commit, push, upload or deployment was performed. Await explicit user decision before continuing Master V2.

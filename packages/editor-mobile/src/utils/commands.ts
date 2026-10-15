@@ -17,12 +17,91 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { Attachment, ImageAttributes, LinkAttributes } from "@notesnook/editor";
+import type {
+  Attachment,
+  ImageAttributes,
+  LinkAttributes
+} from "@notesnook/editor";
 import { Settings } from ".";
+import type { TabItem } from "../hooks/useTabStore";
 import { editorDate } from "./editor-date";
 import { insertTemplateContent } from "./template";
 
+type EditorPopupCommands = Pick<
+  typeof import("@notesnook/editor"),
+  | "getPopupDismissToken"
+  | "dismissPopupForOwner"
+  | "showMacInsertMenu"
+  | "showMacFormattingMenu"
+>;
+let editorPopupCommands: EditorPopupCommands | undefined;
+/** App registers its existing ESM editor instance after locale/Buffer startup. */
+export function registerEditorPopupCommands(commands: EditorPopupCommands) {
+  editorPopupCommands = commands;
+}
+
+/** The bridge may only address the actual active editor's private popup owner. */
+function activePopupOwner(tabId: string): HTMLElement | undefined {
+  if (globalThis.tabStore?.getState().currentTab !== tabId) return;
+  const editor = editors[tabId];
+  if (!editor || editor.isDestroyed || !editor.view.dom.isConnected) return;
+  const active = editor.view.dom.closest<HTMLElement>(".active");
+  const owner = active?.querySelector<HTMLElement>(".dialogContainer");
+  return owner && owner !== document.body ? owner : undefined;
+}
+
 globalThis.commands = {
+  openFormatting: (tabId: string) => {
+    const owner = activePopupOwner(tabId);
+    if (!owner) return false;
+    const editor = editors[tabId];
+    if (!editor?.isEditable) return false;
+    const session = globalThis.tabStore
+      .getState()
+      .tabs?.find((tab: TabItem) => tab.id === tabId)?.session;
+    const noteId = session?.noteId;
+    const sessionId = session?.id;
+    const isCurrent = () => {
+      const current = globalThis.tabStore
+        .getState()
+        .tabs?.find((tab: TabItem) => tab.id === tabId)?.session;
+      return (
+        activePopupOwner(tabId) === owner &&
+        editors[tabId] === editor &&
+        current?.noteId === noteId &&
+        current?.id === sessionId &&
+        !current?.locked &&
+        !current?.noteLocked &&
+        !current?.readonly &&
+        !editorControllers[tabId]?.loading
+      );
+    };
+    if (!isCurrent()) return false;
+    return (
+      editorPopupCommands?.showMacFormattingMenu?.(editor, {
+        isCurrent,
+        subscribe: (changed) => globalThis.tabStore.subscribe(changed)
+      }) ?? false
+    );
+  },
+  openInsert: (tabId: string) => {
+    if (!activePopupOwner(tabId)) return false;
+    const editor = editors[tabId];
+    if (!editor?.isEditable) return false;
+    return editorPopupCommands?.showMacInsertMenu?.(editor) ?? false;
+  },
+  getPopupDismissToken: (tabId: string) => {
+    const owner = activePopupOwner(tabId);
+    if (!owner) return null;
+    return editorPopupCommands?.getPopupDismissToken(owner) ?? null;
+  },
+
+  dismissPopup: (tabId: string, token: number) => {
+    const owner = activePopupOwner(tabId);
+    if (!owner) return false;
+    return editorPopupCommands?.dismissPopupForOwner(owner, token) ?? false;
+  },
+
   clearContent: (tabId: string) => {
     try {
       const editor = editors[tabId];
@@ -246,7 +325,7 @@ globalThis.commands = {
    */
   format: (name: string, tabId: string) => {
     const editor = editors[tabId];
-    if (!editor) return false;
+    if (!editor || !editor.isEditable) return false;
     try {
       const chain = editor.chain().focus();
       switch (name) {

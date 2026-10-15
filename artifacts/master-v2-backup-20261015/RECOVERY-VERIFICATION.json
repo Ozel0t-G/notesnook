@@ -1,0 +1,40 @@
+{
+  "at": "2026-10-15T14:19:55.531075+00:00",
+  "result": "PASS_RECOVERY_ONLY",
+  "copies": [
+    {
+      "agent": "a-mac",
+      "source_files_sha256_verified": 3667,
+      "handoff_and_script_files_sha256_verified": 536,
+      "dependency_entries_size_and_link_verified": 403669,
+      "no_links_into_root": true,
+      "separate_inodes": true,
+      "branch": "test"
+    },
+    {
+      "agent": "b-iphone",
+      "source_files_sha256_verified": 3666,
+      "handoff_and_script_files_sha256_verified": 267,
+      "dependency_entries_size_and_link_verified": 403669,
+      "no_links_into_root": true,
+      "separate_inodes": true,
+      "branch": "test"
+    },
+    {
+      "agent": "c-ipad",
+      "source_files_sha256_verified": 3671,
+      "handoff_and_script_files_sha256_verified": 661,
+      "dependency_entries_size_and_link_verified": 403669,
+      "no_links_into_root": true,
+      "separate_inodes": true,
+      "branch": "test"
+    }
+  ],
+  "A12_candidate_files_verified": 3,
+  "C10_original_artifacts_verified": 11,
+  "root_build_source_hashes_unchanged": 1477,
+  "development_or_qa_resumed": false,
+  "automation": "PAUSED",
+  "user_resume_required": true,
+  "exclusion_note": "Original generated caches/build bundles remain untouched in iCloud; local generated/dependency trees cloned from intact Root, package/lock versions checked; old Finder and interrupted recovery copies retained separately."
+}

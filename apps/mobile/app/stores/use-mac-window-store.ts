@@ -39,6 +39,10 @@ type MacWindowState = {
    */
   noteTitle?: string;
   listMenu?: MacListMenu;
+  /** Transient window UI; never changes Assistant business state. */
+  inspectorVisible: boolean;
+  setInspectorVisible: (visible: boolean) => void;
+  toggleInspector: () => void;
   setNoteTitle: (noteTitle?: string) => void;
   setListMenu: (listMenu?: MacListMenu) => void;
 };
@@ -52,6 +56,10 @@ type MacWindowState = {
 export const useMacWindowStore = create<MacWindowState>((set) => ({
   noteTitle: undefined,
   listMenu: undefined,
+  inspectorVisible: false,
+  setInspectorVisible: (inspectorVisible) => set({ inspectorVisible }),
+  toggleInspector: () =>
+    set((state) => ({ inspectorVisible: !state.inspectorVisible })),
   setNoteTitle: (noteTitle) => set({ noteTitle }),
   setListMenu: (listMenu) => set({ listMenu })
 }));

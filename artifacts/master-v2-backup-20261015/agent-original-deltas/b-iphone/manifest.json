@@ -1,0 +1,148 @@
+{
+  "agent": "b-iphone",
+  "source": "/Users/ozel0t/Library/Mobile Documents/com~apple~CloudDocs/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+  "restored": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+  "source_files_hashed": 3666,
+  "original_worker_source_preserved": true,
+  "dependency_basis": "local current Root clone; package and lock files matched; no install/build",
+  "source_not_rebased_or_integrated": true,
+  "dirty_baseline_differences": [
+    {
+      "path": "apps/mobile/app/screens/library/index.tsx",
+      "worker_sha256": "7660dd9d0f6dc105009a533ae3834745756c63eba7b4c3a5952d3ca47e57cf39",
+      "baseline_sha256": "7592be81bfd6e6cf08b230849bd1335f807ad9e8412cf0beaaee168d36ac4bd5",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/screens/library/index.test.tsx",
+      "worker_sha256": "d4d03a3031588e878f2a0c1ca288213d6c572f9eaa875314d7eb54c88e243691",
+      "baseline_sha256": "4605959cd9caca05faca5f72d199d3a21ef00e797f23d357903494bb340e9304",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/note/index.tsx",
+      "worker_sha256": "984bbe7b162999f962b728c82d62917975d3c6059c08ac5366847430f7e5e3e3",
+      "baseline_sha256": "4aca27337c8985f573b8bc77e3da9f70d748b9e4c2544c1eb0ce4dd28e94354f",
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/note/index.test.tsx",
+      "worker_sha256": "bbf397bd785b5f313b5300417aaad506bb150e601f3cf6b01477a9fa827b210c",
+      "baseline_sha256": "c76dce87b44788ee6146a1a6e7198afab0c1efa46d8a8c2a5f395789ece2fb1b",
+      "matches_current_root": false
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/note/wrapper.tsx",
+      "worker_sha256": "fc672eef7f83328d1c0f992ef15c9cbb28f6e3a26f2698f14dcc700c39639259",
+      "baseline_sha256": "65930c0b619a7e5a7d68e19eecdab5ab596dc69051ea8514bb301c3d4062c8fb",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/selection-wrapper/index.tsx",
+      "worker_sha256": "7e7f3fb6dfc3478537b7b2ca1af75cd639635afab5da0790455c474095e3f765",
+      "baseline_sha256": "b702a839095c4f9e8788c0f5f4f3fd651ca8eaa634788bdf593dea6cbb551183",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/selection-wrapper/index.test.tsx",
+      "worker_sha256": "c51c2c593752b5c0d042e5205ae90202f35fff52b01a7c792c875d16c4cd2409",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/headers/section-header.test.tsx",
+      "worker_sha256": "b6b7ad6f820a8d82a77c6a4e06a61d6fec57cd7bf48033658efd77b13d16b4e4",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list-items/headers/section-header.tsx",
+      "worker_sha256": "88e0e953ea5dd9335ddc9e4cc1020abf6f4570c2e5efb3b1b4c7a373f34175ee",
+      "baseline_sha256": "1538973997db70ac3498b376a5cc1d88803bdce45f5f632e3b2be26017b8315b",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list/card.tsx",
+      "worker_sha256": "bd152de727a34db73bea5a6dbf5c697487252ed0dcb276c9b7dfd48e65aab2e5",
+      "baseline_sha256": "3a598a88e121fa783ff0d71076494c09e060988c940f7c5af021e3cff6d9bc6e",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list/list-item.wrapper.tsx",
+      "worker_sha256": "0c632421d8782cf7153f534b1e8e8bc4fd651e38d945e85b251f9051ad9c40ec",
+      "baseline_sha256": "d092eb9813363c781d10d1ccc589e889451b1b6abc3a69a85d6640f3399afc49",
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list/card.test.tsx",
+      "worker_sha256": "37229a54352460080f1527d7850a6af500da8326cb1a0ab61b88d59e124b70aa",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    },
+    {
+      "path": "apps/mobile/app/components/list/list-phone-groups.test.tsx",
+      "worker_sha256": "f103871229cebb87d072cf0f0b1a6a7cd0ec0d062aee7f5f0022eb7b74781d44",
+      "baseline_sha256": null,
+      "matches_current_root": true
+    }
+  ],
+  "baseline_paths_absent_from_cloud": [],
+  "artifact_files_copied": 0,
+  "artifact_files_already_identical": 267,
+  "local_artifact_variants_retained": [],
+  "cloud_source_excluded_regenerable_dirs": [
+    "node_modules",
+    "build",
+    ".git",
+    "plugin/veyran-connect/dist",
+    "extensions/web-clipper/dist",
+    "extensions/web-clipper/node_modules",
+    "packages/ui/dist",
+    "packages/ui/node_modules",
+    "packages/crypto/dist",
+    "packages/crypto/node_modules",
+    "packages/core/dist",
+    "packages/core/node_modules",
+    "packages/logger/dist",
+    "packages/clipper/dist",
+    "packages/clipper/node_modules",
+    "packages/intl/dist",
+    "packages/intl/node_modules",
+    "packages/editor-mobile/build.bundle",
+    "packages/editor-mobile/node_modules",
+    "packages/editor-mobile/sourcemaps",
+    "packages/common/dist",
+    "packages/common/node_modules",
+    "packages/theme/dist",
+    "packages/theme/node_modules",
+    "packages/streamable-fs/dist",
+    "packages/streamable-fs/node_modules",
+    "packages/sodium/dist",
+    "packages/sodium/node_modules",
+    "packages/editor/dist",
+    "packages/editor/node_modules",
+    "apps/theme-builder/node_modules",
+    "apps/web/node_modules",
+    "apps/web/build",
+    "apps/vericrypt/node_modules",
+    "apps/desktop/dist",
+    "apps/desktop/node_modules",
+    "apps/desktop/output",
+    "apps/desktop/test-artifacts",
+    "apps/desktop/build",
+    "apps/monograph/node_modules",
+    "apps/monograph/output",
+    "apps/mobile/node_modules",
+    "apps/mobile/build",
+    "apps/mobile/ios/Pods",
+    "apps/mobile/ios/build",
+    "apps/mobile/ios/.veyran-redesignqa",
+    "servers/veyran-connect/dist",
+    "servers/veyran-connect/node_modules",
+    "servers/themes/dist",
+    "servers/themes/node_modules"
+  ],
+  "branch": "test",
+  "separate_inodes": true,
+  "cloud_source_unchanged": true
+}

@@ -1,0 +1,23 @@
+[
+  {
+    "path": "packages/editor/src/toolbar/tools/mac-format.tsx",
+    "before_sha256": "3caffe2f12ffde3dc6213364bfa0aefa5428e6a05c4d8001b9d7f43c817439da",
+    "proposed_sha256": "a5f92a814254a3c89be59643e0a1d3259803bb39617b7ee07de09ab0a260aabf",
+    "current_root_sha256": "3caffe2f12ffde3dc6213364bfa0aefa5428e6a05c4d8001b9d7f43c817439da",
+    "root_matches_before": true
+  },
+  {
+    "path": "packages/editor/src/toolbar/tools/lists.tsx",
+    "before_sha256": "232f5f387f531b272a13b89df1d19d5125f2c11f5693af06fcfd3bed7ae9f61b",
+    "proposed_sha256": "9a2a2f896ee638b4efb0f71ff776062b206308b134f9e90f3aab7dac04c25c81",
+    "current_root_sha256": "232f5f387f531b272a13b89df1d19d5125f2c11f5693af06fcfd3bed7ae9f61b",
+    "root_matches_before": true
+  },
+  {
+    "path": "packages/editor/src/toolbar/__tests__/mac-format-menu.test.tsx",
+    "before_sha256": "6ef15ed46997eeaa12b6984b18c45fb3450c5833c69cff3eec48a2378accef6f",
+    "proposed_sha256": "771aaa0b569150f20f38e1ab5454137d68e2596c92c0cd50872c1aeb12d318eb",
+    "current_root_sha256": "6ef15ed46997eeaa12b6984b18c45fb3450c5833c69cff3eec48a2378accef6f",
+    "root_matches_before": true
+  }
+]

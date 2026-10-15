@@ -1,0 +1,407 @@
+/*
+This file is part of the Notesnook project (https://notesnook.com/)
+
+Copyright (C) 2023 Streetwriters (Private) Limited
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+*/
+
+import { Item, TrashItem } from "@notesnook/core";
+import { useThemeColors } from "@notesnook/theme";
+import React, { PropsWithChildren, useRef } from "react";
+import { useIsCompactModeEnabled } from "../../../hooks/use-is-compact-mode-enabled";
+import useIsSelected from "../../../hooks/use-selected";
+import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
+import { useSelectionStore } from "../../../stores/use-selection-store";
+import { useSettingStore } from "../../../stores/use-setting-store";
+import { useMacSystemStore } from "../../../stores/use-mac-system-store";
+import { DefaultAppStyles } from "../../../utils/styles";
+import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
+import { macAccent, macSelectionFill } from "../../../utils/mac-system-state";
+import { Pressable } from "../../ui/pressable";
+import { Platform, View } from "react-native";
+import { Note } from "@notesnook/core";
+import { strings } from "@notesnook/intl";
+import { db } from "../../../common/database";
+import Navigation from "../../../services/navigation";
+import { isMacCatalyst } from "../../../utils/constants";
+import { deleteItems } from "../../../utils/functions";
+import { systemColor } from "../../../utils/ios-system-colors";
+import { MAC_SOURCE_LIST_INSET } from "../../../utils/mac-layout";
+import {
+  handleMacModifierPress,
+  macPointerModifiers
+} from "../../../utils/mac-multi-select";
+import { ItemContextMenu } from "../../item-actions-menu";
+import {
+  MacHoverHighlight,
+  macNoteRowHoverFill,
+  useMacHover
+} from "../../mac-hover";
+import { SwipeRow } from "../../swipe-row";
+
+/** Mac note list row metrics (same shape as the Library source list). */
+const MAC_NOTE_ROW_PADDING = 8;
+const MAC_NOTE_ROW_PADDING_VERTICAL = 10;
+/** Part 2 of the Mac glass design: 12 pt rows, separated by a gap, not a line. */
+const MAC_NOTE_ROW_RADIUS = 12;
+/** Vertical gap between two Mac note rows (the separator's replacement). */
+const MAC_NOTE_ROW_GAP = 4;
+
+export function selectItem(item: Item) {
+  if (useSelectionStore.getState().selectionMode === item.type) {
+    const { selectionMode, clearSelection, setSelectedItem } =
+      useSelectionStore.getState();
+
+    if (selectionMode === item.type) {
+      setSelectedItem(item.id);
+    }
+
+    if (useSelectionStore.getState().selectedItemsList.length === 0) {
+      clearSelection();
+    }
+    return true;
+  }
+  return false;
+}
+
+export type NoteGroupEdges = { first: boolean; last: boolean };
+
+type SelectionWrapperProps = PropsWithChildren<{
+  item: Item;
+  onPress: () => void;
+  testID?: string;
+  isSheet?: boolean;
+  color?: string;
+  index?: number;
+  homeNote?: boolean;
+  groupEdges?: NoteGroupEdges;
+}>;
+
+const SelectionWrapper = ({
+  item,
+  onPress,
+  testID,
+  isSheet,
+  children,
+  color,
+  homeNote = false,
+  groupEdges,
+  index: _index = 0
+}: SelectionWrapperProps) => {
+  const itemId = useRef(item.id);
+  const { colors, isDark } = useThemeColors();
+  const visual = getAppleVisualTokens(colors, isDark);
+  const isEditingNote = useTabStore(
+    (state) =>
+      state.tabs.find((t) => t.id === state.currentTab)?.session?.noteId ===
+      item.id
+  );
+  const isNoteItem = ((item as TrashItem).itemType || item.type) === "note";
+  const compactMode = useIsCompactModeEnabled(
+    (item as TrashItem).itemType || item.type
+  );
+  const [isSelected] = useIsSelected(item);
+  const isTabletPane = useSettingStore(
+    (state) => state.deviceMode === "tablet"
+  );
+
+  if (item.id !== itemId.current) {
+    itemId.current = item.id;
+  }
+
+  const selectionMode = useSelectionStore((state) => state.selectionMode);
+  // iOS: long press opens the native context menu (selection lives in the
+  // list's "…" menu). Notes also get swipe actions like in Notes.
+  const nativeMenus =
+    Platform.OS === "ios" &&
+    !isSheet &&
+    (item.type === "note" || item.type === "notebook" || item.type === "tag");
+  // The open note is only marked where the editor is visible next to the
+  // list (iPad). On iPhone a selection must not stay behind after going back.
+  const showEditing = isEditingNote && isTabletPane;
+  /**
+   * Mac's note list rows are source-list rows: no card background, 10 pt of
+   * vertical padding, a 4 pt gap instead of a hairline separator, a 12 pt
+   * radius, and the open note marked with the system accent at low opacity
+   * (grey while the window is not key) instead of the iPad's 5 pt side bar.
+   */
+  const macRow = isMacCatalyst() && isNoteItem && !isSheet;
+  /**
+   * iPhone/iPad note rows outside sheets are the approved flat, continuous
+   * list: content surface on iPhone, transparent on iPad, no gap and a
+   * hairline separator between rows. Selected rows keep a rounded highlight. Scoped to note rows so this shared
+   * wrapper keeps the notebook/tag/reminder (and Mac/sheet) looks untouched.
+   */
+  const flatIosRow = visual.ios && isNoteItem && !isSheet && !macRow;
+  const phoneRow =
+    flatIosRow && Platform.OS === "ios" && !Platform.isPad && item.type === "note";
+  const macHighlighted = macRow && (showEditing || isSelected);
+  const systemAccent = useMacSystemStore((state) => state.accent);
+  const windowActive = useMacSystemStore((state) => state.active);
+  // N4: the row highlight follows the macOS system accent while the window is
+  // key, and goes neutral grey while it is not.
+  const macSelection = macSelectionFill(
+    macAccent(colors.primary.accent, systemAccent),
+    windowActive,
+    isDark
+  );
+  // Pointer feedback for the Mac rows only: iPhone/iPad rows have no pointer
+  // to hover with, and a sheet's rows keep the iOS look. The note list's wash
+  // is the neutral macOS one (white over dark, black over light), not the
+  // theme's hover colour the rest of the Mac UI uses.
+  const { hovered, hoverProps } = useMacHover(macRow);
+  const macRowHover = macNoteRowHoverFill(isDark);
+
+  const onLongPress = () => {
+    if (isSheet) return;
+    if (useSelectionStore.getState().selectionMode !== item.type) {
+      useSelectionStore.getState().setSelectionMode(item.type);
+    }
+    useSelectionStore.getState().setSelectedItem(item.id);
+  };
+
+  const row = (
+    <Pressable
+      {...hoverProps}
+      customColor={
+        macRow
+          ? "transparent"
+          : showEditing || isSelected
+            ? visual.selectionBackground
+            : isSheet
+              ? colors.primary.hover
+              : flatIosRow
+                ? Platform.OS === "ios" && Platform.isPad
+                  ? "transparent"
+                  : visual.contentSurface
+                : visual.elevatedSurface
+      }
+      testID={testID}
+      accessibilityRole={phoneRow ? "button" : undefined}
+      accessibilityState={
+        phoneRow && selectionMode === item.type
+          ? { selected: Boolean(isSelected) }
+          : undefined
+      }
+      onLongPress={nativeMenus && !selectionMode ? undefined : onLongPress}
+      onPress={
+        macRow
+          ? () => {
+              // Cmd-click / Shift-click select instead of opening (WP07/N2).
+              const { cmd, shift } = macPointerModifiers();
+              if (!cmd && !shift) return onPress();
+              void handleMacModifierPress(item).then((handled) => {
+                if (!handled) onPress();
+              });
+            }
+          : onPress
+      }
+      customSelectedColor={
+        macRow ? visual.hoverSurface : visual.selectionBackground
+      }
+      customAlpha={!isDark ? -0.03 : 0.03}
+      customOpacity={1}
+      hitSlop={
+        isSheet
+          ? undefined
+          : {
+              left: visual.listInset,
+              right: visual.listInset
+            }
+      }
+      style={{
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        width: isSheet ? "100%" : "auto",
+        alignSelf: flatIosRow ? "stretch" : "center",
+        overflow: "hidden",
+        minHeight: phoneRow ? 44 : undefined,
+        paddingHorizontal: macRow ? MAC_NOTE_ROW_PADDING : visual.rowInset,
+        paddingVertical: macRow
+          ? MAC_NOTE_ROW_PADDING_VERTICAL
+          : compactMode
+            ? visual.ios
+              ? 8
+              : 6
+            : flatIosRow
+              ? 14
+              : homeNote
+                ? 15
+                : visual.rowPadding,
+        borderRadius: macRow
+          ? MAC_NOTE_ROW_RADIUS
+          : flatIosRow
+            ? showEditing || isSelected
+              ? visual.controlRadius
+              : 0
+            : visual.ios && isTabletPane && !isSheet
+              ? 0
+              : visual.ios && !isSheet
+                ? homeNote
+                  ? 17
+                  : 10
+                : visual.cardRadius,
+        // Mac rows sit in the source list's 10 pt margin: without it the row
+        // runs edge to edge and its rounded highlight touches the window.
+        marginHorizontal: isSheet
+          ? 0
+          : macRow
+            ? MAC_SOURCE_LIST_INSET
+            : visual.listInset,
+        marginBottom: macRow
+          ? MAC_NOTE_ROW_GAP
+          : isSheet
+            ? DefaultAppStyles.GAP_VERTICAL
+            : flatIosRow
+              ? 0
+              : visual.ios
+                ? isTabletPane
+                  ? 0
+                  : homeNote
+                    ? 7
+                    : 2
+                : visual.rowSpacing,
+        borderWidth: macRow ? 0 : isSheet || visual.ios ? 0 : 0.5,
+        // No hairline between Mac rows: the gap above is the separation. Flat
+        // iPhone/iPad note rows are separated by a hairline instead of a gap.
+        borderBottomWidth:
+          macRow || phoneRow
+            ? 0
+            : flatIosRow || (visual.ios && isTabletPane && !isSheet)
+            ? 0.5
+            : 0,
+        borderColor: visual.separator,
+        // Only outer group corners curve; selection must not make each
+        // interior row into a separate card.
+        ...(phoneRow && groupEdges ? {
+          borderRadius: 0,
+          borderTopLeftRadius: groupEdges.first ? visual.controlRadius : 0,
+          borderTopRightRadius: groupEdges.first ? visual.controlRadius : 0,
+          borderBottomLeftRadius: groupEdges.last ? visual.controlRadius : 0,
+          borderBottomRightRadius: groupEdges.last ? visual.controlRadius : 0
+        } : {}),
+        ...(isSheet || visual.ios ? {} : visual.subtleShadow)
+      }}
+    >
+      {/* Pointer feedback under the selection highlight, so hovering a row
+          never hides the note that is actually open. */}
+      <MacHoverHighlight
+        visible={hovered && !macHighlighted}
+        radius={MAC_NOTE_ROW_RADIUS}
+        color={macRowHover.color}
+        opacity={macRowHover.opacity}
+      />
+      {macHighlighted ? (
+        /* Accent at low opacity (grey while the window is not key): a layer of
+           its own so custom themes (and their non-hex colors) keep working. */
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: MAC_NOTE_ROW_RADIUS,
+            backgroundColor: macSelection.color,
+            opacity: macSelection.opacity
+          }}
+        />
+      ) : null}
+      {showEditing && !macRow && !flatIosRow ? (
+        <View
+          style={{
+            backgroundColor: color || colors.selected.accent,
+            position: "absolute",
+            bottom: 0,
+            top: 0,
+            left: 0,
+            width: 5
+          }}
+        />
+      ) : null}
+      {children}
+      {phoneRow && !groupEdges?.last ? (
+        <View
+          pointerEvents="none"
+          testID="phone-note-separator"
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: visual.rowInset,
+            right: 0,
+            height: 0.5,
+            backgroundColor: visual.separator
+          }}
+        />
+      ) : null}
+    </Pressable>
+  );
+
+  if (!nativeMenus) return row;
+
+  const menu = (
+    <ItemContextMenu
+      item={item}
+      enabled={!selectionMode}
+      previewCornerRadius={10}
+    >
+      {row}
+    </ItemContextMenu>
+  );
+  // N1: Mac has no swipe actions (they live in the context menu/menu bar),
+  // so the note row is not wrapped in a SwipeRow. iPhone/iPad keep swiping.
+  if (item.type !== "note" || isMacCatalyst()) return menu;
+  const note = item as Note;
+  return (
+    <SwipeRow
+      enabled={!selectionMode}
+      leading={[
+        {
+          key: "pin",
+          label: note.pinned ? strings.unpin() : strings.pin(),
+          symbol: note.pinned ? "pin.slash.fill" : "pin.fill",
+          color: systemColor("orange", isDark),
+          onPress: async () => {
+            await db.notes.pin(!note.pinned, note.id);
+            Navigation.queueRoutesForUpdate();
+          }
+        }
+      ]}
+      trailing={[
+        {
+          key: "trash",
+          label: strings.delete(),
+          symbol: "trash.fill",
+          color: systemColor("red", isDark),
+          onPress: () => void deleteItems("note", [note.id])
+        },
+        {
+          key: "notebook",
+          label: strings.dataTypesPluralCamelCase.notebook(),
+          symbol: "folder.fill",
+          color: systemColor("indigo", isDark),
+          onPress: () =>
+            Navigation.navigate("LinkNotebooks", { noteIds: [note.id] })
+        }
+      ]}
+    >
+      {menu}
+    </SwipeRow>
+  );
+};
+
+export default SelectionWrapper;

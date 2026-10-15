@@ -1,0 +1,608 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-10-15T14:21:54.514010+00:00",
+  "writer": "Root only; agents write ACK/READY only in own existing outputs",
+  "transport": "READY/status files authoritative; supported codex queue verified same-session idle continuation",
+  "rules": [
+    "One active assignment per session; do not edit outside explicit ownership",
+    "Read receipt before followup; do not repeat accepted tests/reviews",
+    "At finish publish READY atomically; inspect queue for one newer assignment; no busy wait or daemon",
+    "Do not message Root with MCP; Root reads files on heartbeat",
+    "Never auto-retry uncertain dispatch; inspect same thread and ACK first"
+  ],
+  "assignments": [
+    {
+      "id": "C4-INTEGRATION-CHECK-20261015",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "ACCEPTED_READONLY_PROPOSAL",
+      "receipt": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/c4-integration.json",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C4-INTEGRATION-CHECK-20261015/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C4-INTEGRATION-CHECK-20261015/READY.json",
+      "task": "C4 accepted as exact code only. Root has 7 React PASS/full mobile types0. Keep C4 frozen. First write ACK with assignment id and current thread/workspace. Then one bounded read-only integration check (max10min) on current Root side-menu/adaptive navigation files: identify exact existing selectedAppleSection/onSelect handler, wide-sidebar vs medium/narrow visibility/inset decision and existing React seams. Deliver concise exact-file/line integration proposal and 4-6 consumer test cases so Root can wire C4 without new navigation store or losing notebook context. Read current ipad-c3-wide L/D images and REF08/09 only if needed; no overall audit. No production/test writes, build, UI operation or mandatory review duplication. Write READY atomically in own output, with findings and next concrete visual requirement. Do not send MCP message. Root owns all consumer writes. After finish inspect TASK-QUEUE once for a newer eligible id, else end turn.",
+      "dispatch": {
+        "method": "codex queue",
+        "message_id": "01a13ec9-f768-73d0-81ea-905c616fc493",
+        "exit_code": 0,
+        "result": "PASS same C session active, ACK written, no MCP message",
+        "no_retry": true,
+        "turn_id": "01a13eca-1d9e-77f2-a65f-75948026b5b7"
+      }
+    },
+    {
+      "id": "A-FILE-TRANSPORT-20261015",
+      "agent": "A",
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+      "status": "ACK_TRANSPORT_ADOPTED",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A-FILE-TRANSPORT-20261015/ACK.json",
+      "task": "Transport-only followup AFTER your current A6/B6 turn; no new code scope and no repeated checks. Preserve your finished frozen handoff and record its READY path/status in the ACK. Read TASK-QUEUE rules. From now on publish progress/READY atomically in your existing outputs; Root polls those files, reviews/integrates and publishes next assignment here. Do not send MCP messages to Root. At each completed packet inspect queue once for a newer eligible assignment; if none, end turn. Root resumes same session with supported codex queue. Never launch another CLI writer/session, change permissions or ignore mandatory reviews. Root is currently reviewing waiting handoffs; keep source frozen until a specific next coding packet.",
+      "dispatch": {
+        "at": "2026-10-15T09:01:58.507166+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13ecb-fd2a-70e1-b7c3-623e160bfdb0 for thread 01a13dd4-3bd1-72e1-8b40-76aa092b09ab.",
+        "error": "",
+        "no_retry": true
+      }
+    },
+    {
+      "id": "B-FILE-TRANSPORT-20261015",
+      "agent": "B",
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+      "status": "ACK_TRANSPORT_ADOPTED",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B-FILE-TRANSPORT-20261015/ACK.json",
+      "task": "Transport-only followup AFTER your current A6/B6 turn; no new code scope and no repeated checks. Preserve your finished frozen handoff and record its READY path/status in the ACK. Read TASK-QUEUE rules. From now on publish progress/READY atomically in your existing outputs; Root polls those files, reviews/integrates and publishes next assignment here. Do not send MCP messages to Root. At each completed packet inspect queue once for a newer eligible assignment; if none, end turn. Root resumes same session with supported codex queue. Never launch another CLI writer/session, change permissions or ignore mandatory reviews. Root is currently reviewing waiting handoffs; keep source frozen until a specific next coding packet.",
+      "dispatch": {
+        "at": "2026-10-15T09:01:58.736389+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13ecb-fe0d-7713-b8c0-cb660e6b2d50 for thread 01a13dd4-6696-74c1-81f6-25ebca01563a.",
+        "error": "",
+        "no_retry": true
+      }
+    },
+    {
+      "id": "B7-PHONE-LIST-MESSAGE-DENSITY",
+      "agent": "B",
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "receipt": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/b7-integration.json",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B7-PHONE-LIST-MESSAGE-DENSITY/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/b7-message-density/READY.json",
+      "task": "B6 ACCEPTED exact2files, Root30/1/fullmobiletypes0. Implement one bounded visible Phone-only message-card density improvement, EXACT card.tsx + new adjacent card.test.tsx, baseline b7-ownership-baseline.json. Current real screenshot integrated-a4-b4-c3/phone-b4-notes-light.jpg and dark.jpg shows excessive signed-out card/gaps between search and Today; compare REF01 final. Use semantic spacing/SF-symbol equivalents where existing API supports; keep all message titles/body/actions visible and >=44pt action target, wrap long localized text without horizontal overflow; preserve announcement precedence, hidden messages, error color, customMessage and existing onPress behavior. No authentication/Connect/business/store changes, no removing status/error messages or hiding account access. Other platforms unchanged. Focus new React tests on real Card positive/negative/error/long-label/dark/platform cases. Root owns header/navigation; no edits there. DIFF required, exact before/after patch and READY. No nativebuild/QA, no MCPnotification. End/checkqueue once.",
+      "dispatch": {
+        "exit_code": 0,
+        "output": "Queued message 01a13eda-f665-76a1-ac0f-747c392a6553 for thread 01a13dd4-6696-74c1-81f6-25ebca01563a.",
+        "error": "",
+        "no_retry": true
+      }
+    },
+    {
+      "id": "C5-PRIMARY-CONSUMER-INTEGRATION-TEST",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "ACCEPTED_TEST_CODE",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C5-PRIMARY-CONSUMER-INTEGRATION-TEST/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/c5-primary-integration-test/READY.json",
+      "task": "Your C4 read-only proposal ACCEPTED. Required DIFF review of Root consumer now requests actual RootNavigation -> NavigationContainer -> realSideMenu combined React wiring test (existing separate tests56/3 pass). Own ONLY NEW apps/mobile/app/navigation/ipad-primary-workspace.integration.test.tsx; no production/test-existing edits. Read frozen /Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/c5-inputs/manifest.json + five snapshot files; sync these five into your own repo only after saving your previous bytes externally, verify snapshot hashes, keep them READONLY fixtures, exclude them from your output patch. Root still owns these files and changed narrow Notes return: <700 pagerhome with no nestedLibrary reset; wide/medium preservepage. Add one tightly scoped combined integration suite using real RootNavigation, real SideMenu and real C4 controls; native library/host mocks permitted, existingseams read. Prefer real FluidPanelsView if achievable without expanding scope; otherwise explicitly minimal adapter that mounts realSideMenu under the Root provider, and expose actual measured width/store update. Verify wide1376 sidebarcontrols/no strip; medium1032/narrow512/fullscreen strip/no sidebarcontrols; no conditional provider remount losing notebook/source state; sectioncallbacks and Settings/NewNotebook reachability. Do NOT repair/retest the31 preexistingAdaptive suite failures or claim Yoga/native acceptance. Max25min; if harness too broad deliver concrete smaller diff/remaining limitation rather than new architecture. Dedicated DIFF for newtest if provider available; no duplicate Rootconsumer review. All output/logs external; no build/QA/MCP; atomicREADY.",
+      "dispatch": {
+        "exit_code": 0,
+        "output": "Queued message 01a13eda-f716-7412-8453-9c3e4cbbc453 for thread 01a13ded-297b-75c2-991d-cc29f8fd3396.",
+        "error": "",
+        "no_retry": true
+      },
+      "receipt": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/c5-integration.json"
+    },
+    {
+      "id": "A7-MAC-NOTE-ROW-HIERARCHY",
+      "agent": "A",
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "receipt": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/a7-integration.json",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A7-MAC-NOTE-ROW-HIERARCHY/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/a7-note-row-content/READY.json",
+      "task": "A6 exact3+RootAppDelegate ACCEPTED afterRootDIFF13, nativebuild running. Next independent visible Mac note-list typography/layout, ONLY NEW components/mac-note-row-content.tsx + adjacenttest (baselineabsence a7-ownership-baseline.json). Current real integrated-a4-b4-c3/mac-a4-format-light.jpg and dark.jpg show relative date + preview crowded together below title. REF06_macOS_Light.png/07_macOS_Dark.png instead put title leading, date trailing, preview its own secondary line. Implement PURE PRESENTATION MacNoteRowContent with title slot ReactNode (Root supplies unchanged existing Heading/displayTitle), dateText string (existingformatMacNoteDate unchanged), optional preview string, using existing semantic Mac size/spacing tokens and native text hierarchy. Retain full date accessible/readable (do not force24h/newformatter) and longlocalized/title flexibleheight/no horizontal overflow. No interaction/navigation/storage; Root continues to own NoteItem integration and existing conflict/attachment/locked/selection accessories. Only normal Mac row will use it; compact/trash/sheet/iOS unchanged byRoot integration. Real React tests L/D title/date/preview presence/no-preview/longstrings; no runtimepixelclaim untilRootconsumer. Read current Root NoteItem and maclayout/date files read-only; COWcopy olderNoteItem is notRootbaseline. No edits sharedfiles/NoteItem/datehelper/nativeA6. Independent DIFF onexact2newfiles; packagepatch/hashes/README integrationproposal; freezeREADY files, noMCP/noQA/build.",
+      "dispatch": {
+        "exit_code": 0,
+        "output": "Queued message 01a13edf-6dd2-7341-a43f-ca51fc791fdb for thread 01a13dd4-3bd1-72e1-8b40-76aa092b09ab.",
+        "error": "",
+        "no_retry": true
+      }
+    },
+    {
+      "id": "A-ACCESSIBILITY-DEFERRED-20261015",
+      "agent": "A",
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+      "status": "ACK_PRIORITY_ADOPTED",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A-ACCESSIBILITY-DEFERRED-20261015/ACK.json",
+      "task": "Explicit user priority update, effective immediately through Saturday17Oct evening: read ACCESSIBILITY-PRIORITY.json beside TASK-QUEUE. Further VoiceOver audits, screenreader optimization, extended DynamicType checks and accessibility-specific testcycles are DEFERRED, not failed mandatory acceptance or releaseblockers. Preserve existing accessibility features/labels; normal keyboard operation, readable text, adequatecontrast, navigation remain regular QA. No deletion/intentionalregression. No newoverall audit. Focus AppleRedesign/functionparity/stability. Write ownACK only; keep finished handoff frozen. Root reviewing/integrating A7/B7/C5, no duplicate work/newwriter/MCPnotice. This notice does not authorize new sourcefiles or new build/UI checks. Inspectqueue once for a newer bounded assignment then end.",
+      "dispatch": {
+        "at": "2026-10-15T09:51:07.624734+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13ef8-f282-7403-a51b-57449e127054 for thread 01a13dd4-3bd1-72e1-8b40-76aa092b09ab.\n",
+        "error": "",
+        "no_retry": true
+      },
+      "acknowledgement": {
+        "assignment_id": "A-ACCESSIBILITY-DEFERRED-20261015",
+        "agent": "A",
+        "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+        "status": "ACKNOWLEDGED_COMPLETE",
+        "utc": "2026-10-15T09:54:40.277830+00:00",
+        "priority_source": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/ACCESSIBILITY-PRIORITY.json",
+        "priority_adopted": {
+          "effective_at": "2026-10-15T09:48:21.453695+00:00",
+          "authority": "Explicit user priority correction 2026-10-15",
+          "until": "2026-10-17 evening Europe/Oslo deadline",
+          "status": "DEFERRED",
+          "deferred": [
+            "additional VoiceOver audits",
+            "screenreader optimization",
+            "extended Dynamic Type verification",
+            "accessibility-specific test cycles"
+          ],
+          "retained": [
+            "existing accessibility features and labels",
+            "ordinary keyboard operation",
+            "readable text",
+            "adequate contrast",
+            "working navigation"
+          ],
+          "release_blocker": false,
+          "scope": "Do not treat deferred checks as failed mandatory acceptance; no intentional regression; preserve independent functional/design/security reviews"
+        },
+        "interpretation": "Deferred checks are not verified, not failed mandatory acceptance and not release blockers. Existing accessibility features and labels remain preserved. Functional/design/security reviews and ordinary keyboard/readability/contrast/navigation QA remain in force.",
+        "existing_handoff": {
+          "ready_path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/a7-note-row-content/READY.json",
+          "ready_status": "CODE_READY_REVIEW_REQUIRED_ROOT",
+          "preserved_unchanged": true,
+          "source_frozen": true,
+          "priority_override": "New explicit user priority governs deferred accessibility checks without rewriting the frozen handoff."
+        },
+        "actions": {
+          "new_source_files_or_edits": 0,
+          "new_build_UI_checks": 0,
+          "new_accessibility_cycles": 0,
+          "duplicate_tests_or_reviews": 0,
+          "MCP_notices": 0,
+          "new_writer_or_session": false,
+          "security_policy_changes": false
+        },
+        "queue_at_finish": {
+          "inspections_for_newer_assignment": 1,
+          "newer_eligible_A_assignments": [],
+          "action": "End turn; await bounded assignment in this existing session"
+        }
+      }
+    },
+    {
+      "id": "B-ACCESSIBILITY-DEFERRED-20261015",
+      "agent": "B",
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+      "status": "ACK_PRIORITY_ADOPTED",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B-ACCESSIBILITY-DEFERRED-20261015/ACK.json",
+      "task": "Explicit user priority update, effective immediately through Saturday17Oct evening: read ACCESSIBILITY-PRIORITY.json beside TASK-QUEUE. Further VoiceOver audits, screenreader optimization, extended DynamicType checks and accessibility-specific testcycles are DEFERRED, not failed mandatory acceptance or releaseblockers. Preserve existing accessibility features/labels; normal keyboard operation, readable text, adequatecontrast, navigation remain regular QA. No deletion/intentionalregression. No newoverall audit. Focus AppleRedesign/functionparity/stability. Write ownACK only; keep finished handoff frozen. Root reviewing/integrating A7/B7/C5, no duplicate work/newwriter/MCPnotice. This notice does not authorize new sourcefiles or new build/UI checks. Inspectqueue once for a newer bounded assignment then end.",
+      "dispatch": {
+        "at": "2026-10-15T09:51:23.263894+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13ef9-32b2-7241-896c-f81309054ab8 for thread 01a13dd4-6696-74c1-81f6-25ebca01563a.\n",
+        "error": "",
+        "no_retry": true
+      },
+      "acknowledgement": {
+        "assignment_id": "B-ACCESSIBILITY-DEFERRED-20261015",
+        "agent": "B",
+        "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+        "status": "ACK",
+        "at_utc": "2026-10-15T09:58:18.230326+00:00",
+        "authority": "Explicit user priority correction 2026-10-15",
+        "priority_source": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/ACCESSIBILITY-PRIORITY.json",
+        "priority_status": "DEFERRED",
+        "until": "2026-10-17 evening Europe/Oslo deadline",
+        "deferred": [
+          "additional VoiceOver audits",
+          "screenreader optimization",
+          "extended Dynamic Type verification",
+          "accessibility-specific test cycles"
+        ],
+        "retained": [
+          "existing accessibility features and labels",
+          "ordinary keyboard operation",
+          "readable text",
+          "adequate contrast",
+          "working navigation",
+          "independent functional/design/security reviews"
+        ],
+        "acceptance_treatment": "Deferred checks are not failed mandatory acceptance or release blockers; no intentional regression.",
+        "focus": [
+          "Apple redesign",
+          "functional parity",
+          "stability"
+        ],
+        "frozen_handoff": {
+          "ready_path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/b7-message-density/READY.json",
+          "package": "B7-PHONE-LIST-MESSAGE-DENSITY",
+          "status": "READY",
+          "ready_sha256": "e60f4dd3c265a83ad41d2d7a000ef252da59d49096b33d2a630e3ab0de2937ef",
+          "unchanged": true
+        },
+        "actions": {
+          "source_changes": false,
+          "new_checks_or_reviews": false,
+          "new_accessibility_cycles": false,
+          "second_writer": false,
+          "new_session": false,
+          "mcp_notification": false,
+          "security_rule_changes": false
+        },
+        "transport": "Own ACK only; existing handoff unchanged"
+      }
+    },
+    {
+      "id": "C-ACCESSIBILITY-DEFERRED-20261015",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "ACK_PRIORITY_ADOPTED",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C-ACCESSIBILITY-DEFERRED-20261015/ACK.json",
+      "task": "Explicit user priority update, effective immediately through Saturday17Oct evening: read ACCESSIBILITY-PRIORITY.json beside TASK-QUEUE. Further VoiceOver audits, screenreader optimization, extended DynamicType checks and accessibility-specific testcycles are DEFERRED, not failed mandatory acceptance or releaseblockers. Preserve existing accessibility features/labels; normal keyboard operation, readable text, adequatecontrast, navigation remain regular QA. No deletion/intentionalregression. No newoverall audit. Focus AppleRedesign/functionparity/stability. Write ownACK only; keep finished handoff frozen. Root reviewing/integrating A7/B7/C5, no duplicate work/newwriter/MCPnotice. This notice does not authorize new sourcefiles or new build/UI checks. Inspectqueue once for a newer bounded assignment then end.",
+      "dispatch": {
+        "at": "2026-10-15T09:51:36.817944+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13ef9-692a-7bb0-ac65-bdd33aa279f4 for thread 01a13ded-297b-75c2-991d-cc29f8fd3396.\n",
+        "error": "",
+        "no_retry": true
+      },
+      "acknowledgement": {
+        "assignment_id": "C-ACCESSIBILITY-DEFERRED-20261015",
+        "agent": "C",
+        "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+        "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+        "status": "ACK_PRIORITY_ADOPTED",
+        "acknowledged_at": "2026-10-15T11:56:46.773153+02:00",
+        "priority_source": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/ACCESSIBILITY-PRIORITY.json",
+        "priority_source_sha256": "c66ac6805e40ba648e1e63f39393b7edccded4953ce1cc5481d5b0709af0e5b0",
+        "priority": {
+          "effective_at": "2026-10-15T09:48:21.453695+00:00",
+          "authority": "Explicit user priority correction 2026-10-15",
+          "until": "2026-10-17 evening Europe/Oslo deadline",
+          "status": "DEFERRED",
+          "deferred": [
+            "additional VoiceOver audits",
+            "screenreader optimization",
+            "extended Dynamic Type verification",
+            "accessibility-specific test cycles"
+          ],
+          "retained": [
+            "existing accessibility features and labels",
+            "ordinary keyboard operation",
+            "readable text",
+            "adequate contrast",
+            "working navigation"
+          ],
+          "release_blocker": false,
+          "scope": "Do not treat deferred checks as failed mandatory acceptance; no intentional regression; preserve independent functional/design/security reviews"
+        },
+        "interpretation": "Effective immediately through17Oct2026 evening Europe/Oslo: listed additional accessibility cycles DEFERRED, not failed acceptance or release blockers; preserve existing features/labels and normal keyboard/readability/contrast/navigation QA; independent functional/design/security reviews remain",
+        "existing_handoff": {
+          "path": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/c5-primary-integration-test/READY.json",
+          "status": "READY",
+          "sha256_unchanged": "68cb4b36f121824bbb71b0b5bd3480b68c11e54fb1382588acf00418c17d9e1b",
+          "preserved_without_rewrite": true,
+          "root_queue_status_seen": "APPLIED_ROOT_TESTS_PENDING"
+        },
+        "source_frozen": true,
+        "new_source_files": false,
+        "new_tests_reviews_builds_ui_checks": false,
+        "additional_writer_or_session": false,
+        "global_policy_changes": false,
+        "mcp_notification": false,
+        "transport": "ACK file only",
+        "historical_handoff_notes": "Earlier UNVERIFIED accessibility evidence stays historical; current priority defers additional cycles and does not turn them into failed acceptance or release blockers",
+        "queue_followup": {
+          "checked_once_at_finish": "2026-10-15T11:58:22.215479+02:00",
+          "queue_updated_at": "2026-10-15T09:58:03.698199+00:00",
+          "queue_sha256": "a9b5883a375933ed948565ae9d9c08c67acb0c7e7c6224ccd330af2080d0ffa1",
+          "other_pending_matching_session_ids": [],
+          "action": "No further work started; priority-only instruction fulfilled; existing handoff frozen",
+          "busy_wait_or_daemon": false
+        }
+      }
+    },
+    {
+      "id": "B8-PHONE-HEADER-TOOL-PLACEMENT",
+      "agent": "B",
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+      "status": "ACCEPTED_READONLY_PROPOSAL_NATIVE_PENDING",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B8-PHONE-HEADER-TOOL-PLACEMENT/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B8-PHONE-HEADER-TOOL-PLACEMENT/READY.json",
+      "task": "B7 ACCEPTED_CODE_NATIVE_PENDING: Root15ReactPASS/fullmobiletypes0, receipt b7-integration.json. Next bounded read-only proposal, max10minutes: compare existing actual phone-b6-notes-dark.jpg (integrated-a6-b6-c4) and prior phone-b4-notes-light.jpg with final REF01. Accountmessage density is already B7, do not redo. Identify ONE remaining substantial header/search/tool-arrangement discrepancy and exact minimal Root-owned consumer changes to address it, preserving search/filter/sort/newnote/settings reachability. Read current Root bytes, not stale Bcopy. Provide precise changedfiles, beforehashes and recommended hunks or code proposal in own outputs only; no source writes, tests, build/UI, new overallaudit or mandatory review repetition. Root currently owns note/index.tsx and test for A7 Macconsumer, do not touch. If remaining gap requires runtime first, say so and provide concrete QA step instead of speculative changes. Latest Accessibility priority applies: further dedicated cycles DEFERRED; normal readability/contrast/keyboard/navigation remain. Write ACK/READY only in own outputs, no MCP notice. Inspectqueue once at finish, no waiting daemon or secondwriter.",
+      "dispatch": {
+        "state": "QUEUED",
+        "at": "2026-10-15T10:31:53.422890+00:00",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f1e-50be-71e3-b816-687b77605205 for thread 01a13dd4-6696-74c1-81f6-25ebca01563a.\n",
+        "error": ""
+      }
+    },
+    {
+      "id": "C6-IPAD-INFORMATION-PLACEMENT",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "ACCEPTED_READONLY_PROPOSAL_WITH_ROOT_DECISION",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C6-IPAD-INFORMATION-PLACEMENT/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C6-IPAD-INFORMATION-PLACEMENT/READY.json",
+      "task": "C5 ACCEPTED_TEST_CODE: Root7ReactPASS/fullmobiletypes0; first5000ms hosttimeout documented, one external120s retry passed; no nativeclaim, 31Adaptive unchanged. Next bounded read-only proposal max10minutes: inspect current Root ipad-notebook-information, sharedHeader and notebook consumer against real integrated-a6-b6-c4/ipad-c4-wide-dark.jpg and REF08/09. Current Notebook Options occupies separate row below search; propose minimal integration to place info access in existing primary header while preserving description/dates/actions, breadcrumbs/selection and real512/1032/wide contexts. No duplicate newcomponent if existing can be reused. Deliver exact Root-owned consumer seams, beforehashes, practical codeproposal and tests needed. Do not write production/test sources or operate QA/build; no new overallaudit or repeated C5/31Adaptive tests. Source frozen, sharedheader staysRoot. If current design cannot safely compress without visible loss, name exact issue. Latest Accessibility priority applies: further dedicated cycles DEFERRED; normal readability/contrast/keyboard/navigation remain. Write ACK/READY only in own outputs, no MCP notice. Inspectqueue once at finish, no waiting daemon or secondwriter.",
+      "dispatch": {
+        "state": "QUEUED",
+        "at": "2026-10-15T10:31:53.812968+00:00",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f1e-517f-7470-aaaa-78c99a870ce6 for thread 01a13ded-297b-75c2-991d-cc29f8fd3396.\n",
+        "error": ""
+      }
+    },
+    {
+      "id": "A8-MAC-NOTEBOOK-ESCAPE",
+      "agent": "A",
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A8-MAC-NOTEBOOK-ESCAPE/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A8-MAC-NOTEBOOK-ESCAPE/READY.json",
+      "task": "A7 exacttwofiles still frozen for Root DIFF retry755; do not change them or run duplicate A7review. New concrete Macruntime defect: integrated-a6-b6-c4 native QA, Sidebar NewNotebook opens correct dialog, Escape leaves NewNotebook open, visible Cancel closes. Screenshot mac-a5-new-notebook-escape-still-open.jpg; synthetic3notes unchanged. A6 nativeFormat > MoreFormatting opens panel and Escape closes, L/D verified now. Implement smallest fix for Notebook-dialog Escape using existing modal/key routing, only in your A-owned mac-* hooks/services or MacMenu/** if correct seam is there; do not alter AppDelegate/sharedDialog/Navigation/Editor files. Read currentRoot versions before analysis and capture baselinehashes, preserve all earlier handoffs. If correctfix requires sharedRootfile, deliver precise bounded patch PROPOSAL externally for Root review/integration, no substitute macro/coordinate/globalEscape swallowing. Ordinary text input Escape should cancel topmost dialog once, not delete/save/navigate; preserve native menu/editor childlayer order. Focus React/native-boundary tests as appropriate, independent DIFF for actual significantfix; no nativebuild/UI/extraAXcycles. No auth/Connect/general audit. Max20min diagnosis+bounded patch, if blocker give exact required seam, no broad rewrite. Own output logs outside repo, ACK then READY, no MCPmessage/newwriter. Accessibilitypriority remains DEFERRED for extendedcycles; normal keyboard remainsrequired.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f21-bb0e-7b90-9c02-e6a9036495bc for thread 01a13dd4-3bd1-72e1-8b40-76aa092b09ab.\n",
+        "error": ""
+      },
+      "ack_verified_at": "2026-10-15T10:46:12.098253+00:00",
+      "review_cell": null,
+      "root_feedback": "Exact patch reviewed/integrated sequentially; affected React suite and full mobile types PASS. Native next bundle; not design completion. Receipt a8-integration.json"
+    },
+    {
+      "id": "C7-IPAD-NOTEBOOK-CONTEXT-DENSITY",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C7-IPAD-NOTEBOOK-CONTEXT-DENSITY/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C7-IPAD-NOTEBOOK-CONTEXT-DENSITY/READY.json",
+      "task": "C6 proposal accepted with narrower Root decision: remove the duplicate normal Notebook Options row. Use the EXISTING shared Header More > Notebook Options as the ordinary information entry. Do not add a third trailing button: the medium 300pt pane has minimal slack, and the existing menu preserves metadata/actions.\nImplement ONLY ipad-notebook-information.tsx and existing notebook-header.test.tsx. Baseline: c7-ownership-baseline.json next to TASK-QUEUE. Verify your before bytes against Root; if different, save them externally then synchronize ONLY these two files with hash proof. Never synchronize the whole copy.\nNormal top-level notebook context returns null after hooks; nested notebooks retain breadcrumbs. Selection retains the current title/live count and existing 44pt information action because Header switches to Done then. Preserve callbacks, current notebook, ancestor lookup, platform gates and labels. Shared Header, NotebookScreen, navigation/theme/editor/core remain read-only.\nUpdate directly affected React tests for normal empty context, nested breadcrumbs, selection/current-notebook information and return. Read actual NotebookScreen menu.extra/onExtra as evidence for the existing More route; if feasible verify via existing actual Header seam without a fake implementation. Explicitly document any remaining full NotebookScreen/native proof gap. Required independent DIFF on the exact two files, patch/manifest/READY. Root verifies More > Properties in isolated runtime with the next bundle.\nNo dedicated Accessibility cycles, full Adaptive rerun, native build/UI operation, new component/store/toolbar or Connect work. Root is editing separate Mac files. Logs outside repo; inspect queue once at finish, no MCP message or second writer.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f27-d78f-7ce2-a054-751468836b99 for thread 01a13ded-297b-75c2-991d-cc29f8fd3396.\n",
+        "error": ""
+      },
+      "ack_verified_at": "2026-10-15T10:46:12.098253+00:00",
+      "root_feedback": "Exact patch reviewed/integrated sequentially; affected React suite and full mobile types PASS. Native next bundle; not design completion. Receipt c7-integration.json"
+    },
+    {
+      "id": "B9-PHONE-SEARCH-SURFACE-PROPOSAL",
+      "agent": "B",
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B9-PHONE-SEARCH-SURFACE-PROPOSAL/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B9-PHONE-SEARCH-SURFACE-PROPOSAL/READY.json",
+      "task": "B8 accepted as the concrete remaining Phone search-surface discrepancy. Root verified current source is still the exact B8 IosSearchField baseline; B7 changes only message cards, so it does not fix the search fill. Prepare a bounded EXTERNAL Root patch proposal (max15min), not repository edits: ios-nav-bar.tsx Phone-dark-only semantic field fill plus directly affected tests in existing header/index.test.tsx. Capture current Root before hashes/bytes and compare your candidate against those, never HEAD or stale B copy. Preserve every search handler, route, tool arrangement, custom theme, light Phone, iPad/Mac/Android path. No new color literals or global theme change. Tests should render actual IosSearchField and prove the Phone dark semantic token, negative platforms/appearance and callback preservation. Use existing test infrastructure/overlay, no new setup. Independent exact-diff review if available; if transport is genuinely unavailable, report that and freeze the proposal for Root review rather than retries. All proposal/candidate/log files outside repo. Root builds remain frozen; do not modify Root or your repository source. No native build/UI/extended Accessibility cycles or Connect. Deliver exact patch, before/after manifest, test evidence and native-open limitation in own READY. Keep B7/B8 frozen, inspect queue once at finish. No MCP coordination message or second process/session.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f31-8116-7cc3-81e4-5e472ee0efe9 for thread 01a13dd4-6696-74c1-81f6-25ebca01563a.\n",
+        "error": ""
+      },
+      "ack_verified_at": "2026-10-15T11:01:05.528722+00:00",
+      "root_feedback": "Exact patch reviewed/integrated sequentially; affected React suite and full mobile types PASS. Native next bundle; not design completion. Receipt b9-integration.json"
+    },
+    {
+      "id": "A9-MAC-FORMATTING-PRESENTATION-PROPOSAL",
+      "agent": "A",
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A9-MAC-FORMATTING-PRESENTATION-PROPOSAL/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A9-MAC-FORMATTING-PRESENTATION-PROPOSAL/READY.json",
+      "task": "A8 Root DIFF12 code gate approved with runtime conditions; frozen proposal retained, Root integrates after current build. Next max20min external-only Root proposal for actual Mac advanced-format panel presentation. Read current Root source and real integrated-a6-b6-c4/mac-a6-native-format-light.jpg and mac-a6-native-format-current.jpg against REF06/07. Current panel has tiny 3px padding and missing border/radius/shadow, blending into editor. Limit proposal to packages/editor/src/toolbar/tools/mac-format-menu.tsx, optionally Mac-only presentation prop in tools/mac-format.tsx, and affected existing mac-format-menu.test.tsx. Capture exact Root before bytes; never edit either repository or shared theme/popup/router. Reuse semantic tokens for framed popup, legible heading/section hierarchy, reasonable spacing/control targets and bounded scroll. Preserve all tools/custom config, editor selection, owner guards, child-first Escape, scoped popup IDs and all iPad/default presentations. No new tools, icons/labels without existing localization, no core routing rewrite. Tests actual host and appearance props where meaningful; existing selection/child dismissal tests only as affected. Independent DIFF on exact candidate. If test infrastructure cannot evaluate external proposal, report exact limitation rather than alter Root source. All candidate files/patch/manifests/logs in outputs. No builds/UI operation/new session/extended Accessibility cycles/Connect. Write own ACK/READY, inspect queue once at finish; no MCP message.",
+      "dispatch": {
+        "state": "QUEUED",
+        "at": "2026-10-15T10:58:16.699355+00:00",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f36-7b89-7553-b709-897bdcb3b69e for thread 01a13dd4-3bd1-72e1-8b40-76aa092b09ab.\n",
+        "error": ""
+      },
+      "ack_verified_at": "2026-10-15T11:01:05.528722+00:00",
+      "root_feedback": "Exact reviewed patch applied, Root targeted React tests pass; runtime pending next bundle. Receipt a9-integration.json"
+    },
+    {
+      "id": "C8-IPAD-SIDEBAR-READABILITY",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C8-IPAD-SIDEBAR-READABILITY/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C8-IPAD-SIDEBAR-READABILITY/READY.json",
+      "task": "C7 ACCEPTED_CODE_NATIVE_PENDING: exact2files integrated, Root17React/fullmobiletypes0; native not yet bundled. Existing31Adaptive unchanged. Next bounded visible iPad sidebar readability package under existing side-menu ownership. Compare actual integrated-a6-b6-c4/ipad-c4-wide-dark.jpg with final REF08/09: Library/notebook row labels/counts are substantially smaller than primary destinations and final reference. Implement cohesive iPad-only typography/spacing adjustment for existing sidebar Library/notebook source rows, preserving data/count computation, disclosure, dragging, filter, selection, More secondary sources, Tags and Settings. Limit to side-menu/menu-item.tsx and its test, ipad-source-navigation.tsx and its test; if NewNotebook action in side-menu-notebooks.tsx needs matching label size, at most that one extra production file plus existing relevant test. Existing tokens AppFontSize md/sm etc and semantic colors only, no global theme/size token change, no font-size literals, no new components. Hardware-iPad gate only; iPhone/Mac/Android stay exact. Read Root current bytes, capture hashes; save stale owned bytes externally and synchronize only assigned files if necessary, no whole-copy sync. Preserve 44pt minimum, narrow clipping safety and measured frame callbacks. No routing/core/header/editor changes. Targeted rendered positive/negative tests and independent exact DIFF, patch/manifest/READY. No full Adaptive audit, extra Accessibility cycles, build/UI, or new session/writer. Native at actual widths remains Root QA; simulator service query currently blocked, do not bypass or claim runtime. Max20min scoped work; if screenshot scale alone does not justify change, give exact evidence instead of artificial rewriting. Logs outside repo, own ACK/READY only, inspect queue once at finish.",
+      "dispatch": {
+        "state": "QUEUED",
+        "at": "2026-10-15T11:08:34.257755+00:00",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f3f-e5c6-75c2-8966-3e4598fc8d76 for thread 01a13ded-297b-75c2-991d-cc29f8fd3396.\n",
+        "error": ""
+      },
+      "root_feedback": "Exact reviewed patch applied, Root targeted React tests pass; runtime pending next bundle. Receipt c8-integration.json"
+    },
+    {
+      "id": "B10-ISOLATED-PHONE-QA-BLOCKER",
+      "agent": "B",
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+      "status": "ACCEPTED_BOUNDED_DIAGNOSTIC",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B10-ISOLATED-PHONE-QA-BLOCKER/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B10-ISOLATED-PHONE-QA-BLOCKER/READY.json",
+      "task": "B9 exact patch ACCEPTED_CODE_NATIVE_PENDING in Root; Root22React and full mobile types0 after correcting A7-owned optional fixture type. No B9 code change needed. Next max8min READ-ONLY diagnosis of concrete blocked own Phone QA, not new tooling project: integrated-a7-b7/phone-install-blocked.json and host-relief-owned-simulator-{term,kill}.json document own QA supervisors stopped previously. Current own simctl list devices --json stalled before boot/install; exact read query PID35158 cancelled, install script exited without device mutation. Determine from existing local process identity/device metadata whether orphan processes of ONLY own Phone7CC950D8-599A-4681-987B-5F9928B9C3F5 or ownPad5978DDD7-2138-42EC-B7DC-9083273F242C remain and a supported bounded recovery action Root could take. Do not kill/restart any process/service, boot/erase/reset device, editfiles/source/config, useUI, spawnworker, or repeat the unbounded simctl list query. Readonly process metadata may prove exact device identity, but return only PID/parent/executable/device identifiers; never dump unrelated environment or personal appdata. If no reliable own-device proof or only global CoreSimulator restart is possible, stop with that precise limitation. No global service or personal app interaction and no permission workaround. All logs in own outputs. Root continues Mac QA/implementation; no need another approval for this read-only diagnostic. Write ACK/READY only, no MCP notice.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f41-7ff6-7b70-a3af-4cbf785edb4e for thread 01a13dd4-6696-74c1-81f6-25ebca01563a.\n",
+        "error": ""
+      },
+      "root_feedback": "Your ancestry-only diagnosis preserved boundaries. New user request authorized broader Root host analysis: exact device IDs in process metadata proved198own orphan services; scopedTERM/KILL removedall, no data reset. Device service still intermittently blocks after normal restart; no further B infrastructure work."
+    },
+    {
+      "id": "C9-IPAD-NOTEBOOK-READABILITY",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "ACCEPTED_CODE_NATIVE_PENDING",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C9-IPAD-NOTEBOOK-READABILITY/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C9-IPAD-NOTEBOOK-READABILITY/READY.json",
+      "task": "C8 exact4files accepted, Root50React/2suites and mobiletypes0. Complete the explicitly remaining sidebar typography ONLY in side-menu/notebook-item.tsx, side-menu/index.tsx and existing ipad-source-navigation.test.tsx. In existing sourceList && isIPadSourceList branch, notebook title sm -> md and count xxs -> sm; preserve separate44pt disclosure/add, indentation clamp, count/callback behavior and all non-sidebar/nonhardware-iPad paths. Match NewNotebook action label to md only for hardware-iPad sidebar action, retain44pt and after-tree location. Inspect actual caller usages before gating. Existing semantic tokens/colors only. Capture current Root exact baseline and synchronize only these assigned files after external backup if stale. No changes to side-menu-notebooks.tsx, stores, shared theme/nav/editor. Add meaningful rendered positive/negative tests for actual notebook/action labels and preserved callbacks. Independent exact DIFF, precise before/after hashes, patch/READY, logs outside repo. Max15min bounded implementation, no native builds/UI/service changes/extended Accessibility cycles/Connect. Keep all prior packages frozen. Root building web packages; own3mobilefiles remain isolated. Use own ACK/READY and inspect queue once at finish; no MCP message or second writer.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "at": "2026-10-15T11:37:02.900810+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13f59-f8a8-7e01-a40d-d8f3ae66ea5f for thread 01a13ded-297b-75c2-991d-cc29f8fd3396.\n",
+        "error": ""
+      },
+      "ack_verified_at": "2026-10-15T11:39:54.885893+00:00",
+      "root_feedback": "Exact3files reviewed/hashed/applied after build stop; Root45/1PASS. Native excluded from completed simulator bundle; c9-integration.json."
+    },
+    {
+      "id": "A11-MAC-TOOLBAR-PARITY-PLAN",
+      "agent": "A",
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+      "status": "ACCEPTED_READ_ONLY_PLAN",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A11-MAC-TOOLBAR-PARITY-PLAN/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A11-MAC-TOOLBAR-PARITY-PLAN/READY.json",
+      "task": "A9 exact3files accepted after independent focused DIFF13 APPROVE-WITH-NITS and Root13actual-host tests. Native framing/width/scroll still pending next bundle. Next max10min READ-ONLY narrow integration plan for concrete duplicate Mac lower-toolbar discrepancy in current integrated-a7-b7/mac-a7-notes-light.jpg and dark against REF06/07 and MasterV2 11.4-11.5. Trace active native toolbar plus lower web toolbar/config consumers only. Provide exact existing actions only reachable from lower toolbar, effective custom configuration rules, and smallest safe conditional rendering change that preserves all existing features/custom configurations and selection/Undo/Redo. No new audit or code edits, no invented tool inventory, no new toolbar framework or deletion just for appearance. Do not mutate Root/own repo, no builds/UI/native/service changes, no extended Accessibility cycles/Connect. Root owns shared editor/menu/nav; proposal only in outputs. Include exact relevant line/hash anchors and recommended existing tests; mark uncertain runtime reachability. Deliver own ACK/READY then inspect queue once. No MCP notices/extra sessions.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "at": "2026-10-15T11:37:03.857462+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13f5a-0358-7262-b6f4-5a2baeeb6a42 for thread 01a13dd4-3bd1-72e1-8b40-76aa092b09ab.\n",
+        "error": ""
+      },
+      "ack_verified_at": "2026-10-15T11:39:54.885893+00:00",
+      "root_feedback": "All source hashes current; inspected existing list components and confirmed missing upper variants/indent. No code integration in A11."
+    },
+    {
+      "id": "A12-MAC-UPPER-LIST-TOOLS",
+      "agent": "A",
+      "thread": "01a13dd4-3bd1-72e1-8b40-76aa092b09ab",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac",
+      "status": "READY_ARTIFACTS_RECOVERED_USER_HOLD",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A12-MAC-UPPER-LIST-TOOLS/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-a-mac/outputs/coordination/A12-MAC-UPPER-LIST-TOOLS/READY.json",
+      "task": "A11 plan accepted after Root hash verification and direct list-source inspection. Implement first bounded prerequisite as EXTERNAL Root proposal only: native Mac More Formatting should expose existing checklist/bullet/numbered list tools including current style submenus and indent/outdent for active list items. Reuse ToolbarGroup and existing list commands/components; no new syntax, configuration key, migration, native command clone or toolbar framework. Exact scope packages/editor/src/toolbar/tools/mac-format.tsx, tools/lists.tsx if needed for correct child anchor, existing toolbar/__tests__/mac-format-menu.test.tsx; at most existing list popup test if a dedicated regression fixture is actually needed. Capture exact current Root before bytes including integrated A9. Mac-only presentation guard; touch/default/non-Mac remain unchanged. In enclosing native popup, style submenu must anchor actual owned list button rather than lower toolbar; preserve scoped IDs, owner checks, child-first Escape, editor selection, genuine existing list type/indent/outdent transaction behavior. No hiding/removal of lower toolbar or bottom clearance change yet, no custom configuration rewrite. Parent-aware anchor must not regress existing toolbar/nested default popups. Meaningful actual-host tests for style selection, active list indent/outdent, child parent ownership and negative presentation; reuse valid existing acceptance without unrelated reruns. Required exact DIFF; if turnlimit, use narrow external before/proposed fixture and retain failed verdict audit. Max20min, own candidate/patch/hash/test/review/READY outside both repos. Root source frozen for native build, NO repository mutation/build/UI/service changes/Connect/extended Accessibility cycles. Existing own ACK/READY only, no MCP message/second writer; inspect queue once at finish.",
+      "dispatch": {
+        "state": "QUEUED",
+        "at": "2026-10-15T11:47:44.249194+00:00",
+        "no_retry": true,
+        "exit_code": 0,
+        "output": "Queued message 01a13f63-c1dd-7b10-b5a4-754bfa31040f for thread 01a13dd4-3bd1-72e1-8b40-76aa092b09ab.\n",
+        "error": ""
+      },
+      "root_feedback": "Workspace/source/handoffs recovered from iCloud and locally verified. User explicitly requests HOLD after recovery: do not resume, implement or inspect queue for followup until new explicit user instruction. No package integration or independent review occurred during recovery. B11 never started; C10 local-only handoff preserved; A12 original proposal recovered."
+    },
+    {
+      "id": "B11-PHONE-LIBRARY-FINAL-PRESENTATION",
+      "agent": "B",
+      "thread": "01a13dd4-6696-74c1-81f6-25ebca01563a",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone",
+      "status": "WORKSPACE_RECOVERED_B11_NOT_STARTED_USER_HOLD",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B11-PHONE-LIBRARY-FINAL-PRESENTATION/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-b-iphone/outputs/coordination/B11-PHONE-LIBRARY-FINAL-PRESENTATION/READY.json",
+      "task": "Continue independent Phone implementation, not infrastructure. B10 bounded diagnosis accepted; Root alone handles resource recovery. Take the remaining Library/notebook-navigation presentation from MasterV2 and final references as one bounded UI packet. Use existing phone-b5-library-dark.jpg in integrated-a6-b6-c4 and your prior B5 evidence, current Root source and existing matrix; do not redo accepted B5 ordering or B9 search. Limit to your owned apps/mobile/app/screens/library files, max2production plus directly affected existing/new rendered tests. Find and implement a concrete still-present visual/reachability mismatch supported by the agreed design: hierarchy/spacing/Notebook navigation and secondary source organization. Preserve all existing sources, routes, counts, notebook creation, custom colors, Note editor state, iPad/Mac paths. No invented redesign, new functionality, global nav/theme/tasks/core change or changes solely to create a diff; if no justified remaining change within this exact surface, return precise evidence and a narrow Root dependency rather than rewriting working code. Current Root dirty baseline wins, synchronize only assigned files after backup/hash. Single-process targeted tests and independent exactDIFF. No builds/UI/simulator/service operations, Connect, fullaudit or extendedAccessibility. Logs/caches outside repository. Max20min. Own ACK/READY; one finish queue read, no MCPmessage/newsession.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "at": "2026-10-15T12:09:39.486783+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13f77-d88b-7173-989d-072faea9d223 for thread 01a13dd4-6696-74c1-81f6-25ebca01563a.\n",
+        "error": ""
+      },
+      "root_feedback": "Workspace/source/handoffs recovered from iCloud and locally verified. User explicitly requests HOLD after recovery: do not resume, implement or inspect queue for followup until new explicit user instruction. No package integration or independent review occurred during recovery. B11 never started; C10 local-only handoff preserved; A12 original proposal recovered."
+    },
+    {
+      "id": "C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY",
+      "agent": "C",
+      "thread": "01a13ded-297b-75c2-991d-cc29f8fd3396",
+      "workspace": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad",
+      "status": "READY_ARCHITECTURE_PROPOSAL_USER_HOLD",
+      "ack": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/ACK.json",
+      "output": "/Users/ozel0t/Documents/Codex/2026-10-15/veyran-master-v2-c-ipad/outputs/coordination/C10-IPAD-PRIMARY-NAVIGATION-CONTINUITY/READY.json",
+      "task": "C9 exact3files accepted in Root after independentreview and Root45/1PASS; native pending, all oldhandoffs frozen. Next bounded EXTERNAL ROOT PROPOSAL for documented C4 remaining gap: wide iPad Tasks/Search currently cover pane navigator and fall back to duplicate top strip rather than keeping planned Notes/Tasks/Search sidebar hierarchy. Inspect only current navigation-stack.tsx, ipad-primary-navigation-context.ts, existing relevant task/search host seams, C4/C5 tests and Master8.2/REF08/09. Prepare smallest coherent actual patch if achievable using existing routes/stores and mounted sidebar ownership, plus focused rendered route/return-state tests; at most3production shared files plus2existing tests. No new routing store/route taxonomy or removing sole return path. Preserve actual<700/medium/fullscreen top-strip fallback, existing collection/editor selection and Tasks/Search navigation, iPhone/Mac unchanged. Root still sole shared-file writer: all candidate files/patch/hash snapshots external, do not modify either repo. If keeping persistent sidebar requires wider navigation architecture, stop with exact bounded integration proposal instead of broad rewrite, and name architecture review needed before code. No repeated overallaudit, UI/build/device/services, Connect or extendedAccessibility. Single-process tests only, independentDIFF for any code. Max20min; ownACK/READY and finishqueuecheck, no MCP/newsession.",
+      "dispatch": {
+        "state": "QUEUED",
+        "no_retry": true,
+        "at": "2026-10-15T12:09:39.486783+00:00",
+        "exit_code": 0,
+        "output": "Queued message 01a13f77-dcaa-7811-b315-98d148300879 for thread 01a13ded-297b-75c2-991d-cc29f8fd3396.\n",
+        "error": ""
+      },
+      "ack_verified_at": "2026-10-15T12:12:42.428581+00:00",
+      "root_feedback": "Workspace/source/handoffs recovered from iCloud and locally verified. User explicitly requests HOLD after recovery: do not resume, implement or inspect queue for followup until new explicit user instruction. No package integration or independent review occurred during recovery. B11 never started; C10 local-only handoff preserved; A12 original proposal recovered."
+    }
+  ],
+  "accessibility_priority": {
+    "effective_at": "2026-10-15T09:48:21.453695+00:00",
+    "authority": "Explicit user priority correction 2026-10-15",
+    "until": "2026-10-17 evening Europe/Oslo deadline",
+    "status": "DEFERRED",
+    "deferred": [
+      "additional VoiceOver audits",
+      "screenreader optimization",
+      "extended Dynamic Type verification",
+      "accessibility-specific test cycles"
+    ],
+    "retained": [
+      "existing accessibility features and labels",
+      "ordinary keyboard operation",
+      "readable text",
+      "adequate contrast",
+      "working navigation"
+    ],
+    "release_blocker": false,
+    "scope": "Do not treat deferred checks as failed mandatory acceptance; no intentional regression; preserve independent functional/design/security reviews"
+  },
+  "resource_policy": {
+    "at": "2026-10-15T11:58:04.787517+00:00",
+    "authority": "Explicit user mobile-QA priority 2026-10-15",
+    "max_active_qa_simulators": 1,
+    "concurrent_heavy_builds": 1,
+    "xcodebuild_jobs": 2,
+    "runtime_and_heavy_builds": "Do not overlap during host recovery",
+    "agent_builds_or_device_operations": false,
+    "preserve_qa_data": true,
+    "no_blanket_reset_or_delete": true,
+    "resume_visual_qa_immediately_when_reliable": true
+  },
+  "user_hold": {
+    "status": "PAUSED_UNTIL_EXPLICIT_USER_RESUME",
+    "authority": "User requested recovery/copy only, then report and wait; 2026-10-15",
+    "allowed_current_work": "Recover and verify missing workspaces only",
+    "prohibited": "No implementation, integration, builds, QA launch, new assignment or session wake"
+  },
+  "recovery_receipt": "/Users/ozel0t/Notesnook/qa/core-master-v2-20261012/parallel-deadline/workspace-recovery-20261015/VERIFICATION.json"
+}

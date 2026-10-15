@@ -31,11 +31,8 @@ import {
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import {
   eSubscribeEvent,
-  eUnSubscribeEvent,
-  presentSheet
+  eUnSubscribeEvent
 } from "../../services/event-manager";
-import SettingsService from "../../services/settings";
-import { useIsCompactModeEnabled } from "../../hooks/use-is-compact-mode-enabled";
 import { useGroupOptions } from "../../hooks/use-group-options";
 import { RouteName } from "../../stores/use-navigation-store";
 import { useSelectionStore } from "../../stores/use-selection-store";
@@ -44,7 +41,7 @@ import { AppFontSize } from "../../utils/size";
 import { DefaultAppStyles } from "../../utils/styles";
 import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { hexToRGBA } from "../../utils/colors";
-import { IconButton, IconButtonProps } from "../ui/icon-button";
+import { IconButtonProps } from "../ui/icon-button";
 import { Pressable } from "../ui/pressable";
 import Heading from "../ui/typography/heading";
 import Paragraph from "../ui/typography/paragraph";
@@ -58,12 +55,14 @@ import {
   IosSearchField
 } from "../ios-nav-bar";
 import { ListViewMenuConfig, useListViewMenu } from "../list-view-menu";
-import Sort from "../sheets/sort";
 import { isMacCatalyst } from "../../utils/constants";
 import { useMacListTitleStore } from "../../utils/mac-window-title";
 import { useMacWindowStore } from "../../stores/use-mac-window-store";
 import { useAppleNavigationStore } from "../../stores/use-apple-navigation-store";
 import Navigation from "../../services/navigation";
+import { useIPadWorkspace } from "../ipad-workspace-context";
+import { resolveIPadCollectionLeading } from "../../utils/ipad-layout";
+import { AccountAffordance } from "./account-affordance";
 
 /** SF Symbols for the Material icon names screens pass as `rightButton`. */
 const IOS_RIGHT_BUTTON_SYMBOLS: Record<string, string> = {
@@ -79,6 +78,7 @@ const IOS_RIGHT_BUTTON_SYMBOLS: Record<string, string> = {
 export const Header = ({
   renderedInRoute,
   onLeftMenuButtonPress,
+  leading,
   title,
   id,
   canGoBack,
@@ -103,6 +103,14 @@ export const Header = ({
    */
   count?: number;
   canGoBack?: boolean;
+  /**
+   * iOS: a leading bar item shown *before* the back button when there is one
+   * (`IosNavBar` renders both). The iPad's note collections use it for the
+   * account affordance while the source sidebar is off screen, which is also
+   * when their back button (narrow's way to the source list, medium's drawer)
+   * is on. Inert on Android, which draws its own left menu row.
+   */
+  leading?: React.ReactNode;
   /**
    * Mac: this header belongs to a picker the Mac stack presents as a form
    * sheet (`MAC_PICKER_SHEET_OPTIONS` in navigation-stack.tsx). A sheet has no
@@ -156,17 +164,9 @@ export const Header = ({
   const HeaderWrapper = hasSearch ? Pressable : View;
   const listMenu = useListViewMenu(menu);
   const clearSelection = useSelectionStore((state) => state.clearSelection);
-  // The iPhone/iPad note-list action row below reads the same two pieces of
-  // state its "…" menu and the Home note list's own header do: the list's
-  // compact/normal style and the current sort direction (for the arrow glyph).
-  // Both hooks are called unconditionally so the hook order never changes
-  // between the note-list and the other header variants.
-  const notesCompact = useIsCompactModeEnabled(menu?.dataType || "note");
-  const groupOptions = useGroupOptions(
-    menu?.group || "home",
-    menu?.groupId,
-    menu?.groupType
-  );
+  // Keep the subscription: the existing More menu reads the current sort and
+  // grouping choices on render, even though their duplicate buttons are gone.
+  useGroupOptions(menu?.group || "home", menu?.groupId, menu?.groupType);
 
   /**
    * Mac's window toolbar owns the list column's chrome: the list's name (the
@@ -178,13 +178,15 @@ export const Header = ({
    */
   const isMac = isMacCatalyst();
   /**
-   * iPhone/iPad note lists (Notes/Inbox, Favorites, Archive, a notebook, ...)
-   * show the note count and the sort/view/search actions as a row under the
-   * large title, instead of the rounded search field. It is the same trio the
-   * Home note list draws in its own header, so those lists now share one
-   * affordance. Mac's note list draws its chrome in the window toolbar and its
-   * header returns null below; every other list (Trash, Search, Reminders,
-   * Tags, the notebooks list, ...) keeps the rounded `IosSearchField`.
+   * The iPad workspace this header is laid out in, or undefined on every other
+   * client (iPhone, Android, Mac Catalyst, and any render without a provider).
+   * Only the note list below uses it, so every other header keeps its
+   * behaviour exactly.
+   */
+  const ipad = useIPadWorkspace();
+  /** Note lists show the real count and a full search field (REF-01/08).
+   * Sort, grouping, compact mode and selection remain in the existing More menu.
+   * Mac retains its native window toolbar and list search.
    */
   const noteListMenu =
     !isMac && !!hasSearch && menu?.dataType === "note" ? menu : undefined;
@@ -332,6 +334,46 @@ export const Header = ({
       canGoBack === true &&
       (!isMac || renderedInRoute === "Settings");
     /**
+     * The iPad note list's contextual leading control, for lists that arrive
+     * without a real back history (the sidebar's notebook rows navigate with
+     * `canGoBack: false`). The mode decides how the source list is reached:
+     * medium has it in the swipe-in drawer, narrow has no sidebar at all so the
+     * explicit way back to the Library's source categories stays, and wide
+     * already shows the source column so a leading nav would only duplicate it.
+     * A list with a real back button keeps that back button untouched. Only real
+     * iPad note-list headers qualify (an actual menu, no selection, no caller
+     * `leading`); sheets, forms and every other list are unchanged.
+     */
+    const ipadListLeading =
+      !selectionMode && ipad && noteListMenu && canGoBack !== true
+        ? resolveIPadCollectionLeading(ipad.paneMode)
+        : undefined;
+    const ipadListBack =
+      ipadListLeading === "drawer"
+        ? () => Navigation.openDrawer()
+        : ipadListLeading === "back"
+        ? () => Navigation.navigate("Library")
+        : undefined;
+    const iosBack = showBack ? back : ipadListBack;
+    const iosBackTitle = showBack
+      ? backTitle || strings.routes.Library()
+      : ipadListBack
+      ? ipadListLeading === "drawer"
+        ? strings.expandSidebar()
+        : strings.routes.Library()
+      : undefined;
+    /**
+     * While the iPad source sidebar is off screen the note list's bar is the
+     * only reachable account affordance, so it is supplied here for the lists
+     * that do not pass one themselves (a caller's own `leading` always wins, so
+     * e.g. `NoteCollection` never gets a second account item).
+     */
+    const iosLeading =
+      leading ??
+      (!selectionMode && ipad && noteListMenu && !ipad.sidebarVisible ? (
+        <AccountAffordance testID="header-account" />
+      ) : undefined);
+    /**
      * Mac's window toolbar is the list column's single chrome band - list name,
      * sort/view menu and the only search field - so the column's own header
      * (the one that builds that menu, `hasListMenu`) draws no 44 pt IosNavBar
@@ -366,10 +408,9 @@ export const Header = ({
         }}
       >
         <IosNavBar
-          backTitle={
-            showBack ? backTitle || strings.routes.Library() : undefined
-          }
-          onBack={showBack ? back : undefined}
+          backTitle={iosBackTitle}
+          onBack={iosBack}
+          leading={iosLeading}
           title={
             selectionMode
               ? strings.selectedCode(selectedItemsList.length)
@@ -436,87 +477,18 @@ export const Header = ({
               <IosLargeTitle title={title} testID="header-large-title" />
             ) : null}
             {noteListMenu ? (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  // Lines the count up with the large title's 34 pt text
-                  // (IosLargeTitle pads itself 20 pt) and keeps the action
-                  // glyphs in the same column as the "…" bar button above.
-                  paddingHorizontal: 20,
-                  marginBottom: 10
-                }}
-              >
+              <View style={{ paddingHorizontal: 20, marginBottom: 12 }}>
                 <Paragraph color={visual.secondaryText}>
                   {strings.notes(count ?? 0)}
                 </Paragraph>
-                <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <IconButton
-                    name={
-                      groupOptions?.sortDirection === "asc"
-                        ? "sort-ascending"
-                        : "sort-descending"
-                    }
-                    size={23}
-                    color={visual.secondaryText}
-                    accessibilityLabel={strings.sortBy()}
-                    // Same testID the section header's sort button used: this
-                    // is the same affordance, moved into the top header, so
-                    // existing e2e taps ("icon-sort") keep finding it.
-                    testID="icon-sort"
-                    // 44 pt hit target like a UIBarButtonItem; the default
-                    // hitSlop widens it further on the touch edges.
-                    style={{ width: 44, height: 44 }}
-                    onPress={() =>
-                      presentSheet({
-                        component: (
-                          <Sort
-                            screen={renderedInRoute}
-                            dataType={noteListMenu.dataType}
-                            type={noteListMenu.groupType}
-                            group={noteListMenu.group}
-                            groupId={noteListMenu.groupId}
-                            hideGroupOptions={noteListMenu.hideGroupOptions}
-                          />
-                        )
-                      })
-                    }
-                  />
-                  <IconButton
-                    name={notesCompact ? "view-list" : "view-list-outline"}
-                    size={22}
-                    color={visual.secondaryText}
-                    accessibilityLabel={
-                      notesCompact
-                        ? strings.listViewAsCards()
-                        : strings.listViewAsCompact()
-                    }
-                    testID="icon-compact-mode"
-                    style={{ width: 44, height: 44 }}
-                    onPress={() =>
-                      SettingsService.set({
-                        notesListMode: notesCompact ? "normal" : "compact"
-                      })
-                    }
-                  />
-                  <IconButton
-                    name="magnify"
-                    size={24}
-                    color={visual.secondaryText}
-                    accessibilityLabel={
-                      title ? strings.searchInRoute(title) : strings.search()
-                    }
-                    testID="search-header"
-                    style={{ width: 44, height: 44 }}
-                    onPress={() => onSearch?.()}
-                  />
-                </View>
               </View>
-            ) : hasSearch ? (
+            ) : null}
+            {hasSearch ? (
               <IosSearchField
                 testID="search-header"
-                placeholder={strings.search()}
+                placeholder={
+                  title ? strings.searchInRoute(title) : strings.search()
+                }
                 onPress={() => onSearch?.()}
               />
             ) : null}

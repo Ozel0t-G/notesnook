@@ -27,7 +27,7 @@ import {
 import { useThemeColors } from "@notesnook/theme";
 import { EntityLevel, decode } from "entities";
 import React from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { useIsCompactModeEnabled } from "../../../hooks/use-is-compact-mode-enabled";
 import useNavigationStore, {
@@ -50,10 +50,12 @@ import { useSelectionStore } from "../../../stores/use-selection-store";
 import { DefaultAppStyles } from "../../../utils/styles";
 import { getAppleVisualTokens } from "../../../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../../../utils/constants";
+import { MacNoteRowContent } from "../../mac-note-row-content";
 import { formatMacNoteDate } from "../../../utils/mac-note-date";
 import { systemColor } from "../../../utils/ios-system-colors";
 import { NoteThumbnail } from "./note-thumbnail";
 import { Properties } from "../../properties";
+import { TaskSymbolView } from "../../task-symbol-view";
 import AppIcon from "../../ui/AppIcon";
 import { IconButton } from "../../ui/icon-button";
 import { TimeSince } from "../../ui/time-since";
@@ -118,6 +120,8 @@ const NoteItem = ({
   // iPhone/iPad note rows (outside trash and action sheets) use the approved
   // simple layout: a readable title, one line of preview and 11 pt metadata.
   const isIOSListRow = visual.ios && !isMac && !isTrash && !isSheet;
+  const isPhoneListRow =
+    isIOSListRow && Platform.OS === "ios" && !Platform.isPad;
   // The first line is the title, everywhere (list, editor, search).
   const rawTitle =
     visual.ios && !isTrash ? homeNoteDisplayTitle(item as Note) : item.title;
@@ -130,7 +134,7 @@ const NoteItem = ({
   const displayHeadline = item.headline
     ? decode(item.headline, { level: EntityLevel.HTML })
     : "";
-  // R5: the Mac row's second line is one line of "date · first text line".
+  // Keep the decoded preview and existing localized date formatter.
   const macPreview = isMac ? displayHeadline.replace(/\s+/g, " ").trim() : "";
   // iOS: one line of body text under the title. When the title is generated
   // from the headline the first line *is* the title, so it is skipped.
@@ -141,6 +145,18 @@ const NoteItem = ({
   const compactMode = useIsCompactModeEnabled(
     (item as TrashItem).itemType || item.type
   );
+  const isMacListRow = isMac && !compactMode && !isTrash && !isSheet;
+  // Match the existing local calendar, without changing the formatter's
+  // user-selected date/time representation or any other row variant.
+  // Future timestamps keep their legacy time, matching the existing Today bucket.
+  const phoneMetadataNow =
+    isPhoneListRow && !compactMode ? dayjs() : undefined;
+  const phoneMetadataFormat = phoneMetadataNow
+    ? !dayjs(date).isBefore(phoneMetadataNow.startOf("day")) ||
+      dayjs(date).isSame(phoneMetadataNow.subtract(1, "day"), "day")
+      ? "time"
+      : "date"
+    : undefined;
   const _update = useRelationStore((state) => state.updater);
   const primaryColors = isEditingNote ? colors.selected : colors.primary;
   const selectionMode = useSelectionStore((state) => state.selectionMode);
@@ -154,7 +170,14 @@ const NoteItem = ({
       <View
         style={{
           flexGrow: 1,
-          flexShrink: 1
+          flexShrink: 1,
+          ...(isMacListRow ? { minWidth: 0 } : {}),
+          // Keep both title and preview clear of the trailing checkbox/image.
+          // Compact rows retain their existing title/time spacing.
+          paddingRight:
+            isPhoneListRow && !compactMode
+              ? DefaultAppStyles.GAP_SMALL
+              : undefined
         }}
       >
         {!visual.ios && !compactMode ? (
@@ -183,13 +206,28 @@ const NoteItem = ({
           >
             {displayTitle}
           </Paragraph>
+        ) : isMacListRow ? (
+          <MacNoteRowContent
+            dateText={formatMacNoteDate(date)}
+            preview={macPreview}
+            title={
+              <Heading
+                numberOfLines={2}
+                color={color?.colorCode || primaryColors.heading}
+                size={isHomeIOS ? AppFontSize.md : AppFontSize.sm}
+                style={{ fontSize: MAC_NOTE_TITLE_SIZE }}
+              >
+                {displayTitle}
+              </Heading>
+            }
+          />
         ) : (
           <Heading
-            numberOfLines={1}
+            numberOfLines={isIOSListRow ? 2 : 1}
             color={color?.colorCode || primaryColors.heading}
             size={isHomeIOS || isIOSListRow ? AppFontSize.md : AppFontSize.sm}
             style={{
-              paddingRight: 10,
+              paddingRight: isPhoneListRow ? 0 : 10,
               // 13 pt semibold: Heading already carries the 600 weight.
               ...(isMac ? { fontSize: MAC_NOTE_TITLE_SIZE } : {})
             }}
@@ -205,7 +243,8 @@ const NoteItem = ({
             style={{
               fontSize: AppFontSize.xs,
               color: visual.secondaryText,
-              marginTop: 4
+              marginTop: 4,
+              ...(isPhoneListRow ? { fontFamily: undefined } : {})
             }}
           >
             {iosPreview}
@@ -230,7 +269,7 @@ const NoteItem = ({
           </Paragraph>
         ) : null}
 
-        {compactMode || !visual.ios || isIOSListRow ? null : (
+        {compactMode || !visual.ios || isIOSListRow || isMacListRow ? null : (
           <Paragraph
             numberOfLines={isMac || isHomeIOS ? 1 : undefined}
             style={{
@@ -273,7 +312,9 @@ const NoteItem = ({
               justifyContent: "flex-start",
               alignItems: "center",
               width: "100%",
-              marginTop: DefaultAppStyles.GAP_VERTICAL_SMALL,
+              marginTop: isPhoneListRow
+                ? DefaultAppStyles.GAP_SMALL / 2
+                : DefaultAppStyles.GAP_VERTICAL_SMALL,
               columnGap: 8,
               rowGap: 4,
               flexWrap: "wrap"
@@ -287,15 +328,19 @@ const NoteItem = ({
                   <Paragraph
                     numberOfLines={1}
                     style={{
-                      fontSize: AppFontSize.xxxs,
-                      color: visual.secondaryText
+                      fontSize: isPhoneListRow
+                        ? AppFontSize.xxs
+                        : AppFontSize.xxxs,
+                      color: visual.secondaryText,
+                      ...(isPhoneListRow ? { fontFamily: undefined } : {})
                     }}
                   >
                     {getFormattedDate(
                       date,
-                      dayjs(date).isBefore(dayjs().subtract(1, "day").hour(23))
-                        ? "date"
-                        : "time"
+                      phoneMetadataFormat ??
+                        (dayjs(date).isBefore(dayjs().subtract(1, "day").hour(23))
+                          ? "date"
+                          : "time")
                     )}
                   </Paragraph>
                 ) : null}
@@ -334,14 +379,31 @@ const NoteItem = ({
                       gap: 2
                     }}
                   >
-                    <Icon
-                      name="attachment"
-                      size={AppFontSize.sm}
-                      color={primaryColors.icon}
-                    />
+                    {isPhoneListRow ? (
+                      <TaskSymbolView
+                        name="paperclip"
+                        size={AppFontSize.xs}
+                        color={primaryColors.icon}
+                      />
+                    ) : (
+                      <Icon
+                        name="attachment"
+                        size={AppFontSize.sm}
+                        color={primaryColors.icon}
+                      />
+                    )}
                     <Paragraph
                       color={colors.secondary.paragraph}
-                      size={isIOSListRow ? AppFontSize.xxxs : AppFontSize.xxs}
+                      size={
+                        isPhoneListRow
+                          ? AppFontSize.xxs
+                          : isIOSListRow
+                          ? AppFontSize.xxxs
+                          : AppFontSize.xxs
+                      }
+                      style={
+                        isPhoneListRow ? { fontFamily: undefined } : undefined
+                      }
                     >
                       {attachmentsCount}
                     </Paragraph>

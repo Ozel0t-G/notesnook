@@ -95,6 +95,24 @@ import {
 } from "./task-widget-completion-intents";
 import SettingsService from "../services/settings";
 import Sync from "../services/sync";
+import {
+  onHostAccountChanging,
+  onHostAccountReady,
+  onHostLock,
+  onHostMigrationStarted,
+  onHostTearDown,
+  readLocalRecord,
+  reinstallPersistedGrantsIfSameAccount,
+  startConnectHost,
+  stopSession
+} from "../services/veyran-connect";
+import {
+  onSIWCAccountChanging,
+  onSIWCLock,
+  onSIWCMigrationStarted,
+  onSIWCTearDown,
+  startSIWCHost
+} from "../services/veyran-siwc";
 import { initAfterSync } from "../stores";
 import { useAttachmentStore } from "../stores/use-attachment-store";
 import { useMessageStore } from "../stores/use-message-store";
@@ -207,6 +225,13 @@ const onUploadedAttachmentProgress = (data: any) => {
 };
 
 const onUserSessionExpired = async () => {
+  // Fence Connect before anything else: no in-flight request may run against a
+  // session that is expiring.
+  onHostAccountChanging();
+  // The SIWC provider is fenced on the same synchronous edge: its native
+  // credential read, refresh, model read and stream are all invalidated before
+  // any await.
+  onSIWCAccountChanging();
   SettingsService.set({
     sessionExpired: true
   });
@@ -425,6 +450,11 @@ const onRequestPartialSync = async (
 let accountUpdateVersion = 0;
 
 const onLogout = async (reason: string) => {
+  // First line, before any await: close the Connect adapter, drop its grants
+  // and bump the host epoch so a stale reply can never touch the account that
+  // is being logged out.
+  onHostTearDown();
+  onSIWCTearDown();
   accountUpdateVersion += 1;
   pendingTaskCompletions.clear();
   // A queued notification tap belongs to the account that was signed in when it
@@ -585,6 +615,13 @@ export const useAppEvents = () => {
     state.syncing
   ]);
   useFeatureManager();
+  // Mount the Connect host once for this process. It never auto-starts: a
+  // broker session is opened only from the settings screen.
+  useEffect(() => startConnectHost(), []);
+  // Mount the SIWC provider host once for this process. It never auto-starts an
+  // authorization flow and never touches the Keychain on an unsupported
+  // platform.
+  useEffect(() => startSIWCHost(), []);
   useEffect(
     () =>
       startAppIntentBridge(!isAppLoading, !appLocked, (target) => {
@@ -673,7 +710,37 @@ export const useAppEvents = () => {
           pendingTaskCompletions.clear();
         // The signed-in account changed: drop any notification/deep-link tap
         // queued for the previous account.
-        if (previousId !== nextId) clearPendingTaskNavigation();
+        if (previousId !== nextId) {
+          clearPendingTaskNavigation();
+          // Fence the Connect host synchronously on this subscription's own
+          // callback (bump the epoch, drop the capability snapshot, lock the
+          // adapter), then stop the native session so nothing keeps polling
+          // under the previous account.
+          onHostAccountChanging();
+          onSIWCAccountChanging();
+          void stopSession();
+        }
+
+        // Synchronous Connect fencing at every account-lifecycle edge. The
+        // adapter is locked/cleared/closed here, on the subscription's own
+        // synchronous callback, so no in-flight request survives the edge. The
+        // SIWC provider is fenced on the same synchronous edges.
+        if (state.appLocked && !previous.appLocked) {
+          onHostLock();
+          onSIWCLock();
+        }
+        if (state.isLoggingOut && !previous.isLoggingOut) {
+          onHostTearDown();
+          onSIWCTearDown();
+        }
+        if (state.accountSetupRequired && !previous.accountSetupRequired) {
+          onHostAccountChanging();
+          onSIWCAccountChanging();
+        }
+        // An unlock may restore the persisted grants, but only for the same
+        // actual Notes account the record belongs to.
+        if (!state.appLocked && previous.appLocked)
+          void reinstallPersistedGrantsIfSameAccount();
       }),
     []
   );
@@ -749,6 +816,9 @@ export const useAppEvents = () => {
 
   const onUserUpdated = useCallback(
     async (isLogin?: boolean) => {
+      // Entry first line, before any await: an account transition (including an
+      // A -> B -> A cycle) invalidates every in-flight Connect request.
+      onHostAccountChanging();
       const version = ++accountUpdateVersion;
       const isCurrent = () =>
         version === accountUpdateVersion &&
@@ -780,6 +850,16 @@ export const useAppEvents = () => {
         setLastSynced(lastSynced);
         await useDragState.getState().init();
         if (!isCurrent() || !user) return;
+
+        // Fresh grants are installed only now, after the persisted account and
+        // its bootstrap are valid: never before login. The host itself checks
+        // that a broker is paired before it installs anything.
+        if (!session.setupRequired) {
+          const record = readLocalRecord();
+          if (record && record.accountId === user.id)
+            await onHostAccountReady(user.id, record.capabilities);
+          if (!isCurrent()) return;
+        }
 
         const isUserEmailConfirmed = SettingsService.get().userEmailConfirmed;
         setUser(user);
@@ -908,6 +988,10 @@ export const useAppEvents = () => {
         }, 300);
       }),
       EV.subscribe(EVENTS.migrationStarted, (name) => {
+        // First line: a migration requires a consistent database, so no
+        // Connect request may execute while it is running.
+        onHostMigrationStarted();
+        onSIWCMigrationStarted();
         if (
           name !== "notesnook" ||
           !SettingsService.getProperty("introCompleted") ||

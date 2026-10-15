@@ -508,7 +508,12 @@ export const settingsGroups: SettingSection[] = [
         ]
       }
     ],
-    logoutUser
+    logoutUser,
+    // The ordinary, non-destructive VeyraN sign-in entry for an incomplete or
+    // expired session. It never signs out, resets or clears anything.
+    () => {
+      Navigation.navigate("Auth", { mode: AuthMode.login });
+    }
   ),
   {
     id: "customize",
@@ -1412,6 +1417,36 @@ export const settingsGroups: SettingSection[] = [
             component: "debug-logs"
           }
         ]
+      }
+    ]
+  },
+  {
+    id: "veyran-connect",
+    name: "VeyraN Connect",
+    sections: [
+      {
+        id: "veyran-connect",
+        type: "screen",
+        name: "VeyraN Connect",
+        description:
+          "Connect the local VeyraN Connect broker to your notes and tasks.",
+        icon: "server",
+        component: "veyran-connect"
+      }
+    ]
+  },
+  {
+    id: "veyran-assistant",
+    name: "VeyraN Assistant",
+    sections: [
+      {
+        id: "veyran-assistant",
+        type: "screen",
+        name: "VeyraN Assistant",
+        description:
+          "Verbundene ChatGPT-Nutzung sowie Zusammenfassen, Umformulieren und Fragen zur aktuellen Notiz (Mac Catalyst).",
+        icon: "brain",
+        component: "veyran-assistant"
       }
     ]
   },

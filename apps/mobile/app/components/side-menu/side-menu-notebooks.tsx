@@ -46,7 +46,15 @@ useSideMenuNotebookSelectionStore.setState({
   multiSelect: true
 });
 
-export const SideMenuNotebooks = () => {
+export const SideMenuNotebooks = ({
+  showHeader = true,
+  sourceHeader,
+  sourceFooter
+}: {
+  showHeader?: boolean;
+  sourceHeader?: React.ReactNode;
+  sourceFooter?: React.ReactNode;
+} = {}) => {
   const tree = useSideMenuNotebookTreeStore((state) => state.tree);
   const [notebooks, loading] = useNotebooks();
   const [isLoading, setIsLoading] = useState(true);
@@ -137,28 +145,55 @@ export const SideMenuNotebooks = () => {
       }}
     >
       {!notebooks || notebooks.placeholders.length === 0 ? (
-        <SideMenuListEmpty
-          placeholder={strings.emptyPlaceholders("notebook")}
-          isLoading={isLoading}
-        />
+        sourceHeader ? (
+          <LegendList
+            data={[]}
+            renderItem={() => null}
+            keyboardShouldPersistTaps="handled"
+            bounces={false}
+            contentContainerStyle={{ flexGrow: 1 }}
+            ListHeaderComponent={<>{sourceHeader}</>}
+            ListFooterComponent={sourceFooter ? <>{sourceFooter}</> : undefined}
+            ListEmptyComponent={
+              <SideMenuListEmpty
+                showHeader={false}
+                placeholder={strings.emptyPlaceholders("notebook")}
+                isLoading={isLoading}
+              />
+            }
+          />
+        ) : (
+          <SideMenuListEmpty
+            showHeader={showHeader}
+            placeholder={strings.emptyPlaceholders("notebook")}
+            isLoading={isLoading}
+          />
+        )
       ) : (
         <>
           <LegendList
+            keyboardShouldPersistTaps={sourceHeader ? "handled" : undefined}
             data={tree}
             bounces={false}
             bouncesZoom={false}
             overScrollMode="never"
             estimatedItemSize={30}
             ListHeaderComponent={
-              <View
-                style={{
-                  backgroundColor: visual.sidebarBackground,
-                  paddingTop: DefaultAppStyles.GAP_VERTICAL
-                }}
-              >
-                <SideMenuHeader />
-              </View>
+              <>
+                {sourceHeader}
+                {showHeader ? (
+                  <View
+                    style={{
+                      backgroundColor: visual.sidebarBackground,
+                      paddingTop: DefaultAppStyles.GAP_VERTICAL
+                    }}
+                  >
+                    <SideMenuHeader />
+                  </View>
+                ) : null}
+              </>
             }
+            ListFooterComponent={sourceFooter ? <>{sourceFooter}</> : undefined}
             renderItem={renderItem}
           />
           <View
@@ -243,6 +278,7 @@ const NotebookItemWrapper = React.memo(
       >
         <NotebookItem
           item={item}
+          sourceList
           index={index}
           expanded={expanded}
           onToggleExpanded={async () => {

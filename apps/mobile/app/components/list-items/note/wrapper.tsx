@@ -35,17 +35,25 @@ import { isHomeNoteRoute } from "../../../utils/home-note-presentation";
 
 import { NotebooksWithDateEdited, TagsWithDateEdited } from "@notesnook/common";
 import type { NoteThumbnail as NoteThumbnailInfo } from "@notesnook/common";
-import { useTabStore } from "../../../screens/editor/tiptap/use-tab-store";
+import {
+  NoteOrigin,
+  useTabStore
+} from "../../../screens/editor/tiptap/use-tab-store";
 import { editorController } from "../../../screens/editor/tiptap/utils";
 import { RouteParams } from "../../../stores/use-navigation-store";
 import NotePreview from "../../note-history/preview";
-import SelectionWrapper, { selectItem } from "../selection-wrapper";
+import SelectionWrapper, {
+  selectItem,
+  type NoteGroupEdges
+} from "../selection-wrapper";
 
 export const openNote = async (
   item: Note,
   isTrash?: boolean,
-  isSheet?: boolean
+  isSheet?: boolean,
+  origin?: NoteOrigin
 ) => {
+  const capturedOrigin = origin ? { ...origin } : null;
   let note: Note = item;
   if (isSheet) hideSheet();
 
@@ -75,7 +83,8 @@ export const openNote = async (
       );
     }
     eSendEvent(eOnLoadNote, {
-      item: note
+      item: note,
+      origin: capturedOrigin
     });
     if (!DDS.isTab) {
       setTimeout(() => {
@@ -97,6 +106,8 @@ type NoteWrapperProps = {
   isRenderedInActionSheet: boolean;
   locked?: boolean;
   renderedInRoute?: keyof RouteParams;
+  origin?: NoteOrigin;
+  groupEdges?: NoteGroupEdges;
   /** First raster image attachment of the note (Apple list thumbnail). */
   thumbnail?: NoteThumbnailInfo;
 };
@@ -108,6 +119,8 @@ export const NoteWrapper = React.memo<
     item,
     index,
     isRenderedInActionSheet,
+    origin,
+    groupEdges,
     ...restProps
   }: NoteWrapperProps) {
     const isTrash = item.type === "trash";
@@ -115,10 +128,13 @@ export const NoteWrapper = React.memo<
     return (
       <SelectionWrapper
         testID={notesnook.ids.note.get(index)}
-        onPress={() => openNote(item as Note, isTrash, isRenderedInActionSheet)}
+        onPress={() =>
+          openNote(item as Note, isTrash, isRenderedInActionSheet, origin)
+        }
         isSheet={isRenderedInActionSheet}
         item={item}
         index={index}
+        groupEdges={groupEdges}
         color={restProps.color?.colorCode}
         homeNote={
           Platform.OS === "ios" && isHomeNoteRoute(restProps.renderedInRoute)
@@ -135,6 +151,16 @@ export const NoteWrapper = React.memo<
     );
   },
   (prev, next) => {
+    if (
+      prev.groupEdges?.first !== next.groupEdges?.first ||
+      prev.groupEdges?.last !== next.groupEdges?.last
+    )
+      return false;
+    if (
+      prev.origin?.id !== next.origin?.id ||
+      prev.origin?.title !== next.origin?.title
+    )
+      return false;
     if (prev.date !== next.date) {
       return false;
     }

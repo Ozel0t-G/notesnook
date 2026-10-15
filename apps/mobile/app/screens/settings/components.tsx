@@ -55,6 +55,8 @@ import {
 } from "./manage-inbox-keys";
 import { FailedInboxItems } from "./failed-inbox-items";
 import { NotebookDateGrouping } from "./notebook-date-grouping";
+import { VeyranConnectSettings } from "../../components/veyran-connect-settings";
+import { VeyranAssistantSettings } from "../../components/veyran-assistant-settings";
 
 export const components: { [name: string]: ReactElement } = {
   homeselector: <HomePicker />,
@@ -91,5 +93,7 @@ export const components: { [name: string]: ReactElement } = {
   "inbox-keys": <InboxKeysList />,
   "failed-inbox-items": <FailedInboxItems />,
   "setup-inbox-keys": <SetupInboxKeys />,
-  "notebook-date-grouping": <NotebookDateGrouping />
+  "notebook-date-grouping": <NotebookDateGrouping />,
+  "veyran-connect": <VeyranConnectSettings />,
+  "veyran-assistant": <VeyranAssistantSettings />
 };

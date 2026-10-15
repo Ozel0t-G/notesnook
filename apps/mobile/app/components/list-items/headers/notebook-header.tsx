@@ -22,7 +22,7 @@ import { Notebook } from "@notesnook/core";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { AppFontSize } from "../../../utils/size";
 import { DefaultAppStyles } from "../../../utils/styles";
 import AppIcon from "../../ui/AppIcon";
@@ -32,6 +32,8 @@ import { IconButton } from "../../ui/icon-button";
 import { Pressable } from "../../ui/pressable";
 import NotebookScreen from "../../../screens/notebook";
 import { db } from "../../../common/database";
+import { isMacCatalyst } from "../../../utils/constants";
+import { IPadNotebookInformation } from "../../ipad-notebook-information";
 
 export const NotebookHeader = ({
   notebook,
@@ -43,6 +45,18 @@ export const NotebookHeader = ({
   breadcrumbs: { id: string; title: string }[];
 }) => {
   const { colors } = useThemeColors();
+  // The shared iOS Header already owns the notebook title and live count.
+  // This content policy deliberately does not depend on paneMode: narrow iPad
+  // windows keep the same primary Header even when DDS uses phone geometry.
+  if (Platform.OS === "ios" && Platform.isPad && !isMacCatalyst()) {
+    return (
+      <IPadNotebookInformation
+        notebook={notebook}
+        breadcrumbs={breadcrumbs}
+        totalNotes={totalNotes}
+      />
+    );
+  }
   return (
     <View
       style={{

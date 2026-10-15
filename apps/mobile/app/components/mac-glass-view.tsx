@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { useThemeColors } from "@notesnook/theme";
+import { useThemeColors, useThemeEngineStore } from "@notesnook/theme";
 import React from "react";
 import {
   Platform,
@@ -29,10 +29,7 @@ import {
 } from "react-native";
 import { isMacCatalyst } from "../utils/constants";
 import { getColorLinearShade } from "../utils/colors";
-import {
-  macGlassPanelBackground,
-  macWindowBackground
-} from "../utils/mac-layout";
+import { macGlassPanelBackground } from "../utils/mac-layout";
 
 /**
  * The native Mac Catalyst Liquid Glass surface (`VeyraNGlassView`).
@@ -54,30 +51,32 @@ import {
  * and `tint` only reach the native glass on Mac; the glass's appearance always
  * follows the *app* theme (`useThemeColors().isDark`), not the system's.
  *
- * The tint defaults to a few-percent shade of the theme's primary background -
- * lighter in dark mode, darker in light mode - so the panel reads as the same
- * surface as the window, just slightly lifted, instead of the bright grey slab
- * the un-tinted system material renders over the near-black window. Callers can
- * still pass their own `tint`.
+ * The tint defaults to a few-percent shade of the panel's own surface - the
+ * neutral source-list role of the resolved Apple surfaces (the theme's authored
+ * sidebar colour for a custom theme) - lighter in dark mode, darker in light
+ * mode, so the panel reads as the same surface as the window it floats over,
+ * just slightly lifted, instead of the bright grey slab the un-tinted system
+ * material renders. Callers can still pass their own `tint`.
  *
  * The tint alone is not enough: on macOS 26 the Liquid Glass material still
  * composites to a much lighter grey than the window (measured ~#454449 over a
  * #17181a window in dark mode) because the glass blurs and lifts whatever is
  * behind it. So for the panel variants ("sidebar", "card") a solid overlay of
- * the theme's primary background is drawn on top of the glass at `dimOpacity`
- * (0.82 dark / 0.7 light), pulling the fill back to roughly the window colour
- * (#1f2023) while the native glass rim underneath stays visible. "capsule" is
- * a small, self-contained control and keeps the raw material.
+ * that same panel surface is drawn on top of the glass at `dimOpacity`
+ * (0.82 dark / 0.82 light), pulling the fill back to the source-list tone while
+ * the native glass rim underneath stays visible. "capsule" is a small,
+ * self-contained control and keeps the raw material.
  */
 
 export type MacGlassVariant = "sidebar" | "card" | "capsule";
 
 /**
  * Default opacity of the panel-colour overlay over the glass, per appearance.
- * Chosen so the sidebar reads as the same surface, only slightly lifted, and
- * never disappears into the window: dark (#454449 glass over a #17181a window
- * -> ~#1f2023 at 0.82) and light (the glass over the #F3F3F5 window is dimmed
- * to the slightly darker #E9E9EC sidebar grey at 0.82).
+ * Chosen so the sidebar reads as the panel's own surface, only slightly lifted,
+ * and never disappears into the window: dark (the #454449-ish glass over the
+ * neutral window -> roughly the #252527 source-list tone at 0.82) and light
+ * (the glass over the #F6F6F8 window -> roughly the #ECEDEF source-list tone at
+ * 0.82).
  */
 const DEFAULT_DIM_OPACITY_DARK = 0.82;
 const DEFAULT_DIM_OPACITY_LIGHT = 0.82;
@@ -122,27 +121,32 @@ export function MacGlassView({
   children
 }: NativeGlassProps) {
   const { colors, isDark } = useThemeColors();
+  // The active theme's identity, so an imported/custom theme keeps its own
+  // authored surfaces while the bundled VeyraN appearances resolve to the
+  // standard neutral source list (see the resolver in @notesnook/theme).
+  const theme = useThemeEngineStore((state) => state.theme);
   // "capsule" derives its radius from the view's height, which is only known
   // after layout; the container below needs it to clip the children to the
   // same rounded shape as the glass.
   const [capsuleRadius, setCapsuleRadius] = React.useState(0);
   /**
-   * The default glass tint: the window's primary background lifted a few
-   * percent, so the panel is only just distinguishable from the surface it
-   * floats over (macOS 26 Notes' sidebar). `getColorLinearShade` lightens in
-   * dark mode and darkens in light mode, so both appearances get the same
-   * subtle lift. The shade itself is applied by the native view as the glass's
-   * `tintColor` (see VeyraNGlassView.swift).
+   * The panel's own surface: the neutral source-list role (or the theme's
+   * authored sidebar colour). It is what the sidebar actually reads as - the
+   * overlay below is dimmed to it - and it carries no accent wash, so
+   * recoloring the app accent never re-tints the sidebar.
    */
-  // `macWindowBackground` also reads `primary.accent` in dark mode, so this is
-  // computed directly each render rather than memoized: the calculation is
-  // cheap and a memo keyed on individual color fields would miss an
-  // accent-only change.
-  const themeTint = getColorLinearShade(
-    macWindowBackground(colors, isDark),
-    0.05,
-    isDark
-  );
+  // Computed each render rather than memoized: the calculation is cheap and a
+  // memo keyed on individual color fields would miss an accent or theme change.
+  const panelSurface = macGlassPanelBackground(colors, isDark, theme);
+  /**
+   * The default glass tint: the panel surface lifted a few percent, so the
+   * panel is only just distinguishable from the surface it floats over (macOS
+   * 26 Notes' sidebar). `getColorLinearShade` lightens in dark mode and darkens
+   * in light mode, so both appearances get the same subtle lift. The shade
+   * itself is applied by the native view as the glass's `tintColor` (see
+   * VeyraNGlassView.swift).
+   */
+  const themeTint = getColorLinearShade(panelSurface, 0.05, isDark);
 
   if (!isMacCatalyst() || !NativeGlassView)
     return <View style={style}>{children}</View>;
@@ -178,9 +182,9 @@ export function MacGlassView({
       {dimmed ? (
         // Solid wash of the panel's own colour over the material, so the panel
         // reads as the same surface just slightly lifted instead of the much
-        // lighter grey the un-dimmed glass composites to. Dark: the window
-        // background; light: the slightly darker sidebar grey (see
-        // `macGlassPanelBackground`). Inset by 1 px so it never covers the
+        // lighter grey the un-dimmed glass composites to. The wash is the
+        // panel's neutral source-list surface (see `macGlassPanelBackground`),
+        // never an accent-tinted one. Inset by 1 px so it never covers the
         // native glass's specular edge highlight; the container's
         // `overflow: hidden` clips its corners to the glass radius.
         <View
@@ -192,7 +196,7 @@ export function MacGlassView({
             right: GLASS_EDGE_INSET,
             bottom: GLASS_EDGE_INSET,
             borderRadius: Math.max(radius - GLASS_EDGE_INSET, 0),
-            backgroundColor: macGlassPanelBackground(colors, isDark),
+            backgroundColor: panelSurface,
             opacity: resolvedDimOpacity
           }}
         />

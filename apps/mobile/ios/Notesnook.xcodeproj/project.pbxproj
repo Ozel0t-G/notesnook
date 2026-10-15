@@ -92,6 +92,27 @@
 		D10000000000000000000081 /* VeyraNGlassViewManager.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000081 /* VeyraNGlassViewManager.m */; };
 		E63910B563ED7C2EC6602FA0 /* HandwritingModule.m in Sources */ = {isa = PBXBuildFile; fileRef = B1C2824E09020408C06D888A /* HandwritingModule.m */; };
 		E7F9D56665C2F19F4A97BF49 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4B679E87FDFB1312CAD6CF45 /* PrivacyInfo.xcprivacy */; };
+		D10000000000000000000090 /* VeyraNConnectWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000090 /* VeyraNConnectWire.swift */; };
+		D10000000000000000000091 /* VeyraNConnectSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000091 /* VeyraNConnectSession.swift */; };
+		D10000000000000000000092 /* VeyraNConnectKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000092 /* VeyraNConnectKeychain.swift */; };
+		D10000000000000000000093 /* VeyraNConnectPairingFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000093 /* VeyraNConnectPairingFile.swift */; };
+		D10000000000000000000094 /* VeyraNConnectTLS.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000094 /* VeyraNConnectTLS.swift */; };
+		D10000000000000000000095 /* VeyraNConnectPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000095 /* VeyraNConnectPicker.swift */; };
+		D10000000000000000000096 /* VeyraNConnectModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000096 /* VeyraNConnectModule.swift */; };
+		D10000000000000000000097 /* VeyraNConnectModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000097 /* VeyraNConnectModule.m */; };
+		D10000000000000000000098 /* VeyraNConnectPairGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000098 /* VeyraNConnectPairGate.swift */; };
+		D10000000000000000000099 /* VeyraNConnectLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000099 /* VeyraNConnectLifecycle.swift */; };
+		D100000000000000000000A0 /* VeyraNSIWCTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A0 /* VeyraNSIWCTypes.swift */; };
+		D100000000000000000000A1 /* VeyraNSIWCJWT.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A1 /* VeyraNSIWCJWT.swift */; };
+		D100000000000000000000A2 /* VeyraNSIWCCallback.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A2 /* VeyraNSIWCCallback.swift */; };
+		D100000000000000000000A3 /* VeyraNSIWCIdentity.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A3 /* VeyraNSIWCIdentity.swift */; };
+		D100000000000000000000A4 /* VeyraNSIWCResponses.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A4 /* VeyraNSIWCResponses.swift */; };
+		D100000000000000000000A5 /* VeyraNSIWCProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A5 /* VeyraNSIWCProvider.swift */; };
+		D100000000000000000000A6 /* VeyraNSIWCKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A6 /* VeyraNSIWCKeychain.swift */; };
+		D100000000000000000000A7 /* VeyraNSIWCTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A7 /* VeyraNSIWCTransport.swift */; };
+		D100000000000000000000A8 /* VeyraNSIWCModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A8 /* VeyraNSIWCModule.swift */; };
+		D100000000000000000000A9 /* VeyraNSIWCModule.m in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000A9 /* VeyraNSIWCModule.m */; };
+		D100000000000000000000B0 /* VeyraNSIWCLifecycle.swift in Sources */ = {isa = PBXBuildFile; fileRef = D200000000000000000000B0 /* VeyraNSIWCLifecycle.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -245,6 +266,27 @@
 		ED2971642150620600B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = Platforms/AppleTVOS.platform/Developer/SDKs/AppleTVOS12.0.sdk/System/Library/Frameworks/JavaScriptCore.framework; sourceTree = DEVELOPER_DIR; };
 		EF88477758968C47002AB99A /* Pods-Notesnook-Add to Notes.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-Add to Notes.debug.xcconfig"; path = "Target Support Files/Pods-Notesnook-Add to Notes/Pods-Notesnook-Add to Notes.debug.xcconfig"; sourceTree = "<group>"; };
 		F284B149424757AABC0A96C2 /* Pods-Notesnook-NotesnookTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Notesnook-NotesnookTests.release.xcconfig"; path = "Target Support Files/Pods-Notesnook-NotesnookTests/Pods-Notesnook-NotesnookTests.release.xcconfig"; sourceTree = "<group>"; };
+		D20000000000000000000090 /* VeyraNConnectWire.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectWire.swift; sourceTree = "<group>"; };
+		D20000000000000000000091 /* VeyraNConnectSession.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectSession.swift; sourceTree = "<group>"; };
+		D20000000000000000000092 /* VeyraNConnectKeychain.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectKeychain.swift; sourceTree = "<group>"; };
+		D20000000000000000000093 /* VeyraNConnectPairingFile.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectPairingFile.swift; sourceTree = "<group>"; };
+		D20000000000000000000094 /* VeyraNConnectTLS.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectTLS.swift; sourceTree = "<group>"; };
+		D20000000000000000000095 /* VeyraNConnectPicker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectPicker.swift; sourceTree = "<group>"; };
+		D20000000000000000000096 /* VeyraNConnectModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectModule.swift; sourceTree = "<group>"; };
+		D20000000000000000000097 /* VeyraNConnectModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNConnectModule.m; sourceTree = "<group>"; };
+		D20000000000000000000098 /* VeyraNConnectPairGate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectPairGate.swift; sourceTree = "<group>"; };
+		D20000000000000000000099 /* VeyraNConnectLifecycle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNConnectLifecycle.swift; sourceTree = "<group>"; };
+		D200000000000000000000A0 /* VeyraNSIWCTypes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCTypes.swift; sourceTree = "<group>"; };
+		D200000000000000000000A1 /* VeyraNSIWCJWT.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCJWT.swift; sourceTree = "<group>"; };
+		D200000000000000000000A2 /* VeyraNSIWCCallback.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCCallback.swift; sourceTree = "<group>"; };
+		D200000000000000000000A3 /* VeyraNSIWCIdentity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCIdentity.swift; sourceTree = "<group>"; };
+		D200000000000000000000A4 /* VeyraNSIWCResponses.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCResponses.swift; sourceTree = "<group>"; };
+		D200000000000000000000A5 /* VeyraNSIWCProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCProvider.swift; sourceTree = "<group>"; };
+		D200000000000000000000A6 /* VeyraNSIWCKeychain.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCKeychain.swift; sourceTree = "<group>"; };
+		D200000000000000000000A7 /* VeyraNSIWCTransport.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCTransport.swift; sourceTree = "<group>"; };
+		D200000000000000000000A8 /* VeyraNSIWCModule.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCModule.swift; sourceTree = "<group>"; };
+		D200000000000000000000A9 /* VeyraNSIWCModule.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; path = VeyraNSIWCModule.m; sourceTree = "<group>"; };
+		D200000000000000000000B0 /* VeyraNSIWCLifecycle.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = VeyraNSIWCLifecycle.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -342,6 +384,8 @@
 				D30000000000000000000080 /* Glass */,
 				D30000000000000000000070 /* MacMenu */,
 				D30000000000000000000020 /* AppIntents */,
+				D30000000000000000000090 /* VeyraNConnect */,
+				D300000000000000000000A0 /* SIWC */,
 				A482053C4A6E06443DC525BD /* SceneDelegate.h */,
 				8630765778FA70C8BA4CA7AD /* SceneDelegate.m */,
 			);
@@ -546,6 +590,43 @@
 			);
 			name = Glass;
 			path = Notesnook/Glass;
+			sourceTree = "<group>";
+		};
+		D30000000000000000000090 /* VeyraNConnect */ = {
+			isa = PBXGroup;
+			children = (
+				D20000000000000000000090 /* VeyraNConnectWire.swift */,
+				D20000000000000000000091 /* VeyraNConnectSession.swift */,
+				D20000000000000000000092 /* VeyraNConnectKeychain.swift */,
+				D20000000000000000000093 /* VeyraNConnectPairingFile.swift */,
+				D20000000000000000000098 /* VeyraNConnectPairGate.swift */,
+				D20000000000000000000099 /* VeyraNConnectLifecycle.swift */,
+				D20000000000000000000094 /* VeyraNConnectTLS.swift */,
+				D20000000000000000000095 /* VeyraNConnectPicker.swift */,
+				D20000000000000000000096 /* VeyraNConnectModule.swift */,
+				D20000000000000000000097 /* VeyraNConnectModule.m */,
+			);
+			name = VeyraNConnect;
+			path = Notesnook/VeyraNConnect;
+			sourceTree = "<group>";
+		};
+		D300000000000000000000A0 /* SIWC */ = {
+			isa = PBXGroup;
+			children = (
+				D200000000000000000000A0 /* VeyraNSIWCTypes.swift */,
+				D200000000000000000000A1 /* VeyraNSIWCJWT.swift */,
+				D200000000000000000000A2 /* VeyraNSIWCCallback.swift */,
+				D200000000000000000000A3 /* VeyraNSIWCIdentity.swift */,
+				D200000000000000000000A4 /* VeyraNSIWCResponses.swift */,
+				D200000000000000000000A5 /* VeyraNSIWCProvider.swift */,
+				D200000000000000000000A6 /* VeyraNSIWCKeychain.swift */,
+				D200000000000000000000A7 /* VeyraNSIWCTransport.swift */,
+				D200000000000000000000A8 /* VeyraNSIWCModule.swift */,
+				D200000000000000000000A9 /* VeyraNSIWCModule.m */,
+				D200000000000000000000B0 /* VeyraNSIWCLifecycle.swift */,
+			);
+			name = SIWC;
+			path = Notesnook/VeyraNConnect/SIWC;
 			sourceTree = "<group>";
 		};
 		DA84645424CFBF19A44D64B3 /* Pods */ = {
@@ -1178,6 +1259,27 @@
 				D10000000000000000000074 /* UIScrollView+VeyraNEdgeEffect.m in Sources */,
 				D10000000000000000000080 /* VeyraNGlassView.swift in Sources */,
 				D10000000000000000000081 /* VeyraNGlassViewManager.m in Sources */,
+				D10000000000000000000090 /* VeyraNConnectWire.swift in Sources */,
+				D10000000000000000000091 /* VeyraNConnectSession.swift in Sources */,
+				D10000000000000000000092 /* VeyraNConnectKeychain.swift in Sources */,
+				D10000000000000000000093 /* VeyraNConnectPairingFile.swift in Sources */,
+				D10000000000000000000094 /* VeyraNConnectTLS.swift in Sources */,
+				D10000000000000000000095 /* VeyraNConnectPicker.swift in Sources */,
+				D10000000000000000000096 /* VeyraNConnectModule.swift in Sources */,
+				D10000000000000000000097 /* VeyraNConnectModule.m in Sources */,
+				D10000000000000000000098 /* VeyraNConnectPairGate.swift in Sources */,
+				D10000000000000000000099 /* VeyraNConnectLifecycle.swift in Sources */,
+				D100000000000000000000A0 /* VeyraNSIWCTypes.swift in Sources */,
+				D100000000000000000000A1 /* VeyraNSIWCJWT.swift in Sources */,
+				D100000000000000000000A2 /* VeyraNSIWCCallback.swift in Sources */,
+				D100000000000000000000A3 /* VeyraNSIWCIdentity.swift in Sources */,
+				D100000000000000000000A4 /* VeyraNSIWCResponses.swift in Sources */,
+				D100000000000000000000A5 /* VeyraNSIWCProvider.swift in Sources */,
+				D100000000000000000000A6 /* VeyraNSIWCKeychain.swift in Sources */,
+				D100000000000000000000A7 /* VeyraNSIWCTransport.swift in Sources */,
+				D100000000000000000000A8 /* VeyraNSIWCModule.swift in Sources */,
+				D100000000000000000000A9 /* VeyraNSIWCModule.m in Sources */,
+				D100000000000000000000B0 /* VeyraNSIWCLifecycle.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

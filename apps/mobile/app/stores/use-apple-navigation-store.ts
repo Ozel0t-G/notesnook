@@ -22,8 +22,8 @@ import { create } from "zustand";
 export type AppleSection = "library" | "tasks" | "search";
 
 /**
- * What the native bar can report or highlight: a persistent section, the
- * compose action, or the Settings action. "settings" is deliberately not part
+ * What top-level controls can invoke: a persistent section, the compose
+ * action, or the separate Settings action. "settings" is not part
  * of `AppleSection`: it is not a place the app stays in, it opens the Settings
  * sheet over the section underneath, which stays selected (Mac's section
  * maps/consumers stay keyed by `AppleSection`).
@@ -33,9 +33,8 @@ export type AppleTabBarSelection = AppleSection | "compose" | "settings";
 type AppleNavigationState = {
   section: AppleSection;
   /**
-   * The Settings sheet is open. While it is, the bar highlights Settings (see
-   * `apple-tab-bar.tsx`) and `section` keeps the value the sheet was opened
-   * over, so dismissing it returns there.
+   * The separate Settings sheet is open. `section` stays selected underneath
+   * it, so dismissing returns to the same Notes, Tasks or Search destination.
    */
   settingsVisible: boolean;
   editorVisible: boolean;

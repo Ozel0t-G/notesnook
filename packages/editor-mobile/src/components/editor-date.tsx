@@ -26,13 +26,15 @@ import {
 } from "../utils/mac";
 
 /**
- * The note's last-edited date/time, shown above the note title on Mac
- * Catalyst in 12 pt secondary text. The value comes from the existing
- * `setStatus` command (see `utils/editor-date.ts`); on iPhone, iPad and
- * Android nothing renders. Renders nothing until the app has reported a date
+ * The note's last-edited date/time, shown above the note title in 12 pt
+ * secondary text. The value comes from the existing `setStatus` command (see
+ * `utils/editor-date.ts`) - a real, app-supplied date, never a fabricated
+ * "now". It renders on Mac Catalyst (inside the centered text column) and in
+ * the iOS document chrome (at the note's ordinary full width); Android and any
+ * other host render nothing. Renders nothing until the app has reported a date
  * for the tab, so locked/empty notes stay clean.
  */
-function EditorDate() {
+function EditorDate({ showOrigin = true }: { showOrigin?: boolean }) {
   const tab = useTabContext();
   const [date, setDate] = useState(() => editorDate.get(tab.id));
   useEffect(() => {
@@ -40,24 +42,55 @@ function EditorDate() {
     return editorDate.subscribe(tab.id, setDate);
   }, [tab.id]);
 
-  if (!date) return null;
+  const origin =
+    showOrigin && !globalThis.isMacCatalyst && globalThis.__PLATFORM__ === "ios"
+      ? tab.session?.origin
+      : undefined;
+  if (!date && !origin?.title) return null;
+
+  /**
+   * Mac centers the note in a 46 rem text column and pads it 24 pt; iPhone and
+   * iPad keep the full-width note column with its usual 16 pt inset, so the
+   * date lines up with the title and body on either surface.
+   */
+  const isMacCatalyst = globalThis.isMacCatalyst ?? false;
 
   return (
     <p
       style={{
         width: "100%",
-        maxWidth: MAC_TEXT_COLUMN_MAX_WIDTH,
-        margin: "0 auto",
+        ...(isMacCatalyst
+          ? {
+              maxWidth: MAC_TEXT_COLUMN_MAX_WIDTH,
+              margin: "0 auto",
+              paddingLeft: MAC_TEXT_COLUMN_PADDING,
+              paddingRight: MAC_TEXT_COLUMN_PADDING
+            }
+          : {
+              paddingLeft: 16,
+              paddingRight: 16,
+              marginTop: 0,
+              marginBottom: 8,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap"
+            }),
         boxSizing: "border-box",
-        paddingLeft: MAC_TEXT_COLUMN_PADDING,
-        paddingRight: MAC_TEXT_COLUMN_PADDING,
         fontSize: 12,
         lineHeight: "16px",
         color: "var(--nn_secondary_paragraph)",
-        fontFamily: "Inter",
+        fontFamily: isMacCatalyst
+          ? "Inter"
+          : "-apple-system, BlinkMacSystemFont, sans-serif",
         userSelect: "none"
       }}
     >
+      {origin?.title ? (
+        <>
+          <span title={origin.title}>{origin.title}</span>
+          {date ? " · " : ""}
+        </>
+      ) : null}
       {date}
     </p>
   );

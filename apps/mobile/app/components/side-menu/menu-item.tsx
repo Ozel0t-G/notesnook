@@ -41,6 +41,11 @@ import { getAppleVisualTokens } from "../../utils/apple-visual-tokens";
 import { Pressable } from "../ui/pressable";
 import Paragraph from "../ui/typography/paragraph";
 import { useSideBarDraggingStore } from "./dragging-store";
+import {
+  IPadSourceRowMeasurement,
+  IPadSourceSymbol,
+  isIPadSourceList
+} from "./ipad-source-navigation";
 import { useRelationStore } from "../../stores/use-relation-store";
 
 export function MenuItem({
@@ -49,7 +54,14 @@ export function MenuItem({
   testID,
   renderIcon
 }: {
-  item: SideMenuItem;
+  /**
+   * The shared side-menu row. `focusedId` is the iPad sidebar's addition (see
+   * `resolveIPadSideMenuItem`): the row keeps its id - the stored order, hidden
+   * state and count are keyed by it - but is highlighted while the collection it
+   * opens reports a different focused route id (`Notes` opens All Notes, which
+   * reports `AllNotes`).
+   */
+  item: SideMenuItem & { focusedId?: string };
   index?: number;
   testID?: string;
   renderIcon?: (item: SideMenuItem, size: number) => React.ReactNode;
@@ -57,8 +69,10 @@ export function MenuItem({
   const [itemCount, setItemCount] = useState(0);
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
+  const ipadSource = isIPadSourceList();
+  const measureSourceRow = React.useContext(IPadSourceRowMeasurement);
   const isFocused = useNavigationStore(
-    (state) => state.focusedRouteId === item.id
+    (state) => state.focusedRouteId === (item.focusedId || item.id)
   );
   const totalNotes = useTotalNotes(
     item.dataType as "notebook" | "tag" | "color"
@@ -83,6 +97,12 @@ export function MenuItem({
           switch (item.id) {
             case "Notes":
               setItemCount(await db.notes.all.count());
+              break;
+            case "Inbox":
+              // The Library's Inbox is exactly the notes that are in no
+              // notebook, so the count is the truthful unassigned count - not
+              // the total, which would make the row claim the whole library.
+              setItemCount(await db.notes.unassigned.count());
               break;
             case "Favorites":
               setItemCount(await db.notes.favorites.count());
@@ -150,21 +170,45 @@ export function MenuItem({
   return (
     <Pressable
       testID={testID}
+      onLayout={
+        ipadSource && measureSourceRow
+          ? (event) =>
+              measureSourceRow(item.id, event.nativeEvent.layout.height)
+          : undefined
+      }
       key={item.id}
       onPress={_onPress}
       onLongPress={() => item.onLongPress?.(item)}
+      accessibilityRole="button"
+      accessibilityLabel={item.title}
+      // The row's own "selected" state: a VoiceOver user hears which list the
+      // bar is showing, the same fact the filled background paints.
+      accessibilityState={{ selected: isFocused }}
+      // The visible trailing count is otherwise announcable-impossible: the
+      // label alone would hide it, so expose the same number as the row's
+      // generic value (no "notes" wording - the field serves every row).
+      accessibilityValue={{ text: String(menuItemCount) }}
       type={isFocused ? "selected" : "plain"}
       style={{
         width: "100%",
         alignSelf: "center",
-        borderRadius: visual.ios ? visual.controlRadius : defaultBorderRadius,
+        borderRadius: ipadSource
+          ? defaultBorderRadius
+          : visual.ios
+          ? visual.controlRadius
+          : defaultBorderRadius,
         flexDirection: "row",
         paddingHorizontal: visual.ios
           ? visual.sidebarPadding
           : DefaultAppStyles.GAP_SMALL,
         justifyContent: "space-between",
         alignItems: "center",
-        paddingVertical: visual.ios ? 11 : DefaultAppStyles.GAP_VERTICAL_SMALL,
+        minHeight: ipadSource ? 44 : undefined,
+        paddingVertical: ipadSource
+          ? DefaultAppStyles.GAP_VERTICAL
+          : visual.ios
+          ? 11
+          : DefaultAppStyles.GAP_VERTICAL_SMALL,
         backgroundColor:
           visual.ios && isFocused ? visual.selectedSurface : undefined
       }}
@@ -179,6 +223,30 @@ export function MenuItem({
       >
         {renderIcon ? (
           renderIcon(item, AppFontSize.md)
+        ) : ipadSource ? (
+          <IPadSourceSymbol
+            name={
+              (
+                {
+                  Notes: "doc",
+                  Inbox: "tray",
+                  Favorites: "star",
+                  Tasks: "checkmark.circle",
+                  Monographs: "doc.text",
+                  Archive: "archivebox",
+                  Templates: "doc.on.doc",
+                  Trash: "trash"
+                } as Record<string, string>
+              )[item.id] ||
+              (item.dataType === "notebook"
+                ? "book.closed"
+                : item.dataType === "tag"
+                ? "number"
+                : "doc")
+            }
+            size={AppFontSize.md}
+            color={isFocused ? colors.primary.accent : colors.primary.icon}
+          />
         ) : (
           <Icon
             style={{
@@ -202,7 +270,7 @@ export function MenuItem({
           color={
             isFocused ? colors.selected.paragraph : colors.primary.paragraph
           }
-          size={AppFontSize.sm}
+          size={ipadSource ? AppFontSize.md : AppFontSize.sm}
           style={{ flexShrink: 1 }}
         >
           {item.title}
@@ -210,12 +278,13 @@ export function MenuItem({
       </View>
 
       <Paragraph
-        size={AppFontSize.xxs}
+        size={ipadSource ? AppFontSize.sm : AppFontSize.xxs}
         color={
           isFocused ? colors.primary.paragraph : colors.secondary.paragraph
         }
         style={{
-          marginLeft: DefaultAppStyles.GAP_SMALL
+          marginLeft: DefaultAppStyles.GAP_SMALL,
+          ...(ipadSource ? { flexShrink: 0 } : {})
         }}
       >
         {menuItemCount}

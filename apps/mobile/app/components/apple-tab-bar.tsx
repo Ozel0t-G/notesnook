@@ -35,11 +35,16 @@ import {
 import { notesnook } from "../../e2e/test.ids";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { isMacCatalyst } from "../utils/constants";
+import {
+  APPLE_TAB_BAR_HEIGHT,
+  APPLE_TAB_BAR_TOP_SPACING
+} from "./apple-tab-bar-layout";
 
 type NativeTabBarProps = {
   selectedSection: AppleTabBarSelection;
-  itemTitles: Record<"library" | "tasks" | "settings", string>;
+  itemTitles: Record<"library" | "tasks" | "search", string>;
   tint: string;
+  isDark: boolean;
   onSelect: (event: { nativeEvent: { section: AppleTabBarSelection } }) => void;
   style: ViewStyle;
 };
@@ -49,8 +54,7 @@ const NativeTabBar =
     ? requireNativeComponent<NativeTabBarProps>("VeyraNTabBarView")
     : undefined;
 
-/** Height of a standard UITabBar, excluding the home indicator inset. */
-export const APPLE_TAB_BAR_HEIGHT = 49;
+export { APPLE_TAB_BAR_HEIGHT };
 /** On iPad the tab bar floats at the top (iPadOS 18+), centered. */
 export const IPAD_TAB_BAR_WIDTH = 380;
 
@@ -83,18 +87,12 @@ export function AppleTabBar({
   onSelect: (selection: AppleTabBarSelection) => void;
 }) {
   const section = useAppleNavigationStore((state) => state.section);
-  const settingsVisible = useAppleNavigationStore(
-    (state) => state.settingsVisible
-  );
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useThemeColors();
   const visual = getAppleVisualTokens(colors, isDark);
 
-  // While the Settings sheet is open the Settings item is the selected one;
-  // `section` underneath is untouched so dismissing returns to it.
-  const selectedSection: AppleTabBarSelection = settingsVisible
-    ? "settings"
-    : section;
+  // Settings is a separate sheet; its underlying destination stays selected.
+  const selectedSection = section;
 
   if (!NativeTabBar) return null;
   if (isTopTabBar()) {
@@ -104,8 +102,8 @@ export function AppleTabBar({
       <View
         testID={notesnook.tabbar.id}
         style={{
-          paddingTop: insets.top + 4,
-          paddingBottom: 4,
+          paddingTop: insets.top + APPLE_TAB_BAR_TOP_SPACING,
+          paddingBottom: APPLE_TAB_BAR_TOP_SPACING,
           alignItems: "center",
           backgroundColor: visual.screenBackground
         }}
@@ -114,10 +112,11 @@ export function AppleTabBar({
           <NativeTabBar
             selectedSection={selectedSection}
             itemTitles={{
-              library: strings.routes.Library(),
+              library: strings.dataTypesPluralCamelCase.note(),
               tasks: strings.tasksTitle(),
-              settings: strings.routes.Settings()
+              search: strings.search()
             }}
+            isDark={isDark}
             tint={colors.primary.accent}
             onSelect={({ nativeEvent }) => onSelect(nativeEvent.section)}
             style={StyleSheet.absoluteFill}
@@ -141,10 +140,11 @@ export function AppleTabBar({
       <NativeTabBar
         selectedSection={selectedSection}
         itemTitles={{
-          library: strings.routes.Library(),
+          library: strings.dataTypesPluralCamelCase.note(),
           tasks: strings.tasksTitle(),
-          settings: strings.routes.Settings()
+          search: strings.search()
         }}
+        isDark={isDark}
         tint={colors.primary.accent}
         onSelect={({ nativeEvent }) => onSelect(nativeEvent.section)}
         style={StyleSheet.absoluteFill}

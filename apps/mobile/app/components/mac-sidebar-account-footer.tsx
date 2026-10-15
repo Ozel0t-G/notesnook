@@ -32,14 +32,13 @@ import {
 } from "react-native";
 import { useReduceMotion } from "../hooks/use-reduce-motion";
 import Navigation from "../services/navigation";
-import useNavigationStore from "../stores/use-navigation-store";
+import { useMacSettingsOpen } from "../hooks/use-mac-settings-open";
 import { SyncStatus, useUserStore } from "../stores/use-user-store";
 import { getAppleVisualTokens } from "../utils/apple-visual-tokens";
 import { systemColor } from "../utils/ios-system-colors";
 import {
   MAC_ACCOUNT_CARD_HEIGHT,
   MAC_ACCOUNT_CARD_MARGIN,
-  MAC_ACCOUNT_CARD_RADIUS,
   MAC_SIDEBAR_ROW_RADIUS,
   macSidebarSelectionFill
 } from "../utils/mac-layout";
@@ -48,16 +47,14 @@ import {
   openMacSettings
 } from "../screens/settings/mac-account-settings";
 import { AuthMode } from "./auth/common";
-import { MacGlassView } from "./mac-glass-view";
 import { MacHoverHighlight, useMacHover } from "./mac-hover";
 import AppIcon from "./ui/AppIcon";
 
 /**
  * Mac source-list footer (WP10.1): the account row macOS apps keep pinned to
- * the bottom of their sidebar. On the glass sidebar it is a floating glass card
- * of its own (`VeyraNGlassView` variant "card"), inset from the panel's edges,
- * with a round avatar initial on the leading edge. It sits below the ScrollView,
- * so it stays put while the Library list scrolls.
+ * the bottom of their sidebar. A transparent row shares the sidebar's surface,
+ * with a round avatar initial on the leading edge and a separate Settings
+ * target. It sits below the ScrollViews, so it stays put while sources scroll.
  *
  * Signed in: the avatar initial, the account e-mail (13 pt, single line) with a
  * status line below it ("Signed in" plus a pulsing sync dot) and a gear on the
@@ -76,10 +73,8 @@ const DOT_SIZE = 9;
 const GEAR_SIZE = 24;
 /** Round avatar diameter: the account line + status fit next to it in 46 pt. */
 const AVATAR_SIZE = 28;
-/** Corner radius of the row/button highlight inside the card: the row's 9 pt. */
+/** Corner radius of the account/settings pointer highlights. */
 const INNER_RADIUS = MAC_SIDEBAR_ROW_RADIUS;
-/** Horizontal padding that keeps the content off the card's own edges. */
-const CARD_PADDING = 9;
 
 export function MacSidebarAccountFooter() {
   const { colors, isDark } = useThemeColors();
@@ -87,11 +82,10 @@ export function MacSidebarAccountFooter() {
   const user = useUserStore((state) => state.user);
   const lastSyncStatus = useUserStore((state) => state.lastSyncStatus);
   const lastSynced = useUserStore((state) => state.lastSynced);
-  const currentRoute = useNavigationStore((state) => state.currentRoute);
 
   // The gear is the selected row while Settings is on screen (this also stops
   // the sidebar from keeping a Library row highlighted behind Settings, WP05).
-  const settingsSelected = currentRoute === "Settings";
+  const settingsSelected = useMacSettingsOpen();
   const selection = macSidebarSelectionFill(isDark);
 
   const email = user?.email;
@@ -123,21 +117,18 @@ export function MacSidebarAccountFooter() {
       testID="mac-sidebar-account-footer"
       style={{
         height: MAC_ACCOUNT_CARD_HEIGHT,
-        // The card floats inside the sidebar panel with its own margins. It is
-        // the last child of the panel's flex column, so it must never be
-        // squeezed by the scrolling list above it.
+        // Pinned outside the scrolling sources, with no second card surface.
+        // Retain its established height and margin to protect the hit targets.
         flexShrink: 0,
         margin: MAC_ACCOUNT_CARD_MARGIN
       }}
     >
-      <MacGlassView
-        variant="card"
-        cornerRadius={MAC_ACCOUNT_CARD_RADIUS}
+      <View
         style={{
           flex: 1,
           flexDirection: "row",
           alignItems: "center",
-          paddingHorizontal: CARD_PADDING
+          backgroundColor: "transparent"
         }}
       >
         <MacFooterPressable
@@ -230,15 +221,15 @@ export function MacSidebarAccountFooter() {
             }
           />
         </MacFooterPressable>
-      </MacGlassView>
+      </View>
     </View>
   );
 }
 
 /**
- * The round avatar at the leading edge of the account card: the first letter of
+ * The round avatar at the leading edge of the footer: the first letter of
  * the signed-in e-mail, or a person glyph while signed out. Its fill is the
- * theme's secondary surface so it reads as a disc on the glass.
+ * theme's secondary surface so it reads as a disc on the sidebar.
  */
 function AccountAvatar({
   signedIn,

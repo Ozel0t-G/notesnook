@@ -28,7 +28,7 @@ import { NativeEvents } from "@notesnook/editor-mobile/src/utils/native-events";
 import { strings } from "@notesnook/intl";
 import { useThemeColors } from "@notesnook/theme";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, TextInput, View } from "react-native";
+import { ActivityIndicator, Platform, TextInput, View } from "react-native";
 import { FlatList } from "react-native-actions-sheet";
 import { db } from "../../../common/database";
 import { useDBItem } from "../../../hooks/use-db-item";
@@ -232,6 +232,28 @@ export default function LinkNote(props: {
         maxHeight: "100%"
       }}
     >
+      {Platform.OS === "ios" && props.close ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between"
+          }}
+        >
+          <Paragraph style={{ flexShrink: 1 }} numberOfLines={1}>
+            {strings.noteLink()}
+          </Paragraph>
+          <Button
+            title={strings.cancel()}
+            accessibilityLabel={strings.cancel()}
+            accessibilityRole="button"
+            testID="link-note-cancel"
+            type="transparent"
+            style={{ minHeight: 44, flexShrink: 0 }}
+            onPress={() => props.close?.()}
+          />
+        </View>
+      ) : null}
       <View
         style={{
           flexDirection: "column",

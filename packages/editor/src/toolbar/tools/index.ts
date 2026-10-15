@@ -32,6 +32,7 @@ import {
   Math
 } from "./inline.js";
 import { InsertBlock } from "./block.js";
+import { Undo, Redo, CloseKeyboard } from "./history.js";
 import { MacFormat } from "./mac-format.js";
 import { FontSize, FontFamily } from "./font.js";
 import { Alignment } from "./alignment.js";
@@ -108,6 +109,9 @@ import {
 
 export type ToolId = keyof typeof tools;
 const tools = {
+  undo: Undo,
+  redo: Redo,
+  closeKeyboard: CloseKeyboard,
   bold: Bold,
   italic: Italic,
   underline: Underline,

@@ -69,7 +69,9 @@ export function MenuButton(props: MenuButtonProps) {
           bg: isFocused && "background-selected",
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between"
+          justifyContent: "space-between",
+          ...styles?.button,
+          ...(isFocused ? { bg: "background-selected" } : {})
         }}
       >
         <Flex
@@ -83,7 +85,7 @@ export function MenuButton(props: MenuButtonProps) {
           <Icon
             path={icon || ""}
             size={"medium"}
-            sx={{ mr: 1 }}
+            sx={{ mr: 1, ...styles?.icon }}
             color={
               (styles?.icon?.color as string) ||
               (variant === "dangerous" ? "icon-error" : "icon")

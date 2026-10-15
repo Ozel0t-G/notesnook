@@ -51,8 +51,25 @@ export type Settings = {
    * right below the window's native toolbar. False on iPhone and iPad.
    */
   isMacCatalyst: boolean;
+  /**
+   * Narrow iPad only: the editor is the pager's document *page* of the
+   * width-derived two-page workspace (see
+   * `navigation/fluid-panels-view.tsx` and `utils/ipad-layout.ts`), so the
+   * editor header must offer its own way back to the note list. Additive and
+   * independent of `deviceMode`, which stays DDS's "tablet" classification on
+   * that hardware; absent/false everywhere else keeps the previous header
+   * exactly as it was.
+   */
+  pagedPresentation?: boolean;
   premium: boolean;
   tools: ToolbarGroupDefinition[];
+  /**
+   * The toolbar preset stored for this platform (configure-toolbar). Sent
+   * alongside `tools` so the editor WebView resolves the effective groups with
+   * the shared resolver; absent means a legacy payload whose exact `tools`
+   * groups must be honored.
+   */
+  toolbarPreset?: "default" | "minimal" | "custom";
   noToolbar?: boolean;
   noHeader?: boolean;
   keyboardShown?: boolean;

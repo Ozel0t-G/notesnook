@@ -41,6 +41,7 @@ import { WebViewMessageEvent } from "react-native-webview";
 import { DatabaseLogger, db } from "../../../common/database";
 import downloadAttachment from "../../../common/filesystem/download-attachment";
 import { AuthMode } from "../../../components/auth/common";
+import { useIPadWorkspace } from "../../../components/ipad-workspace-context";
 import { Properties } from "../../../components/properties";
 import EditorTabs from "../../../components/sheets/editor-tabs";
 import LinkNote from "../../../components/sheets/link-note";
@@ -83,6 +84,7 @@ import { useDragState } from "../../settings/editor/state";
 import type { DroppedFile } from "./picker";
 import { EditorMessage, EditorProps, useEditorType } from "./types";
 import { useTabStore } from "./use-tab-store";
+import { useEditorShare } from "./use-editor-share";
 import { editorState, openInternalLink } from "./utils";
 import filesystem from "../../../common/filesystem";
 import ReactNativeBlobUtil from "react-native-blob-util";
@@ -155,6 +157,7 @@ export const useEditorEvents = (
   editor: useEditorType,
   { readonly: editorPropReadonly, noHeader, noToolbar }: Partial<EditorProps>
 ) => {
+  const share = useEditorShare(editor);
   const features = useAreFeaturesAvailable([
     "callout",
     "outlineList",
@@ -178,6 +181,33 @@ export const useEditorEvents = (
   const loggedIn = useUserStore((state) => !!state.user);
   const { fontScale } = useWindowDimensions();
 
+  /**
+   * The narrow iPad presents the note list and the document as two full-width
+   * pages (`navigation/fluid-panels-view.tsx` + `utils/ipad-layout.ts`). The
+   * editor is the *document* page there, and its chrome has to say so: a way
+   * back to the list. `settings.deviceMode` cannot: DDS classifies every iPad
+   * as "tablet", which is why the header showed no back button and the paged
+   * editor had no way home.
+   *
+   * `pagedPresentation` is an additive *presentation* flag, not a device-mode
+   * rewrite - the `deviceMode` payload is untouched and no consumer of it
+   * changes. It is read from the workspace context the root already publishes
+   * (no new store, no new navigation subsystem) and only for the default editor:
+   * a subeditor (`editorId !== ""`) is not the workspace's paged document, and
+   * every non-iPad client (no provider) keeps exactly its previous behaviour.
+   */
+  const ipadWorkspace = useIPadWorkspace();
+  const pagedPresentation =
+    editor.editorId === "" && ipadWorkspace?.paneMode === "narrow";
+  /**
+   * Read through a ref inside `onBackPress`: the page can change on a rotation,
+   * and the back handler must not be re-created (nor carry the width into its
+   * dependency chain) for that. The `setSettings` effect below sees the value
+   * directly, because the WebView has to be told about the affordance.
+   */
+  const pagedPresentationRef = useRef(pagedPresentation);
+  pagedPresentationRef.current = pagedPresentation;
+
   const doubleSpacedLines = useSettingStore(
     (state) => state.settings?.doubleSpacedLines
   );
@@ -192,6 +222,14 @@ export const useEditorEvents = (
   );
 
   const tools = useDragState((state) => state.data);
+  /**
+   * The stored toolbar preset travels with `tools`: the editor WebView is the
+   * only place that knows the host platform (Mac Catalyst vs the rest), so it
+   * resolves the effective groups there (see `resolveToolbarGroups`). A
+   * preset-only change must reach the WebView too, hence `preset` is in the
+   * settings effect's dependency list.
+   */
+  const preset = useDragState((state) => state.preset);
   useEffect(() => {
     const handleKeyboardDidShow: KeyboardEventListener = () => {
       editor.commands.keyboardShown(true);
@@ -223,9 +261,14 @@ export const useEditorEvents = (
       // keyboard-toolbar layout.
       isMacCatalyst: isMacCatalyst(),
       fullscreen: fullscreen || false,
+      // Narrow iPad only: the editor is the pager's document *page*, so the
+      // header carries its own way back to the note list (see the workspace
+      // note above). Purely additive; false everywhere else.
+      pagedPresentation: pagedPresentation,
       premium: false,
       readonly: false,
       tools: tools || getDefaultPresets().default,
+      toolbarPreset: preset,
       noHeader: noHeader,
       noToolbar: noToolbar,
       doubleSpacedLines: doubleSpacedLines,
@@ -248,7 +291,9 @@ export const useEditorEvents = (
     fullscreen,
     editor.loading,
     deviceMode,
+    pagedPresentation,
     tools,
+    preset,
     editor.commands,
     doubleSpacedLines,
     noHeader,
@@ -284,7 +329,16 @@ export const useEditorEvents = (
         return;
       }
 
-      if (deviceMode === "mobile") {
+      /**
+       * iPhone and the narrow iPad share one presentation: two pages, the note
+       * list and the document, and back means returning to the list. The iPad
+       * reaches this through the paged-presentation ref rather than
+       * `deviceMode`, which stays DDS's "tablet" classification there - the
+       * rest of the path (blur above, `movedAway`, the route refresh) is the
+       * existing one. Fullscreen still closes first and never pages, and every
+       * other client is untouched.
+       */
+      if (deviceMode === "mobile" || pagedPresentationRef.current) {
         editorState().movedAway = true;
         fluidTabsRef.current?.goToPage("home");
       }
@@ -412,7 +466,10 @@ export const useEditorEvents = (
       const saveNoteId = editorMessage.noteId || noteId;
 
       switch (editorMessage.type) {
+        case EditorEvents.shareNote:
+          return share.handle(editorMessage);
         case EditorEvents.content:
+          share.onInput(editorMessage);
           DatabaseLogger.log("EditorEvents.content");
           editor.saveContent({
             type: editorMessage.type,
@@ -425,6 +482,7 @@ export const useEditorEvents = (
           });
           break;
         case EditorEvents.title:
+          share.onInput(editorMessage);
           DatabaseLogger.log("EditorEvents.title");
           editor.saveContent({
             type: editorMessage.type,
@@ -453,6 +511,7 @@ export const useEditorEvents = (
           }
           break;
         case EditorEvents.contentchange:
+          share.onInput(editorMessage);
           editor.onContentChanged(editorMessage.noteId);
           break;
         case EditorEvents.selection:
@@ -755,9 +814,19 @@ export const useEditorEvents = (
           break;
         }
         case EditorEvents.newNote: {
+          /**
+           * The editor's own "new note" is not a user navigation of the paged
+           * iPad workspace: the editor is already the page the user is on, and
+           * the root's `eOnLoadNote` listener must not command the pager from
+           * the editor's own chrome. Marking it editor-origin is what says so -
+           * the field only ever gates that page change (the load path itself
+           * checks it against a note `item`, and a new-note payload carries
+           * none), so the load semantics are unchanged.
+           */
           eSendEvent(eOnLoadNote, {
             tabId: editorMessage.tabId,
-            newNote: true
+            newNote: true,
+            loadedFromEditor: true
           });
           break;
         }
@@ -931,7 +1000,7 @@ export const useEditorEvents = (
       }
       eSendEvent(editorMessage.type, editorMessage);
     },
-    [editor, onBackPress]
+    [editor, onBackPress, share.handle, share.onInput]
   );
 
   return onMessage;

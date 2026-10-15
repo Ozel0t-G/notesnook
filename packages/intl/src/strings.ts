@@ -2658,6 +2658,8 @@ Use this if changes from other devices are not appearing on this device. This wi
 
   insertTableOfSize: (rows: number, columns: number) =>
     t`Insert a ${rows}x${columns} table`,
+  tableColumns: () => t`Columns`,
+  tableRows: () => t`Rows`,
   setTableSizeNotice: () => t`Please set a table size`,
   clickToReset: (title: string) => t`Click to reset ${title}`,
   increase: (title: string) => t`Increase ${title}`,

@@ -78,7 +78,11 @@ class TabHistory {
   }
 }
 
+export type NoteOrigin = { id: string; title: string };
+
 export type TabSessionItem = {
+  /** UI navigation context, never note content or notebook membership. */
+  origin?: NoteOrigin | null;
   id: string;
   noteId?: string;
   scrollTop?: number;
@@ -94,17 +98,24 @@ const TabSessionStorageKV = new MMKVLoader()
   .disableIndexing()
   .initialize();
 
+const sessionOrigins = new Map<string, NoteOrigin | null>();
+
 class TabSessionStorage {
   static storage: typeof TabSessionStorageKV = TabSessionStorageKV;
 
   static get(id: string): TabSessionItem | null {
     if (!id) return null;
-    return TabSessionStorage.storage.getMap(id) || null;
+    const stored = TabSessionStorage.storage.getMap<TabSessionItem>(id);
+    return stored
+      ? { ...stored, origin: sessionOrigins.get(id) ?? null }
+      : null;
   }
 
   static set(id: string, session: TabSessionItem): void {
     if (!id) return;
-    TabSessionStorage.storage.setMap(id, session);
+    const { origin, ...stored } = session;
+    if (origin !== undefined) sessionOrigins.set(id, origin);
+    TabSessionStorage.storage.setMap(id, stored);
   }
 
   static update(id: string, session: Partial<TabSessionItem>) {
@@ -121,6 +132,7 @@ class TabSessionStorage {
 
   static remove(id: string) {
     if (!id) return;
+    sessionOrigins.delete(id);
     TabSessionStorageKV.removeItem(id);
   }
 }
@@ -229,6 +241,7 @@ export function resetTabStore() {
   useTabStore.setState({
     ...DEFAULT_TABS
   });
+  sessionOrigins.clear();
   TabSessionStorage.storage.clearStore();
 }
 
@@ -258,7 +271,7 @@ export const useTabStore = create<TabStore, any>(
 
         const sessionId =
           oldSessionId &&
-            tabSessionHistory.currentSessionId(tabId) === oldSessionId
+          tabSessionHistory.currentSessionId(tabId) === oldSessionId
             ? oldSessionId
             : tabSessionHistory.add(tabId, oldSessionId);
 
@@ -277,6 +290,10 @@ export const useTabStore = create<TabStore, any>(
             ...options
           };
         }
+
+        // A reused history session must retain the newly accepted list
+        // context in memory too, before later caret/scroll updates merge it.
+        sessionOrigins.set(sessionId, session.origin ?? null);
 
         const index = get().tabs.findIndex((t) => t.id === tabId);
         if (index == -1) return;
@@ -389,7 +406,7 @@ export const useTabStore = create<TabStore, any>(
       focusPreviewTab: (
         noteId: string,
         options: Omit<Partial<TabItem>, "id" | "noteId">
-      ) => { },
+      ) => {},
 
       removeTab: (id: string) => {
         const index = get().tabs.findIndex((t) => t.id === id);
@@ -508,6 +525,16 @@ export const useTabStore = create<TabStore, any>(
     }),
     {
       name: "tabs-storage-v5",
+      // Origin titles are transient navigation metadata, never persisted.
+      partialize: (state) => ({
+        ...state,
+        tabs: state.tabs.map((tab) => ({
+          ...tab,
+          session: tab.session
+            ? { ...tab.session, origin: undefined }
+            : undefined
+        }))
+      }),
       getStorage: () => MMKV as unknown as StateStorage,
       onRehydrateStorage: () => {
         return (state) => {

@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+import { useContext } from "react";
 import { Theme } from "@notesnook/theme";
 import { SchemeColors } from "@notesnook/theme";
 import React from "react";
@@ -25,7 +26,13 @@ import { IconNames, Icons } from "../icons.js";
 import { ToolButtonVariant } from "../types.js";
 import { Button } from "../../components/button.js";
 import { Icon } from "@notesnook/ui";
-import { useIsMacCatalyst, useIsMobile } from "../stores/toolbar-store.js";
+import {
+  IosFormatContext,
+  PopupParentContext,
+  PopupIdScopeContext,
+  useIsMacCatalyst,
+  useIsMobile
+} from "../stores/toolbar-store.js";
 
 export type ToolButtonProps = ButtonProps & {
   icon: IconNames;
@@ -45,18 +52,24 @@ export const ToolButton = React.memo(
       toggled,
       sx,
       buttonRef,
+      children,
       variant = "normal",
       ...buttonProps
     } = props;
     const isMobile = useIsMobile();
+    const isIosFormat = useContext(IosFormatContext);
+    const popupParent = useContext(PopupParentContext);
+    const popupScope = useContext(PopupIdScopeContext);
     const isMacCatalyst = useIsMacCatalyst();
 
     return (
       <Button
         variant="secondary"
         ref={buttonRef}
-        tabIndex={-1}
-        id={`tool-${id || icon}`}
+        tabIndex={isIosFormat || popupScope ? 0 : -1}
+        id={`tool-${popupScope}${
+          isIosFormat && popupParent ? `${popupParent}-` : ""
+        }${id || icon}`}
         sx={{
           height: "unset",
           flexShrink: 0,
@@ -71,9 +84,10 @@ export const ToolButton = React.memo(
                 borderRadius: "5px"
               }
             : {}),
+          ...(isIosFormat ? { minWidth: 44, minHeight: 44 } : {}),
           m: 0,
           bg: toggled ? "background-selected" : "transparent",
-          mr: variant === "small" ? 0 : isMacCatalyst ? 0 : 1,
+          mr: variant === "small" || isMacCatalyst || isIosFormat ? 0 : 1,
           ":last-of-type": {
             mr: 0
           },
@@ -85,7 +99,10 @@ export const ToolButton = React.memo(
           ...sx
         }}
         onMouseDown={(e) => {
-          if (globalThis.keyboardShown) {
+          // iOS must preserve the text focus even while native keyboard events
+          // lag (or a hardware keyboard is attached). Otherwise mousedown can
+          // dismiss the keyboard and move this button before click arrives.
+          if (isIosFormat || globalThis.keyboardShown) {
             e.preventDefault();
           }
         }}
@@ -94,14 +111,19 @@ export const ToolButton = React.memo(
         <Icon
           path={Icons[icon]}
           color={iconColor || (toggled ? "icon-selected" : "icon")}
-          size={iconSize || (variant === "small" ? "medium" : "big")}
+          size={
+            iconSize ||
+            (isIosFormat ? 22 : variant === "small" ? "medium" : "big")
+          }
         />
+        {children}
       </Button>
     );
   },
   (prev, next) => {
     return (
       prev.toggled === next.toggled &&
+      prev.children === next.children &&
       prev.icon === next.icon &&
       prev.disabled === next.disabled &&
       prev.onClick === next.onClick &&

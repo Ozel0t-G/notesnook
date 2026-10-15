@@ -72,6 +72,18 @@ jest.mock("../../utils/apple-visual-tokens", () => ({
     rowPadding: 12
   })
 }));
+// Test-only: the iOS "Settings" card chrome is irrelevant to the synthetic
+// account rows, but importing the real module pulls in `use-biometry` ->
+// `@ammarahmed/react-native-fingerprint-scanner` (an ESM native edge with no
+// node build). Mocking the *irrelevant appearance edge* keeps this suite
+// independent; the rows, their hiding rules and their actions stay real.
+jest.mock("./ios-appearance", () => {
+  const { createElement } = require("react") as typeof React;
+  return {
+    IosSettingsCard: ({ children }: { children?: React.ReactNode }) =>
+      createElement("IosSettingsCard", null, children)
+  };
+});
 jest.mock("./section-item", () => ({
   SectionItem: ({
     item
@@ -149,6 +161,20 @@ describe("VeyraN Account Settings rendering", () => {
     await rows[3].props.onPress();
     expect(signOut).toHaveBeenCalledTimes(1);
     expect(section.featureId).toBeUndefined();
+  });
+
+  it("offers same-account reauthentication without invoking destructive signout", () => {
+    const signOut = jest.fn(async () => true);
+    const signIn = jest.fn();
+    const section = createAccountSection([], signOut, signIn);
+    const recovery = section.sections?.find(row => row.id === "veyran-account-recovery");
+    expect(recovery).toBeDefined();
+    expect(recovery?.hidden?.({ expired: false, setupRequired: false })).toBe(true);
+    expect(recovery?.hidden?.({ expired: true, setupRequired: false })).toBe(false);
+    expect(recovery?.hidden?.({ expired: false, setupRequired: true })).toBe(false);
+    recovery?.modifer?.();
+    expect(signIn).toHaveBeenCalledTimes(1);
+    expect(signOut).not.toHaveBeenCalled();
   });
 
   it("keeps a useful ACCOUNT sign-in action visible for a local profile", () => {

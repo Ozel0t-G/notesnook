@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import { useThemeColors } from "@notesnook/theme";
 import React from "react";
 import {
+  Platform,
   Pressable,
   StyleProp,
   Text,
@@ -68,6 +69,13 @@ export function IosNavBar({
       ]}
     >
       <View style={{ flex: 1, flexDirection: "row", alignItems: "center" }}>
+        {/*
+          The back button and `leading` are not alternatives: the iPad's narrow
+          and medium note lists need both at once (the account affordance stays
+          reachable while the sidebar is off screen, next to the button that
+          takes the user back to the source list). On every screen that passes
+          only one of them the row renders exactly as it did.
+        */}
         {onBack ? (
           <Pressable
             onPress={onBack}
@@ -87,15 +95,19 @@ export function IosNavBar({
             {backTitle ? (
               <Text
                 numberOfLines={1}
-                style={{ color: tint, fontSize: 17, marginLeft: 3, maxWidth: 160 }}
+                style={{
+                  color: tint,
+                  fontSize: 17,
+                  marginLeft: 3,
+                  maxWidth: 160
+                }}
               >
                 {backTitle}
               </Text>
             ) : null}
           </Pressable>
-        ) : (
-          leading
-        )}
+        ) : null}
+        {leading}
       </View>
       {title ? (
         <Text
@@ -281,6 +293,7 @@ export function IosSearchField({
   // NSSearchField size (28 pt tall, 7 pt radius, 13 pt text) instead of the
   // 36 pt bar that sits under an iPhone large title.
   const isMac = isMacCatalyst();
+  const phone = Platform.OS === "ios" && !Platform.isPad && !isMac;
   return (
     <Pressable
       testID={testID}
@@ -296,13 +309,14 @@ export function IosSearchField({
         flexDirection: "row",
         alignItems: "center",
         gap: isMac ? 4 : 6,
-        // F3: the Mac field is NSColor.controlBackgroundColor, taken from the
-        // Mac token branch; iPhone/iPad keep their hardcoded field fill.
-        backgroundColor: isMac
-          ? visual.secondarySurface
-          : isDark
-          ? "#1C1C1E"
-          : "rgba(118,118,128,0.12)"
+        // Mac keeps its control fill. Phone dark search uses the existing
+        // raised field surface; other clients and light phone keep their fill.
+        backgroundColor:
+          isMac || (phone && isDark)
+            ? visual.secondarySurface
+            : isDark
+            ? "#1C1C1E"
+            : "rgba(118,118,128,0.12)"
       }}
     >
       <TaskSymbolView

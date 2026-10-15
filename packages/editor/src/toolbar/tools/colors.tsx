@@ -17,20 +17,26 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { colord } from "colord";
 import { PopupWrapper } from "../../components/popup-presenter/index.js";
 import { config } from "../../utils/config.js";
 import { SplitButton } from "../components/split-button.js";
 import { ColorPicker } from "../popups/color-picker.js";
 import {
+  PopupParentContext,
   usePopupManager,
-  useToolbarLocation
+  useToolbarLocation,
+  useToolbarStore
 } from "../stores/toolbar-store.js";
 import { ToolProps } from "../types.js";
 import { getEditorToolbarPopup } from "../utils/dom.js";
 import { PositionOptions } from "@notesnook/ui";
 import { strings } from "@notesnook/intl";
+import {
+  editorHighlight,
+  editorHighlightForeground
+} from "../../extensions/highlight/editor-highlight-tokens.js";
 
 type ColorType = "background" | "text" | "border";
 type ColorToolProps = ToolProps & {
@@ -43,6 +49,7 @@ type ColorToolProps = ToolProps & {
 
 export const DEFAULT_COLORS: Record<ColorType, string[]> = {
   background: [
+    editorHighlight, // Warm orange marker, kept first for reachability on a horizontally-scrolling phone palette
     "#b0bec5", // Neutralized pink
     "#a1887f", // Neutralized purple
     "#9575cd", // Neutralized deep purple
@@ -104,11 +111,37 @@ export function ColorTool(props: ColorToolProps) {
   const defaultColors = DEFAULT_COLORS[type];
   const activeColor = _activeColor || config.get(cacheKey);
   const tColor = activeColor ? colord(activeColor) : undefined;
+  // The warm-orange marker is the one swatch with a fixed, appearance-
+  // independent foreground (`editorHighlightForeground` in the highlight
+  // extension), so its glyph must not follow the legacy
+  // `isDark() ? "white" : "icon"` rule - on a dark theme that resolves to a
+  // light glyph on the light warm fill. Everything else keeps that rule.
+  const isWarmMarkerBackground =
+    type === "background" &&
+    !!tColor &&
+    tColor.isValid() &&
+    tColor.alpha() === 1 &&
+    tColor.toHex().toLowerCase() === editorHighlight.toLowerCase();
   const isBottom = useToolbarLocation() === "bottom";
+  // `parentGroup` is the enclosing `ToolbarGroup`'s id (its tools' joined
+  // ids), not an actual popup id - a singleton group would otherwise make
+  // this popup its own parent and recurse forever in pin/close. Prefer the
+  // real enclosing popup from `PopupParentContext`, and only fall back to
+  // `parentGroup` when it happens to name a currently open popup other than
+  // this one.
+  const contextParent = useContext(PopupParentContext);
+  const openedPopups = useToolbarStore((store) => store.openedPopups);
+  const parent =
+    contextParent ??
+    (parentGroup &&
+    parentGroup !== props.icon &&
+    typeof openedPopups[parentGroup] === "object"
+      ? parentGroup
+      : undefined);
   const { toggle, isOpen, close, isPinned, togglePinned } = usePopupManager({
     id: props.icon,
     group: "color",
-    parent: parentGroup
+    parent
   });
   const [colors, setColors] = useState(
     config.get<string[]>(`custom_${cacheKey}`, []) || []
@@ -131,8 +164,15 @@ export function ColorTool(props: ColorToolProps) {
   return (
     <SplitButton
       {...toolProps}
+      title={title}
       buttonRef={buttonRef}
-      iconColor={activeColor && tColor?.isDark() ? "white" : "icon"}
+      iconColor={
+        isWarmMarkerBackground
+          ? editorHighlightForeground
+          : activeColor && tColor?.isDark()
+          ? "white"
+          : "icon"
+      }
       sx={{
         mr: 0,
         bg: activeColor || "transparent",
@@ -197,7 +237,7 @@ export function Highlight(props: ToolProps) {
       {...props}
       cacheKey="highlight"
       activeColor={editor.getAttributes("textStyle").backgroundColor}
-      title={strings.backgroundColor()}
+      title={strings.highlight()}
       type="background"
       onColorChange={(color) =>
         color

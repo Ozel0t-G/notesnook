@@ -152,6 +152,27 @@ const Editor = React.memo(
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [onLoad]);
 
+      const currentSession = useTabStore(
+        (state) => state.getTab(state.currentTab)?.session
+      );
+
+      // The native WKWebView keyboard accessory (arrows/Done) sits on top of
+      // the web editor's bottom formatting bar. Only the main, unlocked,
+      // editable note editor on iOS non-Mac renders a header with its own
+      // Done action that replaces it, so the native one is hidden only
+      // there. An unknown/missing session is treated as locked so the
+      // accessory is never hidden before the session is confirmed.
+      const hideKeyboardAccessoryView =
+        Platform.OS === "ios" &&
+        !isMacCatalyst() &&
+        withController &&
+        !editorId &&
+        !noHeader &&
+        !readonly &&
+        !!currentSession &&
+        !currentSession.readonly &&
+        !currentSession.locked;
+
       if (withController) {
         editorController.current = editor;
       }
@@ -181,6 +202,11 @@ const Editor = React.memo(
               // Mac even when the settings message (which also carries the
               // flag) is still cached from a previous session.
               globalThis.isMacCatalyst=${isMacCatalyst()};
+              // The host platform, so the embedded editor can tell Apple
+              // (iPhone/iPad/Mac, all "ios") from Android and other clients
+              // before the bundle first paints. Until now it only learned this
+              // lazily from a command job (tiptap/commands.ts).
+              globalThis.__PLATFORM__=${JSON.stringify(Platform.OS)};
               globalThis.DEFAULT_THEME = ${JSON.stringify(theme)};
               globalThis.LINGUI_LOCALE = "${i18n.locale}";
               globalThis.LINGUI_LOCALE_DATA = ${JSON.stringify({
@@ -205,7 +231,7 @@ const Editor = React.memo(
             setDisplayZoomControls={false}
             allowFileAccess={true}
             scalesPageToFit={true}
-            hideKeyboardAccessoryView={false}
+            hideKeyboardAccessoryView={hideKeyboardAccessoryView}
             allowsFullscreenVideo={true}
             allowFileAccessFromFileURLs={true}
             allowsInlineMediaPlayback

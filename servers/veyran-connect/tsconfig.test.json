@@ -1,0 +1,25 @@
+{
+  // Separate TypeScript check for the server test suite.
+  //
+  // It type-checks the harness and the protocol/credential/certificate tests,
+  // which depend only on this package's `src/` (plus the pure Core Connect
+  // contract). Two test files are deliberately excluded from *type checking*
+  // (they are still executed by `vitest`):
+  //
+  //   test/tools.test.ts, test/stdio.test.ts
+  //
+  // both import the real Core fixture sources
+  // (`packages/core/__tests__/connect/fixtures.ts`). Those fixtures pull Core's
+  // database / native / `__testmocks__` subtree into the graph; keeping them out
+  // of this config is exactly the "don't import the entire Core __test mocks
+  // into the server tsconfig" rule. Their runtime behaviour is covered by
+  // `vitest` with the focused aliases in `vitest.config.ts`, so no coverage is
+  // lost — only the (out-of-scope) Core baseline fixture type errors are. The
+  // mandated `npm run typecheck` is `src`-only and unaffected either way.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src/", "test/"],
+  "exclude": ["test/tools.test.ts", "test/stdio.test.ts"]
+}

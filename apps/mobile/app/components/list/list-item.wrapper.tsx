@@ -41,7 +41,7 @@ import {
   getSortValue
 } from "@notesnook/core";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Platform, View } from "react-native";
 import { getGroupOptions } from "../../hooks/use-group-options";
 import { useIsCompactModeEnabled } from "../../hooks/use-is-compact-mode-enabled";
 import { eSendEvent } from "../../services/event-manager";
@@ -70,13 +70,66 @@ type ListItemWrapperProps<TItem = Item> = {
    */
   scrollViewOffset?: number;
   groupOptions: GroupOptions;
+  origin?: { id: string; title: string };
   groupId?: string;
   type?: GroupingByIdKey;
 };
 
+// Header indices are metadata from the existing grouping API, not a second
+// note list. Share one request across visible rows; a refreshed grouping gets
+// its own entry and old instances can be collected.
+const phoneGroupStarts = new WeakMap<
+  VirtualizedGrouping<Item>,
+  Promise<ReadonlySet<number> | undefined>
+>();
+function getPhoneGroupStarts(items: VirtualizedGrouping<Item>) {
+  let pending = phoneGroupStarts.get(items);
+  if (!pending) {
+    pending = Promise.resolve()
+      .then(() => items.groups?.() || [])
+      .then((groups) => new Set([0, ...groups.map((group) => group.index)]))
+      .catch(() => undefined);
+    phoneGroupStarts.set(items, pending);
+  }
+  return pending;
+}
+
 export function ListItemWrapper(props: ListItemWrapperProps) {
   const { items, group, isSheet, index, groupOptions } = props;
   const scrollViewOffset = props.scrollViewOffset ?? 0;
+  // Catalyst may report either pad idiom: keep its explicit exclusion.
+  const phoneNoteList =
+    Platform.OS === "ios" &&
+    !Platform.isPad &&
+    !Platform.isMacCatalyst &&
+    !isSheet &&
+    props.dataType === "note";
+  const [edges, setEdges] = useState<{
+    items: VirtualizedGrouping<Item>;
+    index: number;
+    first: boolean;
+    last: boolean;
+  }>();
+  useEffect(() => {
+    if (!phoneNoteList || !items) return;
+    let cancelled = false;
+    void getPhoneGroupStarts(items).then((starts) => {
+      if (!cancelled && starts)
+        setEdges({
+          items,
+          index,
+          first: starts.has(index),
+          last: index === items.length - 1 || starts.has(index + 1)
+        });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [phoneNoteList, items, index]);
+  const groupEdges =
+    phoneNoteList && edges && edges.items === items && edges.index === index
+      ? { first: edges.first, last: edges.last }
+      : undefined;
   const [item, setItem] = useState<Item>();
   const tags = useRef<TagsWithDateEdited>(undefined);
   const notebooks = useRef<NotebooksWithDateEdited>(undefined);
@@ -86,6 +139,7 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
   const attachmentsCount = useRef(0);
   const [groupHeader, setGroupHeader] = useState<GroupHeader>();
   const previousIndex = useRef<number>(undefined);
+  const previousItems = useRef(items);
   const refreshTimeout = useRef<NodeJS.Timeout>(undefined);
   const currentItemId = useRef<string>(undefined);
   const locked = useRef(false);
@@ -147,8 +201,12 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
     }
   }, []);
 
-  if (previousIndex.current !== index) {
+  if (
+    previousIndex.current !== index ||
+    (phoneNoteList && previousItems.current !== items)
+  ) {
     previousIndex.current = index;
+    previousItems.current = items;
     const resolvedItem = items?.cacheItem(index);
     if (resolvedItem) {
       refreshItem(resolvedItem);
@@ -159,15 +217,18 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
   }
 
   useEffect(() => {
+    let cancelled = false;
     (async function () {
       try {
         clearTimeout(refreshTimeout.current);
         const idx = index;
         refreshTimeout.current = setTimeout(
           async () => {
-            if (idx !== previousIndex.current) return;
+            if ((phoneNoteList && cancelled) || idx !== previousIndex.current)
+              return;
             const resolvedItem = await items?.item(idx, resolveItems);
-            if (idx !== previousIndex.current) return;
+            if ((phoneNoteList && cancelled) || idx !== previousIndex.current)
+              return;
             refreshItem(resolvedItem);
           },
           items?.cacheItem(index) ? 100 : 0
@@ -176,7 +237,11 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
         /** empty */
       }
     })();
-  }, [index, items, refreshItem]);
+    return () => {
+      cancelled = true;
+      if (phoneNoteList) clearTimeout(refreshTimeout.current);
+    };
+  }, [index, items, refreshItem, phoneNoteList]);
 
   if (!item)
     return (
@@ -226,7 +291,9 @@ export function ListItemWrapper(props: ListItemWrapperProps) {
             index={index}
             locked={locked.current}
             renderedInRoute={props.renderedInRoute}
+            origin={props.origin}
             thumbnail={thumbnail.current}
+            groupEdges={item.type === "note" ? groupEdges : undefined}
           />
         </>
       );

@@ -24,7 +24,12 @@ import { useMemo, useRef, useState } from "react";
 import { EmbedPopup } from "../popups/embed-popup.js";
 import { TablePopup } from "../popups/table-popup.js";
 import { MenuItem, Icon } from "@notesnook/ui";
-import { useIsMobile, useToolbarLocation } from "../stores/toolbar-store.js";
+import {
+  useIsMobile,
+  useToolbarLocation,
+  useToolbarStore
+} from "../stores/toolbar-store.js";
+import { getEditorDOM } from "../utils/dom.js";
 import { ResponsivePresenter } from "../../components/responsive/index.js";
 import { showPopup } from "../../components/popup-presenter/index.js";
 import { ImageUploadPopup } from "../popups/image-upload.js";
@@ -32,6 +37,8 @@ import { Button } from "../../components/button.js";
 import { strings } from "@notesnook/intl";
 import { keybindings } from "@notesnook/common";
 import { importCsvToTable } from "../../extensions/table/actions.js";
+import { insertInternalLink } from "./internal-link-command.js";
+import { showLinkPopup } from "../popups/link-popup.js";
 
 export function InsertBlock(props: ToolProps) {
   const { editor } = props;
@@ -40,9 +47,14 @@ export function InsertBlock(props: ToolProps) {
   const toolbarLocation = useToolbarLocation();
   const isMobile = useIsMobile();
 
+  // `isEditable` and the host provided `createInternalLink` are read while the
+  // items are built, so a readonly transition or the same host re-registering
+  // its picker on the *same* editor instance must invalidate the memo. With
+  // only `[editor, isMobile]` the capability flags would stay cached and the
+  // "+" menu would keep advertising an action that can no longer run.
   const menuItems = useMemo(
     () => getInsertMenuItems(editor, isMobile),
-    [editor, isMobile]
+    [editor, isMobile, editor.isEditable, editor.storage.createInternalLink]
   );
 
   return (
@@ -66,6 +78,8 @@ export function InsertBlock(props: ToolProps) {
             e.preventDefault();
           }
         }}
+        title={strings.insert()}
+        aria-label={strings.insert()}
         onClick={() => setIsOpen((s) => !s)}
       >
         <Icon path={Icons.plus} size="medium" color={"accent"} />
@@ -101,6 +115,8 @@ export function getInsertMenuItems(
     mathblock(editor),
     callout(editor),
     blockquote(editor),
+    internalLink(editor),
+    externalLink(editor),
     image(editor, isMobile),
     handwriting(editor),
     template(editor),
@@ -108,6 +124,114 @@ export function getInsertMenuItems(
     isMobile ? embedMobile(editor) : embedDesktop(editor),
     table(editor)
   ];
+}
+
+const macInsertMenus = new WeakMap<Editor, () => void>();
+
+/** Native Mac + toggles one owned menu. True means handled, not "now open". */
+export function showMacInsertMenu(editor: Editor): boolean {
+  const existing = macInsertMenus.get(editor);
+  if (existing) {
+    existing();
+    return true;
+  }
+  if (
+    !useToolbarStore.getState().macCatalyst ||
+    editor.isDestroyed ||
+    !editor.isEditable ||
+    !editor.view.dom.isConnected ||
+    getEditorDOM() !== editor.view.dom
+  )
+    return false;
+  const root = editor.view.dom.closest<HTMLElement>(".active");
+  const owner = root?.querySelector<HTMLElement>(".dialogContainer");
+  if (!root || !owner) return false;
+  const doc = editor.state.doc;
+  const selection = editor.state.selection;
+  let closed = false;
+  const isCurrent = () =>
+    !closed &&
+    !editor.isDestroyed &&
+    editor.isEditable &&
+    root.isConnected &&
+    root.classList.contains("active") &&
+    getEditorDOM() === editor.view.dom &&
+    editor.state.doc === doc &&
+    editor.state.selection.eq(selection);
+  const guarded = (items: MenuItem[]): MenuItem[] =>
+    items.map((item) => {
+      if (item.type !== "button") return item;
+      return {
+        ...item,
+        // Catalyst uses pointer density even inside the mobile editor host.
+        styles: {
+          ...item.styles,
+          button: {
+            ...item.styles?.button,
+            height: "auto",
+            minHeight: "2em",
+            py: 0
+          }
+        },
+        ...(item.onClick
+          ? {
+              onClick: () => {
+                if (isCurrent()) return item.onClick?.();
+              }
+            }
+          : {}),
+        ...(item.menu
+          ? { menu: { ...item.menu, items: guarded(item.menu.items) } }
+          : {})
+      };
+    });
+  let hide = () => {};
+  const cleanup = () => {
+    closed = true;
+    if (macInsertMenus.get(editor) === close) macInsertMenus.delete(editor);
+    observer.disconnect();
+    editor.off("transaction", changed);
+    editor.off("update", changed);
+    editor.off("destroy", close);
+  };
+  const close = () => {
+    cleanup();
+    hide();
+  };
+  const changed = () => {
+    if (!isCurrent()) close();
+  };
+  const observer = new MutationObserver(changed);
+  editor.commands.focus(undefined, { scrollIntoView: false });
+  hide = showPopup({
+    popup: () => null,
+    items: guarded(
+      getInsertMenuItems(editor, useToolbarStore.getState().isMobile)
+    ),
+    title: strings.chooseBlockToInsert(),
+    mobile: "menu",
+    desktop: "menu",
+    // The native column scroller remains visible in a short Inspector pane;
+    // the legacy custom scrollbar can repaint its rows blank in WKWebView.
+    menuLayout: "column",
+    fitSubmenusToViewport: true,
+    container: owner,
+    position: {
+      target: root,
+      isTargetAbsolute: true,
+      location: "top",
+      align: "center",
+      yOffset: -8
+    },
+    onClose: cleanup
+  });
+  if (closed) return true;
+  macInsertMenus.set(editor, close);
+  observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+  editor.on("transaction", changed);
+  editor.on("update", changed);
+  editor.on("destroy", close);
+  return true;
 }
 
 const horizontalRule = (editor: Editor): MenuItem => ({
@@ -176,6 +300,52 @@ const callout = (editor: Editor): MenuItem => ({
           .setCallout({ type: type.toLowerCase() as any })
           .run()
     }))
+  }
+});
+
+/**
+ * First-level shortcut: links the current selection to a note/notebook/tag
+ * using the host provided internal link picker. Shared by every platform
+ * (iPhone, iPad and Mac) because it lives in the Insert "+" menu, which is the
+ * one entry point that is always present regardless of toolbar customization.
+ *
+ * The action is only reachable when it can actually do something:
+ * - hidden when the host did not provide `createInternalLink` (there is no
+ *   picker to show, so the entry would be a visible no-op);
+ * - disabled on readonly documents, where the command refuses to mutate.
+ */
+const internalLink = (editor: Editor): MenuItem => ({
+  key: "internal-link",
+  type: "button",
+  title: strings.newInternalLink(),
+  icon: Icons.noteLink,
+  isHidden: typeof editor.storage.createInternalLink !== "function",
+  isDisabled: !editor.isEditable,
+  onClick: () => {
+    return insertInternalLink(editor);
+  }
+});
+
+/**
+ * First-level shortcut for a plain (external) link: reuses the exact same
+ * `showLinkPopup` flow the hover/bottom toolbar link tools use, so legacy
+ * selection/caption/editing semantics are unchanged. Unlike `internalLink`
+ * this entry needs no host capability, so it is always shown and stays
+ * reachable from the Insert "+" menu even when a custom/minimal toolbar
+ * (`toolbar=[]`) hides the dedicated link tool, e.g. on iPhone/iPad/Mac.
+ */
+const externalLink = (editor: Editor): MenuItem => ({
+  key: "external-link",
+  type: "button",
+  title: strings.insertLink(),
+  icon: Icons.link,
+  isDisabled: !editor.isEditable,
+  onClick: () => {
+    // The menu's own items are memoized; a readonly transition or a
+    // destroy that happens while this entry is still mounted must not let a
+    // stale closure run the popup/link commands on a dead or locked editor.
+    if (!editor.isEditable || editor.isDestroyed) return;
+    return showLinkPopup(editor);
   }
 });
 
